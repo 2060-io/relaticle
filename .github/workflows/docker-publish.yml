@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  DOCKERHUB_IMAGE: 2060io/relaticle
+  DOCKERHUB_IMAGE: io2060/relaticle
 
 jobs:
   build:
