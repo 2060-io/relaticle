@@ -533,6 +533,19 @@ final class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::BODY_END,
                 fn (): View|Factory => view('filament.scripts.identity-confirmation'),
             )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                function (): string {
+                    $workspace = Filament::getTenant();
+                    $user = $this->signedInUser();
+
+                    if (! $workspace instanceof Workspace || ! $user instanceof User || ! $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)) {
+                        return '';
+                    }
+
+                    return Blade::render('@livewire(\App\Livewire\App\Billing\UpgradeModal::class)');
+                },
+            )
             // Mounted on the body: a modal inside the sidebar is clipped to its width.
             ->renderHook(
                 PanelsRenderHook::BODY_END,
