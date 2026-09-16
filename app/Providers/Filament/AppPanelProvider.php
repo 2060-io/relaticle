@@ -539,7 +539,7 @@ final class AppPanelProvider extends PanelProvider
                     $workspace = Filament::getTenant();
                     $user = $this->signedInUser();
 
-                    if (! $workspace instanceof Workspace || ! $user instanceof User || ! $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)) {
+                    if (! Feature::active(BillingFeature::class) || ! $workspace instanceof Workspace || ! $user instanceof User || ! $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)) {
                         return '';
                     }
 
