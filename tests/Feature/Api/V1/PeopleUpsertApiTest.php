@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Actions\CustomFields\FindEntityByFieldValue;
+use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\PeopleUpsertController;
 use App\Http\Middleware\EnsureTokenHasAbility;
 use App\Models\Company;
@@ -12,8 +13,6 @@ use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Laravel\Passport\AccessToken;
-use Laravel\Passport\Client;
 use Laravel\Sanctum\Sanctum;
 
 mutates(
@@ -37,12 +36,6 @@ function upsertCustomField(string $workspaceId, string $entityType, string $code
         ->firstOrFail();
 }
 
-/**
- * Write a custom field value straight to the table.
- *
- * The API path refuses duplicates on `emails` (unique_per_entity_type), so the
- * ambiguous-match fixture cannot be built through it.
- */
 function writeUpsertCustomFieldValue(string $workspaceId, string $entityType, string $entityId, string $code, mixed $value): void
 {
     DB::table('custom_field_values')->insert([
@@ -53,55 +46,6 @@ function writeUpsertCustomFieldValue(string $workspaceId, string $entityType, st
         'custom_field_id' => upsertCustomField($workspaceId, $entityType, $code)->getKey(),
         'json_value' => json_encode($value),
     ]);
-}
-
-/**
- * Authenticate through the Passport `api` guard, the credential the hosted
- * Maxforms connector actually presents.
- *
- * Mirrors the helper in OAuthTokenAbilitiesApiTest: Passport::actingAs() mints a
- * detached token with no backing row, whose workspace_id could never resolve in
- * SetApiWorkspaceContext, so the row the consent flow would have written is inserted
- * and the token pointed at it.
- *
- * @param  list<string>  $scopes
- */
-function actAsUpsertOAuthClient(User $user, array $scopes, Workspace $workspace): void
-{
-    $client = Client::query()->forceCreate([
-        'id' => (string) Str::uuid(),
-        'name' => 'REST Connector',
-        'redirect_uris' => ['https://example.com/callback'],
-        'grant_types' => ['authorization_code', 'refresh_token'],
-        'revoked' => false,
-        'owner_type' => $user->getMorphClass(),
-        'owner_id' => $user->getKey(),
-    ]);
-
-    $tokenId = Str::random(80);
-
-    DB::table('oauth_access_tokens')->insert([
-        'id' => $tokenId,
-        'user_id' => $user->getKey(),
-        'client_id' => $client->getKey(),
-        'workspace_id' => $workspace->getKey(),
-        'name' => 'REST Connector',
-        'scopes' => json_encode($scopes),
-        'revoked' => false,
-        'created_at' => now(),
-        'updated_at' => now(),
-        'expires_at' => now()->addDays(30),
-    ]);
-
-    $user->withAccessToken(new AccessToken([
-        'oauth_access_token_id' => $tokenId,
-        'oauth_client_id' => $client->getKey(),
-        'oauth_user_id' => $user->getKey(),
-        'oauth_scopes' => $scopes,
-    ]));
-
-    auth()->guard('api')->setUser($user);
-    auth()->shouldUse('api');
 }
 
 it('requires authentication', function (): void {
@@ -124,7 +68,7 @@ it('creates a person and returns 201 when nothing matches', function (): void {
 
     expect($response->json('data.attributes.name'))->toBe('Grace Hopper');
 
-    $this->assertDatabaseHas('people', ['name' => 'Grace Hopper', 'workspace_id' => $this->workspace->id]);
+    $this->assertDatabaseHas('people', ['name' => 'Grace Hopper', 'workspace_id' => $this->workspace->id, 'creation_source' => CreationSource::API->value]);
 });
 
 it('updates the matched person and returns 200 when the email array contains the value', function (): void {
@@ -382,7 +326,7 @@ describe('token abilities', function (): void {
     });
 
     it('refuses an oauth token scoped to create only', function (): void {
-        actAsUpsertOAuthClient($this->user, ['create'], $this->workspace);
+        actAsOAuthClient($this->user, ['create'], $this->workspace);
 
         $this->postJson('/api/v1/people/upsert', [
             'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
@@ -393,7 +337,7 @@ describe('token abilities', function (): void {
     });
 
     it('accepts an oauth token scoped to both create and update', function (): void {
-        actAsUpsertOAuthClient($this->user, ['create', 'update'], $this->workspace);
+        actAsOAuthClient($this->user, ['create', 'update'], $this->workspace);
 
         $this->postJson('/api/v1/people/upsert', [
             'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],

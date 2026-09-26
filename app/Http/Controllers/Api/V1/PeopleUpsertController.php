@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\People\CreatePeople;
 use App\Actions\People\UpdatePeople;
-use App\Enums\CreationSource;
 use App\Http\Requests\Api\V1\UpsertPeopleRequest;
 use App\Http\Resources\V1\PeopleResource;
 use App\Models\People;
@@ -20,13 +19,8 @@ use Knuckles\Scribe\Attributes\ResponseFromApiResource;
 /**
  * @group People
  *
- * Create a person, or update the one already holding the matched value.
- *
- * Repeat submissions of the same form would otherwise pile up duplicate
- * contacts; matching on a field the submitter owns (typically their email
- * address) keeps one record per person. The status code tells the caller which
- * happened: 201 for a new record, 200 for an updated one. Requires a token
- * holding both the `create` and `update` abilities.
+ * Create a person, or update the one already holding the matched value. Returns 201 when
+ * created and 200 when updated. Requires both the `create` and `update` abilities.
  */
 final readonly class PeopleUpsertController
 {
@@ -48,7 +42,7 @@ final readonly class PeopleUpsertController
             return new PeopleResource($updatePeople->execute($user, $person, $data))->response();
         }
 
-        return new PeopleResource($createPeople->execute($user, $data, CreationSource::API))
+        return new PeopleResource($createPeople->execute($user, $data))
             ->response()
             ->setStatusCode(201);
     }

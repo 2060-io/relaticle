@@ -11,13 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
 
-/**
- * Shared match-clause handling for the upsert endpoints.
- *
- * The matched record is resolved once and reused: the rule set needs it to
- * exempt the record from its own uniqueness constraints, and the controller
- * needs it to choose between create and update.
- */
 trait ResolvesUpsertMatch
 {
     private bool $matchResolved = false;
@@ -52,8 +45,7 @@ trait ResolvesUpsertMatch
         $field = $this->input('match.field');
         $value = $this->input('match.value');
 
-        // The match clause is resolved before validation runs, so anything the
-        // rules would reject has to be skipped rather than handed to the matcher.
+        // Resolved before validation runs, so input the rules would reject is skipped here.
         if (! is_string($field) || ! is_string($value)) {
             return null;
         }
@@ -70,12 +62,7 @@ trait ResolvesUpsertMatch
         return (string) $user->currentWorkspace->getKey();
     }
 
-    /**
-     * Codes a caller may match on: the workspace's active fields, narrowed to the
-     * types a submitted string can actually be compared against.
-     *
-     * @return array<int, string>
-     */
+    /** @return array<int, string> */
     private function matchableCustomFieldCodes(string $entityType): array
     {
         return CustomField::query()

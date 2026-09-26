@@ -12,28 +12,11 @@ use Illuminate\Support\Facades\DB;
 use Relaticle\CustomFields\Enums\FieldDataType;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
 
-/**
- * Find the single record a caller-supplied field/value pair identifies.
- *
- * Matching is case-insensitive for text: the CRM stores email addresses exactly
- * as typed, so `Grace@Navy.MIL` and `grace@navy.mil` must resolve to the same
- * person. Multi-value fields (email, phone, link) live in a JSON array, so the
- * value has to be searched inside that array rather than compared to the column.
- */
 final readonly class FindEntityByFieldValue
 {
-    /**
-     * The field data types a match value can be compared against.
-     *
-     * The value arrives as a string off a JSON body, so a field backed by a
-     * boolean, numeric, or date column cannot be compared without a cast the
-     * database would reject. Single-choice fields are excluded for a quieter
-     * reason: they store option keys, never the label a form submits, so a
-     * lookup would silently miss and create a duplicate. Callers validate
-     * `match.field` against this list, which turns both into a 422.
-     *
-     * @var array<int, FieldDataType>
-     */
+    // A string match value cannot be compared to boolean, numeric or date columns, and
+    // single-choice fields store option keys, never the label a form submits.
+    /** @var array<int, FieldDataType> */
     public const array MATCHABLE_DATA_TYPES = [
         FieldDataType::STRING,
         FieldDataType::TEXT,
@@ -42,7 +25,7 @@ final readonly class FindEntityByFieldValue
 
     /**
      * @param  class-string<Model>  $modelClass
-     * @param  array<int, string>  $nativeColumns  Model columns the caller may match on instead of a custom field code
+     * @param  array<int, string>  $nativeColumns
      */
     public function execute(string $modelClass, string $workspaceId, string $field, string $value, array $nativeColumns = []): ?Model
     {
@@ -73,17 +56,11 @@ final readonly class FindEntityByFieldValue
             $query->whereIn($model->getKeyName(), $entityIds);
         }
 
-        // Several records can legitimately carry the same value; the caller cannot
-        // disambiguate either, so the oldest one always wins.
+        // Several records can carry the same value, so the oldest one wins.
         return $query->oldest()->orderBy($model->getKeyName())->first();
     }
 
-    /**
-     * Case-insensitive comparison for the model columns an upsert may match on.
-     *
-     * Held as literal SQL per column rather than interpolating the caller's field
-     * name, so no identifier taken from the request can reach the query.
-     */
+    // Literal SQL per column, so no identifier taken from the request reaches the query.
     private function nativeColumnComparison(string $column): ?Expression
     {
         return match ($column) {
@@ -92,14 +69,6 @@ final readonly class FindEntityByFieldValue
         };
     }
 
-    /**
-     * Case-insensitive comparison for the value columns a match can target.
-     *
-     * `CustomField::getValueColumn()` stays the authority on which column holds
-     * the value; this only maps its answer to literal SQL, so no column name is
-     * ever interpolated. A column outside the map means the field type is not
-     * matchable and yields no match rather than a query.
-     */
     private function caseInsensitiveComparison(string $column): ?Expression
     {
         return match ($column) {
@@ -126,9 +95,7 @@ final readonly class FindEntityByFieldValue
             return [];
         }
 
-        // Callers reject an unmatchable type during validation, but this runs
-        // first, so refusing here is what keeps a boolean or date column from
-        // being compared against a string and raising a driver error.
+        // The match resolves before validation rejects an unmatchable type.
         if (! in_array(CustomFieldsType::getFieldType($customField->type)?->dataType, self::MATCHABLE_DATA_TYPES, true)) {
             return [];
         }
@@ -156,17 +123,11 @@ final readonly class FindEntityByFieldValue
             ->all();
     }
 
-    /**
-     * Expand the stored JSON array into rows and compare each element.
-     *
-     * Mirrors the driver matrix Relaticle\ImportWizard\Support\EntityLinkResolver
-     * already uses for the same lookup; a value written before the field became
-     * multi-value can still be a bare scalar, hence the array coercion.
-     *
-     * @return array<int, string>
-     */
+    /** @return array<int, string> */
     private function entityIdsFromJsonArray(string $entityType, string $workspaceId, string $customFieldId, string $value): array
     {
+        // Same driver matrix as EntityLinkResolver; a value saved before the field became
+        // multi-value can still be a bare scalar, hence the array coercion.
         $model = new CustomFieldValue;
         $connection = $model->getConnection();
         $table = $model->getTable();

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Actions\CustomFields\FindEntityByFieldValue;
+use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\CompaniesUpsertController;
 use App\Models\Company;
 use App\Models\CustomField;
@@ -62,7 +63,7 @@ it('creates a company and returns 201 when no company carries that name', functi
 
     $response->assertCreated()->assertValid();
 
-    $this->assertDatabaseHas('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id]);
+    $this->assertDatabaseHas('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id, 'creation_source' => CreationSource::API->value]);
 });
 
 it('matches an existing company by name case-insensitively and returns 200', function (): void {
@@ -225,9 +226,6 @@ it('accepts a token holding both create and update', function (): void {
 it('rejects a boolean-backed match field instead of failing on the query', function (): void {
     Sanctum::actingAs($this->user);
 
-    // `icp` is a seeded toggle field present on every workspace, so this is reachable
-    // with no customization at all. Comparing it to a string used to reach the
-    // database and raise a driver error.
     $this->postJson('/api/v1/companies/upsert', [
         'match' => ['field' => 'icp', 'value' => 'banana'],
         'name' => 'Acme Corp',
@@ -256,8 +254,6 @@ it('rejects a single-choice match field rather than silently creating a duplicat
 
     Sanctum::actingAs($this->user);
 
-    // A select field stores option keys, never the label a form submits, so a
-    // lookup would always miss and create a second record.
     $this->postJson('/api/v1/companies/upsert', [
         'match' => ['field' => 'tier', 'value' => 'Enterprise'],
         'name' => 'Acme Corp',

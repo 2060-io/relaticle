@@ -13,14 +13,8 @@ final class UpsertCompanyRequest extends BaseCrmEntityRequest
 {
     use ResolvesUpsertMatch;
 
-    /**
-     * A form usually supplies a company name rather than a custom field, so the
-     * model's own `name` column is matchable alongside every custom field code.
-     * The literal always means the column: a custom field sharing the code
-     * cannot shadow it.
-     *
-     * @var array<int, string>
-     */
+    // `name` always means the column; a custom field with that code cannot shadow it.
+    /** @var array<int, string> */
     private const array NATIVE_MATCH_COLUMNS = ['name'];
 
     public function matchedCompany(): ?Company

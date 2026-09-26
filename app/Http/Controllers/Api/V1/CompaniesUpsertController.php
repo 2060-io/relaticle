@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Company\CreateCompany;
 use App\Actions\Company\UpdateCompany;
-use App\Enums\CreationSource;
 use App\Http\Requests\Api\V1\UpsertCompanyRequest;
 use App\Http\Resources\V1\CompanyResource;
 use App\Models\Company;
@@ -20,12 +19,8 @@ use Knuckles\Scribe\Attributes\ResponseFromApiResource;
 /**
  * @group Companies
  *
- * Create a company, or update the one already holding the matched value.
- *
- * `match.field` accepts any custom field code for companies, plus the literal
- * `name` to match the company's own name column. The status code tells the
- * caller which happened: 201 for a new record, 200 for an updated one. Requires
- * a token holding both the `create` and `update` abilities.
+ * Create a company, or update the one already holding the matched value. Returns 201 when
+ * created and 200 when updated. Requires both the `create` and `update` abilities.
  */
 final readonly class CompaniesUpsertController
 {
@@ -46,7 +41,7 @@ final readonly class CompaniesUpsertController
             return new CompanyResource($updateCompany->execute($user, $company, $data))->response();
         }
 
-        return new CompanyResource($createCompany->execute($user, $data, CreationSource::API))
+        return new CompanyResource($createCompany->execute($user, $data))
             ->response()
             ->setStatusCode(201);
     }
