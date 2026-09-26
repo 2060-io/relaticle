@@ -10,7 +10,6 @@ use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Relaticle\CustomFields\Enums\FieldDataType;
-use Relaticle\CustomFields\Facades\CustomFieldsType;
 
 final readonly class FindEntityByFieldValue
 {
@@ -92,11 +91,6 @@ final readonly class FindEntityByFieldValue
             ->first();
 
         if (! $customField instanceof CustomField) {
-            return [];
-        }
-
-        // The match resolves before validation rejects an unmatchable type.
-        if (! in_array(CustomFieldsType::getFieldType($customField->type)?->dataType, self::MATCHABLE_DATA_TYPES, true)) {
             return [];
         }
 

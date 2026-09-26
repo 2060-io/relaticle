@@ -22,7 +22,7 @@ beforeEach(function (): void {
 });
 
 /**
- * @param  array<int, array<string, string>>  $validationRules
+ * @param  array<string, mixed>  $validationRules
  */
 function createCompanyCustomField(string $workspaceId, string $code, string $type, array $validationRules = []): CustomField
 {
@@ -263,7 +263,7 @@ it('rejects a single-choice match field rather than silently creating a duplicat
 });
 
 it('updates a matched company when a required custom field is omitted', function (): void {
-    createCompanyCustomField($this->workspace->id, 'industry', 'text', [['name' => 'required']]);
+    createCompanyCustomField($this->workspace->id, 'industry', 'text', ['required' => true]);
 
     Sanctum::actingAs($this->user);
 

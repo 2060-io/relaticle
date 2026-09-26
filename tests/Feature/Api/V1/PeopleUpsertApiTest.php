@@ -71,6 +71,28 @@ it('creates a person and returns 201 when nothing matches', function (): void {
     $this->assertDatabaseHas('people', ['name' => 'Grace Hopper', 'workspace_id' => $this->workspace->id, 'creation_source' => CreationSource::API->value]);
 });
 
+it('updates a matched person when a required custom field is omitted', function (): void {
+    upsertCustomField($this->workspace->id, 'people', 'job_title')->update(['validation_rules' => ['required' => true]]);
+
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Hopper',
+        'custom_fields' => ['emails' => ['grace@navy.mil'], 'job_title' => 'Rear Admiral'],
+    ])->assertCreated();
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Brewster Hopper',
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('data.id'))->toBe($created->json('data.id'))
+        ->and($response->json('data.attributes.custom_fields.job_title'))->toBe('Rear Admiral');
+});
+
 it('updates the matched person and returns 200 when the email array contains the value', function (): void {
     Sanctum::actingAs($this->user);
 
