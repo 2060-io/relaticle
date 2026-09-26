@@ -247,7 +247,7 @@ final readonly class LinkEmailAction
     }
 
     /**
-     * Merge config/email-integration.php default list with team-specific public_email_domains table.
+     * Merge the package config default list with team-specific public_email_domains table.
      *
      * @return Collection<int, lowercase-string>
      */
