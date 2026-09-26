@@ -25,6 +25,8 @@ use Relaticle\Chat\Services\MyTasksService;
 
 final class Dashboard extends Page
 {
+    public const string AFTER_COMPOSER_RENDER_HOOK = 'dashboard.after-composer';
+
     protected static string|null|BackedEnum $navigationIcon = 'heroicon-o-home';
 
     protected static ?string $navigationLabel = null;

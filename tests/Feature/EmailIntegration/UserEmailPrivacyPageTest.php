@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Livewire\App\Email\UserEmailPrivacySettings;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
@@ -10,6 +9,7 @@ use Relaticle\EmailIntegration\Actions\ApplyDefaultSharingTierToExistingEmailsAc
 use Relaticle\EmailIntegration\Actions\SaveUserEmailSharingDefaultAction;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Filament\Pages\UserEmailPrivacyPage;
+use Relaticle\EmailIntegration\Livewire\UserEmailPrivacySettings;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 
@@ -132,6 +132,15 @@ it('resolves workspace defaults per email when clearing a user sharing override'
     expect($this->owner->fresh()->default_email_sharing_tier)->toBeNull()
         ->and($fullWorkspaceEmail->fresh()->privacy_tier)->toBe(EmailPrivacyTier::FULL)
         ->and($privateWorkspaceEmail->fresh()->privacy_tier)->toBe(EmailPrivacyTier::PRIVATE);
+});
+
+it('selects use workspace default when the user has no sharing override', function (): void {
+    $this->owner->update(['default_email_sharing_tier' => null]);
+    $this->actingAs($this->owner);
+    Filament::setTenant($this->workspace);
+
+    livewire(UserEmailPrivacySettings::class)
+        ->assertSet('data.default_email_sharing_tier', '', strict: true);
 });
 
 it('clears a user sharing override when selecting use workspace default', function (): void {

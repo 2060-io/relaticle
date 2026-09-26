@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Models\Workspace;
-use App\Policies\MeetingPolicy;
 use Carbon\CarbonInterface;
 use Relaticle\EmailIntegration\Actions\RespondToMeetingAction;
 use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
@@ -13,6 +12,7 @@ use Relaticle\EmailIntegration\Exceptions\MeetingResponseFailed;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\MeetingAttendee;
+use Relaticle\EmailIntegration\Policies\MeetingPolicy;
 use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceInterface;
 use Relaticle\EmailIntegration\Services\MeetingRespondentResolver;

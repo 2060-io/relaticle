@@ -1686,7 +1686,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
     public function render(): View
     {
-        return view('livewire.email-composer');
+        return view('email-integration::livewire.email-composer');
     }
 
     /**

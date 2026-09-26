@@ -25,6 +25,10 @@ anatomy mirrors a Laravel app: `src/`, `config/`, `routes/`, `resources/`,
 
 - `App` must not depend on `Relaticle\SystemAdmin`; `Relaticle\SystemAdmin` may
   only reach back into `App\Models`, `App\Enums`, `App\Rules`
+- `packages/EmailIntegration` owns its controllers, jobs, policies, views, config and
+  timeline entries. `App\Http`, `App\Jobs`, `App\Policies`, `App\ActivityLog` and
+  `App\Console` must not use it. The app reaches it only from CRM resources, models,
+  onboarding and panel wiring, and anything it exposes to them checks the feature flag
 - Never use the custom-fields package models directly. Use the `App\Models\CustomField*`
   subclasses (runtime model swapping is configured in `AppServiceProvider`)
 - `packages/SystemAdmin` is excluded from PHPStan. When adding or removing enum

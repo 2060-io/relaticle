@@ -24,7 +24,7 @@ final class EmailAccessRequestsPage extends Page implements HasTable
         InteractsWithEmailAccessRequests::table insteadof InteractsWithTable;
     }
 
-    protected string $view = 'filament.pages.email-access-requests';
+    protected string $view = 'email-integration::filament.pages.email-access-requests';
 
     protected static ?string $slug = 'workspace/email/access-requests';
 

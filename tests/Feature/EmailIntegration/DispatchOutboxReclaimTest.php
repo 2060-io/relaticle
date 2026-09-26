@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use App\Jobs\SendEmailJob;
 use App\Models\User;
 use Illuminate\Support\Facades\Bus;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Jobs\SendEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 

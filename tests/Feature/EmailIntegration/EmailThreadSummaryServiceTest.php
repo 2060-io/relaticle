@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Filament\Resources\PeopleResource\Pages\PeopleEmailsPage;
-use App\Models\AiSummary;
 use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
@@ -13,6 +12,7 @@ use Laravel\Ai\Responses\TextResponse;
 use Relaticle\EmailIntegration\Agents\ThreadSummarizer;
 use Relaticle\EmailIntegration\Enums\EmailCategory;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
+use Relaticle\EmailIntegration\Models\AiSummary;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBody;

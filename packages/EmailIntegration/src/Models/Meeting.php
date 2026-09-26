@@ -11,6 +11,7 @@ use App\Models\People;
 use Carbon\CarbonInterface;
 use Database\Factories\MeetingFactory;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -23,6 +24,7 @@ use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
 use Relaticle\EmailIntegration\Enums\CalendarEventStatus;
 use Relaticle\EmailIntegration\Enums\CalendarVisibility;
 use Relaticle\EmailIntegration\Observers\MeetingObserver;
+use Relaticle\EmailIntegration\Policies\MeetingPolicy;
 
 /**
  * @property string $id
@@ -44,6 +46,7 @@ use Relaticle\EmailIntegration\Observers\MeetingObserver;
  * @property AttendeeResponseStatus|null $response_status
  * @property string|null $html_link
  */
+#[UsePolicy(MeetingPolicy::class)]
 #[ObservedBy(MeetingObserver::class)]
 final class Meeting extends Model
 {

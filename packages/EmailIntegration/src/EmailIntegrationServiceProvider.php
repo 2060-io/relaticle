@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration;
 
 use App\Features\EmailIntegration;
+use App\Filament\Pages\Dashboard;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
 use Laravel\Socialite\Facades\Socialite;
@@ -30,6 +33,12 @@ use Relaticle\EmailIntegration\Livewire\MailboxImportStatus;
 use Relaticle\EmailIntegration\Livewire\MeetingsHomeWidget;
 use Relaticle\EmailIntegration\Livewire\OutboxTable;
 use Relaticle\EmailIntegration\Livewire\TemplatesTable;
+use Relaticle\EmailIntegration\Livewire\UserEmailPrivacySettings;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Models\EmailThread;
+use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
@@ -39,11 +48,15 @@ use Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory;
 use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
 use Relaticle\EmailIntegration\Support\PublicSuffixList;
+use SocialiteProviders\Azure\AzureExtendSocialite;
+use SocialiteProviders\Manager\SocialiteWasCalled;
 
 final class EmailIntegrationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->mergeConfigFrom(__DIR__.'/../config/email-integration.php', 'email-integration');
+
         $this->app->bind(CalendarServiceFactoryInterface::class, CalendarServiceFactory::class);
         $this->app->bind(MailServiceFactoryInterface::class, MailServiceFactory::class);
 
@@ -62,9 +75,19 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Relation::morphMap([
+            'email' => Email::class,
+            'connected_account' => ConnectedAccount::class,
+            'email_thread' => EmailThread::class,
+            'email_access_request' => EmailAccessRequest::class,
+            'meeting' => Meeting::class,
+        ]);
+
         if (! Feature::for(null)->active(EmailIntegration::class)) {
             return;
         }
+
+        Event::listen(SocialiteWasCalled::class, [AzureExtendSocialite::class, 'handle']);
 
         // Dedicated Google OAuth driver for email/calendar connect, backed by the
         // `services.gmail` client + redirect (separate from social login's `services.google`).
@@ -80,6 +103,13 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
 
         // The templates resource has no page view of its own, so its tabs and header
         // (see HasEmailSettingsHeader) are rendered into the content column from here.
+        FilamentView::registerRenderHook(
+            Dashboard::AFTER_COMPOSER_RENDER_HOOK,
+            fn (): string => Feature::active(EmailIntegration::class)
+                ? Blade::render("@livewire('email-integration.meetings-home-widget')")
+                : '',
+        );
+
         FilamentView::registerRenderHook(
             PanelsRenderHook::PAGE_HEADER_WIDGETS_BEFORE,
             fn (): string => view('email-integration::components.settings-tabs')->render()
@@ -98,6 +128,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         Livewire::component('email-integration.templates-table', TemplatesTable::class);
         Livewire::component('email-integration.mailbox-import-status', MailboxImportStatus::class);
         Livewire::component('email-integration.meetings-home-widget', MeetingsHomeWidget::class);
+        Livewire::component('email-integration.user-email-privacy-settings', UserEmailPrivacySettings::class);
 
         // The feature flag is already checked above (config-based, stable for the
         // request), so the closure only needs to gate on per-request context: the

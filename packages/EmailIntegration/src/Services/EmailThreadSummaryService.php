@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Services;
 
-use App\Models\AiSummary;
 use App\Models\User;
 use Carbon\CarbonInterface;
 use Filament\Facades\Filament;
 use Relaticle\EmailIntegration\Agents\ThreadSummarizer;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
+use Relaticle\EmailIntegration\Models\AiSummary;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailLabel;
 use Relaticle\EmailIntegration\Models\EmailParticipant;

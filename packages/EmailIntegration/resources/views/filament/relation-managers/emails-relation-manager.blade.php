@@ -6,7 +6,7 @@
     {{-- Same overlay as the Emails tab and the access-request bell. The stock
          Filament ViewAction modal races Alpine `isOpen` against Livewire and
          can render with `display: none`. --}}
-    <x-emails.reader-overlay
+    <x-email-integration::reader-overlay
         :email="$this->selectedEmail"
         :pending-access-requests="$this->pendingAccessRequests"
         layer="z-50"

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Console\Commands;
 
-use App\Jobs\SendEmailJob;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -14,6 +13,7 @@ use Illuminate\Support\Facades\Config;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailPriority;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Jobs\SendEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 

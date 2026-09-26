@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Support\Facades\Route;
 use Relaticle\EmailIntegration\Controllers\CalendarPushWebhookController;
 use Relaticle\EmailIntegration\Controllers\CallbackController as EmailCallbackController;
+use Relaticle\EmailIntegration\Controllers\EmailAttachmentController;
 use Relaticle\EmailIntegration\Controllers\RedirectController as EmailRedirectController;
 
 Route::post('webhooks/calendar/{provider}', CalendarPushWebhookController::class)
@@ -22,4 +24,12 @@ Route::middleware(['web', 'auth', 'verified'])->group(function (): void {
         ->name('email-accounts.callback')
         ->whereIn('provider', ['gmail', 'azure'])
         ->middleware('throttle:10,1');
+});
+
+Route::middleware(['web', 'auth', 'verified', 'no-referrer', AuthenticateSession::class])->group(function (): void {
+    Route::get('/email-attachments/{attachment}', EmailAttachmentController::class)
+        ->name('email-attachments.download');
+
+    Route::get('/email-attachments/{attachment}/inline', EmailAttachmentController::class)
+        ->name('email-attachments.inline');
 });

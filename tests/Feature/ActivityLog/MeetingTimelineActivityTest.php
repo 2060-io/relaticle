@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-use App\ActivityLog\MeetingEventPalette;
-use App\ActivityLog\MeetingEventRenderer;
 use Carbon\CarbonImmutable;
 use Relaticle\ActivityLog\Timeline\TimelineEntry;
+use Relaticle\EmailIntegration\ActivityLog\MeetingEventPalette;
+use Relaticle\EmailIntegration\ActivityLog\TimelineEventRenderer;
 
-mutates(MeetingEventRenderer::class);
+mutates(TimelineEventRenderer::class);
 mutates(MeetingEventPalette::class);
 
 it('renders meeting.created with the defined activity-log label, not a dotted lookup miss', function (): void {
-    $html = app(MeetingEventRenderer::class)->render(new TimelineEntry(
+    $html = app(TimelineEventRenderer::class)->render(new TimelineEntry(
         id: 'meeting-created',
         type: 'activity_log',
         event: 'meeting.created',
@@ -26,7 +26,7 @@ it('renders meeting.created with the defined activity-log label, not a dotted lo
 });
 
 it('renders meeting.cancelled with the defined activity-log label, not a dotted lookup miss', function (): void {
-    $html = app(MeetingEventRenderer::class)->render(new TimelineEntry(
+    $html = app(TimelineEventRenderer::class)->render(new TimelineEntry(
         id: 'meeting-cancelled',
         type: 'activity_log',
         event: 'meeting.cancelled',

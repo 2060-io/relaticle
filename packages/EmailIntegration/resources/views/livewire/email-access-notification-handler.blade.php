@@ -1,5 +1,5 @@
 <div>
-    <x-emails.reader-overlay
+    <x-email-integration::reader-overlay
         :email="$this->selectedEmail"
         :pending-access-requests="$this->pendingAccessRequests"
         layer="z-50"

@@ -1,5 +1,5 @@
 <x-filament-panels::page>
     <x-email-integration::settings-header />
 
-    @livewire(\App\Livewire\App\Email\UserEmailPrivacySettings::class)
+    @livewire('email-integration.user-email-privacy-settings')
 </x-filament-panels::page>

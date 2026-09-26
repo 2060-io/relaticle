@@ -78,7 +78,7 @@ function makeEmailWithPlainText(string $text): Email
 
 /**
  * Render the email reader through the relation-manager overlay, the same
- * `x-emails.email-view` used on company and people Emails tabs.
+ * `x-email-integration::email-view` used on company and people Emails tabs.
  */
 function mountEmailView(Email $email): Testable
 {
@@ -250,16 +250,6 @@ it('renders a plain-text-only body in the email view without an iframe', functio
         ->assertDontSeeHtml('<iframe');
 });
 
-it('renders a plain-text-only body in the threaded view without an iframe', function (): void {
-    $email = makeEmailWithPlainText('Please review the invoice by Friday.');
-
-    $html = view('filament.emails.email-thread', ['emails' => collect([$email])])->render();
-
-    expect($html)
-        ->toContain('Please review the invoice by Friday.')
-        ->not->toContain('<iframe');
-});
-
 it('renders the email view iframe without scripts and with same-origin height measurement', function (): void {
     $email = makeEmailWithBody('<p>body</p>');
 
@@ -271,31 +261,6 @@ it('renders the email view iframe without scripts and with same-origin height me
         ->assertSeeHtml('dark:bg-gray-900 dark:[color-scheme:dark]')
         ->assertSeeHtml('dark:bg-gray-900')
         ->assertDontSeeHtml('allow-scripts');
-});
-
-it('strips dangerous markup in the threaded email view', function (): void {
-    $email = makeEmailWithBody(MALICIOUS_BODY);
-
-    $html = view('filament.emails.email-thread', ['emails' => collect([$email])])->render();
-
-    expect($html)
-        ->not->toContain('onerror')
-        ->not->toContain('javascript:')
-        ->not->toContain('document.cookie');
-});
-
-it('sandboxes the threaded iframe without same-origin access', function (): void {
-    $email = makeEmailWithBody('<p>body</p>');
-
-    $html = view('filament.emails.email-thread', ['emails' => collect([$email])])->render();
-
-    expect($html)
-        ->toContain('sandbox="allow-popups allow-popups-to-escape-sandbox"')
-        ->toContain('px-6 py-6 sm:px-8 lg:px-10')
-        ->toContain('dark:bg-neutral-900 dark:[color-scheme:dark]')
-        ->toContain('dark:bg-gray-950')
-        ->not->toContain('allow-scripts')
-        ->not->toContain('allow-same-origin');
 });
 
 it('renders the sent time in the viewer timezone', function (): void {

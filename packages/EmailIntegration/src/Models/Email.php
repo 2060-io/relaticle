@@ -15,6 +15,7 @@ use Filament\Support\Facades\FilamentTimezone;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -36,6 +37,7 @@ use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 use Relaticle\EmailIntegration\Observers\EmailObserver;
+use Relaticle\EmailIntegration\Policies\EmailPolicy;
 use Relaticle\EmailIntegration\Support\EmailHtmlSanitizer;
 
 /**
@@ -65,6 +67,7 @@ use Relaticle\EmailIntegration\Support\EmailHtmlSanitizer;
  * @property CarbonInterface|null $linked_at
  * @property EmailPriority $priority
  */
+#[UsePolicy(EmailPolicy::class)]
 #[ObservedBy(EmailObserver::class)]
 #[ScopedBy([ActiveAccountScope::class])]
 final class Email extends Model
