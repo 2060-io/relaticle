@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Enums\CustomFields\PeopleField;
-use App\Jobs\SendEmailJob;
 use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
@@ -18,6 +17,7 @@ use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Jobs\SendEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBatch;

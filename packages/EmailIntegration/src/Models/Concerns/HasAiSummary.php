@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Models\Concerns;
+namespace Relaticle\EmailIntegration\Models\Concerns;
 
-use App\Models\AiSummary;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
+use Relaticle\EmailIntegration\Models\AiSummary;
 
 /**
  * Trait for models that can have AI-generated summaries.

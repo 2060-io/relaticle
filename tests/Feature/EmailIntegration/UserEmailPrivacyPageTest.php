@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Livewire\App\Email\UserEmailPrivacySettings;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
@@ -10,6 +9,7 @@ use Relaticle\EmailIntegration\Actions\ApplyDefaultSharingTierToExistingEmailsAc
 use Relaticle\EmailIntegration\Actions\SaveUserEmailSharingDefaultAction;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Filament\Pages\UserEmailPrivacyPage;
+use Relaticle\EmailIntegration\Livewire\UserEmailPrivacySettings;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 

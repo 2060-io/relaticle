@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Livewire\App\Email;
+namespace Relaticle\EmailIntegration\Livewire;
 
 use App\Livewire\BaseLivewireComponent;
 use Filament\Actions\Action;
@@ -114,6 +114,6 @@ final class UserEmailPrivacySettings extends BaseLivewireComponent implements Ha
 
     public function render(): View
     {
-        return view('livewire.app.email.user-email-privacy-settings');
+        return view('email-integration::livewire.user-email-privacy-settings');
     }
 }
