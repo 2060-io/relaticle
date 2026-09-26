@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\ActivityLog;
+namespace Relaticle\EmailIntegration\ActivityLog;
 
 use Filament\Support\Contracts\HasIcon;
 use Filament\Support\Contracts\HasLabel;

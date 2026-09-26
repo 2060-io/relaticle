@@ -6,8 +6,6 @@ namespace App\Providers\Filament;
 
 use App\ActivityLog\AppEventPalette;
 use App\ActivityLog\AppEventRenderer;
-use App\ActivityLog\MeetingEventPalette;
-use App\ActivityLog\MeetingEventRenderer;
 use App\Enums\AccentColor;
 use App\Enums\SupportFormType;
 use App\Enums\WorkspaceCapability;
@@ -97,6 +95,7 @@ use Livewire\Livewire;
 use Relaticle\ActivityLog\Filament\ActivityLogPlugin;
 use Relaticle\CustomFields\CustomFieldsPlugin;
 use Relaticle\CustomFields\Models\Contracts\HasCustomFields;
+use Relaticle\EmailIntegration\ActivityLog\TimelineEventRenderer;
 use Throwable;
 
 final class AppPanelProvider extends PanelProvider
@@ -385,8 +384,8 @@ final class AppPanelProvider extends PanelProvider
                         AppEventRenderer::class,
                     ))
                     ->renderers(array_fill_keys(
-                        array_column(MeetingEventPalette::cases(), 'value'),
-                        MeetingEventRenderer::class,
+                        TimelineEventRenderer::events(),
+                        TimelineEventRenderer::class,
                     )),
             ])
             ->renderHook(

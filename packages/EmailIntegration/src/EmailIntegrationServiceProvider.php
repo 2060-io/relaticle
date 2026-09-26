@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration;
 
 use App\Features\EmailIntegration;
+use App\Filament\Pages\Dashboard;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Database\Eloquent\Model;
@@ -102,6 +103,13 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
 
         // The templates resource has no page view of its own, so its tabs and header
         // (see HasEmailSettingsHeader) are rendered into the content column from here.
+        FilamentView::registerRenderHook(
+            Dashboard::AFTER_COMPOSER_RENDER_HOOK,
+            fn (): string => Feature::active(EmailIntegration::class)
+                ? Blade::render("@livewire('email-integration.meetings-home-widget')")
+                : '',
+        );
+
         FilamentView::registerRenderHook(
             PanelsRenderHook::PAGE_HEADER_WIDGETS_BEFORE,
             fn (): string => view('email-integration::components.settings-tabs')->render()

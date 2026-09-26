@@ -2,16 +2,19 @@
 
 declare(strict_types=1);
 
+use App\Features\EmailIntegration;
 use App\Models\Concerns\HasActivityTimeline;
 use App\Models\People;
 use App\Models\User;
 use App\Support\ActivityLog\RequestActivityBatch;
 use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
+use Laravel\Pennant\Feature;
 use Relaticle\ActivityLog\Filament\Livewire\ActivityLogLivewire;
 use Relaticle\ActivityLog\Support\ActivityLogSummary;
 use Relaticle\ActivityLog\Timeline\TimelineBuilder;
 use Relaticle\ActivityLog\Timeline\TimelineEntry;
+use Relaticle\EmailIntegration\ActivityLog\EmailTimelineSource;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -20,6 +23,7 @@ use Relaticle\EmailIntegration\Models\Email;
 mutates(ActivityLogLivewire::class);
 mutates(ActivityLogSummary::class);
 mutates(HasActivityTimeline::class);
+mutates(EmailTimelineSource::class);
 mutates(People::class);
 
 beforeEach(function (): void {
@@ -204,6 +208,33 @@ it('labels inbound mailbox mail as received and outbound mail as sent', function
         ->and($emailEvents[$inbound->getKey()]->event)->toBe('email_received')
         ->and($emailEvents[$outbound->getKey()]->event)->toBe('email_sent')
         ->and($emailEvents->has($unsentOutbound->getKey()))->toBeFalse();
+});
+
+it('leaves synced mail off the activity timeline while email integration is off', function (): void {
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->user->getKey(),
+    ]));
+
+    $person = People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->user->getKey(),
+    ]);
+
+    $email = Email::factory()->inbound()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->user->getKey(),
+        'connected_account_id' => $account->getKey(),
+        'sent_at' => now()->subHour(),
+        'privacy_tier' => EmailPrivacyTier::FULL,
+    ]);
+
+    $person->emails()->attach($email->getKey());
+
+    Feature::define(EmailIntegration::class, false);
+
+    expect($person->timeline()->get()->where('type', 'related_model')->pluck('event'))
+        ->not->toContain('email_received');
 });
 
 it('hides metadata-only subjects from teammates on the activity timeline', function (): void {

@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace App\Models\Concerns;
 
-use App\Models\User;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Relations\Relation;
+use App\Features\EmailIntegration;
+use Laravel\Pennant\Feature;
 use Relaticle\ActivityLog\Concerns\InteractsWithTimeline;
 use Relaticle\ActivityLog\Timeline\Sources\RelatedModelSource;
 use Relaticle\ActivityLog\Timeline\TimelineBuilder;
-use Relaticle\EmailIntegration\Enums\EmailDirection;
-use Relaticle\EmailIntegration\Models\Email;
-use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
+use Relaticle\EmailIntegration\ActivityLog\EmailTimelineSource;
 
 trait HasActivityTimeline
 {
@@ -20,52 +17,8 @@ trait HasActivityTimeline
 
     public function timeline(): TimelineBuilder
     {
-        $viewer = auth()->user();
-
-        return TimelineBuilder::make($this)
+        $timeline = TimelineBuilder::make($this)
             ->fromActivityLog(mergedRenderer: 'merged-activity')
-            ->fromRelation('emails', function (RelatedModelSource $source) use ($viewer): void {
-                $source
-                    ->event(
-                        'sent_at',
-                        'email_sent',
-                        when: fn (Email $email): bool => $email->direction === EmailDirection::OUTBOUND,
-                    )
-                    ->event(
-                        'sent_at',
-                        'email_received',
-                        when: fn (Email $email): bool => $email->direction === EmailDirection::INBOUND,
-                    )
-                    ->event(
-                        'created_at',
-                        'email_received',
-                        when: fn (Email $email): bool => $email->direction === EmailDirection::INBOUND && $email->sent_at === null,
-                    )
-                    ->with(['from', 'labels', 'participants', 'shares'])
-                    ->title(function (Email $email) use ($viewer): string {
-                        // VisibleEmailScope admits metadata-only mail. Subjects are masked
-                        // here the same way the inbox does: viewSubject, not a raw column read.
-                        if (! $viewer instanceof User || ! $viewer->can('viewSubject', $email)) {
-                            return '(subject hidden)';
-                        }
-
-                        return $email->subject ?? 'Email';
-                    })
-                    ->description(fn (Email $email): ?string => $email->from->first()?->email_address)
-                    ->causer(fn (Email $email) => $email->from->first());
-
-                if ($viewer instanceof User) {
-                    $source->using(fn (Builder|Relation $query) => $query->withGlobalScope(
-                        'visible',
-                        new VisibleEmailScope($viewer),
-                    ));
-                } else {
-                    // No authenticated viewer, so never expose email content unscoped.
-                    // VisibleEmailScope isn't a default scope on Email, so without this
-                    // the relation would load every email regardless of privacy.
-                    $source->using(fn (Builder|Relation $query) => $query->whereRaw('1 = 0'));
-                }
-            })
             ->fromRelation('notes', fn (RelatedModelSource $source): RelatedModelSource => $source
                 ->event('created_at', 'note_created')
                 ->with(['creator'])
@@ -76,5 +29,11 @@ trait HasActivityTimeline
                 ->with(['creator'])
                 ->title(fn ($task): string => $task->title ?? 'Task')
                 ->causer('creator'));
+
+        if (Feature::active(EmailIntegration::class)) {
+            $timeline->fromRelation('emails', (new EmailTimelineSource(auth()->user()))(...));
+        }
+
+        return $timeline;
     }
 }

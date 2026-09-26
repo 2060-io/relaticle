@@ -61,9 +61,7 @@
 
         </form>
 
-        @if (\Laravel\Pennant\Feature::active(\App\Features\EmailIntegration::class))
-            @livewire('email-integration.meetings-home-widget')
-        @endif
+        {{ \Filament\Support\Facades\FilamentView::renderHook(\App\Filament\Pages\Dashboard::AFTER_COMPOSER_RENDER_HOOK) }}
 
         @include('chat::filament.pages.partials.my-tasks')
     </div>
