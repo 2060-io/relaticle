@@ -7,12 +7,15 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\User;
 use Database\Factories\EmailTemplateFactory;
+use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Relaticle\EmailIntegration\Policies\EmailTemplatePolicy;
 
+#[UsePolicy(EmailTemplatePolicy::class)]
 final class EmailTemplate extends Model
 {
     /**

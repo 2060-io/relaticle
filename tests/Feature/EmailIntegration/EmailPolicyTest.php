@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 use App\Models\User;
-use App\Policies\EmailPolicy;
 use Filament\Facades\Filament;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailShare;
+use Relaticle\EmailIntegration\Policies\EmailPolicy;
 
 mutates(EmailPolicy::class);
 

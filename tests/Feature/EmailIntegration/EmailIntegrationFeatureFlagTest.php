@@ -8,14 +8,14 @@ use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager
 use App\Filament\Resources\PeopleResource\RelationManagers\MeetingsRelationManager;
 use App\Models\People;
 use App\Models\User;
-use App\Policies\EmailPolicy;
-use App\Policies\MeetingPolicy;
 use Filament\Facades\Filament;
 use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\Meeting;
+use Relaticle\EmailIntegration\Policies\EmailPolicy;
+use Relaticle\EmailIntegration\Policies\MeetingPolicy;
 
 mutates(EmailIntegration::class, EmailPolicy::class, MeetingPolicy::class);
 

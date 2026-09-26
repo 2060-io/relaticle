@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Policies;
+namespace Relaticle\EmailIntegration\Policies;
 
 use App\Features\EmailIntegration;
 use App\Models\User;

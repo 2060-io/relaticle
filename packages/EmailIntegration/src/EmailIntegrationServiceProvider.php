@@ -8,7 +8,9 @@ use App\Features\EmailIntegration;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
 use Laravel\Socialite\Facades\Socialite;
@@ -31,6 +33,11 @@ use Relaticle\EmailIntegration\Livewire\MeetingsHomeWidget;
 use Relaticle\EmailIntegration\Livewire\OutboxTable;
 use Relaticle\EmailIntegration\Livewire\TemplatesTable;
 use Relaticle\EmailIntegration\Livewire\UserEmailPrivacySettings;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Models\EmailThread;
+use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
@@ -40,6 +47,8 @@ use Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory;
 use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
 use Relaticle\EmailIntegration\Support\PublicSuffixList;
+use SocialiteProviders\Azure\AzureExtendSocialite;
+use SocialiteProviders\Manager\SocialiteWasCalled;
 
 final class EmailIntegrationServiceProvider extends ServiceProvider
 {
@@ -63,9 +72,19 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Relation::morphMap([
+            'email' => Email::class,
+            'connected_account' => ConnectedAccount::class,
+            'email_thread' => EmailThread::class,
+            'email_access_request' => EmailAccessRequest::class,
+            'meeting' => Meeting::class,
+        ]);
+
         if (! Feature::for(null)->active(EmailIntegration::class)) {
             return;
         }
+
+        Event::listen(SocialiteWasCalled::class, [AzureExtendSocialite::class, 'handle']);
 
         // Dedicated Google OAuth driver for email/calendar connect, backed by the
         // `services.gmail` client + redirect (separate from social login's `services.google`).
