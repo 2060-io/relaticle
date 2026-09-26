@@ -303,6 +303,18 @@ arch('SystemAdmin module must not depend on main app namespace')
         'App\Rules',
     ]);
 
+foreach (['App\Http', 'App\Jobs', 'App\Policies', 'App\ActivityLog', 'App\Console'] as $appLayer) {
+    arch("{$appLayer} leaves email integration to its package")
+        ->expect($appLayer)
+        ->not
+        ->toUse('Relaticle\EmailIntegration');
+}
+
+arch('email integration owns its controllers, jobs, policies and timeline entries')
+    ->expect('Relaticle\EmailIntegration')
+    ->not
+    ->toUse(['App\Http\Controllers', 'App\Jobs', 'App\Policies', 'App\ActivityLog']);
+
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
     ->classes()
