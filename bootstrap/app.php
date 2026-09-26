@@ -29,6 +29,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Middleware\VerifyWebhookSignature;
+use League\OAuth2\Server\Exception\OAuthServerException;
 use Livewire\Exceptions\PayloadTooLargeException;
 use Livewire\Mechanisms\HandleComponents\CorruptComponentPayloadException;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
@@ -242,6 +243,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // They are user-state noise, not actionable errors, so keep them out of
         // Sentry (issue #125406836).
         $exceptions->dontReport(CorruptComponentPayloadException::class);
+
+        // Passport reports every rejected bearer token; keep league's 5xx server errors visible.
+        $exceptions->dontReportWhen(
+            fn (Throwable $e): bool => $e instanceof OAuthServerException && $e->getHttpStatusCode() < 500,
+        );
 
         // Livewire rejects an oversized body before the component hydrates, so the panel
         // cannot notify from the server; payload-guard.js turns this into a notification
