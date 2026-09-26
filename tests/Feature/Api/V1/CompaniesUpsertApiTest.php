@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\V1\CompaniesUpsertController;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Sleep;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 
@@ -64,6 +66,55 @@ it('creates a company and returns 201 when no company carries that name', functi
     $response->assertCreated()->assertValid();
 
     $this->assertDatabaseHas('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id, 'creation_source' => CreationSource::API->value]);
+});
+
+it('matches a text custom field case-insensitively', function (): void {
+    createCompanyCustomField($this->workspace->id, 'registry_id', 'text');
+
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'registry_id', 'value' => 'AB-1234'],
+        'name' => 'Acme Corp',
+        'custom_fields' => ['registry_id' => 'AB-1234'],
+    ])->assertCreated();
+
+    $response = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'registry_id', 'value' => 'ab-1234'],
+        'name' => 'Acme Corporation',
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('data.id'))->toBe($created->json('data.id'));
+});
+
+it('treats like wildcards in a company name literally', function (): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme Corp']);
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'name', 'value' => 'Acme%'],
+        'name' => 'Acme%',
+    ])->assertCreated();
+});
+
+it('answers 503 without writing when a concurrent upsert of the same company holds the lock', function (): void {
+    Sleep::fake(syncWithCarbon: true);
+    $lock = Cache::lock("upsert:{$this->workspace->id}:company:name:acme corp", 10);
+    $lock->get();
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'name', 'value' => 'Acme Corp'],
+        'name' => 'Acme Corp',
+    ])->assertServiceUnavailable()->assertHeader('Retry-After');
+
+    $this->assertDatabaseMissing('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id]);
+
+    $lock->release();
 });
 
 it('matches an existing company by name case-insensitively and returns 200', function (): void {

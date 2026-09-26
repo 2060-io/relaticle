@@ -35,15 +35,17 @@ final readonly class PeopleUpsertController
         UpdatePeople $updatePeople,
         #[CurrentUser] User $user,
     ): JsonResponse {
-        $data = Arr::except($request->validated(), ['match']);
-        $person = $request->matchedPerson();
+        return $request->whileHoldingMatch(function () use ($request, $createPeople, $updatePeople, $user): JsonResponse {
+            $data = Arr::except($request->validated(), ['match']);
+            $person = $request->matchedPerson();
 
-        if ($person instanceof People) {
-            return new PeopleResource($updatePeople->execute($user, $person, $data))->response();
-        }
+            if ($person instanceof People) {
+                return new PeopleResource($updatePeople->execute($user, $person, $data))->response();
+            }
 
-        return new PeopleResource($createPeople->execute($user, $data))
-            ->response()
-            ->setStatusCode(201);
+            return new PeopleResource($createPeople->execute($user, $data))
+                ->response()
+                ->setStatusCode(201);
+        });
     }
 }

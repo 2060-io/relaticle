@@ -34,15 +34,17 @@ final readonly class CompaniesUpsertController
         UpdateCompany $updateCompany,
         #[CurrentUser] User $user,
     ): JsonResponse {
-        $data = Arr::except($request->validated(), ['match']);
-        $company = $request->matchedCompany();
+        return $request->whileHoldingMatch(function () use ($request, $createCompany, $updateCompany, $user): JsonResponse {
+            $data = Arr::except($request->validated(), ['match']);
+            $company = $request->matchedCompany();
 
-        if ($company instanceof Company) {
-            return new CompanyResource($updateCompany->execute($user, $company, $data))->response();
-        }
+            if ($company instanceof Company) {
+                return new CompanyResource($updateCompany->execute($user, $company, $data))->response();
+            }
 
-        return new CompanyResource($createCompany->execute($user, $data))
-            ->response()
-            ->setStatusCode(201);
+            return new CompanyResource($createCompany->execute($user, $data))
+                ->response()
+                ->setStatusCode(201);
+        });
     }
 }

@@ -11,7 +11,10 @@ use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 
@@ -230,6 +233,79 @@ it('does not match a person in another workspace', function (): void {
 
     $this->assertDatabaseHas('people', ['id' => $foreignId, 'name' => 'Foreign Grace', 'workspace_id' => $otherWorkspace->id]);
     $this->assertDatabaseHas('people', ['id' => $response->json('data.id'), 'workspace_id' => $this->workspace->id]);
+});
+
+it('treats like wildcards in the match value literally', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
+    writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', ['grace1@navy.mil']);
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace_@navy.mil'],
+        'name' => 'Another Grace',
+    ])->assertCreated();
+
+    $this->assertDatabaseHas('people', ['id' => $person->id, 'name' => 'Grace Hopper']);
+});
+
+it('matches an email saved as a bare string before the field held a list', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
+    writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', 'Grace@Navy.mil');
+
+    Sanctum::actingAs($this->user);
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Brewster Hopper',
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('data.id'))->toBe($person->id);
+});
+
+it('answers 503 without writing when a concurrent upsert of the same value holds the lock', function (): void {
+    Sleep::fake(syncWithCarbon: true);
+    $lock = Cache::lock("upsert:{$this->workspace->id}:people:emails:grace@navy.mil", 10);
+    $lock->get();
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'Grace@Navy.mil'],
+        'name' => 'Grace Hopper',
+    ])->assertServiceUnavailable()->assertHeader('Retry-After');
+
+    $this->assertDatabaseMissing('people', ['name' => 'Grace Hopper', 'workspace_id' => $this->workspace->id]);
+
+    $lock->release();
+});
+
+it('updates a person a concurrent upsert created after this request was validated', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
+    writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', ['grace@navy.mil']);
+
+    app()->instance(FindEntityByFieldValue::class, new class
+    {
+        private int $calls = 0;
+
+        public function execute(mixed ...$arguments): ?Model
+        {
+            return $this->calls++ === 0 ? null : new FindEntityByFieldValue()->execute(...$arguments);
+        }
+    });
+
+    Sanctum::actingAs($this->user);
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Brewster Hopper',
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('data.id'))->toBe($person->id);
 });
 
 it('picks the oldest record when more than one matches', function (): void {
