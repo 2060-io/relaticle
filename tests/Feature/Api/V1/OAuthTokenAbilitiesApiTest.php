@@ -24,16 +24,7 @@ beforeEach(function (): void {
     $this->workspace = $this->user->personalWorkspace();
 });
 
-/**
- * Authenticate the given user through the Passport `api` guard.
- *
- * Passport::actingAs() mints a detached AccessToken with no backing row, so its
- * workspace_id could never resolve and every request would die in SetApiWorkspaceContext.
- * Inserting the row the consent flow would have written (workspace_id included) and
- * pointing the token at it exercises the real binding instead.
- *
- * @param  list<string>  $scopes
- */
+/** @param  list<string>  $scopes */
 function actAsOAuthClient(User $user, array $scopes, ?Workspace $workspace): void
 {
     $client = Client::query()->forceCreate([

@@ -32,10 +32,8 @@ trait ChecksTokenAbility
         /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
         $token = $user?->currentAccessToken();
 
-        // `mcp:use` is the single scope in the authorization-server metadata laravel/mcp
-        // publishes, so it is the only one an MCP client asks for. The REST API's
-        // read/create/update/delete scopes are not honoured here. Holding it authorizes
-        // the toolset; which workspace's data those tools reach is bound separately on the token.
+        // MCP clients can only request `mcp:use`, the one scope laravel/mcp publishes, and it
+        // authorizes the whole toolset. The REST scopes are not honoured here.
         if ($token instanceof PassportAccessToken && ! $token->can(Registrar::OAUTH_SCOPE)) {
             return Response::error('Invalid ability provided.');
         }

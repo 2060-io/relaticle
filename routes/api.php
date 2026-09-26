@@ -14,20 +14,19 @@ use App\Http\Middleware\EnsureHostedWorkspaceAccess;
 use App\Http\Middleware\EnsureTokenHasAbility;
 use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\SetApiWorkspaceContext;
+use App\Http\Middleware\SetCurrentSource;
 use App\Http\Resources\V1\UserResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')
-    ->middleware([ForceJsonResponse::class, 'auth:sanctum,api', 'throttle:api', EnsureTokenHasAbility::class, SetApiWorkspaceContext::class, EnsureHostedWorkspaceAccess::class])
+    ->middleware([ForceJsonResponse::class, 'auth:sanctum,api', 'throttle:api', EnsureTokenHasAbility::class, SetCurrentSource::class.':api', SetApiWorkspaceContext::class, EnsureHostedWorkspaceAccess::class])
     ->group(function (): void {
         Route::get('user', function (Request $request) {
             return new UserResource($request->user());
         });
 
-        // Declared ahead of the resource routes so the literal segment is never
-        // read as a record key, and gated on both abilities because the endpoint
-        // may create or update.
+        // Registered before the resource routes so `upsert` is never read as a record key.
         Route::post('companies/upsert', CompaniesUpsertController::class)
             ->middleware(EnsureTokenHasAbility::class.':create,update')
             ->name('companies.upsert');
