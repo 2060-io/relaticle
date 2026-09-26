@@ -29,7 +29,7 @@ use Relaticle\EmailIntegration\Models\EmailThread;
 use Relaticle\EmailIntegration\Services\EmailThreadSummaryService;
 
 /**
- * Sharing, summarize, and request-access actions for `x-emails.email-view`,
+ * Sharing, summarize, and request-access actions for `x-email-integration::email-view`,
  * used by the inbox, CRM record email pages, and the emails relation manager.
  *
  * @property ?string $selectedEmailId
@@ -207,7 +207,7 @@ trait HasEmailReaderActions
                 $email = $this->emailForReaderAction($record instanceof Email ? $record : null, $arguments, 'viewBody');
 
                 if (! $email instanceof Email) {
-                    return view('filament.actions.ai-summary', ['summary' => null]);
+                    return view('email-integration::filament.actions.ai-summary', ['summary' => null]);
                 }
 
                 return $this->buildThreadSummaryView($email);
@@ -404,13 +404,13 @@ trait HasEmailReaderActions
             ->first();
 
         if ($thread === null) {
-            return view('filament.actions.ai-summary', ['summary' => null]);
+            return view('email-integration::filament.actions.ai-summary', ['summary' => null]);
         }
 
         $summary = resolve(EmailThreadSummaryService::class)
             ->getSummary($thread, $this->readerUser());
 
-        return view('filament.actions.ai-summary', ['summary' => $summary]);
+        return view('email-integration::filament.actions.ai-summary', ['summary' => $summary]);
     }
 
     protected function approveAccessRequestAction(): Action

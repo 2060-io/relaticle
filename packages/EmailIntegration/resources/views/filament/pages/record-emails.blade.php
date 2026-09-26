@@ -7,14 +7,14 @@
 
     @if ($this->hidesRecordMailbox)
         <div class="flex h-[80vh] items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <x-emails.protected-mailbox
+            <x-email-integration::protected-mailbox
                 :heading="$this->recordMailboxHiddenCopy['heading']"
                 :description="$this->recordMailboxHiddenCopy['description']"
             />
         </div>
     @elseif ($this->showConnectPrompt)
         <div class="flex h-[80vh] items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <x-emails.not-connected
+            <x-email-integration::not-connected
                 :heading="__('filament/pages/email-accounts.not_connected.record.heading')"
                 :description="__('filament/pages/email-accounts.not_connected.record.description')"
                 :action="$this->connectMailboxAction"
@@ -37,15 +37,15 @@
         <div class="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-gray-200 bg-gray-50/80 px-4 py-3 dark:border-gray-800 dark:bg-gray-900 sm:px-6">
 
             <div class="min-w-[10rem] max-w-sm flex-1">
-                <x-emails.search-bar :search="$search" :framed="false" />
+                <x-email-integration::search-bar :search="$search" :framed="false" />
             </div>
         </div>
 
         <div class="flex flex-1 flex-col divide-y divide-gray-100 overflow-y-auto bg-white dark:divide-gray-800 dark:bg-gray-950">
             @forelse ($this->emails as $email)
-                <x-emails.list-row-wide :email="$email" wire:key="email-list-row-{{ $email->id }}" />
+                <x-email-integration::list-row-wide :email="$email" wire:key="email-list-row-{{ $email->id }}" />
             @empty
-                <x-emails.list-empty
+                <x-email-integration::list-empty
                     class="flex-1"
                     :search="$search"
                     :can-compose="$this->hasActiveConnectedAccount"
@@ -95,7 +95,7 @@
          Closing always routes through closeReader(), which persists any docked
          reply draft and then deselects. The same overlay is mounted from access
          request notifications. --}}
-    <x-emails.reader-overlay
+    <x-email-integration::reader-overlay
         :email="$this->selectedEmail"
         :pending-access-requests="$this->pendingAccessRequests"
     />

@@ -2,7 +2,7 @@
 
 {{-- A read-only rendering of the message a draft answers or forwards.
 
-     Deliberately not `x-emails.email-view`: that component is the reader, and it
+     Deliberately not `x-email-integration::email-view`: that component is the reader, and it
      carries the reply actions and the draft dock itself. Rendering it inside the
      composer would nest a composer in a composer. This shows only who wrote what. --}}
 @php

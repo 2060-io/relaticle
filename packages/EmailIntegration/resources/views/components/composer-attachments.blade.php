@@ -5,7 +5,7 @@
 @if ($saved !== [] || $pending !== [])
     <div {{ $attributes->class(['flex shrink-0 flex-wrap gap-2 border-t border-gray-100 px-4 py-2 dark:border-white/5']) }}>
         @foreach ($saved as $attachment)
-            <x-emails.attachment-card
+            <x-email-integration::attachment-card
                 wire:key="saved-attachment-{{ $attachment['id'] }}"
                 :filename="$attachment['filename']"
                 :size="$attachment['size']"
@@ -19,18 +19,18 @@
                     <x-heroicon-m-arrow-down-tray class="h-4 w-4" />
                 </a>
 
-                <x-emails.composer-attachment-remove wire:click="removeSavedAttachment('{{ $attachment['id'] }}')" />
-            </x-emails.attachment-card>
+                <x-email-integration::composer-attachment-remove wire:click="removeSavedAttachment('{{ $attachment['id'] }}')" />
+            </x-email-integration::attachment-card>
         @endforeach
 
         @foreach ($pending as $index => $attachment)
-            <x-emails.attachment-card
+            <x-email-integration::attachment-card
                 wire:key="attachment-{{ $index }}"
                 :filename="$attachment->getClientOriginalName()"
                 :size="$attachment->getSize()"
             >
-                <x-emails.composer-attachment-remove wire:click="removeAttachment({{ $index }})" />
-            </x-emails.attachment-card>
+                <x-email-integration::composer-attachment-remove wire:click="removeAttachment({{ $index }})" />
+            </x-email-integration::attachment-card>
         @endforeach
     </div>
 @endif

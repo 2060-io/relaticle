@@ -4,7 +4,7 @@
              Livewire component also hosted by a standalone page. ────────────── --}}
         <div class="flex items-center gap-1 overflow-x-auto border-b border-gray-200 pb-2 dark:border-gray-700">
             @foreach (\Relaticle\EmailIntegration\Enums\EmailPageTab::cases() as $pageTab)
-                <x-emails.page-tab
+                <x-email-integration::page-tab
                     :tab="$pageTab"
                     :active="$tab === $pageTab"
                     :badge="$this->tabCounts[$pageTab->value] ?? null"
@@ -16,7 +16,7 @@
         @livewire($tab->livewireComponent(), $tab->livewireParameters(), key($tab->value.'-table'))
     @else
         <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <x-emails.not-connected
+            <x-email-integration::not-connected
                 :heading="__('filament/pages/email-accounts.not_connected.inbox.heading')"
                 :description="__('filament/pages/email-accounts.not_connected.inbox.description')"
                 :action="$this->connectMailboxAction"

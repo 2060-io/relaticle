@@ -43,7 +43,7 @@ abstract class BaseRecordEmailsPage extends Page
     use ProvidesComposerToAddress;
     use WithPagination;
 
-    protected string $view = 'filament.pages.record-emails';
+    protected string $view = 'email-integration::filament.pages.record-emails';
 
     public ?string $selectedEmailId = null;
 

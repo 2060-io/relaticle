@@ -62,7 +62,7 @@ final class EmailInboxPage extends Page
     use RedirectsToGrantSend;
     use WithPagination;
 
-    protected string $view = 'filament.pages.email-inbox';
+    protected string $view = 'email-integration::filament.pages.email-inbox';
 
     protected static ?string $navigationLabel = null;
 

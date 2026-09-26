@@ -279,7 +279,7 @@
             class="inline-flex max-w-48 items-center gap-1 rounded-full bg-gray-100 py-0.5 pl-0.5 pr-0.5 text-[11px] font-medium leading-4 text-gray-800 ring-1 ring-gray-950/5 dark:bg-white/10 dark:text-gray-200 dark:ring-white/10"
             x-tooltip="{ content: chipTooltip(chip), theme: $store.theme }"
         >
-            <x-emails.recipient-avatar box="size-4" glyph="size-2.5" initials-size="text-[9px]" />
+            <x-email-integration::recipient-avatar box="size-4" glyph="size-2.5" initials-size="text-[9px]" />
             <span class="min-w-0 truncate" x-text="chip.label"></span>
             <button type="button" x-on:click="remove(chip.value)" :aria-label="removeLabel + ': ' + chip.value" class="shrink-0 rounded-full p-px text-gray-400 transition hover:bg-gray-950/5 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200">
                 <x-heroicon-m-x-mark class="h-2.5 w-2.5" />
@@ -322,7 +322,7 @@
                     class="flex min-h-11 w-full items-center gap-2.5 px-2.5 py-2 text-left transition focus:outline-none"
                     x-bind:class="index === activeIndex ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'"
                 >
-                    <x-emails.recipient-avatar box="size-7" glyph="size-4" initials-size="text-[11px]" />
+                    <x-email-integration::recipient-avatar box="size-7" glyph="size-4" initials-size="text-[11px]" />
                     <span class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="chip.label"></span>
                         <span class="block truncate text-xs text-gray-500 dark:text-gray-400" x-text="chip.description"></span>

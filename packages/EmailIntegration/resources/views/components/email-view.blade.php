@@ -126,14 +126,14 @@
                     @endif
 
                     @if ($categoryLabel)
-                        <x-emails.category-badge :label="$categoryLabel->label" />
+                        <x-email-integration::category-badge :label="$categoryLabel->label" />
                     @endif
                 </div>
 
                 {{-- gap-2, not gap-1: adjacent hit targets want ~8px between them so they do
                      not read as one blob and are not mis-tapped. --}}
                 <div class="flex shrink-0 items-center gap-2">
-                    <x-emails.detail-action-bar :email="$record" />
+                    <x-email-integration::detail-action-bar :email="$record" />
                 </div>
             </div>
 
@@ -333,7 +333,7 @@
                         : null;
                 @endphp
 
-                <x-emails.attachment-card
+                <x-email-integration::attachment-card
                     :filename="$attachment->filename ?? __('filament/pages/email-inbox.reader.attachments.unnamed')"
                     :size="$downloadUrl ? ($attachment->size ?? 0) : null"
                     :placeholder="__('filament/pages/email-inbox.reader.attachments.processing')"
@@ -349,7 +349,7 @@
                             <x-heroicon-m-arrow-down-tray class="h-4 w-4" />
                         </a>
                     @endif
-                </x-emails.attachment-card>
+                </x-email-integration::attachment-card>
             @endforeach
         </div>
     @endif

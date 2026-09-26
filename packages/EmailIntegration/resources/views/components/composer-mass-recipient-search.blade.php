@@ -103,7 +103,7 @@
                     x-bind:class="index === activeIndex ? 'bg-gray-50 dark:bg-white/5' : ''"
                     x-on:click="choose(chip)"
                 >
-                    <x-emails.recipient-avatar box="size-7" glyph="size-4" initials-size="text-[11px]" />
+                    <x-email-integration::recipient-avatar box="size-7" glyph="size-4" initials-size="text-[11px]" />
                     <span
                         class="min-w-0 flex-1"
                         x-bind:x-tooltip="optionTooltip(chip) ? { content: optionTooltip(chip), theme: $store.theme } : false"

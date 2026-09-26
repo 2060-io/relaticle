@@ -45,10 +45,10 @@
     <div class="{{ $rowClass }}">
         <span class="{{ $labelClass }}">{{ __('filament/emails/composer.fields.to') }}</span>
         @if ($isMassSend)
-            <x-emails.composer-mass-send-to-summary :count="count($massRecipients)" />
+            <x-email-integration::composer-mass-send-to-summary :count="count($massRecipients)" />
         @else
             <div class="min-w-0 flex-1">
-                <x-emails.recipient-chips
+                <x-email-integration::recipient-chips
                     wire:model="to"
                     :autofocus="true"
                     :suggestions="$recipientSuggestions"
@@ -81,7 +81,7 @@
         <div class="{{ $rowClass }}">
             <span class="{{ $labelClass }}">{{ __('filament/emails/composer.fields.cc') }}</span>
             <div class="min-w-0 flex-1">
-                <x-emails.recipient-chips
+                <x-email-integration::recipient-chips
                     wire:model="cc"
                     :suggestions="$recipientSuggestions"
                     :options="$recipientOptions"
@@ -99,7 +99,7 @@
         <div class="{{ $rowClass }}">
             <span class="{{ $labelClass }}">{{ __('filament/emails/composer.fields.bcc') }}</span>
             <div class="min-w-0 flex-1">
-                <x-emails.recipient-chips
+                <x-email-integration::recipient-chips
                     wire:model="bcc"
                     :suggestions="$recipientSuggestions"
                     :options="$recipientOptions"

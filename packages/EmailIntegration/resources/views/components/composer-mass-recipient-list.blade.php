@@ -28,7 +28,7 @@
                 <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{{ $recipient['name'] }}</p>
                 <p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ $recipient['email'] }}</p>
             </div>
-            <x-emails.composer-icon-button
+            <x-email-integration::composer-icon-button
                 icon="heroicon-m-x-mark"
                 :label="$removeLabel"
                 class="!p-1"

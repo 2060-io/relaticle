@@ -169,13 +169,13 @@
                 @endif
 
                 @if ($categoryLabel !== null)
-                    <x-emails.category-badge :label="$categoryLabel->label" class="ml-auto" />
+                    <x-email-integration::category-badge :label="$categoryLabel->label" class="ml-auto" />
                 @endif
             </span>
         @endif
 
         @if ($canRequestAccess)
-            <x-emails.request-access-list-pill
+            <x-email-integration::request-access-list-pill
                 :email="$email"
                 :owner-name="$ownerName"
                 :requested="$hasPendingAccessRequest"

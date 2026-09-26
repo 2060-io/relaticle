@@ -53,9 +53,9 @@
             </div>
 
             <div class="flex min-h-0 flex-1 flex-col">
-                <x-emails.reader-access-bar :pending-access-requests="$pendingAccessRequests" />
+                <x-email-integration::reader-access-bar :pending-access-requests="$pendingAccessRequests" />
 
-                <x-emails.email-view :record="$email" />
+                <x-email-integration::email-view :record="$email" />
             </div>
         </div>
     </div>

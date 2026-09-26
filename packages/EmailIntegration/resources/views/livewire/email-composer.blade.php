@@ -58,7 +58,7 @@
             {{-- Title bar. The inline dock sits inside the message it answers, so it
                  needs no window chrome, just the Draft bar, whose × discards. --}}
             @if ($dock === 'inline')
-                <x-emails.composer-draft-bar class="sticky top-0 z-10 h-10 border-t-2 border-dashed border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-900 sm:px-6" />
+                <x-email-integration::composer-draft-bar class="sticky top-0 z-10 h-10 border-t-2 border-dashed border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-900 sm:px-6" />
             @else
                 <div @class([
                     'flex h-12 shrink-0 items-center justify-between gap-2 bg-gray-50 pl-4 pr-2 dark:bg-white/5',
@@ -117,9 +117,9 @@
 
             @unless ($isMinimized)
                 @if (! $this->canSendFromSelectedAccount())
-                    <x-emails.composer-send-missing :email="$this->fromAccount?->email_address">
+                    <x-email-integration::composer-send-missing :email="$this->fromAccount?->email_address">
                         {{ $this->grantSendPermissionAction }}
-                    </x-emails.composer-send-missing>
+                    </x-email-integration::composer-send-missing>
                 @else
                 {{-- The message being answered or forwarded, above the draft and split
                      off by the same dashed rule the inline dock uses, so a reply looks
@@ -128,10 +128,10 @@
                      message is already on screen right above it. --}}
                 @if ($isModal && $this->sourceEmail !== null)
                     <div class="min-h-0 flex-1 overflow-y-auto border-b-2 border-dashed border-gray-200 dark:border-gray-700">
-                        <x-emails.quoted-message :record="$this->sourceEmail" />
+                        <x-email-integration::quoted-message :record="$this->sourceEmail" />
                     </div>
 
-                    <x-emails.composer-draft-bar class="h-10 px-4" />
+                    <x-email-integration::composer-draft-bar class="h-10 px-4" />
                 @endif
 
                 @if ($isFloatingExpanded)
@@ -143,7 +143,7 @@
                 @endif
 
                 {{-- Field rows --}}
-                <x-emails.composer-header
+                <x-email-integration::composer-header
                     class="{{ $gutter }}"
                     :is-mass-send="$isMassSend"
                     :mass-recipients="$massRecipients"
@@ -172,11 +172,11 @@
                     <p class="px-4 pb-1 text-xs text-danger-600 dark:text-danger-400">{{ $message }}</p>
                 @enderror
 
-                <x-emails.composer-attachments :saved="$savedAttachments" :pending="$attachments" />
+                <x-email-integration::composer-attachments :saved="$savedAttachments" :pending="$attachments" />
 
                 @if ($isMassSendLayout)
                         </div>
-                        <x-emails.composer-mass-recipients :recipients="$massRecipients" :options="$this->recipientOptions" />
+                        <x-email-integration::composer-mass-recipients :recipients="$massRecipients" :options="$this->recipientOptions" />
                     </div>
                 @endif
                 @if ($isFloatingExpanded)
@@ -191,15 +191,15 @@
                     'h-14 justify-center' => ! ($showMassSendToggle && $isMassSend),
                 ])>
                     @if ($showMassSendToggle && $isMassSend)
-                        <x-emails.composer-mass-send-outbox-hint />
+                        <x-email-integration::composer-mass-send-outbox-hint />
                     @endif
 
                     <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-1">
-                        <x-emails.composer-icon-button icon="heroicon-o-paper-clip" :label="__('filament/emails/composer.actions.attach')" x-on:click="$refs.attachments.click()" />
+                        <x-email-integration::composer-icon-button icon="heroicon-o-paper-clip" :label="__('filament/emails/composer.actions.attach')" x-on:click="$refs.attachments.click()" />
                         <input type="file" x-ref="attachments" wire:model="attachments" multiple class="hidden" />
 
-                        <x-emails.composer-picker-menu
+                        <x-email-integration::composer-picker-menu
                             icon="heroicon-o-pencil-square"
                             :label="__('filament/emails/composer.actions.signature')"
                             :options="$this->signatureOptions"
@@ -210,7 +210,7 @@
                             create-click="mountAction('createSignature')"
                         />
 
-                        <x-emails.composer-picker-menu
+                        <x-email-integration::composer-picker-menu
                             icon="heroicon-o-document-text"
                             :label="__('filament/emails/composer.actions.template')"
                             :options="$this->templateOptions"
@@ -224,7 +224,7 @@
                     </div>
 
                     <div class="flex items-center gap-3">
-                        <x-emails.composer-mass-send-footer-actions
+                        <x-email-integration::composer-mass-send-footer-actions
                             :show-toggle="$showMassSendToggle"
                             :is-mass-send="$isMassSend"
                             :recipient-count="count($massRecipients)"
