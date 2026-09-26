@@ -134,6 +134,15 @@ it('resolves workspace defaults per email when clearing a user sharing override'
         ->and($privateWorkspaceEmail->fresh()->privacy_tier)->toBe(EmailPrivacyTier::PRIVATE);
 });
 
+it('selects use workspace default when the user has no sharing override', function (): void {
+    $this->owner->update(['default_email_sharing_tier' => null]);
+    $this->actingAs($this->owner);
+    Filament::setTenant($this->workspace);
+
+    livewire(UserEmailPrivacySettings::class)
+        ->assertSet('data.default_email_sharing_tier', '', strict: true);
+});
+
 it('clears a user sharing override when selecting use workspace default', function (): void {
     $this->workspace->update(['default_email_sharing_tier' => EmailPrivacyTier::METADATA_ONLY]);
     $this->owner->update(['default_email_sharing_tier' => EmailPrivacyTier::SUBJECT]);

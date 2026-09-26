@@ -30,7 +30,7 @@ final class UserEmailPrivacySettings extends BaseLivewireComponent implements Ha
         $user = $this->authUser();
 
         $this->form->fill([
-            'default_email_sharing_tier' => $user->default_email_sharing_tier?->value,
+            'default_email_sharing_tier' => $user->default_email_sharing_tier->value ?? '',
         ]);
     }
 
