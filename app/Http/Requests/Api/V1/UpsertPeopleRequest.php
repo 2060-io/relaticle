@@ -32,7 +32,7 @@ final class UpsertPeopleRequest extends BaseCrmEntityRequest
     protected function entityRules(User $user): array
     {
         return [
-            ...$this->matchRules('people'),
+            ...$this->matchRules(),
             'name' => ['required', 'string', 'max:255'],
             'company_id' => ['nullable', 'string', Rule::exists('companies', 'id')->where('workspace_id', $user->currentWorkspace->getKey())],
         ];

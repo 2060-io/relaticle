@@ -7,10 +7,11 @@ namespace App\Actions\CustomFields;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Support\LikePattern;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Relaticle\CustomFields\Enums\FieldDataType;
 
-final readonly class FindEntityByFieldValue
+final readonly class FindEntitiesByFieldValue
 {
     // A string match value cannot be compared to boolean, numeric or date columns, and
     // single-choice fields store option keys, never the label a form submits.
@@ -22,28 +23,27 @@ final readonly class FindEntityByFieldValue
     ];
 
     /**
-     * @param  class-string<Model>  $modelClass
-     * @param  array<int, string>  $nativeColumns
+     * @template TModel of Model
+     *
+     * @param  class-string<TModel>  $modelClass
+     * @return Collection<int, TModel>
      */
-    public function execute(string $modelClass, string $workspaceId, string $field, string $value, array $nativeColumns = []): ?Model
+    public function execute(string $modelClass, string $workspaceId, string $code, string $value): Collection
     {
         $pattern = LikePattern::escape(trim($value));
 
         if ($pattern === '') {
-            return null;
+            return new Collection;
         }
 
         $model = new $modelClass;
-        $query = $modelClass::query()->where('workspace_id', $workspaceId);
 
-        if (in_array($field, $nativeColumns, true)) {
-            $query->whereLike($field, $pattern);
-        } else {
-            $query->whereIn($model->getKeyName(), $this->entityIdsCarryingValue($model->getMorphClass(), $workspaceId, $field, $pattern));
-        }
-
-        // Several records can carry the same value, so the oldest one wins.
-        return $query->oldest()->orderBy($model->getKeyName())->first();
+        return $modelClass::query()
+            ->where('workspace_id', $workspaceId)
+            ->whereIn($model->getKeyName(), $this->entityIdsCarryingValue($model->getMorphClass(), $workspaceId, $code, $pattern))
+            ->oldest()
+            ->orderBy($model->getKeyName())
+            ->get();
     }
 
     /**

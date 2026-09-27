@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace App\Concerns;
 
-use App\Actions\CustomFields\FindEntityByFieldValue;
+use App\Actions\CustomFields\FindEntitiesByFieldValue;
 use App\Enums\CrmEntity;
 use App\Models\CustomField;
 use App\Models\User;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
+use Symfony\Component\HttpFoundation\Response;
 
 trait ResolvesUpsertMatch
 {
@@ -46,23 +48,21 @@ trait ResolvesUpsertMatch
     }
 
     /**
-     * @param  array<int, string>  $nativeColumns
      * @return array<string, array<int, mixed>>
      */
-    protected function matchRules(string $entityType, array $nativeColumns = []): array
+    protected function matchRules(): array
     {
         return [
             'match' => ['required', 'array'],
-            'match.field' => ['required', 'string', Rule::in([...$nativeColumns, ...$this->matchableCustomFieldCodes($entityType)])],
+            'match.field' => ['required', 'string', Rule::in($this->matchableCustomFieldCodes())],
             'match.value' => ['required', 'string', 'max:255'],
         ];
     }
 
     /**
      * @param  class-string<Model>  $modelClass
-     * @param  array<int, string>  $nativeColumns
      */
-    protected function resolveMatch(string $modelClass, array $nativeColumns = []): ?Model
+    protected function resolveMatch(string $modelClass): ?Model
     {
         if ($this->matchResolved) {
             return $this->matchedRecord;
@@ -74,12 +74,21 @@ trait ResolvesUpsertMatch
         $value = $this->input('match.value');
 
         // Resolved before validation runs, so input the rules would reject is skipped here.
-        if (! is_string($field) || ! is_string($value)) {
+        if (! is_string($field) || ! is_string($value) || ! in_array($field, $this->matchableCustomFieldCodes(), true)) {
             return null;
         }
 
-        return $this->matchedRecord = resolve(FindEntityByFieldValue::class)
-            ->execute($modelClass, $this->workspaceId(), $field, $value, $nativeColumns);
+        $matches = resolve(FindEntitiesByFieldValue::class)->execute($modelClass, $this->workspaceId(), $field, $value);
+
+        // Uniqueness is only validated on write, so records saved before the field became unique can share a value.
+        if ($matches->count() > 1) {
+            throw new HttpResponseException(response()->json([
+                'message' => "More than one record holds this {$field} value. Merge the duplicates, then retry.",
+                'matches' => $matches->modelKeys(),
+            ], Response::HTTP_CONFLICT));
+        }
+
+        return $this->matchedRecord = $matches->first();
     }
 
     protected function workspaceId(): string
@@ -91,17 +100,17 @@ trait ResolvesUpsertMatch
     }
 
     /** @return array<int, string> */
-    private function matchableCustomFieldCodes(string $entityType): array
+    private function matchableCustomFieldCodes(): array
     {
         return CustomField::query()
             ->withoutGlobalScopes()
             ->where('tenant_id', $this->workspaceId())
-            ->where('entity_type', $entityType)
+            ->where('entity_type', $this->entity()->value)
             ->active()
             ->get()
-            ->filter(fn (CustomField $field): bool => in_array(
+            ->filter(fn (CustomField $field): bool => $field->settings->unique_per_entity_type && in_array(
                 CustomFieldsType::getFieldType($field->type)?->dataType,
-                FindEntityByFieldValue::MATCHABLE_DATA_TYPES,
+                FindEntitiesByFieldValue::MATCHABLE_DATA_TYPES,
                 true,
             ))
             ->map(fn (CustomField $field): string => (string) $field->code)

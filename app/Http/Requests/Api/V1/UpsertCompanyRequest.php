@@ -13,13 +13,9 @@ final class UpsertCompanyRequest extends BaseCrmEntityRequest
 {
     use ResolvesUpsertMatch;
 
-    // `name` always means the column; a custom field with that code cannot shadow it.
-    /** @var array<int, string> */
-    private const array NATIVE_MATCH_COLUMNS = ['name'];
-
     public function matchedCompany(): ?Company
     {
-        $matched = $this->resolveMatch(Company::class, self::NATIVE_MATCH_COLUMNS);
+        $matched = $this->resolveMatch(Company::class);
 
         return $matched instanceof Company ? $matched : null;
     }
@@ -35,7 +31,7 @@ final class UpsertCompanyRequest extends BaseCrmEntityRequest
     protected function entityRules(User $user): array
     {
         return [
-            ...$this->matchRules('company', self::NATIVE_MATCH_COLUMNS),
+            ...$this->matchRules(),
             'name' => ['required', 'string', 'max:255'],
         ];
     }

@@ -14,6 +14,7 @@ use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
 use Knuckles\Scribe\Attributes\BodyParam;
+use Knuckles\Scribe\Attributes\Response;
 use Knuckles\Scribe\Attributes\ResponseFromApiResource;
 
 /**
@@ -25,7 +26,8 @@ use Knuckles\Scribe\Attributes\ResponseFromApiResource;
 final readonly class PeopleUpsertController
 {
     #[ResponseFromApiResource(PeopleResource::class, People::class, status: 201)]
-    #[BodyParam('match.field', 'string', 'Custom field code to match on.', required: true, example: 'emails')]
+    #[Response(['message' => 'More than one record holds this emails value. Merge the duplicates, then retry.', 'matches' => ['01jz8x0m6v1b4n7q2r5t8w9y3a', '01jz8x0m6v1b4n7q2r5t8w9y3b']], 409, 'More than one person holds the matched value, so nothing was written. `matches` lists their IDs.')]
+    #[BodyParam('match.field', 'string', 'Code of a custom field marked unique, such as `emails`.', required: true, example: 'emails')]
     #[BodyParam('match.value', 'string', 'Value to look for. Matched case-insensitively, and inside multi-value fields.', required: true, example: 'grace@navy.mil')]
     #[BodyParam('name', 'string', required: true, example: 'Grace Hopper')]
     #[BodyParam('company_id', 'string', required: false, example: null)]
