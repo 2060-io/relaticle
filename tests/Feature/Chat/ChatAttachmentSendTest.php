@@ -404,3 +404,18 @@ it('shows the attachment on the stored user message after the turn', function ()
 
     expect($storedContent)->toBe($composedMessage);
 });
+
+it('inlines rows from an attachment on a media disk with no local paths', function (): void {
+    config()->set('media-library.disk_name', 's3');
+    fakeDiskWithoutLocalPaths('s3');
+    Queue::fake();
+    $attachmentId = attachCsv(2);
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('Here are my contacts'),
+        'attachment_id' => $attachmentId,
+    ])->assertOk();
+
+    Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $job): bool => str_contains($job->message, 'Attached file "contacts.csv" (2 rows)')
+        && str_contains($job->message, "```\n"));
+});
