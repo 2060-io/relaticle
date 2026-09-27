@@ -341,7 +341,7 @@ it('answers 409 with the matching ids and writes nothing when more than one pers
     $this->assertDatabaseMissing('people', ['name' => 'Deduplicated Grace']);
 });
 
-it('rejects a match field that is not marked unique', function (): void {
+it('rejects a match field that is not marked unique and names the fields it accepts', function (): void {
     Sanctum::actingAs($this->user);
 
     $this->postJson('/api/v1/people/upsert', [
@@ -349,7 +349,7 @@ it('rejects a match field that is not marked unique', function (): void {
         'name' => 'Grace Hopper',
     ])
         ->assertUnprocessable()
-        ->assertInvalid(['match.field']);
+        ->assertInvalid(['match.field' => 'The match.field must be a custom field marked unique: emails.']);
 });
 
 it('rejects the emails field once its uniqueness is switched off', function (): void {
