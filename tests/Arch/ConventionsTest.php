@@ -565,10 +565,12 @@ it('keeps runtime file access off local-only disks and paths', function (): void
     $allowed = [
         'app/Console/Commands/BackfillRichEditorAttachmentsCommand.php',
         'app/Console/Commands/InstallCommand.php',
+        'app/Console/Commands/LocaleDiffCommand.php',
         'app/Models/Company.php',
         'app/Models/Workspace.php',
         'app/Providers/AppServiceProvider.php',
         'app/Support/Media/RichContentAttachments.php',
+        'packages/Chat/src/Actions/StoreChatAttachment.php',
         'packages/Documentation/src/Http/Controllers/OpenApiSpecController.php',
         'packages/ImportWizard/src/Commands/CleanupImportsCommand.php',
         'packages/ImportWizard/src/Store/ImportStore.php',
@@ -593,7 +595,7 @@ it('keeps runtime file access off local-only disks and paths', function (): void
 
             $source = (string) file_get_contents($file->getPathname());
 
-            if (preg_match('/Storage::disk\([\'"](local|public)[\'"]\)|->useDisk\([\'"](local|public)[\'"]\)|\bpublic_path\(|\bstorage_path\(/', $source) === 1) {
+            if (preg_match('/Storage::disk\([\'"](local|public)[\'"]\)|->useDisk\([\'"](local|public)[\'"]\)|\bpublic_path\(|\bstorage_path\(|->getRealPath\(/', $source) === 1) {
                 $offenders[] = $relative;
             }
         }
