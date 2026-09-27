@@ -24,6 +24,9 @@ use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Laravel\Passport\AccessToken;
+use Laravel\Passport\Client;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Pest\Browser\Api\AwaitableWebpage;
@@ -267,4 +270,43 @@ function storedToolSteps(array $toolResults, string $content = ''): string
         'replay_blocks' => [],
         'provider_tool_calls' => [],
     ]], JSON_THROW_ON_ERROR);
+}
+
+/** @param  list<string>  $scopes */
+function actAsOAuthClient(User $user, array $scopes, ?Workspace $workspace): void
+{
+    $client = Client::query()->forceCreate([
+        'id' => (string) Str::uuid(),
+        'name' => 'REST Connector',
+        'redirect_uris' => ['https://example.com/callback'],
+        'grant_types' => ['authorization_code', 'refresh_token'],
+        'revoked' => false,
+        'owner_type' => $user->getMorphClass(),
+        'owner_id' => $user->getKey(),
+    ]);
+
+    $tokenId = Str::random(80);
+
+    DB::table('oauth_access_tokens')->insert([
+        'id' => $tokenId,
+        'user_id' => $user->getKey(),
+        'client_id' => $client->getKey(),
+        'workspace_id' => $workspace?->getKey(),
+        'name' => 'REST Connector',
+        'scopes' => json_encode($scopes),
+        'revoked' => false,
+        'created_at' => now(),
+        'updated_at' => now(),
+        'expires_at' => now()->addDays(30),
+    ]);
+
+    $user->withAccessToken(new AccessToken([
+        'oauth_access_token_id' => $tokenId,
+        'oauth_client_id' => $client->getKey(),
+        'oauth_user_id' => $user->getKey(),
+        'oauth_scopes' => $scopes,
+    ]));
+
+    auth()->guard('api')->setUser($user);
+    auth()->shouldUse('api');
 }

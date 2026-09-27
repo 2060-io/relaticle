@@ -32,6 +32,7 @@ final class CustomFieldResource extends JsonApiResource
             'type' => $this->type,
             'entity_type' => $this->entity_type,
             'required' => $validationService->isRequired($this->resource),
+            'unique' => $this->settings->unique_per_entity_type,
             'options' => $this->whenLoaded('options', fn () => $this->options->map(fn (CustomFieldOption $option): array => [
                 'label' => $option->name,
                 'value' => $option->id,

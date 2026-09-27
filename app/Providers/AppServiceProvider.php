@@ -92,6 +92,7 @@ use Knuckles\Scribe\Scribe;
 use Laravel\Cashier\Cashier;
 use Laravel\Cashier\Events\WebhookHandled;
 use Laravel\Jetstream\Events\TeamMemberAdded;
+use Laravel\Passport\AccessToken as PassportAccessToken;
 use Laravel\Passport\ClientRepository as BaseClientRepository;
 use Laravel\Passport\Events\AccessTokenCreated;
 use Laravel\Passport\Passport;
@@ -234,6 +235,14 @@ final class AppServiceProvider extends ServiceProvider
 
         Passport::useAuthCodeModel(McpAuthCode::class);
         Event::listen(AccessTokenCreated::class, CopyWorkspaceIdToAccessToken::class);
+
+        // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
+        Passport::tokensCan([
+            'read' => 'Read your CRM records',
+            'create' => 'Create new CRM records',
+            'update' => 'Update existing CRM records',
+            'delete' => 'Delete CRM records',
+        ]);
 
         // Connectors are long-lived but must not be immortal: a user who revokes one from
         // the Access Tokens page should not be outlived by a year-long bearer token.
@@ -465,12 +474,22 @@ final class AppServiceProvider extends ServiceProvider
         Livewire::component(Notifications::class, FilamentNotifications::class);
     }
 
+    private function rateLimitTokenId(?object $token): ?string
+    {
+        return match (true) {
+            $token instanceof PersonalAccessToken => (string) $token->getKey(),
+            // getKey() would load the oauth_access_tokens row on every request and fail once it is purged.
+            $token instanceof PassportAccessToken => (string) $token->oauth_access_token_id,
+            default => null,
+        };
+    }
+
     private function configureRateLimiting(): void
     {
         RateLimiter::for('api', function (Request $request): array {
             /** @var User|null $user */
             $user = $request->user();
-            $tokenId = $user?->currentAccessToken()?->getKey();
+            $tokenId = $this->rateLimitTokenId($user?->currentAccessToken());
             $workspaceId = $user?->currentWorkspace?->getKey();
             $key = $tokenId ?: $request->ip();
 
