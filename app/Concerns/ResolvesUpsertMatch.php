@@ -81,7 +81,8 @@ trait ResolvesUpsertMatch
             return null;
         }
 
-        $matches = resolve(FindEntitiesByFieldValue::class)->execute($modelClass, $field, $this->matchValue(), self::REPORTED_MATCH_LIMIT);
+        $matchValues = array_values(array_unique([$this->matchValue(), trim($this->input('match.value'))]));
+        $matches = resolve(FindEntitiesByFieldValue::class)->execute($modelClass, $field, $matchValues, self::REPORTED_MATCH_LIMIT);
 
         // Uniqueness is only validated on write, so records saved before the field became unique can share a value.
         if ($matches->count() > 1) {
@@ -109,7 +110,8 @@ trait ResolvesUpsertMatch
         return is_string($code) ? $this->matchableFields()->get($code) : null;
     }
 
-    // Stored values pass through the field type first (a link loses its scheme), so match that form.
+    // Panel writes store the field type's form (a link loses its scheme) while the API stores
+    // values as sent, so the match also tries the raw value.
     private function matchValue(): string
     {
         $value = $this->input('match.value');

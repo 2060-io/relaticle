@@ -134,6 +134,25 @@ it('matches a stored domain when the match value carries a scheme', function ():
         ->and(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
 });
 
+it('matches a domain the api stored with its scheme', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/companies', [
+        'name' => 'Acme Corp',
+        'custom_fields' => ['domains' => ['https://acme.com']],
+    ])->assertCreated();
+
+    $response = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'https://acme.com'],
+        'name' => 'Acme Corporation',
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('data.id'))->toBe($created->json('data.id'))
+        ->and(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+});
+
 it('holds the same lock for a domain with and without its scheme', function (): void {
     Sleep::fake(syncWithCarbon: true);
     $lock = Cache::lock("upsert:{$this->workspace->id}:company:domains:acme.com", 10);
