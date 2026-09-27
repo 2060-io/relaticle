@@ -560,6 +560,51 @@ it('keeps new file uploads on medialibrary', function (): void {
     );
 });
 
+it('keeps runtime file access off local-only disks and paths', function (): void {
+    $root = dirname(__DIR__, 2);
+    $allowed = [
+        'app/Console/Commands/BackfillRichEditorAttachmentsCommand.php',
+        'app/Console/Commands/InstallCommand.php',
+        'app/Models/Company.php',
+        'app/Models/Workspace.php',
+        'app/Providers/AppServiceProvider.php',
+        'app/Support/Media/RichContentAttachments.php',
+        'packages/Documentation/src/Http/Controllers/OpenApiSpecController.php',
+        'packages/ImportWizard/src/Commands/CleanupImportsCommand.php',
+        'packages/ImportWizard/src/Store/ImportStore.php',
+    ];
+    $offenders = [];
+
+    $directories = [$root.'/app', ...glob($root.'/packages/*/src', GLOB_ONLYDIR) ?: []];
+
+    foreach ($directories as $directory) {
+        $files = new RegexIterator(
+            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory)),
+            '/(?<!\.blade)\.php$/',
+        );
+
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $relative = str_replace($root.'/', '', $file->getPathname());
+
+            if (in_array($relative, $allowed, true)) {
+                continue;
+            }
+
+            $source = (string) file_get_contents($file->getPathname());
+
+            if (preg_match('/Storage::disk\([\'"](local|public)[\'"]\)|->useDisk\([\'"](local|public)[\'"]\)|\bpublic_path\(|\bstorage_path\(/', $source) === 1) {
+                $offenders[] = $relative;
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'Runtime files go through a configurable disk so Laravel Cloud replicas share them (docs/superpowers/specs/2026-09-28-laravel-cloud-readiness-design.md). Offending files: '.implode(', ', $offenders),
+    );
+});
+
 it('keeps the word trait out of class files so type coverage analyses them', function (): void {
     $root = dirname(__DIR__, 2);
     $offenders = [];

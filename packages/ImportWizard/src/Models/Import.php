@@ -123,11 +123,6 @@ final class Import extends Model
         $query->where('workspace_id', $workspaceId);
     }
 
-    public function storagePath(): string
-    {
-        return storage_path("app/imports/{$this->id}");
-    }
-
     public function getImporter(): BaseImporter
     {
         return $this->importerCache ??= $this->entity_type->importer($this->workspace_id);
