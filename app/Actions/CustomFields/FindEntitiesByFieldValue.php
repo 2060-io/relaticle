@@ -28,59 +28,40 @@ final readonly class FindEntitiesByFieldValue
      * @param  class-string<TModel>  $modelClass
      * @return Collection<int, TModel>
      */
-    public function execute(string $modelClass, string $workspaceId, string $code, string $value): Collection
+    public function execute(string $modelClass, CustomField $field, string $value, int $limit): Collection
     {
-        $pattern = LikePattern::escape(trim($value));
+        $column = $field->getValueColumn();
 
-        if ($pattern === '') {
+        if ($value === '' || ! in_array($column, ['string_value', 'text_value', 'json_value'], true)) {
             return new Collection;
         }
 
         $model = new $modelClass;
+        $pattern = LikePattern::escape($value);
 
-        return $modelClass::query()
-            ->where('workspace_id', $workspaceId)
-            ->whereIn($model->getKeyName(), $this->entityIdsCarryingValue($model->getMorphClass(), $workspaceId, $code, $pattern))
-            ->oldest()
-            ->orderBy($model->getKeyName())
-            ->get();
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function entityIdsCarryingValue(string $entityType, string $workspaceId, string $code, string $pattern): array
-    {
-        $customField = CustomField::query()
+        $entityIds = CustomFieldValue::query()
             ->withoutGlobalScopes()
-            ->where('tenant_id', $workspaceId)
-            ->where('entity_type', $entityType)
-            ->where('code', $code)
-            ->active()
-            ->first();
-
-        $column = $customField?->getValueColumn();
-
-        if (! in_array($column, ['string_value', 'text_value', 'json_value'], true)) {
-            return [];
-        }
-
-        $values = CustomFieldValue::query()
-            ->withoutGlobalScopes()
-            ->where((string) config('custom-fields.database.column_names.tenant_foreign_key'), $workspaceId)
-            ->where('entity_type', $entityType)
-            ->where('custom_field_id', $customField->getKey());
+            ->select('entity_id')
+            ->where((string) config('custom-fields.database.column_names.tenant_foreign_key'), $field->tenant_id)
+            ->where('entity_type', $model->getMorphClass())
+            ->where('custom_field_id', $field->getKey());
 
         if ($column === 'json_value') {
             // A value saved before the field became multi-value can still be a bare scalar.
-            $values->whereRaw(
+            $entityIds->whereRaw(
                 "exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(json_value::jsonb) = 'array' then json_value::jsonb else jsonb_build_array(json_value::jsonb) end) as element(value) where element.value ilike ?)",
                 [$pattern],
             );
         } else {
-            $values->whereLike($column, $pattern);
+            $entityIds->whereLike($column, $pattern);
         }
 
-        return $values->pluck('entity_id')->map(fn (mixed $id): string => (string) $id)->all();
+        return $modelClass::query()
+            ->where('workspace_id', $field->tenant_id)
+            ->whereIn($model->getKeyName(), $entityIds)
+            ->oldest()
+            ->orderBy($model->getKeyName())
+            ->limit($limit)
+            ->get();
     }
 }

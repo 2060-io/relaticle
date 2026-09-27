@@ -255,6 +255,20 @@ it('answers 409 with the matching ids and writes nothing when more than one comp
         ->toBe(['Acme', 'Acme Corp']);
 });
 
+it('lists at most 25 matching ids in a conflict', function (): void {
+    $companies = Company::factory()->count(30)->recycle([$this->user, $this->workspace])->create();
+    $companies->each(fn (Company $company) => writeCompanyDomains($this->workspace->id, $company->id, ['acme.com']));
+
+    Sanctum::actingAs($this->user);
+
+    $response = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'acme.com'],
+        'name' => 'Acme Corp',
+    ])->assertConflict();
+
+    expect($response->json('matches'))->toHaveCount(25);
+});
+
 it('rejects the company name as a match field', function (): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme Corp']);
 

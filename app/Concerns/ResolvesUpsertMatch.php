@@ -10,6 +10,7 @@ use App\Models\CustomField;
 use App\Models\User;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Cache;
@@ -19,6 +20,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 trait ResolvesUpsertMatch
 {
+    // Enough to show a caller which records to merge without hydrating every duplicate.
+    private const int REPORTED_MATCH_LIMIT = 25;
+
     private bool $matchResolved = false;
 
     private ?Model $matchedRecord = null;
@@ -54,7 +58,7 @@ trait ResolvesUpsertMatch
     {
         return [
             'match' => ['required', 'array'],
-            'match.field' => ['required', 'string', Rule::in($this->matchableCustomFieldCodes())],
+            'match.field' => ['required', 'string', Rule::in($this->matchableFields()->keys()->all())],
             'match.value' => ['required', 'string', 'max:255'],
         ];
     }
@@ -70,20 +74,21 @@ trait ResolvesUpsertMatch
 
         $this->matchResolved = true;
 
-        $field = $this->input('match.field');
+        $code = $this->input('match.field');
         $value = $this->input('match.value');
+        $field = is_string($code) ? $this->matchableFields()->get($code) : null;
 
         // Resolved before validation runs, so input the rules would reject is skipped here.
-        if (! is_string($field) || ! is_string($value) || ! in_array($field, $this->matchableCustomFieldCodes(), true)) {
+        if (! $field instanceof CustomField || ! is_string($value)) {
             return null;
         }
 
-        $matches = resolve(FindEntitiesByFieldValue::class)->execute($modelClass, $this->workspaceId(), $field, $value);
+        $matches = resolve(FindEntitiesByFieldValue::class)->execute($modelClass, $field, trim($value), self::REPORTED_MATCH_LIMIT);
 
         // Uniqueness is only validated on write, so records saved before the field became unique can share a value.
         if ($matches->count() > 1) {
             throw new HttpResponseException(response()->json([
-                'message' => "More than one record holds this {$field} value. Merge the duplicates, then retry.",
+                'message' => "More than one record holds this {$field->code} value. Merge the duplicates, then retry.",
                 'matches' => $matches->modelKeys(),
             ], Response::HTTP_CONFLICT));
         }
@@ -99,10 +104,10 @@ trait ResolvesUpsertMatch
         return (string) $user->currentWorkspace->getKey();
     }
 
-    /** @return array<int, string> */
-    private function matchableCustomFieldCodes(): array
+    /** @return Collection<string, CustomField> */
+    private function matchableFields(): Collection
     {
-        return CustomField::query()
+        return once(fn (): Collection => CustomField::query()
             ->withoutGlobalScopes()
             ->where('tenant_id', $this->workspaceId())
             ->where('entity_type', $this->entity()->value)
@@ -113,8 +118,6 @@ trait ResolvesUpsertMatch
                 FindEntitiesByFieldValue::MATCHABLE_DATA_TYPES,
                 true,
             ))
-            ->map(fn (CustomField $field): string => (string) $field->code)
-            ->values()
-            ->all();
+            ->keyBy(fn (CustomField $field): string => (string) $field->code));
     }
 }
