@@ -12,7 +12,6 @@ use App\Models\Company;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Arr;
 use Knuckles\Scribe\Attributes\BodyParam;
 use Knuckles\Scribe\Attributes\Response;
 use Knuckles\Scribe\Attributes\ResponseFromApiResource;
@@ -38,8 +37,8 @@ final readonly class CompaniesUpsertController
         #[CurrentUser] User $user,
     ): JsonResponse {
         return $request->whileHoldingMatch(function () use ($request, $createCompany, $updateCompany, $user): JsonResponse {
-            $data = Arr::except($request->validated(), ['match']);
             $company = $request->matchedCompany();
+            $data = $request->upsertData($company);
 
             if ($company instanceof Company) {
                 return new CompanyResource($updateCompany->execute($user, $company, $data))->response();

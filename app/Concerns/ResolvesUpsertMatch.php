@@ -13,6 +13,7 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Relaticle\CustomFields\Enums\FieldDataType;
@@ -31,6 +32,8 @@ trait ResolvesUpsertMatch
 
     // Enough to show a caller which records to merge without hydrating every duplicate.
     private const int REPORTED_MATCH_LIMIT = 25;
+
+    private bool $storesMatchValue = false;
 
     abstract protected function entity(): CrmEntity;
 
@@ -60,6 +63,26 @@ trait ResolvesUpsertMatch
         $codes = $this->matchableFields()->keys()->implode(', ') ?: 'none';
 
         return ['match.field.in' => "The match.field must be a custom field marked unique: {$codes}."];
+    }
+
+    /** @return array<string, mixed> */
+    public function upsertData(?Model $matched): array
+    {
+        $data = Arr::except($this->validated(), ['match']);
+
+        // A record a concurrent upsert created since validation keeps its own values for the match field.
+        if ($matched instanceof Model && $this->storesMatchValue) {
+            Arr::forget($data, "custom_fields.{$this->string('match.field')}");
+        }
+
+        return $data;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->storeMatchValueOnCreate();
+
+        parent::prepareForValidation();
     }
 
     /**
@@ -112,6 +135,29 @@ trait ResolvesUpsertMatch
         $user = $this->user();
 
         return (string) $user->currentWorkspace->getKey();
+    }
+
+    // A created record carries the value it was matched on, or the same call creates it again.
+    private function storeMatchValueOnCreate(): void
+    {
+        $field = $this->matchField();
+        $value = $this->input('match.value');
+        $customFields = $this->input('custom_fields') ?? [];
+
+        if (! $field instanceof CustomField || ! is_string($value) || blank($value) || ! is_array($customFields)) {
+            return;
+        }
+
+        if (array_key_exists($field->code, $customFields) || $this->resolveMatch() instanceof Model) {
+            return;
+        }
+
+        $this->storesMatchValue = true;
+
+        $this->merge(['custom_fields' => [
+            ...$customFields,
+            $field->code => $field->typeData->dataType->isMultiChoiceField() ? [trim($value)] : trim($value),
+        ]]);
     }
 
     private function matchField(): ?CustomField

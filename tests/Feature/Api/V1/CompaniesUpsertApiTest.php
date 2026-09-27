@@ -153,6 +153,22 @@ it('matches a domain the api stored with its scheme', function (): void {
         ->and(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
 });
 
+it('stores the matched domain on the company it creates', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'acme.com'],
+        'name' => 'Acme Corp',
+    ])->assertCreated();
+
+    expect(collect($created->json('data.attributes.custom_fields.domains'))->pluck('id')->all())->toBe(['acme.com']);
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'acme.com'],
+        'name' => 'Acme Corporation',
+    ])->assertOk()->assertJsonPath('data.id', $created->json('data.id'));
+});
+
 it('matches a unique text custom field case-insensitively', function (): void {
     createCompanyCustomField($this->workspace->id, 'registry_id', 'text', unique: true);
 
@@ -183,6 +199,7 @@ it('treats like wildcards in a domain literally', function (): void {
     $this->postJson('/api/v1/companies/upsert', [
         'match' => ['field' => 'domains', 'value' => 'acme_.com'],
         'name' => 'Another Acme',
+        'custom_fields' => ['domains' => ['another-acme.com']],
     ])->assertCreated();
 
     $this->assertDatabaseHas('companies', ['id' => $company->id, 'name' => 'Acme Corp']);

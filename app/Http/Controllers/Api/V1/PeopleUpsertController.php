@@ -12,7 +12,6 @@ use App\Models\People;
 use App\Models\User;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Arr;
 use Knuckles\Scribe\Attributes\BodyParam;
 use Knuckles\Scribe\Attributes\Response;
 use Knuckles\Scribe\Attributes\ResponseFromApiResource;
@@ -39,8 +38,8 @@ final readonly class PeopleUpsertController
         #[CurrentUser] User $user,
     ): JsonResponse {
         return $request->whileHoldingMatch(function () use ($request, $createPeople, $updatePeople, $user): JsonResponse {
-            $data = Arr::except($request->validated(), ['match']);
             $person = $request->matchedPerson();
+            $data = $request->upsertData($person);
 
             if ($person instanceof People) {
                 return new PeopleResource($updatePeople->execute($user, $person, $data))->response();
