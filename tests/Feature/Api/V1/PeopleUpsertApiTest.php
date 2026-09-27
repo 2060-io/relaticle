@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Actions\CustomFields\FindEntityByFieldValue;
+use App\Actions\CustomFields\FindEntitiesByFieldValue;
 use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\PeopleUpsertController;
 use App\Http\Middleware\EnsureTokenHasAbility;
@@ -11,16 +11,17 @@ use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 
 mutates(
     PeopleUpsertController::class,
-    FindEntityByFieldValue::class,
+    FindEntitiesByFieldValue::class,
     EnsureTokenHasAbility::class,
 );
 
@@ -37,6 +38,11 @@ function upsertCustomField(string $workspaceId, string $entityType, string $code
         ->where('entity_type', $entityType)
         ->where('code', $code)
         ->firstOrFail();
+}
+
+function markUpsertCustomFieldUnique(string $workspaceId, string $entityType, string $code): void
+{
+    upsertCustomField($workspaceId, $entityType, $code)->update(['settings' => new CustomFieldSettingsData(unique_per_entity_type: true)]);
 }
 
 function writeUpsertCustomFieldValue(string $workspaceId, string $entityType, string $entityId, string $code, mixed $value): void
@@ -122,6 +128,66 @@ it('updates the matched person and returns 200 when the email array contains the
         ->toBe($peopleBefore);
 });
 
+it('stores the matched email on the person it creates so the same call matches next time', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Hopper',
+    ])->assertCreated();
+
+    expect(collect($created->json('data.attributes.custom_fields.emails'))->pluck('id')->all())->toBe(['grace@navy.mil']);
+
+    $repeated = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Hopper',
+    ])->assertOk();
+
+    expect($repeated->json('data.id'))->toBe($created->json('data.id'))
+        ->and(People::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->where('name', 'Grace Hopper')->count())->toBe(1);
+});
+
+it('validates the match value it stores on create', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'not-an-email'],
+        'name' => 'Grace Hopper',
+    ])
+        ->assertUnprocessable()
+        ->assertInvalid(['custom_fields.emails.0']);
+
+    $this->assertDatabaseMissing('people', ['name' => 'Grace Hopper', 'workspace_id' => $this->workspace->id]);
+});
+
+it('leaves a matched person\'s other emails alone when the payload omits emails', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
+    writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', ['grace@navy.mil', 'grace@yale.edu']);
+
+    Sanctum::actingAs($this->user);
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@yale.edu'],
+        'name' => 'Grace Brewster Hopper',
+    ])->assertOk();
+
+    expect($response->json('data.id'))->toBe($person->id)
+        ->and(collect($response->json('data.attributes.custom_fields.emails'))->pluck('id')->all())->toBe(['grace@navy.mil', 'grace@yale.edu']);
+});
+
+it('stores a matched single-value field as a plain value on create', function (): void {
+    markUpsertCustomFieldUnique($this->workspace->id, 'people', 'job_title');
+
+    Sanctum::actingAs($this->user);
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'job_title', 'value' => 'Rear Admiral'],
+        'name' => 'Grace Hopper',
+    ])->assertCreated();
+
+    expect($response->json('data.attributes.custom_fields.job_title'))->toBe('Rear Admiral');
+});
+
 it('matches a mixed-case stored email with a lowercase submitted value', function (): void {
     Sanctum::actingAs($this->user);
 
@@ -186,7 +252,9 @@ it('merges custom fields on update without wiping unmapped fields', function ():
         ->toBe(['grace@navy.mil']);
 });
 
-it('matches on a single-value custom field stored in its own column', function (): void {
+it('matches on a unique single-value custom field stored in its own column', function (): void {
+    markUpsertCustomFieldUnique($this->workspace->id, 'people', 'job_title');
+
     Sanctum::actingAs($this->user);
 
     $created = $this->postJson('/api/v1/people/upsert', [
@@ -286,13 +354,13 @@ it('updates a person a concurrent upsert created after this request was validate
     $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
     writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', ['grace@navy.mil']);
 
-    app()->instance(FindEntityByFieldValue::class, new class
+    app()->instance(FindEntitiesByFieldValue::class, new class
     {
         private int $calls = 0;
 
-        public function execute(mixed ...$arguments): ?Model
+        public function execute(mixed ...$arguments): Collection
         {
-            return $this->calls++ === 0 ? null : new FindEntityByFieldValue()->execute(...$arguments);
+            return $this->calls++ === 0 ? new Collection : new FindEntitiesByFieldValue()->execute(...$arguments);
         }
     });
 
@@ -308,23 +376,90 @@ it('updates a person a concurrent upsert created after this request was validate
     expect($response->json('data.id'))->toBe($person->id);
 });
 
-it('picks the oldest record when more than one matches', function (): void {
-    $oldest = People::factory()->recycle([$this->user, $this->workspace])->create(['created_at' => now()->subDays(3)]);
-    $newer = People::factory()->recycle([$this->user, $this->workspace])->create(['created_at' => now()->subDay()]);
+it('keeps the emails of a person a concurrent upsert created after validation', function (): void {
+    $createConcurrentPerson = function (): People {
+        $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
+        writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', ['grace@navy.mil', 'grace@yale.edu']);
+
+        return $person;
+    };
+
+    app()->instance(FindEntitiesByFieldValue::class, new class($createConcurrentPerson)
+    {
+        private int $calls = 0;
+
+        public function __construct(private readonly Closure $createConcurrentPerson) {}
+
+        public function execute(mixed ...$arguments): Collection
+        {
+            if ($this->calls++ < 2) {
+                return new Collection;
+            }
+
+            ($this->createConcurrentPerson)();
+
+            return new FindEntitiesByFieldValue()->execute(...$arguments);
+        }
+    });
+
+    Sanctum::actingAs($this->user);
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Brewster Hopper',
+    ])->assertOk();
+
+    expect($response->json('data.attributes.name'))->toBe('Grace Brewster Hopper')
+        ->and(collect($response->json('data.attributes.custom_fields.emails'))->pluck('id')->all())->toBe(['grace@navy.mil', 'grace@yale.edu']);
+});
+
+it('answers 409 with the matching ids and writes nothing when more than one person holds the email', function (): void {
+    $oldest = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper', 'created_at' => now()->subDays(3)]);
+    $newer = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'G. Hopper', 'created_at' => now()->subDay()]);
 
     writeUpsertCustomFieldValue($this->workspace->id, 'people', $oldest->id, 'emails', ['grace@navy.mil']);
     writeUpsertCustomFieldValue($this->workspace->id, 'people', $newer->id, 'emails', ['grace@navy.mil']);
 
     Sanctum::actingAs($this->user);
 
-    $response = $this->postJson('/api/v1/people/upsert', [
+    $this->postJson('/api/v1/people/upsert', [
         'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
         'name' => 'Deduplicated Grace',
-    ]);
+        'custom_fields' => ['emails' => ['grace@navy.mil']],
+    ])
+        ->assertConflict()
+        ->assertExactJson([
+            'message' => 'More than one record holds this emails value. Merge the duplicates, then retry.',
+            'matches' => [$oldest->id, $newer->id],
+        ]);
 
-    $response->assertOk();
+    $this->assertDatabaseHas('people', ['id' => $oldest->id, 'name' => 'Grace Hopper']);
+    $this->assertDatabaseHas('people', ['id' => $newer->id, 'name' => 'G. Hopper']);
+    $this->assertDatabaseMissing('people', ['name' => 'Deduplicated Grace']);
+});
 
-    expect($response->json('data.id'))->toBe($oldest->id);
+it('rejects a match field that is not marked unique and names the fields it accepts', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'job_title', 'value' => 'Rear Admiral'],
+        'name' => 'Grace Hopper',
+    ])
+        ->assertUnprocessable()
+        ->assertInvalid(['match.field' => 'The match.field must be a custom field marked unique: emails.']);
+});
+
+it('rejects the emails field once its uniqueness is switched off', function (): void {
+    upsertCustomField($this->workspace->id, 'people', 'emails')->update(['settings' => new CustomFieldSettingsData(unique_per_entity_type: false)]);
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Hopper',
+    ])
+        ->assertUnprocessable()
+        ->assertInvalid(['match.field']);
 });
 
 it('rejects an unknown match field', function (): void {
@@ -350,6 +485,7 @@ it('rejects a match field belonging to another entity type', function (): void {
 });
 
 it('rejects an inactive match field', function (): void {
+    markUpsertCustomFieldUnique($this->workspace->id, 'people', 'job_title');
     upsertCustomField($this->workspace->id, 'people', 'job_title')->forceFill(['active' => false])->save();
 
     Sanctum::actingAs($this->user);

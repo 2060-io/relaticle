@@ -16,7 +16,7 @@ final class UpsertPeopleRequest extends BaseCrmEntityRequest
 
     public function matchedPerson(): ?People
     {
-        $matched = $this->resolveMatch(People::class);
+        $matched = $this->resolveMatch();
 
         return $matched instanceof People ? $matched : null;
     }
@@ -32,16 +32,9 @@ final class UpsertPeopleRequest extends BaseCrmEntityRequest
     protected function entityRules(User $user): array
     {
         return [
-            ...$this->matchRules('people'),
+            ...$this->matchRules(),
             'name' => ['required', 'string', 'max:255'],
             'company_id' => ['nullable', 'string', Rule::exists('companies', 'id')->where('workspace_id', $user->currentWorkspace->getKey())],
         ];
-    }
-
-    // A required custom field the caller omitted is already answered by the matched
-    // record, which UpdatePeople merges back in, so validation runs as an update.
-    protected function existingRecord(): ?People
-    {
-        return $this->matchedPerson();
     }
 }

@@ -67,7 +67,7 @@ it('can list custom fields with expected structure', function (): void {
         ->and($field['attributes']['type'])->toBe('text')
         ->and($field['attributes']['entity_type'])->toBe('company')
         ->and($field['attributes']['required'])->toBeTrue()
-        ->and($field['attributes'])->toHaveKeys(['code', 'name', 'type', 'entity_type', 'required', 'created_at', 'updated_at'])
+        ->and($field['attributes'])->toHaveKeys(['code', 'name', 'type', 'entity_type', 'required', 'unique', 'created_at', 'updated_at'])
         ->and($field)->toHaveKeys(['id', 'type'])
         ->and($field['type'])->toBe('custom_fields');
 });
@@ -96,6 +96,17 @@ it('returns required as false when field has no required rule', function (): voi
 
     expect($field)->not->toBeNull()
         ->and($field['attributes']['required'])->toBeFalse();
+});
+
+it('reports which fields are unique per entity type', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $fields = collect($this->getJson('/api/v1/custom-fields?per_page=100')->assertOk()->json('data'))
+        ->mapWithKeys(fn (array $item): array => ["{$item['attributes']['entity_type']}.{$item['attributes']['code']}" => $item['attributes']['unique']]);
+
+    expect($fields['people.emails'])->toBeTrue()
+        ->and($fields['company.domains'])->toBeTrue()
+        ->and($fields['people.job_title'])->toBeFalse();
 });
 
 it('can filter by entity_type', function (): void {
