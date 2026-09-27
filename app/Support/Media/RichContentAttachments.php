@@ -63,9 +63,12 @@ final readonly class RichContentAttachments implements FileAttachmentProvider
         abort_unless($user instanceof User && $workspace instanceof Workspace, 403);
 
         try {
-            return resolve(StorePendingUpload::class)
-                ->execute($user, $workspace, $file->getRealPath(), $file->getClientOriginalName(), UploadSource::Panel)
-                ->uuid;
+            return LocalCopy::of(
+                $file->readStream(),
+                fn (string $path): string => resolve(StorePendingUpload::class)
+                    ->execute($user, $workspace, $path, $file->getClientOriginalName(), UploadSource::Panel)
+                    ->uuid,
+            );
         } catch (UploadException $exception) {
             throw ValidationException::withMessages(['attachment' => $exception->getMessage()]);
         }

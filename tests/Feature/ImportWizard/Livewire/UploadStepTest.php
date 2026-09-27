@@ -7,6 +7,7 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
@@ -204,4 +205,22 @@ it('removeFile resets state', function (): void {
     expect($component->get('isParsed'))->toBeFalse()
         ->and($component->get('headers'))->toBe([])
         ->and($component->get('rowCount'))->toBe(0);
+});
+
+it('parses and loads a csv when temporary uploads live on a disk with no local paths', function (): void {
+    fakeDiskWithoutLocalPaths(FileUploadConfiguration::disk());
+    $csv = makeCsvFile("Name,Email\nJohn,john@test.com\nJane,jane@test.com\n");
+
+    $component = mountUploadStep($this);
+    $component->set('uploadedFile', $csv);
+
+    expect($component->get('isParsed'))->toBeTrue()
+        ->and($component->get('rowCount'))->toBe(2);
+
+    $component->call('continueToMapping')->assertHasNoErrors();
+
+    $import = Import::query()->where('workspace_id', $this->workspace->getKey())->firstOrFail();
+    $this->createdStoreIds[] = $import->id;
+
+    expect($import->total_rows)->toBe(2);
 });

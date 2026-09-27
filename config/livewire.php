@@ -26,4 +26,8 @@ return [
         'max_calls' => 50,
         'max_components' => 20,
     ],
+
+    'temporary_file_upload' => [
+        'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK'),
+    ],
 ];
