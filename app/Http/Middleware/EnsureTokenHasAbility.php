@@ -17,7 +17,7 @@ final readonly class EnsureTokenHasAbility
     /**
      * @throws MissingAbilityException
      */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string ...$abilities): Response
     {
         $token = $request->user()?->currentAccessToken();
 
@@ -32,9 +32,11 @@ final readonly class EnsureTokenHasAbility
             return $next($request);
         }
 
-        $ability = $this->resolveAbility($request->method());
-
-        throw_unless($token->can($ability), MissingAbilityException::class, [$ability]);
+        // An upsert may create or update, so its route names both and the token must hold
+        // each; deciding after the match would make the 403 an existence oracle.
+        foreach ($abilities ?: [$this->resolveAbility($request->method())] as $ability) {
+            throw_unless($token->can($ability), MissingAbilityException::class, [$ability]);
+        }
 
         return $next($request);
     }
