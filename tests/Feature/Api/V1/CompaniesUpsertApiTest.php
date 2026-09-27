@@ -113,6 +113,42 @@ it('matches an existing company by domain case-insensitively and returns 200', f
         ->toBe($companiesBefore);
 });
 
+it('matches a stored domain when the match value carries a scheme', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'acme.com'],
+        'name' => 'Acme Corp',
+        'custom_fields' => ['domains' => ['acme.com']],
+    ])->assertCreated();
+
+    $response = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => ' https://ACME.com '],
+        'name' => 'Acme Corporation',
+        'custom_fields' => ['domains' => ['https://acme.com']],
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('data.id'))->toBe($created->json('data.id'))
+        ->and(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+});
+
+it('holds the same lock for a domain with and without its scheme', function (): void {
+    Sleep::fake(syncWithCarbon: true);
+    $lock = Cache::lock("upsert:{$this->workspace->id}:company:domains:acme.com", 10);
+    $lock->get();
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'https://acme.com'],
+        'name' => 'Acme Corp',
+    ])->assertServiceUnavailable();
+
+    $lock->release();
+});
+
 it('matches a unique text custom field case-insensitively', function (): void {
     createCompanyCustomField($this->workspace->id, 'registry_id', 'text', unique: true);
 
