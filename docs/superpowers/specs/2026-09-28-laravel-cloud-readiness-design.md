@@ -19,7 +19,7 @@ file copy, and self-hosters get a documented Laravel Cloud path.
 | Storage | Env-driven disks; Forge keeps local disk | Forge unchanged; files move only at a real cutover |
 | Queues on Cloud | Horizon as a background process on a worker cluster | Same `config/horizon.php` on both targets; queue clusters are SQS-backed, rule out Horizon, and are in developer preview |
 | Staging deploys | Cloud auto-deploys every push to `main` | Cloud-only breakage surfaces before a release, not at it |
-| Import store | Port the Tapix remote-store layer (part 2) | Proven in Tapix v1.3.0; unset disk falls back to today's local file |
+| Import store | Port the Tapix remote-store layer (part 3) | Proven in Tapix v1.3.0; unset disk falls back to today's local file |
 | Self-host docs | Laravel Cloud section ships with this work | Written from the staging environment, so every claim is verified |
 
 ## Roadmap
@@ -90,16 +90,23 @@ remapped to a bucket.
 This replaces the `PUBLIC_MEDIA_DISK` variable proposed during brainstorming: naming the
 bucket `public` does the same job with no code.
 
+The bootstrapper writes the whole disk array and drops `visibility`.
+`MediaUrlGenerator::getUrl()` decides between a plain URL and a signed `media.show` route
+from `filesystems.disks.<disk>.visibility`. On Cloud that key is gone, so logos would get
+signed, host-bound, uncacheable URLs. The generator must decide by disk name instead.
+
 ### Changes
 
 1. **S3 driver.** Add `league/flysystem-aws-s3-v3` to `composer.json`.
-2. **Private user files follow `MEDIA_DISK`.** One owner for "the private user-file disk":
+2. **Public media URLs by disk name.** `MediaUrlGenerator` serves a plain URL when the
+   media row's disk is `public`, whatever its config carries.
+3. **Private user files follow `MEDIA_DISK`.** One owner for "the private user-file disk":
    `config('media-library.disk_name')`.
    - `chat-attachments` drops its `useDisk('local')` pin and follows the media disk.
      Parsing copies the file to a temp path first, then hands that path to the import
      wizard, and deletes the copy afterwards.
    - `TemporaryUploads::disk()` returns the media disk instead of `local`.
-3. **Livewire temporary uploads.** `config/livewire.php` reads
+4. **Livewire temporary uploads.** `config/livewire.php` reads
    `temporary_file_upload.disk` from `LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK`, default null
    (today's behaviour). Cloud sets it to `s3`.
    - Every consumer of a `TemporaryUploadedFile` that calls `getRealPath()` must work when
@@ -110,15 +117,15 @@ bucket `public` does the same job with no code.
      presigned URL. It needs bucket CORS for the app origins and a lifecycle rule for
      abandoned temp files. If Cloud buckets cannot provide either, Livewire temp uploads
      fall back to server-side upload onto the private bucket.
-4. **Sitemap.** `app:generate-sitemap` writes `sitemap.xml` to the `public` disk. A
+5. **Sitemap.** `app:generate-sitemap` writes `sitemap.xml` to the `public` disk. A
    `/sitemap.xml` route streams it with an XML content type. The stale
    `public/sitemap.xml` is removed so it stops shadowing the route on Forge.
-5. **Horizon minimums.** Each production supervisor's `minProcesses` and `maxProcesses`
+6. **Horizon minimums.** Each production supervisor's `minProcesses` and `maxProcesses`
    read an env var with today's value as the default, following `HORIZON_CHAT_MIN` and
    `HORIZON_CHAT_MAX`. Every Cloud worker replica runs the full supervisor set, so
    minimums multiply per replica.
-6. **Maintenance mode.** Cloud sets `APP_MAINTENANCE_DRIVER=cache`. No code change.
-7. **Guard.** `tests/Arch/ConventionsTest.php` fails on a new `Storage::disk('local')`,
+7. **Maintenance mode.** Cloud sets `APP_MAINTENANCE_DRIVER=cache`. No code change.
+8. **Guard.** `tests/Arch/ConventionsTest.php` fails on a new `Storage::disk('local')`,
    `Storage::disk('public')`, `->useDisk('local')`, or `->useDisk('public')` in `app/` or
    `packages/*/src`, and on a new `public_path()` or `storage_path()` write at runtime.
    The allowlist names today's legitimate uses: the `logo` collections and Jetstream
@@ -142,7 +149,7 @@ proof.
   `StorePendingUpload`.
 - A test covers `/sitemap.xml` serving the generated file from the `public` disk.
 - A test runs a CRM export with the Filament disk set to a non-local disk and downloads it.
-- The arch guard from change 7.
+- The arch guard from change 8.
 - No isolated unit tests of internals, per the testing rules.
 
 ## Part 2: Cloud staging environment and docs
