@@ -45,6 +45,9 @@ Cloud blockers found by the audit:
 - `config/livewire.php` sets no `temporary_file_upload.disk`, so Livewire temporary uploads
   land on the default `local` disk.
 - `app/Console/Commands/GenerateSitemapCommand.php:39` writes `public_path('sitemap.xml')`.
+- CRM exports (`app/Filament/Exports/*Exporter.php`) write through Filament's
+  `Exporter::getFileDisk()`, which maps the `public` default disk to `local`. The worker
+  writes the CSV to its own disk and the download on a web replica cannot find it.
 - `.env.example:50` sets `APP_MAINTENANCE_DRIVER=file`.
 - `league/flysystem-aws-s3-v3` is not installed, so no `s3` disk can resolve.
 - `config/horizon.php:243` defines supervisors only for `production` and `local`.
@@ -69,8 +72,16 @@ creation. Relaticle uses that instead of new env vars:
 
 | Cloud bucket | Visibility | Disk name | Effect |
 |---|---|---|---|
-| Public | public | `public` | Replaces the local `public` disk: logos, Jetstream photos, Filament default disk, legacy rich-editor files |
-| Private | private | `s3` | Named by `MEDIA_DISK=s3`: attachments, pending uploads, chat attachments, staged MCP uploads |
+| Public | public | `public` | Replaces the local `public` disk: logos, Jetstream photos, legacy rich-editor files |
+| Private | private | `s3` | Named by `MEDIA_DISK=s3` and `FILAMENT_FILESYSTEM_DISK=s3`: attachments, pending uploads, chat attachments, staged MCP uploads, CRM exports |
+
+`FILAMENT_FILESYSTEM_DISK=s3` is required on Cloud. Left at `public`, exports fall back to
+the replica-local `local` disk. Pointing it at the public bucket instead would publish
+customer export CSVs.
+
+The bootstrapper runs on Laravel's `bootstrapped: LoadConfiguration` event
+(`Illuminate\Foundation\Application.php:332`), so the override also applies when config
+is cached by `php artisan optimize`.
 
 The `local` disk stays local on Cloud. It holds build artifacts such as
 `storage/app/scribe/openapi.yaml`, which `OpenApiSpecController` reads, so it must never be
@@ -130,6 +141,7 @@ proof.
 - A test covers `TemporaryUploadedFile` on a remote temp disk reaching
   `StorePendingUpload`.
 - A test covers `/sitemap.xml` serving the generated file from the `public` disk.
+- A test runs a CRM export with the Filament disk set to a non-local disk and downloads it.
 - The arch guard from change 7.
 - No isolated unit tests of internals, per the testing rules.
 
@@ -156,7 +168,7 @@ Scope, to be planned after part 1 lands.
 **Verification** (the done bar, at two web replicas):
 
 1. Upload a record attachment, a rich-editor image, and a workspace logo; view each from a
-   fresh session.
+   fresh session. Run a CRM export and download it.
 2. Stage an upload through the MCP tools and attach it in a second call.
 3. Send a chat message and see it stream through managed Reverb.
 4. See `/horizon` process jobs on each lane.
@@ -201,7 +213,8 @@ Risks the part 3 plan must settle first:
 1. **Staging `APP_ENV`.** Horizon only defines `production` and `local` supervisors.
    Staging either runs `APP_ENV=production` with sandbox credentials (Stripe sandbox, mail
    to a log or test inbox, analytics off), or `config/horizon.php` gains a `staging`
-   entry. The first keeps staging closest to production. It needs an audit of everything
-   keyed on `production` that talks to the outside world.
+   entry. Horizon has no wildcard environment key. The first keeps staging closest to
+   production. It needs an audit of everything keyed on `production` that talks to the
+   outside world.
 2. **Staging data.** Seeded demo data through `LocalSeeder`-style seeding, or an empty
    database used only by us.
