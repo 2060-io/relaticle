@@ -15,7 +15,7 @@ final class UpsertCompanyRequest extends BaseCrmEntityRequest
 
     public function matchedCompany(): ?Company
     {
-        $matched = $this->resolveMatch(Company::class);
+        $matched = $this->resolveMatch();
 
         return $matched instanceof Company ? $matched : null;
     }
@@ -34,12 +34,5 @@ final class UpsertCompanyRequest extends BaseCrmEntityRequest
             ...$this->matchRules(),
             'name' => ['required', 'string', 'max:255'],
         ];
-    }
-
-    // A required custom field the caller omitted is already answered by the matched
-    // record, which UpdateCompany merges back in, so validation runs as an update.
-    protected function existingRecord(): ?Company
-    {
-        return $this->matchedCompany();
     }
 }

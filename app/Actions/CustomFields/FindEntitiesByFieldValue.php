@@ -10,19 +10,9 @@ use App\Support\LikePattern;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Relaticle\CustomFields\Enums\FieldDataType;
 
 final readonly class FindEntitiesByFieldValue
 {
-    // A string match value cannot be compared to boolean, numeric or date columns, and
-    // single-choice fields store option keys, never the label a form submits.
-    /** @var array<int, FieldDataType> */
-    public const array MATCHABLE_DATA_TYPES = [
-        FieldDataType::STRING,
-        FieldDataType::TEXT,
-        FieldDataType::MULTI_CHOICE,
-    ];
-
     /**
      * @template TModel of Model
      *

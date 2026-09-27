@@ -153,21 +153,6 @@ it('matches a domain the api stored with its scheme', function (): void {
         ->and(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
 });
 
-it('holds the same lock for a domain with and without its scheme', function (): void {
-    Sleep::fake(syncWithCarbon: true);
-    $lock = Cache::lock("upsert:{$this->workspace->id}:company:domains:acme.com", 10);
-    $lock->get();
-
-    Sanctum::actingAs($this->user);
-
-    $this->postJson('/api/v1/companies/upsert', [
-        'match' => ['field' => 'domains', 'value' => 'https://acme.com'],
-        'name' => 'Acme Corp',
-    ])->assertServiceUnavailable();
-
-    $lock->release();
-});
-
 it('matches a unique text custom field case-insensitively', function (): void {
     createCompanyCustomField($this->workspace->id, 'registry_id', 'text', unique: true);
 
@@ -203,7 +188,7 @@ it('treats like wildcards in a domain literally', function (): void {
     $this->assertDatabaseHas('companies', ['id' => $company->id, 'name' => 'Acme Corp']);
 });
 
-it('answers 503 without writing when a concurrent upsert of the same company holds the lock', function (): void {
+it('answers 503 without writing when a concurrent upsert of the same domain holds the lock', function (string $domain): void {
     Sleep::fake(syncWithCarbon: true);
     $lock = Cache::lock("upsert:{$this->workspace->id}:company:domains:acme.com", 10);
     $lock->get();
@@ -211,14 +196,14 @@ it('answers 503 without writing when a concurrent upsert of the same company hol
     Sanctum::actingAs($this->user);
 
     $this->postJson('/api/v1/companies/upsert', [
-        'match' => ['field' => 'domains', 'value' => 'Acme.com'],
+        'match' => ['field' => 'domains', 'value' => $domain],
         'name' => 'Acme Corp',
     ])->assertServiceUnavailable()->assertHeader('Retry-After');
 
     $this->assertDatabaseMissing('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id]);
 
     $lock->release();
-});
+})->with(['Acme.com', 'https://ACME.com']);
 
 it('matches an existing company on a second domain', function (): void {
     Sanctum::actingAs($this->user);
@@ -337,19 +322,6 @@ it('rejects the company name as a match field', function (): void {
         ->assertInvalid(['match.field']);
 
     expect(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
-});
-
-it('rejects a text custom field that is not marked unique', function (): void {
-    createCompanyCustomField($this->workspace->id, 'registry_id', 'text');
-
-    Sanctum::actingAs($this->user);
-
-    $this->postJson('/api/v1/companies/upsert', [
-        'match' => ['field' => 'registry_id', 'value' => 'AB-1234'],
-        'name' => 'Acme Corp',
-    ])
-        ->assertUnprocessable()
-        ->assertInvalid(['match.field']);
 });
 
 it('rejects a non-unique match field with 422 even when several companies share its value', function (): void {

@@ -15,17 +15,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
+use Relaticle\CustomFields\Enums\FieldDataType;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
 use Symfony\Component\HttpFoundation\Response;
 
 trait ResolvesUpsertMatch
 {
+    // A string match value cannot be compared to boolean, numeric or date columns, and
+    // single-choice fields store option keys, never the label a form submits.
+    private const array MATCHABLE_DATA_TYPES = [
+        FieldDataType::STRING,
+        FieldDataType::TEXT,
+        FieldDataType::MULTI_CHOICE,
+    ];
+
     // Enough to show a caller which records to merge without hydrating every duplicate.
     private const int REPORTED_MATCH_LIMIT = 25;
-
-    private bool $matchResolved = false;
-
-    private ?Model $matchedRecord = null;
 
     abstract protected function entity(): CrmEntity;
 
@@ -37,15 +42,13 @@ trait ResolvesUpsertMatch
      */
     public function whileHoldingMatch(Closure $callback): mixed
     {
-        $key = implode(':', ['upsert', $this->workspaceId(), $this->entity()->value, $this->input('match.field'), mb_strtolower($this->matchValue())]);
+        $field = $this->matchField();
+        $value = $field instanceof CustomField ? $this->matchValues($field, $this->string('match.value')->toString())[0] : '';
+        $key = implode(':', ['upsert', $this->workspaceId(), $this->entity()->value, $this->input('match.field'), mb_strtolower($value)]);
 
         try {
-            return Cache::lock($key, 10)->block(5, function () use ($callback): mixed {
-                // Re-resolve under the lock: a concurrent upsert may have created the record since validation.
-                $this->matchResolved = false;
-
-                return $callback();
-            });
+            // The callback resolves the match again: a concurrent upsert may have created the record since validation.
+            return Cache::lock($key, 10)->block(5, $callback);
         } catch (LockTimeoutException) {
             abort(503, 'Another request is upserting this record. Retry shortly.', ['Retry-After' => '1']);
         }
@@ -63,28 +66,21 @@ trait ResolvesUpsertMatch
         ];
     }
 
-    /**
-     * @param  class-string<Model>  $modelClass
-     */
-    protected function resolveMatch(string $modelClass): ?Model
+    protected function resolveMatch(): ?Model
     {
-        if ($this->matchResolved) {
-            return $this->matchedRecord;
-        }
-
-        $this->matchResolved = true;
-
         $field = $this->matchField();
+        $value = $this->input('match.value');
 
         // Resolved before validation runs, so input the rules would reject is skipped here.
-        if (! $field instanceof CustomField || ! is_string($this->input('match.value'))) {
+        if (! $field instanceof CustomField || ! is_string($value)) {
             return null;
         }
 
-        $matchValues = array_values(array_unique([$this->matchValue(), trim($this->input('match.value'))]));
-        $matches = resolve(FindEntitiesByFieldValue::class)->execute($modelClass, $field, $matchValues, self::REPORTED_MATCH_LIMIT);
+        $matches = resolve(FindEntitiesByFieldValue::class)
+            ->execute($this->entity()->model(), $field, $this->matchValues($field, $value), self::REPORTED_MATCH_LIMIT);
 
-        // Uniqueness is only validated on write, so records saved before the field became unique can share a value.
+        // Uniqueness is checked on write only, case-sensitively and from the moment it is switched on,
+        // so several records can still share a value.
         if ($matches->count() > 1) {
             throw new HttpResponseException(response()->json([
                 'message' => "More than one record holds this {$field->code} value. Merge the duplicates, then retry.",
@@ -92,7 +88,14 @@ trait ResolvesUpsertMatch
             ], Response::HTTP_CONFLICT));
         }
 
-        return $this->matchedRecord = $matches->first();
+        return $matches->first();
+    }
+
+    // A required custom field the caller omitted is already answered by the matched record,
+    // which the update action merges back in, so validation runs as an update.
+    protected function existingRecord(): ?Model
+    {
+        return $this->resolveMatch();
     }
 
     protected function workspaceId(): string
@@ -111,23 +114,14 @@ trait ResolvesUpsertMatch
     }
 
     // Panel writes store the field type's form (a link loses its scheme) while the API stores
-    // values as sent, so the match also tries the raw value.
-    private function matchValue(): string
+    // values as sent, so both spellings can be on file. The stored form comes first.
+    /** @return array<int, string> */
+    private function matchValues(CustomField $field, string $value): array
     {
-        $value = $this->input('match.value');
-
-        if (! is_string($value)) {
-            return '';
-        }
-
         $value = trim($value);
-        $field = $this->matchField();
+        $stored = CustomFieldsType::getFieldTypeInstance($field->type)?->setValue($value) ?? $value;
 
-        if (! $field instanceof CustomField) {
-            return $value;
-        }
-
-        return CustomFieldsType::getFieldTypeInstance($field->type)?->setValue($value) ?? $value;
+        return array_values(array_unique([$stored, $value]));
     }
 
     /** @return Collection<string, CustomField> */
@@ -141,7 +135,7 @@ trait ResolvesUpsertMatch
             ->get()
             ->filter(fn (CustomField $field): bool => $field->settings->unique_per_entity_type && in_array(
                 CustomFieldsType::getFieldType($field->type)?->dataType,
-                FindEntitiesByFieldValue::MATCHABLE_DATA_TYPES,
+                self::MATCHABLE_DATA_TYPES,
                 true,
             ))
             ->keyBy(fn (CustomField $field): string => (string) $field->code));
