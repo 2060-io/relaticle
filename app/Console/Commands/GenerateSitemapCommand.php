@@ -36,7 +36,7 @@ final class GenerateSitemapCommand extends Command
             BlogSitemapGenerator::addToSitemap($sitemap);
         }
 
-        $sitemap->writeToFile(public_path('sitemap.xml'));
+        $sitemap->writeToDisk('public', 'sitemap.xml');
     }
 
     private function crawlMarketingSitemap(): Sitemap

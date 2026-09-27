@@ -36,6 +36,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Response;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Pennant\Feature;
 use Relaticle\Documentation\Support\DocsRepository;
 use Spatie\Honeypot\ProtectAgainstSpam;
@@ -129,6 +130,17 @@ Route::get('/.well-known/security.txt', function (): Response {
         'Cache-Control' => 'public, max-age=86400',
     ]);
 })->name('securityTxt');
+
+Route::get('/sitemap.xml', function (): Response {
+    $disk = Storage::disk('public');
+
+    abort_unless($disk->exists('sitemap.xml'), Response::HTTP_NOT_FOUND);
+
+    return response((string) $disk->get('sitemap.xml'), Response::HTTP_OK, [
+        'Content-Type' => 'application/xml; charset=UTF-8',
+        'Cache-Control' => 'public, max-age=3600',
+    ]);
+})->name('sitemap');
 
 Route::middleware(['signed', 'throttle:30,1,mail-unsubscribe', 'no-referrer'])->group(function (): void {
     Route::get('/mail/unsubscribe/{user}/{type}', [UnsubscribeController::class, 'show'])
