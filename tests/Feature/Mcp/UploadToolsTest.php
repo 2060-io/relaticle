@@ -102,6 +102,19 @@ describe('StoreAgentUpload', function (): void {
         TemporaryUploads::disk()->assertMissing(TemporaryUploads::path($name));
     });
 
+    it('moves a signed-put temp file staged on a media disk with no local paths', function (): void {
+        config()->set('media-library.disk_name', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+        $name = TemporaryUploads::newName('report.pdf', (string) $this->workspace->getKey());
+        Storage::disk('s3')->put(TemporaryUploads::path($name), pdfBytes());
+
+        $media = resolve(StoreAgentUpload::class)->execute($this->user, $this->workspace, ['upload_id' => $name]);
+
+        expect($media->disk)->toBe('s3')
+            ->and($media->getCustomProperty('source'))->toBe('signed_put');
+        Storage::disk('s3')->assertMissing(TemporaryUploads::path($name));
+    });
+
     it('rejects a temp file over the 10 MB ceiling', function (): void {
         $name = TemporaryUploads::newName('report.pdf', (string) $this->workspace->getKey());
         TemporaryUploads::disk()->put(TemporaryUploads::path($name), str_repeat('a', 10 * 1024 * 1024 + 1));

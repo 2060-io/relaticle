@@ -20,7 +20,7 @@ final readonly class TemporaryUploads
     public static function disk(): FilesystemAdapter
     {
         /** @var FilesystemAdapter $disk */
-        $disk = Storage::disk('local');
+        $disk = Storage::disk(config('media-library.disk_name'));
 
         return $disk;
     }
