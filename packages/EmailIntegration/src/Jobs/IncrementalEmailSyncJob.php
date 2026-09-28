@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Jobs;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\Batch;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\Backoff;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
+use Illuminate\Queue\Attributes\MaxExceptions;
 use Illuminate\Queue\Attributes\Queue;
-use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Support\Facades\Bus;
 use Relaticle\EmailIntegration\Actions\StartMailboxHistoryImportAction;
@@ -28,8 +29,8 @@ use Throwable;
 
 #[DeleteWhenMissingModels]
 #[Backoff(60, 300, 900)]
+#[MaxExceptions(3)]
 #[Queue('emails-sync')]
-#[Tries(3)]
 #[UniqueFor(3600)]
 final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
 {
@@ -38,6 +39,11 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public readonly ConnectedAccount $connectedAccount,
     ) {}
+
+    public function retryUntil(): CarbonImmutable
+    {
+        return now()->addDay();
+    }
 
     public function handle(MailServiceFactoryInterface $mailFactory): void
     {

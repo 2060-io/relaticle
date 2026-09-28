@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Jobs;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,7 +13,6 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\MaxExceptions;
 use Illuminate\Queue\Attributes\Queue;
-use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Config;
@@ -28,7 +28,6 @@ use Throwable;
 #[DeleteWhenMissingModels]
 #[MaxExceptions(3)]
 #[Queue('emails-sync')]
-#[Tries(3)]
 #[UniqueFor(3600)]
 final class StoreEmailJob implements ShouldBeUnique, ShouldQueue
 {
@@ -61,19 +60,15 @@ final class StoreEmailJob implements ShouldBeUnique, ShouldQueue
         ));
     }
 
+    public function retryUntil(): CarbonImmutable
+    {
+        return now()->addDay();
+    }
+
     /**
      * Unique key prevents duplicate jobs for the same account + message from
      * being queued simultaneously (e.g. overlapping incremental syncs).
      */
-    /**
-     * History import batches count pending jobs until each store job finishes. release() does not
-     * consume tries, so 429 cooldown loops can park the batch at 99% indefinitely.
-     */
-    protected function shouldFailBatchJobOnProviderRateLimit(): bool
-    {
-        return $this->batch() !== null;
-    }
-
     public function uniqueId(): string
     {
         return "store-email-{$this->connectedAccount->getKey()}-{$this->messageId}";

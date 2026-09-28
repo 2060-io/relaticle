@@ -877,7 +877,7 @@ it('recovers the failed email through the notification retry using the real queu
     app()->instance(MailServiceFactoryInterface::class, $factory);
 
     $job = new StoreEmailJob($account, 'retry-message');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
 
@@ -942,7 +942,7 @@ it('does not send a retry-success notice until every failed import job succeeds'
     app()->instance(MailServiceFactoryInterface::class, $factory);
 
     $job = new StoreEmailJob($account, 'retry-twice-message');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
 

@@ -300,9 +300,9 @@ it('notifies with issues when some store jobs permanently fail', function (): vo
     });
 
     $ok = new StoreEmailJob($account, 'ok-1');
-    $ok->tries = 1;
+    $ok->maxExceptions = 1;
     $fail = new StoreEmailJob($account, 'fail-1');
-    $fail->tries = 1;
+    $fail->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$ok, $fail]);
     workMailboxImportQueueUntilEmpty();
 
@@ -438,7 +438,7 @@ it('does not send a retry-success notice while a retried job still fails', funct
     });
 
     $job = new StoreEmailJob($account, 'fail-1');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     workMailboxImportQueueOnce();
 
@@ -468,7 +468,7 @@ it('sends one recovery notice after every failed import job succeeds', function 
     });
 
     $job = new StoreEmailJob($account, 'fail-1');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     workMailboxImportQueueOnce();
 
@@ -586,7 +586,7 @@ it('does not send duplicate import notices from repeated completion callbacks or
     });
 
     $job = new StoreEmailJob($account, 'fail-1');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     workMailboxImportQueueUntilEmpty();
 
@@ -697,7 +697,7 @@ it('sends a recovery notice when a worker finishes during the retry request', fu
     });
 
     $job = new StoreEmailJob($account, 'fail-1');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     workMailboxImportQueueOnce();
 
@@ -1123,7 +1123,7 @@ it('does not retry another users mailbox from the notification action', function
     });
 
     $job = new StoreEmailJob($account, 'fail-1');
-    $job->tries = 1;
+    $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
     workMailboxImportQueueOnce();
 

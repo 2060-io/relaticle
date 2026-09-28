@@ -82,15 +82,18 @@ function runStoreEmailJobWithQueue(
 }
 
 it('uses the same retry schedule as the other email sync jobs', function (): void {
+    $this->travelTo('2026-09-07 14:36:30');
+
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create());
 
     Queue::connection('database')->push(new StoreEmailJob($account, 'msg-policy'), '', 'emails-sync');
 
     $payload = json_decode((string) DB::table('jobs')->value('payload'), true);
 
-    expect($payload['maxTries'])->toBe(3)
+    expect($payload['maxTries'])->toBeNull()
         ->and($payload['maxExceptions'])->toBe(3)
-        ->and($payload['backoff'])->toBe('60,300,900');
+        ->and($payload['backoff'])->toBe('60,300,900')
+        ->and($payload['retryUntil'])->toBe(now()->addDay()->getTimestamp());
 });
 
 it('reads store backoff delays from email integration config', function (): void {
@@ -131,7 +134,7 @@ it('stores the message when a retried attempt succeeds after a failure', functio
     expect(Email::query()->where('connected_account_id', $account->id)->count())->toBe(1);
 });
 
-it('throws on a 429 for history import batch jobs so tries and backoff apply', function (): void {
+it('releases a batched job instead of failing it on a 429', function (): void {
     $this->travelTo('2026-09-07 14:36:30');
 
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create());
@@ -146,13 +149,64 @@ it('throws on a 429 for history import batch jobs so tries and backoff apply', f
     $factory->shouldReceive('make')->once()->andReturn($service);
 
     $queueJob = Mockery::mock(QueueJob::class);
-    $queueJob->shouldReceive('release')->never();
+    $queueJob->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 900 && $seconds <= 1350));
 
-    $job = (new StoreEmailJob($account, 'msg-batch-429'))->withBatchId($batch->id);
+    $job = new StoreEmailJob($account, 'msg-batch-429')->withBatchId($batch->id);
     $job->setJob($queueJob);
 
     $job->handle($factory, resolve(StoreEmailAction::class));
-})->throws(GoogleServiceException::class);
+
+    expect(Email::query()->where('connected_account_id', $account->id)->count())->toBe(0);
+});
+
+it('releases a batched job with a delay at least the remaining cooldown', function (): void {
+    $this->travelTo('2026-09-07 14:36:30');
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create());
+    $batch = Bus::batch([])->name('history')->allowFailures()->dispatch();
+
+    ProviderRateLimit::trip((string) $account->getKey(), 900);
+
+    $factory = Mockery::mock(MailServiceFactoryInterface::class);
+    $factory->shouldReceive('make')->never();
+
+    $queueJob = Mockery::mock(QueueJob::class);
+    $queueJob->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 900));
+
+    $job = new StoreEmailJob($account, 'msg-batch-cooldown')->withBatchId($batch->id);
+    $job->setJob($queueJob);
+
+    $job->handle($factory, resolve(StoreEmailAction::class));
+
+    expect(Email::query()->where('connected_account_id', $account->id)->count())->toBe(0);
+});
+
+it('spreads release delays with jitter instead of waking every cooling-down job at once', function (): void {
+    $this->travelTo('2026-09-07 14:36:30');
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create());
+
+    ProviderRateLimit::trip((string) $account->getKey(), 900);
+
+    $factory = Mockery::mock(MailServiceFactoryInterface::class);
+    $factory->shouldReceive('make')->never();
+
+    $delays = [];
+
+    foreach (range(1, 30) as $i) {
+        $queueJob = Mockery::mock(QueueJob::class);
+        $queueJob->shouldReceive('release')->once()->andReturnUsing(function (int $seconds) use (&$delays): void {
+            $delays[] = $seconds;
+        });
+
+        $job = new StoreEmailJob($account, "msg-jitter-{$i}");
+        $job->setJob($queueJob);
+        $job->handle($factory, resolve(StoreEmailAction::class));
+    }
+
+    expect(count(array_unique($delays)))->toBeGreaterThan(1)
+        ->and(max($delays))->toBeGreaterThan(900);
+});
 
 it('releases until Google retry-after instead of failing a 429', function (): void {
     $this->travelTo('2026-09-07 14:36:30');
@@ -168,7 +222,7 @@ it('releases until Google retry-after instead of failing a 429', function (): vo
     $factory->shouldReceive('make')->once()->andReturn($service);
 
     $queueJob = Mockery::mock(QueueJob::class);
-    $queueJob->shouldReceive('release')->once()->with(900);
+    $queueJob->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 900 && $seconds <= 1350));
 
     runStoreEmailJobWithQueue($account, 'msg-429', $factory, $queueJob);
 
@@ -190,7 +244,7 @@ it('does not call the mailbox for other messages while that account is cooling d
     $factory->shouldReceive('make')->once()->andReturn($service);
 
     $firstQueue = Mockery::mock(QueueJob::class);
-    $firstQueue->shouldReceive('release')->once()->with(900);
+    $firstQueue->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 900 && $seconds <= 1350));
 
     runStoreEmailJobWithQueue($account, 'msg-first', $factory, $firstQueue);
 
@@ -198,7 +252,7 @@ it('does not call the mailbox for other messages while that account is cooling d
     $quietFactory->shouldReceive('make')->never();
 
     $secondQueue = Mockery::mock(QueueJob::class);
-    $secondQueue->shouldReceive('release')->once()->with(900);
+    $secondQueue->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 900 && $seconds <= 1350));
 
     runStoreEmailJobWithQueue($account, 'msg-second', $quietFactory, $secondQueue);
 });
@@ -311,7 +365,7 @@ it('releases using the Retry-After header from Microsoft Graph', function (): vo
     $factory->shouldReceive('make')->once()->andReturn($service);
 
     $queueJob = Mockery::mock(QueueJob::class);
-    $queueJob->shouldReceive('release')->once()->with(120);
+    $queueJob->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 120 && $seconds <= 180));
 
     runStoreEmailJobWithQueue($account, 'msg-graph', $factory, $queueJob);
 });

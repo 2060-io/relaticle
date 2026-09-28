@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Jobs\Concerns;
 
 use Relaticle\EmailIntegration\Services\ProviderRateLimit;
-use RuntimeException;
 use Throwable;
 
 trait ReleasesOnProviderRateLimit
@@ -18,9 +17,7 @@ trait ReleasesOnProviderRateLimit
             return false;
         }
 
-        throw_if($this->shouldFailBatchJobOnProviderRateLimit(), RuntimeException::class, "Mailbox is rate limited for {$seconds} more seconds.");
-
-        $this->release($seconds);
+        $this->release($seconds + $this->providerRateLimitJitter($seconds));
 
         return true;
     }
@@ -35,17 +32,17 @@ trait ReleasesOnProviderRateLimit
 
         ProviderRateLimit::trip($accountId, $seconds);
 
-        if ($this->shouldFailBatchJobOnProviderRateLimit()) {
-            return false;
-        }
-
-        $this->release($seconds);
+        $this->release($seconds + $this->providerRateLimitJitter($seconds));
 
         return true;
     }
 
-    protected function shouldFailBatchJobOnProviderRateLimit(): bool
+    /**
+     * A mailbox's parked jobs wake spread over a window, not all at once when
+     * the cooldown ends.
+     */
+    private function providerRateLimitJitter(int $seconds): int
     {
-        return false;
+        return random_int(0, max(1, intdiv($seconds, 2)));
     }
 }
