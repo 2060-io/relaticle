@@ -6,9 +6,12 @@ use App\Enums\CustomFields\PeopleField;
 use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Relaticle\EmailIntegration\Actions\LinkEmailAction;
+use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
+use Relaticle\EmailIntegration\Actions\RetryFailedEmailAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Data\FetchedEmailData;
 use Relaticle\EmailIntegration\Data\MailBackfillPage;
@@ -28,7 +31,7 @@ use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceInterface;
 use Relaticle\EmailIntegration\Services\EmailSendingService;
 
-mutates(SendEmailJob::class, SyncEmailBatchCountersAction::class);
+mutates(SendEmailJob::class, SyncEmailBatchCountersAction::class, MarkEmailsSendFailedAction::class, RetryFailedEmailAction::class, EmailSendFailedNotification::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -88,6 +91,7 @@ it('tells the sender once when several emails in one mass send fail', function (
         'workspace_id' => $this->workspace->id,
         'user_id' => $this->user->id,
         'connected_account_id' => $this->account->id,
+        'total_recipients' => 3,
     ]);
 
     foreach (range(1, 3) as $index) {
@@ -106,7 +110,87 @@ it('tells the sender once when several emails in one mass send fail', function (
         (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom'));
     }
 
+    resolve(SyncEmailBatchCountersAction::class)->execute($batch->getKey());
+
     Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 1);
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->count === 3);
+});
+
+it('tells the sender again when a retried mass-send email fails again', function (): void {
+    Notification::fake();
+
+    $batch = EmailBatch::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'total_recipients' => 1,
+    ]);
+
+    $email = Email::create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'batch_id' => $batch->getKey(),
+        'subject' => 'Mass send',
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::SENDING,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]);
+
+    (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom'));
+    resolve(RetryFailedEmailAction::class)->execute($email);
+
+    expect($batch->fresh()->status)->toBe(EmailBatchStatus::Sending);
+
+    (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom again'));
+
+    Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 2);
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->count === 1
+        && $notification->subject === 'Mass send');
+});
+
+it('fails instead of sending when the mailbox was disconnected after the email was claimed', function (): void {
+    Notification::fake();
+
+    $email = Email::create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'subject' => 'Proposal',
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::SENDING,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]);
+
+    $this->account->delete();
+
+    $factory = Mockery::mock(MailServiceFactoryInterface::class);
+    $factory->shouldNotReceive('make');
+    app()->instance(MailServiceFactoryInterface::class, $factory);
+
+    (new SendEmailJob($email->getKey()))->handle(resolve(EmailSendingService::class), resolve(LinkEmailAction::class));
+
+    expect(Email::withoutGlobalScopes()->findOrFail($email->getKey()))
+        ->status->toBe(EmailStatus::FAILED)
+        ->last_error->toBe(__('filament/notifications/email-send-failed.reasons.mailbox_needs_reconnect'));
+
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->mailboxNeedsReconnect);
+});
+
+it('drops an overlapping duplicate send job instead of releasing it to fail later', function (): void {
+    $job = (new SendEmailJob('email-1'))->withFakeQueueInteractions();
+    $overlap = $job->middleware()[0];
+    Cache::lock($overlap->getLockKey($job), 60)->get();
+    $ran = false;
+
+    $overlap->handle($job, function () use (&$ran): void {
+        $ran = true;
+    });
+
+    expect($ran)->toBeFalse();
+    $job->assertNotReleased();
 });
 
 it('does not mark a delivered email as failed when a later job step throws', function (): void {

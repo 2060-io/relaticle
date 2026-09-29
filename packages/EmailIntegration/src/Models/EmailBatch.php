@@ -14,6 +14,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Relaticle\EmailIntegration\Enums\EmailBatchStatus;
 
+/**
+ * @property string $id
+ * @property string $workspace_id
+ * @property string $user_id
+ * @property string $connected_account_id
+ * @property string $subject
+ * @property int $total_recipients
+ * @property int $sent_count
+ * @property int $failed_count
+ * @property EmailBatchStatus $status
+ */
 final class EmailBatch extends Model
 {
     /**

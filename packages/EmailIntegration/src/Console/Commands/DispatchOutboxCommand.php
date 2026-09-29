@@ -29,10 +29,10 @@ final class DispatchOutboxCommand extends Command
         $defaultDaily = Config::integer('email-integration.outbox.defaults.daily_send_limit');
 
         $this->reclaimStuckSending();
-        $this->failMailOnMailboxesThatCannotSend($markFailed);
+        rescue(fn () => $this->failMailOnMailboxesThatCannotSend($markFailed));
 
         ConnectedAccount::query()
-            ->active()
+            ->sendable()
             ->whereHas('outgoingEmails', fn (Builder $emailQuery): Builder => $emailQuery
                 ->where('status', EmailStatus::QUEUED)
                 ->where(fn (Builder $dueQuery): Builder => $dueQuery->whereNull('scheduled_for')->orWhere('scheduled_for', '<=', now()))
@@ -50,8 +50,8 @@ final class DispatchOutboxCommand extends Command
             ->withoutGlobalScope(ActiveAccountScope::class)
             ->where('status', EmailStatus::QUEUED)
             ->where(fn (Builder $dueQuery): Builder => $dueQuery->whereNull('scheduled_for')->orWhere('scheduled_for', '<=', now()))
-            ->whereDoesntHave('connectedAccount', fn (Builder $accountQuery): Builder => $accountQuery->active())
-            ->with(['user', 'workspace'])
+            ->whereDoesntHave('connectedAccount', fn (Builder $accountQuery): Builder => $accountQuery->sendable())
+            ->with(['user', 'workspace', 'connectedAccount'])
             ->chunkById(100, fn (Collection $emails) => $markFailed->execute(
                 $emails->toBase(),
                 __('filament/notifications/email-send-failed.reasons.mailbox_needs_reconnect'),
@@ -72,6 +72,7 @@ final class DispatchOutboxCommand extends Command
         );
 
         Email::query()
+            ->withoutGlobalScope(ActiveAccountScope::class)
             ->where('status', EmailStatus::SENDING)
             ->whereNull('provider_message_id')
             ->where('updated_at', '<', $threshold)

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Relaticle\EmailIntegration\Enums\EmailBatchStatus;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailBatch;
 use RuntimeException;
 
 final readonly class RetryFailedEmailAction
@@ -30,6 +32,10 @@ final readonly class RetryFailedEmailAction
                 'last_error' => null,
                 'scheduled_for' => now(),
             ]);
+
+            if ($lockedEmail->batch_id !== null) {
+                EmailBatch::query()->whereKey($lockedEmail->batch_id)->update(['status' => EmailBatchStatus::Sending]);
+            }
 
             return $lockedEmail->refresh();
         });

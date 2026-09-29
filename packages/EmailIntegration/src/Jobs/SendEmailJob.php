@@ -15,6 +15,7 @@ use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 use Relaticle\EmailIntegration\Services\EmailSendingService;
 use Throwable;
 
@@ -39,7 +40,7 @@ final class SendEmailJob implements ShouldQueue
     {
         return [
             new WithoutOverlapping($this->emailId)
-                ->releaseAfter($this->backoff)
+                ->dontRelease()
                 ->expireAfter($this->timeout + 60),
         ];
     }
@@ -69,7 +70,7 @@ final class SendEmailJob implements ShouldQueue
         /** @var Email|null $email */
         $email = DB::transaction(function (): ?Email {
             /** @var Email|null $lockedEmail */
-            $lockedEmail = Email::query()->lockForUpdate()->find($this->emailId);
+            $lockedEmail = Email::query()->withoutGlobalScope(ActiveAccountScope::class)->lockForUpdate()->find($this->emailId);
 
             if ($lockedEmail === null) {
                 return null;
@@ -86,6 +87,15 @@ final class SendEmailJob implements ShouldQueue
                 return null;
             }
 
+            if ($lockedEmail->connectedAccount?->isSendable() !== true) {
+                resolve(MarkEmailsSendFailedAction::class)->execute(
+                    collect([$lockedEmail]),
+                    __('filament/notifications/email-send-failed.reasons.mailbox_needs_reconnect'),
+                );
+
+                return null;
+            }
+
             $lockedEmail->update([
                 'status' => EmailStatus::SENDING,
                 'attempts' => $lockedEmail->attempts + 1,
@@ -95,7 +105,7 @@ final class SendEmailJob implements ShouldQueue
         });
 
         if ($email === null) {
-            $existing = Email::query()->find($this->emailId);
+            $existing = Email::query()->withoutGlobalScope(ActiveAccountScope::class)->find($this->emailId);
             $this->syncBatchCounters($existing?->batch_id);
 
             return;
@@ -119,7 +129,7 @@ final class SendEmailJob implements ShouldQueue
         ]);
 
         /** @var Email|null $email */
-        $email = Email::query()->find($this->emailId);
+        $email = Email::query()->withoutGlobalScope(ActiveAccountScope::class)->find($this->emailId);
 
         if ($email === null) {
             return;

@@ -130,6 +130,18 @@ final class ConnectedAccount extends Model
     }
 
     /**
+     * @param  Builder<ConnectedAccount>  $query
+     * @return Builder<ConnectedAccount>
+     */
+    #[Scope]
+    protected function sendable(Builder $query): Builder
+    {
+        return $query->active()->where(fn (Builder $sendQuery): Builder => $sendQuery
+            ->whereNull('capabilities->send')
+            ->orWhere('capabilities->send', true));
+    }
+
+    /**
      * Scope to accounts that are still connected. Sync-error and reauth-required
      * mailboxes count: the user already added them. Disconnected ones do not.
      *

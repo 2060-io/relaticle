@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Actions;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailBatchStatus;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBatch;
+use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
+use Relaticle\EmailIntegration\Notifications\EmailSendFailedNotification;
 
 final readonly class SyncEmailBatchCountersAction
 {
@@ -23,29 +26,19 @@ final readonly class SyncEmailBatchCountersAction
             return;
         }
 
-        DB::transaction(function () use ($batchId): void {
+        $finishedWithFailures = DB::transaction(function () use ($batchId): ?EmailBatch {
             $batch = EmailBatch::query()->lockForUpdate()->find($batchId);
 
             if ($batch === null) {
-                return;
+                return null;
             }
 
-            $sentCount = Email::query()
-                ->where('batch_id', $batchId)
-                ->where('status', EmailStatus::SENT)
-                ->count();
-
-            $failedCount = Email::query()
-                ->where('batch_id', $batchId)
-                ->where('status', EmailStatus::FAILED)
-                ->count();
-
-            $cancelledCount = Email::query()
-                ->where('batch_id', $batchId)
-                ->where('status', EmailStatus::CANCELLED)
-                ->count();
+            $sentCount = $this->batchEmails($batchId)->where('status', EmailStatus::SENT)->count();
+            $failedCount = $this->batchEmails($batchId)->where('status', EmailStatus::FAILED)->count();
+            $cancelledCount = $this->batchEmails($batchId)->where('status', EmailStatus::CANCELLED)->count();
 
             $processed = $sentCount + $failedCount + $cancelledCount;
+            $wasFinished = in_array($batch->status, [EmailBatchStatus::Completed, EmailBatchStatus::PartialFailure], true);
             $status = $batch->status;
 
             if ($processed >= $batch->total_recipients) {
@@ -59,6 +52,36 @@ final readonly class SyncEmailBatchCountersAction
                 'failed_count' => $failedCount,
                 'status' => $status,
             ]);
+
+            return ! $wasFinished && $status === EmailBatchStatus::PartialFailure ? $batch : null;
         });
+
+        if ($finishedWithFailures instanceof EmailBatch) {
+            $this->notifySender($finishedWithFailures);
+        }
+    }
+
+    /**
+     * @return Builder<Email>
+     */
+    private function batchEmails(string $batchId): Builder
+    {
+        return Email::query()
+            ->withoutGlobalScope(ActiveAccountScope::class)
+            ->where('batch_id', $batchId);
+    }
+
+    private function notifySender(EmailBatch $batch): void
+    {
+        $onlyFailedSubject = $batch->failed_count === 1
+            ? $this->batchEmails($batch->getKey())->where('status', EmailStatus::FAILED)->value('subject')
+            : null;
+
+        $batch->user?->notify(EmailSendFailedNotification::forMailbox(
+            $batch->workspace,
+            $batch->connectedAccount,
+            $batch->failed_count,
+            is_string($onlyFailedSubject) ? $onlyFailedSubject : null,
+        ));
     }
 }
