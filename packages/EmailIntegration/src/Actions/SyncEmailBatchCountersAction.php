@@ -38,7 +38,7 @@ final readonly class SyncEmailBatchCountersAction
             $cancelledCount = $this->batchEmails($batchId)->where('status', EmailStatus::CANCELLED)->count();
 
             $processed = $sentCount + $failedCount + $cancelledCount;
-            $wasFinished = in_array($batch->status, [EmailBatchStatus::Completed, EmailBatchStatus::PartialFailure], true);
+            $wasNeverFinished = $batch->status === EmailBatchStatus::Queued;
             $status = $batch->status;
 
             if ($processed >= $batch->total_recipients) {
@@ -53,7 +53,7 @@ final readonly class SyncEmailBatchCountersAction
                 'status' => $status,
             ]);
 
-            return ! $wasFinished && $status === EmailBatchStatus::PartialFailure ? $batch : null;
+            return $wasNeverFinished && $status === EmailBatchStatus::PartialFailure ? $batch : null;
         });
 
         if ($finishedWithFailures instanceof EmailBatch) {

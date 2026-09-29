@@ -150,6 +150,37 @@ it('tells the sender again when a retried mass-send email fails again', function
         && $notification->subject === 'Mass send');
 });
 
+it('does not report a mass send again when a retried email then sends', function (): void {
+    Notification::fake();
+
+    $batch = EmailBatch::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'total_recipients' => 2,
+    ]);
+
+    $emails = collect(range(1, 2))->map(fn (int $index): Email => Email::create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'batch_id' => $batch->getKey(),
+        'subject' => "Mass send {$index}",
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::SENDING,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]));
+
+    $emails->each(fn (Email $email) => (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom')));
+    resolve(RetryFailedEmailAction::class)->execute($emails->first());
+    $emails->first()->update(['status' => EmailStatus::SENT]);
+    resolve(SyncEmailBatchCountersAction::class)->execute($batch->getKey());
+
+    expect($batch->fresh()->status)->toBe(EmailBatchStatus::PartialFailure);
+    Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 1);
+});
+
 it('fails instead of sending when the mailbox was disconnected after the email was claimed', function (): void {
     Notification::fake();
 

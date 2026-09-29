@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use Illuminate\Support\Collection;
+use Relaticle\EmailIntegration\Enums\EmailBatchStatus;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailBatch;
 use Relaticle\EmailIntegration\Notifications\EmailSendFailedNotification;
 
 final readonly class MarkEmailsSendFailedAction
@@ -19,6 +21,11 @@ final readonly class MarkEmailsSendFailedAction
     public function execute(Collection $emails, string $reason): void
     {
         $failed = $emails->reject(fn (Email $email): bool => $email->status === EmailStatus::SENT);
+        $retriedBatchIds = EmailBatch::query()
+            ->whereKey($failed->pluck('batch_id')->filter()->unique()->values()->all())
+            ->where('status', EmailBatchStatus::Sending)
+            ->pluck('id')
+            ->all();
 
         $failed->each(fn (Email $email): bool => $email->update([
             'status' => EmailStatus::FAILED,
@@ -28,7 +35,8 @@ final readonly class MarkEmailsSendFailedAction
         $emails->pluck('batch_id')->filter()->unique()
             ->each(fn (string $batchId) => $this->syncBatchCounters->execute($batchId));
 
-        $failed->whereNull('batch_id')
+        // A first-run batch failure is reported once, when the batch finishes; a retried one on its own.
+        $failed->filter(fn (Email $email): bool => $email->batch_id === null || in_array($email->batch_id, $retriedBatchIds, true))
             ->groupBy(fn (Email $email): string => "{$email->user_id}|{$email->workspace_id}|{$email->connected_account_id}")
             ->each(function (Collection $senderEmails): void {
                 /** @var Email $first */
