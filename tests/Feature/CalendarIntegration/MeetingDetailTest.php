@@ -675,6 +675,30 @@ it('offers linking additional records from the meeting drawer', function (): voi
         ]);
 });
 
+it('hides linking records from a viewer in the meeting drawer', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->getKey(),
+        'email_address' => 'guest@clientcorp.test',
+        'is_self' => false,
+    ]);
+
+    $viewer = User::factory()->create();
+    $viewer->workspaces()->attach($this->workspace, ['role' => 'viewer']);
+    $viewer->forceFill(['current_workspace_id' => $this->workspace->id])->save();
+    $this->actingAs($viewer->fresh());
+
+    meetingDetailsOnRecord([$meeting])
+        ->assertActionVisible(TestAction::make('view')->table($meeting))
+        ->assertActionHidden([
+            TestAction::make('view')->table($meeting),
+            TestAction::make('linkRecords'),
+        ]);
+});
+
 it('links a record from the meeting view modal', function (): void {
     $meeting = Meeting::factory()->create([
         'workspace_id' => $this->workspace->id,

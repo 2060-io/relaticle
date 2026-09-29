@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 use App\Models\People;
+use App\Models\User;
 use App\Models\Workspace;
 use Relaticle\EmailIntegration\Actions\LinkMeetingToRecordAction;
 use Relaticle\EmailIntegration\Actions\UnlinkMeetingFromRecordAction;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Meeting;
+use Relaticle\EmailIntegration\Models\MeetingAttendee;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 mutates(UnlinkMeetingFromRecordAction::class);
@@ -57,4 +59,27 @@ it('refuses a viewer who cannot update the record', function (): void {
         ->toThrow(HttpException::class);
 
     expect($meeting->people()->count())->toBe(1);
+});
+
+it('refuses a teammate who cannot see the meeting', function (): void {
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create());
+    mailboxOwnerInWorkspace($account);
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $account->workspace_id,
+        'connected_account_id' => $account->getKey(),
+    ]);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->getKey(),
+        'email_address' => $account->email_address,
+        'is_self' => true,
+    ]);
+    $person = People::factory()->for($meeting->workspace)->create();
+    $meeting->people()->attach($person->getKey(), ['link_source' => 'manual']);
+    $teammate = User::factory()->create();
+    $teammate->workspaces()->attach($account->workspace_id, ['role' => 'member']);
+    $teammate = $teammate->fresh();
+
+    expect($teammate->can('update', $person))->toBeTrue()
+        ->and($teammate->can('view', $meeting))->toBeFalse()
+        ->and(fn () => app(UnlinkMeetingFromRecordAction::class)->execute($teammate, $meeting, $person))->toThrow(HttpException::class);
 });

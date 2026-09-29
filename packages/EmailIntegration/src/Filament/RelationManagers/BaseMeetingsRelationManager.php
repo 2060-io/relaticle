@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Filament\RelationManagers;
 
+use App\Enums\WorkspaceCapability;
 use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
@@ -111,6 +112,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                         ->label(__('filament/relation-managers/meetings.actions.link_to_record.label'))
                         ->icon(Heroicon::Link)
                         ->color('gray')
+                        ->authorize(fn (Meeting $record): bool => $this->authUser()->hasWorkspaceCapability($record->workspace_id, WorkspaceCapability::RecordsUpdate))
                         ->schema(MeetingDetailInfolist::linkRecordFields())
                         ->action(function (array $data, Meeting $record): void {
                             resolve(LinkMeetingToRecordAction::class)
@@ -126,6 +128,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                         ->icon(Heroicon::LinkSlash)
                         ->color('danger')
                         ->visible(fn (Meeting $record): bool => $record->isLinkedTo($this->getOwnerRecord()))
+                        ->authorize(fn (): bool => $this->authUser()->can('update', $this->getOwnerRecord()))
                         ->requiresConfirmation()
                         ->action(function (Meeting $record): void {
                             resolve(UnlinkMeetingFromRecordAction::class)

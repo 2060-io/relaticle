@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Filament\Infolists;
 
+use App\Enums\WorkspaceCapability;
 use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
@@ -213,6 +214,7 @@ final class MeetingDetailInfolist
         $action = Action::make($name)
             ->label(__('filament/resources/meeting.actions.link_records.label'))
             ->icon(Heroicon::Plus)
+            ->authorize(fn (Meeting $record): bool => self::authUser()->hasWorkspaceCapability($record->workspace_id, WorkspaceCapability::RecordsUpdate))
             ->schema(self::linkRecordFields())
             ->action(function (array $data, Meeting $record): void {
                 $target = self::resolveLinkTarget(

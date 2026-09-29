@@ -61,3 +61,21 @@ it('unlinks a meeting from the owner record via the modal action', function (): 
 
     expect($meeting->fresh()?->people()->count())->toBe(0);
 });
+
+it('hides link and unlink from a viewer who cannot update records', function (): void {
+    $person = People::factory()->for($this->workspace)->create();
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+    $meeting->people()->attach($person, ['link_source' => 'manual']);
+
+    $viewer = User::factory()->create();
+    $viewer->workspaces()->attach($this->workspace, ['role' => 'viewer']);
+    $viewer->forceFill(['current_workspace_id' => $this->workspace->id])->save();
+    $this->actingAs($viewer->fresh());
+
+    livewire(MeetingsRelationManager::class, ['ownerRecord' => $person, 'pageClass' => ViewPeople::class])
+        ->assertActionHidden(TestAction::make('linkToRecord')->table($meeting))
+        ->assertActionHidden(TestAction::make('unlinkFromRecord')->table($meeting));
+});
