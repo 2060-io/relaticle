@@ -16,6 +16,8 @@ use Relaticle\EmailIntegration\Data\CalendarEventData;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Services\Factories\NormalizedMeetingPayloadFactory;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
+use Relaticle\EmailIntegration\Services\SyncItemFailures;
+use Throwable;
 
 #[DeleteWhenMissingModels]
 #[Backoff(5, 5, 5)]
@@ -47,5 +49,10 @@ final class StoreMeetingJob implements ShouldQueue
         $payload = $factory->fromCalendarEvent($this->event, $this->connectedAccount->email_address);
 
         $store->execute($payload, $this->connectedAccount);
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        SyncItemFailures::record($this->connectedAccount, self::class, $this->event->providerEventId);
     }
 }

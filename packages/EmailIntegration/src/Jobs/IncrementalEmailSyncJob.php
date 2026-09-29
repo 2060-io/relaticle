@@ -25,6 +25,7 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailRead;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
+use Relaticle\EmailIntegration\Services\SyncItemFailures;
 use Throwable;
 
 #[DeleteWhenMissingModels]
@@ -90,6 +91,9 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
             ->all();
 
         $newIds = array_values(array_diff($allIds, $storedIds));
+        $skippedIds = SyncItemFailures::exhausted($account, StoreEmailJob::class, $newIds);
+        $newIds = array_values(array_diff($newIds, $skippedIds));
+        $skippedError = $this->skippedMessagesError(count($skippedIds));
 
         // Read state is per-viewer; the provider delta reflects the OWNER's mailbox,
         // so toggle only the owner's read rows (teammates' read state is untouched).
@@ -132,7 +136,7 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
         // is never retried. So advance the cursor only once the batch has fully stored.
         // With no new messages the delta is read-only state, so advance inline.
         if ($newIds === []) {
-            $this->advanceCursor($account, $delta->newCursor);
+            $this->advanceCursor($account, $delta->newCursor, $skippedError);
 
             return;
         }
@@ -149,7 +153,7 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
             ->name("Incremental sync: {$account->email_address}")
             ->onQueue('emails-sync')
             ->allowFailures()
-            ->finally(static function (Batch $batch) use ($accountId, $newCursor): void {
+            ->finally(static function (Batch $batch) use ($accountId, $newCursor, $skippedError): void {
                 $account = ConnectedAccount::query()->whereKey($accountId)->first();
 
                 if (! $account instanceof ConnectedAccount) {
@@ -174,7 +178,7 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
                     'sync_cursor' => $newCursor,
                     'last_synced_at' => now(),
                     'status' => EmailAccountStatus::ACTIVE,
-                    'last_error' => null,
+                    'last_error' => $skippedError,
                 ]);
 
                 MailboxSyncTracker::markEmailFinished($account);
@@ -182,16 +186,23 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
             ->dispatch();
     }
 
-    private function advanceCursor(ConnectedAccount $account, string $newCursor): void
+    private function advanceCursor(ConnectedAccount $account, string $newCursor, ?string $skippedError): void
     {
         $account->update([
             'sync_cursor' => $newCursor,
             'last_synced_at' => now(),
             'status' => EmailAccountStatus::ACTIVE,
-            'last_error' => null,
+            'last_error' => $skippedError,
         ]);
 
         MailboxSyncTracker::markEmailFinished($account);
+    }
+
+    private function skippedMessagesError(int $skipped): ?string
+    {
+        return $skipped > 0
+            ? trans_choice('filament/pages/email-accounts.sync_error.skipped_emails', $skipped)
+            : null;
     }
 
     public function failed(Throwable $exception): void

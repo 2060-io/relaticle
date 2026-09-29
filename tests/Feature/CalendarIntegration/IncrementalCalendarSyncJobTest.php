@@ -20,8 +20,9 @@ use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceFactoryInterfac
 use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceInterface;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
+use Relaticle\EmailIntegration\Services\SyncItemFailures;
 
-mutates(IncrementalCalendarSyncJob::class);
+mutates(IncrementalCalendarSyncJob::class, StoreMeetingJob::class, SyncItemFailures::class);
 
 it('resets cursor and dispatches initial sync on 410', function (): void {
     Bus::fake([InitialCalendarSyncJob::class]);
@@ -386,4 +387,122 @@ it('keeps a mailbox that failed to store events eligible for the scheduled calen
         IncrementalCalendarSyncJob::class,
         fn (IncrementalCalendarSyncJob $job): bool => $job->connectedAccount->is($account),
     );
+});
+
+function incrementalDeltaEvent(string $providerEventId): CalendarEventData
+{
+    return new CalendarEventData(
+        providerEventId: $providerEventId,
+        providerRecurringEventId: null,
+        iCalUid: null,
+        title: 'Delta event',
+        description: null,
+        startsAt: Date::now()->addDay(),
+        endsAt: Date::now()->addDay()->addHour(),
+        isAllDay: false,
+        location: null,
+        htmlLink: null,
+        status: 'confirmed',
+        visibility: 'default',
+        organizerEmail: null,
+        organizerName: null,
+        attendees: [],
+    );
+}
+
+function syncCalendarDeltaOf(ConnectedAccount $account, array $events): void
+{
+    $service = Mockery::mock(CalendarServiceInterface::class);
+    $service->shouldReceive('fetchDelta')->once()->with('valid-token')
+        ->andReturn(new CalendarSyncResult(events: $events, nextSyncToken: 'new-token'));
+
+    $factory = Mockery::mock(CalendarServiceFactoryInterface::class);
+    $factory->shouldReceive('make')->once()->andReturn($service);
+
+    (new IncrementalCalendarSyncJob($account))->handle($factory);
+}
+
+function failStoringEvent(ConnectedAccount $account, CalendarEventData $event, int $syncs): void
+{
+    foreach (range(1, $syncs) as $ignored) {
+        (new StoreMeetingJob($account, $event))->failed(new RuntimeException('Unparseable event'));
+    }
+}
+
+function completeIncrementalCalendarBatch(int $failedJobs = 0): void
+{
+    Bus::assertBatched(function (PendingBatch $batch) use ($failedJobs): bool {
+        foreach ($batch->finallyCallbacks() as $callback) {
+            $closure = $callback instanceof SerializableClosure ? $callback->getClosure() : $callback;
+            $closure(new BatchFake(
+                id: 'batch-1',
+                name: 'Incremental calendar sync',
+                totalJobs: $batch->jobs->count(),
+                pendingJobs: 0,
+                failedJobs: $failedJobs,
+                failedJobIds: array_fill(0, $failedJobs, 'failed-job'),
+                options: [],
+                createdAt: now()->toImmutable(),
+            ));
+        }
+
+        return true;
+    });
+}
+
+it('skips an event that failed three syncs and advances the cursor past it', function (): void {
+    Bus::fake();
+
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'capabilities' => ['email' => true, 'calendar' => true],
+        'calendar_sync_cursor' => 'valid-token',
+    ]));
+    $poison = incrementalDeltaEvent('evt-poison');
+    failStoringEvent($account, $poison, syncs: 3);
+
+    syncCalendarDeltaOf($account, [$poison, incrementalDeltaEvent('evt-ok')]);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() === 1
+        && $batch->jobs->first()->event->providerEventId === 'evt-ok');
+
+    completeIncrementalCalendarBatch();
+
+    expect($account->fresh()?->calendar_sync_cursor)->toBe('new-token')
+        ->and($account->fresh()?->last_error)->toBe('1 calendar event kept failing and was skipped.');
+});
+
+it('still retries an event that failed only once', function (): void {
+    Bus::fake();
+
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'capabilities' => ['email' => true, 'calendar' => true],
+        'calendar_sync_cursor' => 'valid-token',
+    ]));
+    $flaky = incrementalDeltaEvent('evt-flaky');
+    failStoringEvent($account, $flaky, syncs: 1);
+
+    syncCalendarDeltaOf($account, [$flaky, incrementalDeltaEvent('evt-ok')]);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() === 2);
+
+    completeIncrementalCalendarBatch(failedJobs: 1);
+
+    expect($account->fresh()?->calendar_sync_cursor)->toBe('valid-token');
+});
+
+it('advances the calendar cursor inline when every event failed three syncs', function (): void {
+    Bus::fake();
+
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'capabilities' => ['email' => true, 'calendar' => true],
+        'calendar_sync_cursor' => 'valid-token',
+    ]));
+    $poison = incrementalDeltaEvent('evt-poison');
+    failStoringEvent($account, $poison, syncs: 3);
+
+    syncCalendarDeltaOf($account, [$poison]);
+
+    Bus::assertNothingBatched();
+    expect($account->fresh()?->calendar_sync_cursor)->toBe('new-token')
+        ->and($account->fresh()?->last_error)->toBe('1 calendar event kept failing and was skipped.');
 });

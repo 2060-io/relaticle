@@ -102,6 +102,8 @@ return [
     'sync_error' => [
         'badge' => 'Sync issue',
         'heading' => 'Some items could not be synced',
+        'skipped_emails' => '{1}:count email kept failing and was skipped.|[2,*]:count emails kept failing and were skipped.',
+        'skipped_events' => '{1}:count calendar event kept failing and was skipped.|[2,*]:count calendar events kept failing and were skipped.',
     ],
     'send_missing_tooltip' => 'Send access was not granted. Grant it to send mail from Relaticle.',
     'importing' => 'Syncing',

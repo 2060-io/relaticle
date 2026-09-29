@@ -23,6 +23,7 @@ use Relaticle\EmailIntegration\Jobs\Concerns\ReleasesOnProviderRateLimit;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
+use Relaticle\EmailIntegration\Services\SyncItemFailures;
 use Throwable;
 
 #[DeleteWhenMissingModels]
@@ -154,6 +155,8 @@ final class StoreEmailJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(Throwable $exception): void
     {
+        SyncItemFailures::record($this->connectedAccount, self::class, $this->messageId);
+
         $batch = $this->batch();
         $batchId = $batch?->id;
         $historyBatchId = $this->connectedAccount->history_import_batch_id;

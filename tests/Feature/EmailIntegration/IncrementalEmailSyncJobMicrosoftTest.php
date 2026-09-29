@@ -23,8 +23,9 @@ use Relaticle\EmailIntegration\Models\EmailRead;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceInterface;
 use Relaticle\EmailIntegration\Services\ProviderRateLimit;
+use Relaticle\EmailIntegration\Services\SyncItemFailures;
 
-mutates(IncrementalEmailSyncJob::class);
+mutates(IncrementalEmailSyncJob::class, StoreEmailJob::class, SyncItemFailures::class);
 
 /**
  * @param  array<string, mixed>  $deltaOverrides
@@ -316,4 +317,107 @@ it('releases instead of failing when the provider rate limits the delta listing'
 
     expect($account->fresh()?->status)->toBe(EmailAccountStatus::ACTIVE)
         ->and(ProviderRateLimit::remainingSeconds((string) $account->getKey()))->toBeGreaterThan(0);
+});
+
+function syncDeltaOf(ConnectedAccount $account, array $messageIds): void
+{
+    $service = Mockery::mock(MailServiceInterface::class);
+    $service->shouldReceive('fetchDelta')->with('old-cursor')->andReturn(new MailDeltaResult(
+        messageIds: collect($messageIds),
+        readMessageIds: collect([]),
+        newCursor: 'new-cursor',
+    ));
+
+    $factory = Mockery::mock(MailServiceFactoryInterface::class);
+    $factory->shouldReceive('make')->andReturn($service);
+    app()->instance(MailServiceFactoryInterface::class, $factory);
+
+    (new IncrementalEmailSyncJob($account))->handle($factory);
+}
+
+function failStoringMessage(ConnectedAccount $account, string $messageId, int $syncs): void
+{
+    foreach (range(1, $syncs) as $ignored) {
+        (new StoreEmailJob($account, $messageId))->failed(new RuntimeException('Unparseable message'));
+    }
+}
+
+function completeIncrementalEmailBatch(int $failedJobs = 0): void
+{
+    Bus::assertBatched(function (PendingBatch $batch) use ($failedJobs): bool {
+        foreach ($batch->finallyCallbacks() as $callback) {
+            $closure = $callback instanceof SerializableClosure ? $callback->getClosure() : $callback;
+            $closure(new BatchFake(
+                id: 'batch-1',
+                name: 'Incremental sync',
+                totalJobs: $batch->jobs->count(),
+                pendingJobs: 0,
+                failedJobs: $failedJobs,
+                failedJobIds: array_fill(0, $failedJobs, 'failed-job'),
+                options: [],
+                createdAt: now()->toImmutable(),
+            ));
+        }
+
+        return true;
+    });
+}
+
+it('skips a message that failed three syncs and advances the cursor past it', function (): void {
+    Bus::fake();
+
+    $account = syncableAccount();
+    failStoringMessage($account, 'POISON', syncs: 3);
+
+    syncDeltaOf($account, ['POISON', 'M2']);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() === 1
+        && $batch->jobs->first()->messageId === 'M2');
+
+    completeIncrementalEmailBatch();
+
+    expect($account->refresh()->sync_cursor)->toBe('new-cursor')
+        ->and($account->last_error)->toBe('1 email kept failing and was skipped.');
+});
+
+it('still retries a message that failed only once', function (): void {
+    Bus::fake();
+
+    $account = syncableAccount();
+    failStoringMessage($account, 'FLAKY', syncs: 1);
+
+    syncDeltaOf($account, ['FLAKY', 'M2']);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->pluck('messageId')->all() === ['FLAKY', 'M2']);
+
+    completeIncrementalEmailBatch(failedJobs: 1);
+
+    expect($account->refresh()->sync_cursor)->toBe('old-cursor');
+});
+
+it('advances the cursor inline when every new message failed three syncs', function (): void {
+    Bus::fake();
+
+    $account = syncableAccount();
+    failStoringMessage($account, 'POISON-1', syncs: 3);
+    failStoringMessage($account, 'POISON-2', syncs: 3);
+
+    syncDeltaOf($account, ['POISON-1', 'POISON-2']);
+
+    Bus::assertNothingBatched();
+    expect($account->refresh()->sync_cursor)->toBe('new-cursor')
+        ->and($account->last_error)->toBe('2 emails kept failing and were skipped.');
+});
+
+it('forgets a failed message after a week so a later sync tries it again', function (): void {
+    Bus::fake();
+
+    $account = syncableAccount();
+    failStoringMessage($account, 'POISON', syncs: 3);
+
+    $this->travel(8)->days();
+
+    syncDeltaOf($account, ['POISON']);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->pluck('messageId')->all() === ['POISON']);
 });
