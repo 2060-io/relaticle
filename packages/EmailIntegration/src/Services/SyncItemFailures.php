@@ -71,6 +71,6 @@ final readonly class SyncItemFailures
      */
     private static function key(ConnectedAccount $account, string $storeJob, string $itemId): string
     {
-        return 'sync-item-failures:'.class_basename($storeJob).":{$account->getKey()}:".sha1($itemId);
+        return 'sync-item-failures:'.class_basename($storeJob).":{$account->getKey()}:".hash('xxh3', $itemId);
     }
 }

@@ -31,6 +31,6 @@ final readonly class CalendarEventData
 
     public function revisionKey(): string
     {
-        return "{$this->providerEventId}@".sha1((string) json_encode(get_object_vars($this)));
+        return "{$this->providerEventId}@".hash('xxh3', (string) json_encode(get_object_vars($this)));
     }
 }
