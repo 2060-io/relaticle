@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Storage;
+use Relaticle\EmailIntegration\Actions\AutoCreatePersonAction;
 use Relaticle\EmailIntegration\Actions\StoreEmailAction;
 use Relaticle\EmailIntegration\Data\FetchedEmailData;
 use Relaticle\EmailIntegration\Enums\EmailCategory;
@@ -21,7 +22,7 @@ use Relaticle\EmailIntegration\Models\EmailAttachment;
 use Relaticle\EmailIntegration\Models\EmailThread;
 use Relaticle\EmailIntegration\Services\EmailClassifier;
 
-mutates(StoreEmailAction::class);
+mutates(StoreEmailAction::class, AutoCreatePersonAction::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -163,6 +164,38 @@ it('stores provider values longer than 255 characters', function (): void {
         ->and($email->thread_id)->toBe($long)
         ->and($email->participants()->where('role', 'from')->value('name'))->toBe($long)
         ->and($email->attachments()->value('filename'))->toBe("{$long}.pdf");
+});
+
+it('stores an attachment whose provider sent no content type', function (): void {
+    $email = resolve(StoreEmailAction::class)->execute($this->account, makeFetchedEmailData([
+        'attachments' => [[
+            'filename' => 'scan',
+            'mime_type' => null,
+            'size' => 10,
+            'content_id' => null,
+            'attachment_id' => 'att-untyped',
+            'inline_data' => null,
+        ]],
+    ]));
+
+    expect($email->attachments()->value('mime_type'))->toBe('application/octet-stream');
+});
+
+it('stores an attachment content type longer than 100 characters', function (): void {
+    $mimeType = 'application/vnd.'.str_repeat('x', 150);
+
+    $email = resolve(StoreEmailAction::class)->execute($this->account, makeFetchedEmailData([
+        'attachments' => [[
+            'filename' => 'custom.bin',
+            'mime_type' => $mimeType,
+            'size' => 10,
+            'content_id' => null,
+            'attachment_id' => 'att-long-type',
+            'inline_data' => null,
+        ]],
+    ]));
+
+    expect($email->attachments()->value('mime_type'))->toBe($mimeType);
 });
 
 it('classifies a billing sender as Invoice', function (): void {

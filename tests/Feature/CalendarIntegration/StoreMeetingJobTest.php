@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\People;
 use Illuminate\Support\Facades\Date;
+use Relaticle\EmailIntegration\Actions\AutoCreatePersonAction;
 use Relaticle\EmailIntegration\Actions\StoreMeetingAction;
 use Relaticle\EmailIntegration\Data\CalendarEventData;
 use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
@@ -13,7 +14,7 @@ use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Services\Factories\NormalizedMeetingPayloadFactory;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
 
-mutates(StoreMeetingJob::class, NormalizedMeetingPayloadFactory::class);
+mutates(StoreMeetingJob::class, NormalizedMeetingPayloadFactory::class, AutoCreatePersonAction::class);
 
 it('stores a calendar event via StoreMeetingJob', function (): void {
     $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create(['email_address' => 'me@example.com']));
@@ -63,10 +64,11 @@ it('stores calendar values longer than 255 characters', function (): void {
         htmlLink: "https://outlook.office365.com/owa/?itemid={$long}",
         status: 'confirmed',
         visibility: 'default',
-        organizerEmail: 'organizer@external.test',
+        organizerEmail: "{$long}@external.test",
         organizerName: $long,
         attendees: [
             ['email' => 'me@example.com', 'name' => $long, 'response_status' => 'accepted', 'is_organizer' => false],
+            ['email' => "{$long}@guest.test", 'name' => null, 'response_status' => 'accepted', 'is_organizer' => false],
         ],
     );
 
@@ -79,6 +81,7 @@ it('stores calendar values longer than 255 characters', function (): void {
 
     expect($meeting->title)->toBe($long)
         ->and($meeting->location)->toBe($long)
+        ->and($meeting->organizer_email)->toBe("{$long}@external.test")
         ->and($meeting->attendees()->value('name'))->toBe($long)
         ->and(People::query()->where('workspace_id', $account->workspace_id)->pluck('name')->all())
         ->not->toBeEmpty()

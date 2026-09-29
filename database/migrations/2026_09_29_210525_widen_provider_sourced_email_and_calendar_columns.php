@@ -13,7 +13,7 @@ return new class extends Migration
         $nullableByColumn = [
             'emails' => ['rfc_message_id' => true, 'provider_message_id' => true, 'thread_id' => true, 'in_reply_to' => true],
             'email_participants' => ['name' => true],
-            'email_attachments' => ['filename' => false, 'content_id' => true],
+            'email_attachments' => ['filename' => false, 'mime_type' => false, 'content_id' => true],
             'email_threads' => ['thread_id' => false],
             'email_labels' => ['label' => false],
             'meetings' => [
@@ -22,10 +22,11 @@ return new class extends Migration
                 'ical_uid' => true,
                 'title' => false,
                 'location' => true,
+                'organizer_email' => true,
                 'organizer_name' => true,
                 'html_link' => true,
             ],
-            'meeting_attendees' => ['name' => true],
+            'meeting_attendees' => ['email_address' => false, 'name' => true],
             'connected_accounts' => ['display_name' => true],
         ];
 

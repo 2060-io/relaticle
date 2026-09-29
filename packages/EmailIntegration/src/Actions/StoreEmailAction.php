@@ -105,7 +105,7 @@ final readonly class StoreEmailAction
                     EmailAttachment::query()->create([
                         'email_id' => $email->getKey(),
                         'filename' => $this->persistableAttachmentFilename($attachment),
-                        'mime_type' => $attachment['mime_type'],
+                        'mime_type' => filled($attachment['mime_type'] ?? null) ? $attachment['mime_type'] : 'application/octet-stream',
                         'size' => $attachment['size'],
                         'content_id' => $attachment['content_id'],
                         'is_inline' => $attachment['is_inline'] ?? false,
