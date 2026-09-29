@@ -413,6 +413,25 @@ it('keeps the emails of a person a concurrent upsert created after validation', 
         ->and(collect($response->json('data.attributes.custom_fields.emails'))->pluck('id')->all())->toBe(['grace@navy.mil', 'grace@yale.edu']);
 });
 
+it('creates a new person when only a deleted person holds the email', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $deleted = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Hopper',
+    ])->assertCreated();
+
+    People::query()->findOrFail($deleted->json('data.id'))->delete();
+
+    $response = $this->postJson('/api/v1/people/upsert', [
+        'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],
+        'name' => 'Grace Returns',
+    ])->assertCreated();
+
+    expect($response->json('data.id'))->not->toBe($deleted->json('data.id'))
+        ->and(collect($response->json('data.attributes.custom_fields.emails'))->pluck('id')->all())->toBe(['grace@navy.mil']);
+});
+
 it('answers 409 with the matching ids and writes nothing when more than one person holds the email', function (): void {
     $oldest = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper', 'created_at' => now()->subDays(3)]);
     $newer = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'G. Hopper', 'created_at' => now()->subDay()]);
