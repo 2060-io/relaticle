@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Actions;
 use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 use Relaticle\EmailIntegration\Models\Meeting;
@@ -16,11 +17,10 @@ final readonly class LinkMeetingToRecordAction
 {
     public function __construct(private RecordCommunicationMetrics $metrics) {}
 
-    public function execute(Meeting $meeting, Model $record): void
+    public function execute(User $user, Meeting $meeting, Model $record): void
     {
-        // Tenant boundary: a meeting may only be linked to a record in its own team.
-        // This is the authoritative guard: callers (Filament, future API/chat) must
-        // not be trusted to have pre-scoped the record.
+        abort_unless($user->can('view', $meeting) && $user->can('update', $record), 403);
+
         throw_if(
             (string) $record->getAttribute('workspace_id') !== (string) $meeting->workspace_id,
             InvalidArgumentException::class,

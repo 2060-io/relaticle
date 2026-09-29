@@ -9,6 +9,7 @@ use Relaticle\EmailIntegration\Actions\LinkMeetingAction;
 use Relaticle\EmailIntegration\Actions\LinkMeetingToRecordAction;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Meeting;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 mutates(LinkMeetingToRecordAction::class, LinkMeetingAction::class);
 
@@ -20,7 +21,7 @@ it('creates a manual link row', function (): void {
     ]);
     $person = People::factory()->for($meeting->workspace)->create();
 
-    (app(LinkMeetingToRecordAction::class))->execute($meeting, $person);
+    (app(LinkMeetingToRecordAction::class))->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
 
     expect($meeting->people()->count())->toBe(1);
     expect($meeting->people()->first()?->pivot->link_source)->toBe('manual');
@@ -32,10 +33,12 @@ it('refuses to link a record from another team', function (): void {
         'workspace_id' => $account->workspace_id,
         'connected_account_id' => $account->getKey(),
     ]);
-    // A person owned by a DIFFERENT team — the cross-tenant IDOR target.
-    $foreignPerson = People::factory()->for(Workspace::factory()->create())->create();
+    $foreignWorkspace = Workspace::factory()->create();
+    $foreignPerson = People::factory()->for($foreignWorkspace)->create();
+    $owner = mailboxOwnerInWorkspace($account);
+    $owner->workspaces()->attach($foreignWorkspace, ['role' => 'admin']);
 
-    expect(fn () => app(LinkMeetingToRecordAction::class)->execute($meeting, $foreignPerson))
+    expect(fn () => app(LinkMeetingToRecordAction::class)->execute($owner->fresh(), $meeting, $foreignPerson))
         ->toThrow(InvalidArgumentException::class);
 
     expect($meeting->people()->count())->toBe(0);
@@ -49,8 +52,8 @@ it('is idempotent', function (): void {
     ]);
     $person = People::factory()->for($meeting->workspace)->create();
 
-    (app(LinkMeetingToRecordAction::class))->execute($meeting, $person);
-    (app(LinkMeetingToRecordAction::class))->execute($meeting, $person);
+    (app(LinkMeetingToRecordAction::class))->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
+    (app(LinkMeetingToRecordAction::class))->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
 
     expect($meeting->people()->count())->toBe(1);
 });
@@ -70,7 +73,7 @@ it('increments meeting metrics on a new manual link', function (): void {
         'last_interaction_at' => null,
     ]);
 
-    app(LinkMeetingToRecordAction::class)->execute($meeting, $person);
+    app(LinkMeetingToRecordAction::class)->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
 
     $person->refresh();
 
@@ -91,8 +94,8 @@ it('does not double-count metrics when the same manual link is applied twice', f
     $person = People::factory()->for($meeting->workspace)->create(['meeting_count' => 0]);
 
     $action = app(LinkMeetingToRecordAction::class);
-    $action->execute($meeting, $person);
-    $action->execute($meeting, $person);
+    $action->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
+    $action->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
 
     expect($person->fresh()->meeting_count)->toBe(1);
 });
@@ -108,8 +111,22 @@ it('does not double-count metrics when automatic linking runs after a manual lin
     ]);
     $person = People::factory()->for($meeting->workspace)->create(['meeting_count' => 0]);
 
-    app(LinkMeetingToRecordAction::class)->execute($meeting, $person);
+    app(LinkMeetingToRecordAction::class)->execute(mailboxOwnerInWorkspace($account), $meeting, $person);
     app(LinkMeetingAction::class)->execute($meeting->fresh());
 
     expect($person->fresh()->meeting_count)->toBe(1);
+});
+
+it('refuses a viewer who cannot update the record', function (): void {
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create());
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $account->workspace_id,
+        'connected_account_id' => $account->getKey(),
+    ]);
+    $person = People::factory()->for($meeting->workspace)->create();
+
+    expect(fn () => app(LinkMeetingToRecordAction::class)->execute(mailboxOwnerInWorkspace($account, 'viewer'), $meeting, $person))
+        ->toThrow(HttpException::class);
+
+    expect($meeting->people()->count())->toBe(0);
 });

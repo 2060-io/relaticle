@@ -88,7 +88,7 @@ it('does not downgrade an existing manual company link to auto', function (): vo
         'is_self' => false,
     ]);
 
-    (app(LinkMeetingToRecordAction::class))->execute($meeting, $company);
+    (app(LinkMeetingToRecordAction::class))->execute(mailboxOwnerInWorkspace($account), $meeting, $company);
     expect($meeting->companies()->first()?->pivot->link_source)->toBe('manual');
 
     (app(LinkMeetingAction::class))->execute($meeting->fresh());

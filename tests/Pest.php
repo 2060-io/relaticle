@@ -119,6 +119,15 @@ function attachHistoryImportBatch(ConnectedAccount $account): string
     return $batch->id;
 }
 
+function mailboxOwnerInWorkspace(ConnectedAccount $account, string $role = 'admin'): User
+{
+    $owner = $account->user;
+    $owner->workspaces()->syncWithoutDetaching([$account->workspace_id => ['role' => $role]]);
+    $owner->forceFill(['current_workspace_id' => $account->workspace_id])->save();
+
+    return $owner->fresh();
+}
+
 function insertHistoryImportFailedJob(ConnectedAccount $account, string $batchId, string $uuid, string $messageId = 'failed-message'): void
 {
     $job = new StoreEmailJob($account, $messageId);

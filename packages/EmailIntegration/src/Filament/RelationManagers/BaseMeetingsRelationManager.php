@@ -114,7 +114,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                         ->schema(MeetingDetailInfolist::linkRecordFields())
                         ->action(function (array $data, Meeting $record): void {
                             resolve(LinkMeetingToRecordAction::class)
-                                ->execute($record, $this->resolveRecord((string) $data['target_type'], (string) $data['target_id']));
+                                ->execute($this->authUser(), $record, $this->resolveRecord((string) $data['target_type'], (string) $data['target_id']));
 
                             Notification::make()
                                 ->success()
@@ -129,7 +129,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                         ->requiresConfirmation()
                         ->action(function (Meeting $record): void {
                             resolve(UnlinkMeetingFromRecordAction::class)
-                                ->execute($record, $this->getOwnerRecord());
+                                ->execute($this->authUser(), $record, $this->getOwnerRecord());
 
                             Notification::make()
                                 ->success()
@@ -169,5 +169,11 @@ abstract class BaseMeetingsRelationManager extends RelationManager
         }
 
         return resolve(EmailVisibilityService::class)->recordMailboxHiddenCopy($record);
+    }
+
+    private function authUser(): User
+    {
+        /** @var User */
+        return auth()->user();
     }
 }

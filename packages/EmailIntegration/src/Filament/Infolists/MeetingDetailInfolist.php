@@ -220,7 +220,7 @@ final class MeetingDetailInfolist
                     (string) $data['target_id'],
                 );
 
-                resolve(LinkMeetingToRecordAction::class)->execute($record, $target);
+                resolve(LinkMeetingToRecordAction::class)->execute(self::authUser(), $record, $target);
 
                 Notification::make()
                     ->success()
@@ -291,5 +291,11 @@ final class MeetingDetailInfolist
             MeetingLinkedRecordType::Company => Company::query()->where('workspace_id', $teamId)->findOrFail($id),
             MeetingLinkedRecordType::Opportunity => Opportunity::query()->where('workspace_id', $teamId)->findOrFail($id),
         };
+    }
+
+    private static function authUser(): User
+    {
+        /** @var User */
+        return auth()->user();
     }
 }
