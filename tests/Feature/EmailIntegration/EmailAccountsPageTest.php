@@ -6,8 +6,11 @@ use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Relaticle\EmailIntegration\Actions\ConnectAccountAction;
+use Relaticle\EmailIntegration\Actions\DisconnectConnectedAccountAction;
 use Relaticle\EmailIntegration\Data\ConnectAccountData;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Enums\EmailProvider;
@@ -26,7 +29,7 @@ use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
 
-mutates(EmailAccountsPage::class, ConnectedAccount::class, HasConnectedAccountActions::class);
+mutates(EmailAccountsPage::class, ConnectedAccount::class, HasConnectedAccountActions::class, DisconnectConnectedAccountAction::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -120,6 +123,48 @@ it('deletes the authenticated user\'s account on disconnect', function (): void 
     $this->assertSoftDeleted(ConnectedAccount::class, [
         'id' => $this->account->id,
     ]);
+});
+
+it('revokes the google grant and clears the stored tokens on disconnect', function (): void {
+    Http::fake(['https://oauth2.googleapis.com/revoke' => Http::response()]);
+    $this->account->update(['provider' => EmailProvider::GMAIL, 'refresh_token' => 'refresh-to-revoke']);
+
+    livewire(EmailAccountsPage::class)
+        ->callAction('disconnect', arguments: ['account_id' => $this->account->id]);
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://oauth2.googleapis.com/revoke'
+        && $request['token'] === 'refresh-to-revoke');
+
+    $disconnected = ConnectedAccount::withTrashed()->findOrFail($this->account->id);
+
+    expect($disconnected->trashed())->toBeTrue()
+        ->and($disconnected->access_token)->toBeNull()
+        ->and($disconnected->refresh_token)->toBeNull()
+        ->and($disconnected->token_expires_at)->toBeNull();
+});
+
+it('still disconnects when google fails to revoke the grant', function (): void {
+    Http::fake(['https://oauth2.googleapis.com/revoke' => Http::response(status: 500)]);
+    $this->account->update(['provider' => EmailProvider::GMAIL, 'refresh_token' => 'refresh-to-revoke']);
+
+    livewire(EmailAccountsPage::class)
+        ->callAction('disconnect', arguments: ['account_id' => $this->account->id]);
+
+    $disconnected = ConnectedAccount::withTrashed()->findOrFail($this->account->id);
+
+    expect($disconnected->trashed())->toBeTrue()
+        ->and($disconnected->refresh_token)->toBeNull();
+});
+
+it('clears microsoft tokens on disconnect without calling a revoke endpoint', function (): void {
+    Http::fake();
+    $this->account->update(['provider' => EmailProvider::AZURE, 'refresh_token' => 'graph-refresh']);
+
+    livewire(EmailAccountsPage::class)
+        ->callAction('disconnect', arguments: ['account_id' => $this->account->id]);
+
+    Http::assertNothingSent();
+    expect(ConnectedAccount::withTrashed()->findOrFail($this->account->id)->refresh_token)->toBeNull();
 });
 
 it('deletes dependent signatures and refreshes the listing on disconnect', function (): void {

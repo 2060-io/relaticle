@@ -283,6 +283,9 @@ it('dispatches history import when a disconnected account is reconnected', funct
         'email_address' => 'again@example.com',
         'provider' => EmailProvider::GMAIL,
         'provider_account_id' => 'gmail-reconnect-import',
+        'access_token' => null,
+        'refresh_token' => null,
+        'token_expires_at' => null,
     ]));
 
     $social = new SocialiteUser;
@@ -301,7 +304,9 @@ it('dispatches history import when a disconnected account is reconnected', funct
     bindMailboxOAuthWorkspace($user);
     $this->get(route('email-accounts.callback', ['provider' => 'gmail']))->assertRedirect();
 
-    expect($account->refresh()->trashed())->toBeFalse();
+    expect($account->refresh()->trashed())->toBeFalse()
+        ->and($account->access_token)->toBe('access-token')
+        ->and($account->refresh_token)->toBe('refresh-token');
 
     Bus::assertDispatched(InitialEmailSyncJob::class, fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($account));
     Bus::assertDispatched(RelinkMailboxHistoryJob::class, fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($account));

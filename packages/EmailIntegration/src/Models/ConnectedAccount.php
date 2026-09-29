@@ -36,7 +36,7 @@ use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
  * @property bool $is_default
  * @property bool $sync_inbox
  * @property bool $sync_sent
- * @property string $access_token
+ * @property string|null $access_token
  * @property string|null $refresh_token
  * @property array{email?: bool, send?: bool, calendar?: bool}|null $capabilities
  * @property CarbonInterface|null $token_expires_at

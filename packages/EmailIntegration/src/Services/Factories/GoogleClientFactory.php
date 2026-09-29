@@ -24,7 +24,7 @@ final readonly class GoogleClientFactory
             : 0;
 
         $client->setAccessToken([
-            'access_token' => $account->access_token,
+            'access_token' => (string) $account->access_token,
             'refresh_token' => $account->refresh_token,
             'expires_in' => $expiresIn,
             'created' => time(),

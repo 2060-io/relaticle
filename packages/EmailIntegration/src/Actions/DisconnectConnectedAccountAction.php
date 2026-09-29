@@ -6,15 +6,19 @@ namespace Relaticle\EmailIntegration\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Services\ProviderGrantRevoker;
 
 final readonly class DisconnectConnectedAccountAction
 {
     public function __construct(
         private StopCalendarPushChannelAction $stopCalendarPushChannel,
+        private ProviderGrantRevoker $grantRevoker,
     ) {}
 
     public function execute(ConnectedAccount $account): void
     {
+        $grant = $account->refresh_token ?? $account->access_token;
+
         DB::transaction(function () use ($account): void {
             $this->stopCalendarPushChannel->execute($account);
             // Account is soft-deleted, so the DB-level cascade on email_signatures never
@@ -24,6 +28,12 @@ final readonly class DisconnectConnectedAccountAction
             $account->blocklist()->delete();
 
             $wasDefault = $account->is_default;
+
+            $account->forceFill([
+                'access_token' => null,
+                'refresh_token' => null,
+                'token_expires_at' => null,
+            ])->save();
 
             $account->delete();
 
@@ -40,5 +50,7 @@ final readonly class DisconnectConnectedAccountAction
                 $successor?->update(['is_default' => true]);
             }
         });
+
+        $this->grantRevoker->revoke($account->provider, $grant);
     }
 }
