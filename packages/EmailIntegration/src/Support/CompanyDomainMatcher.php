@@ -6,7 +6,9 @@ namespace Relaticle\EmailIntegration\Support;
 
 use App\Models\Company;
 use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Relaticle\EmailIntegration\Models\PublicEmailDomain;
 
 /**
  * Single source of truth for resolving an email/attendee domain to an existing
@@ -63,5 +65,20 @@ final class CompanyDomainMatcher
     public function matchPattern(string $domain): string
     {
         return '(^|["/])(www\.)?'.preg_quote($this->host($domain)).'(["/:]|$)';
+    }
+
+    /**
+     * @return Collection<int, lowercase-string>
+     */
+    public function skippedHosts(string $teamId): Collection
+    {
+        $configDomains = collect((array) config('email-integration.public_domains', []))
+            ->map(fn (mixed $d): string => strtolower($this->host((string) $d)));
+
+        $teamDomains = PublicEmailDomain::query()->where('workspace_id', $teamId)
+            ->pluck('domain')
+            ->map(fn (mixed $d): string => strtolower($this->host((string) $d)));
+
+        return $configDomains->merge($teamDomains)->unique()->values();
     }
 }

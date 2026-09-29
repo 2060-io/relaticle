@@ -456,7 +456,7 @@ final class EmailVisibilityService
     /**
      * @return list<string>
      */
-    private function recordIdentityAddresses(People|Company $record): array
+    public function recordIdentityAddresses(People|Company $record): array
     {
         if (! $record instanceof People) {
             return [];
@@ -476,7 +476,7 @@ final class EmailVisibilityService
     /**
      * @return list<string>
      */
-    private function recordIdentityDomains(People|Company $record): array
+    public function recordIdentityDomains(People|Company $record): array
     {
         if (! $record instanceof Company) {
             return [];

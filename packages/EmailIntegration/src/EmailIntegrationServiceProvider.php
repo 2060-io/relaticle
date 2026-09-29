@@ -6,6 +6,9 @@ namespace Relaticle\EmailIntegration;
 
 use App\Features\EmailIntegration;
 use App\Filament\Pages\Dashboard;
+use App\Models\Company;
+use App\Models\CustomFieldValue;
+use App\Models\People;
 use App\Models\User;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
@@ -50,6 +53,7 @@ use Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory;
 use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
 use Relaticle\EmailIntegration\Support\PublicSuffixList;
+use Relaticle\EmailIntegration\Support\QueueRecordHistoryRelink;
 use SocialiteProviders\Azure\AzureExtendSocialite;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 
@@ -98,6 +102,10 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         if (! Feature::for(null)->active(EmailIntegration::class)) {
             return;
         }
+
+        CustomFieldValue::saved(fn (CustomFieldValue $value) => resolve(QueueRecordHistoryRelink::class)->forIdentityValue($value));
+        People::created(fn (People $person) => resolve(QueueRecordHistoryRelink::class)->forImportedRecord($person));
+        Company::created(fn (Company $company) => resolve(QueueRecordHistoryRelink::class)->forImportedRecord($company));
 
         Event::listen(SocialiteWasCalled::class, [AzureExtendSocialite::class, 'handle']);
 
