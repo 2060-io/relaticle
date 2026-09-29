@@ -389,13 +389,13 @@ it('keeps a mailbox that failed to store events eligible for the scheduled calen
     );
 });
 
-function incrementalDeltaEvent(string $providerEventId): CalendarEventData
+function incrementalDeltaEvent(string $providerEventId, string $title = 'Delta event'): CalendarEventData
 {
     return new CalendarEventData(
         providerEventId: $providerEventId,
         providerRecurringEventId: null,
         iCalUid: null,
-        title: 'Delta event',
+        title: $title,
         description: null,
         startsAt: Date::now()->addDay(),
         endsAt: Date::now()->addDay()->addHour(),
@@ -425,7 +425,7 @@ function syncCalendarDeltaOf(ConnectedAccount $account, array $events): void
 function failStoringEvent(ConnectedAccount $account, CalendarEventData $event, int $syncs): void
 {
     foreach (range(1, $syncs) as $ignored) {
-        (new StoreMeetingJob($account, $event))->failed(new RuntimeException('Unparseable event'));
+        unserialize(serialize(new StoreMeetingJob($account, $event)))->failed(new RuntimeException('Unparseable event'));
     }
 }
 
@@ -450,7 +450,7 @@ function completeIncrementalCalendarBatch(int $failedJobs = 0): void
     });
 }
 
-it('skips an event that failed three syncs and advances the cursor past it', function (): void {
+it('skips an event that failed three times over a day and advances the cursor past it', function (): void {
     Bus::fake();
 
     $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
@@ -459,6 +459,7 @@ it('skips an event that failed three syncs and advances the cursor past it', fun
     ]));
     $poison = incrementalDeltaEvent('evt-poison');
     failStoringEvent($account, $poison, syncs: 3);
+    $this->travel(25)->hours();
 
     syncCalendarDeltaOf($account, [$poison, incrementalDeltaEvent('evt-ok')]);
 
@@ -467,11 +468,10 @@ it('skips an event that failed three syncs and advances the cursor past it', fun
 
     completeIncrementalCalendarBatch();
 
-    expect($account->fresh()?->calendar_sync_cursor)->toBe('new-token')
-        ->and($account->fresh()?->last_error)->toBe('1 calendar event kept failing and was skipped.');
+    expect($account->fresh()?->calendar_sync_cursor)->toBe('new-token');
 });
 
-it('still retries an event that failed only once', function (): void {
+it('still retries an event that failed only twice', function (): void {
     Bus::fake();
 
     $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
@@ -479,7 +479,8 @@ it('still retries an event that failed only once', function (): void {
         'calendar_sync_cursor' => 'valid-token',
     ]));
     $flaky = incrementalDeltaEvent('evt-flaky');
-    failStoringEvent($account, $flaky, syncs: 1);
+    failStoringEvent($account, $flaky, syncs: 2);
+    $this->travel(25)->hours();
 
     syncCalendarDeltaOf($account, [$flaky, incrementalDeltaEvent('evt-ok')]);
 
@@ -490,7 +491,22 @@ it('still retries an event that failed only once', function (): void {
     expect($account->fresh()?->calendar_sync_cursor)->toBe('valid-token');
 });
 
-it('advances the calendar cursor inline when every event failed three syncs', function (): void {
+it('retries an event again once its organizer changes it', function (): void {
+    Bus::fake();
+
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'capabilities' => ['email' => true, 'calendar' => true],
+        'calendar_sync_cursor' => 'valid-token',
+    ]));
+    failStoringEvent($account, incrementalDeltaEvent('evt-poison'), syncs: 3);
+    $this->travel(25)->hours();
+
+    syncCalendarDeltaOf($account, [incrementalDeltaEvent('evt-poison', title: 'Rescheduled')]);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->first()->event->title === 'Rescheduled');
+});
+
+it('advances the calendar cursor inline when every event keeps failing', function (): void {
     Bus::fake();
 
     $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
@@ -499,10 +515,10 @@ it('advances the calendar cursor inline when every event failed three syncs', fu
     ]));
     $poison = incrementalDeltaEvent('evt-poison');
     failStoringEvent($account, $poison, syncs: 3);
+    $this->travel(25)->hours();
 
     syncCalendarDeltaOf($account, [$poison]);
 
     Bus::assertNothingBatched();
-    expect($account->fresh()?->calendar_sync_cursor)->toBe('new-token')
-        ->and($account->fresh()?->last_error)->toBe('1 calendar event kept failing and was skipped.');
+    expect($account->fresh()?->calendar_sync_cursor)->toBe('new-token');
 });

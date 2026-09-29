@@ -28,4 +28,9 @@ final readonly class CalendarEventData
         public ?string $organizerName,
         public array $attendees,
     ) {}
+
+    public function revisionKey(): string
+    {
+        return "{$this->providerEventId}@".sha1((string) json_encode(get_object_vars($this)));
+    }
 }

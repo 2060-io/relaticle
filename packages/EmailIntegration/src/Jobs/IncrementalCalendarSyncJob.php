@@ -87,20 +87,19 @@ final class IncrementalCalendarSyncJob implements ShouldBeUnique, ShouldQueue
         // Advancing the cursor before the fetched events are stored loses any event
         // whose StoreMeetingJob exhausts its retries: the next sync starts past it and
         // it is never retried. So advance the cursor only once the batch has fully stored.
-        // With no events the delta is a read-only window, so advance inline.
-        $skippedIds = array_flip(SyncItemFailures::exhausted(
+        // With nothing left to store the delta is a read-only window, so advance inline.
+        $skippedRevisions = array_flip(SyncItemFailures::toSkip(
             $account,
             StoreMeetingJob::class,
-            array_map(static fn (CalendarEventData $event): string => $event->providerEventId, $result->events),
+            array_map(static fn (CalendarEventData $event): string => $event->revisionKey(), $result->events),
         ));
         $events = array_values(array_filter(
             $result->events,
-            static fn (CalendarEventData $event): bool => ! isset($skippedIds[$event->providerEventId]),
+            static fn (CalendarEventData $event): bool => ! isset($skippedRevisions[$event->revisionKey()]),
         ));
-        $skippedError = self::skippedEventsError(count($skippedIds));
 
         if ($events === []) {
-            self::finish($account, $result->nextSyncToken, $this->reconcileAfter, storedEvents: false, skippedError: $skippedError);
+            self::finish($account, $result->nextSyncToken, $this->reconcileAfter, storedEvents: false);
 
             return;
         }
@@ -126,7 +125,7 @@ final class IncrementalCalendarSyncJob implements ShouldBeUnique, ShouldQueue
             ->name("Incremental calendar sync: {$account->email_address}")
             ->onQueue('emails-sync')
             ->allowFailures()
-            ->finally(static function (Batch $batch) use ($accountId, $nextSyncToken, $reconcileAfter, $skippedError): void {
+            ->finally(static function (Batch $batch) use ($accountId, $nextSyncToken, $reconcileAfter): void {
                 $account = ConnectedAccount::query()->whereKey($accountId)->first();
 
                 if (! $account instanceof ConnectedAccount) {
@@ -139,12 +138,12 @@ final class IncrementalCalendarSyncJob implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
-                self::finish($account, $nextSyncToken, $reconcileAfter, storedEvents: true, skippedError: $skippedError);
+                self::finish($account, $nextSyncToken, $reconcileAfter, storedEvents: true);
             })
             ->dispatch();
     }
 
-    private static function finish(ConnectedAccount $account, ?string $nextSyncToken, bool $reconcileAfter, bool $storedEvents, ?string $skippedError): void
+    private static function finish(ConnectedAccount $account, ?string $nextSyncToken, bool $reconcileAfter, bool $storedEvents): void
     {
         $account = $account->fresh() ?? $account;
 
@@ -162,7 +161,7 @@ final class IncrementalCalendarSyncJob implements ShouldBeUnique, ShouldQueue
         }
 
         if (! resolve(MailboxHistoryImportService::class)->historyImportHasUnresolvedEmailFailures($account)) {
-            $update['last_error'] = $skippedError;
+            $update['last_error'] = null;
         }
 
         $account->update($update);
@@ -210,13 +209,6 @@ final class IncrementalCalendarSyncJob implements ShouldBeUnique, ShouldQueue
         resolve(MailboxHistoryImportService::class)->failCalendarImport($account, $failedJobs);
 
         resolve(CompleteMailboxHistoryImportAction::class)->executeForAccount($account);
-    }
-
-    private static function skippedEventsError(int $skipped): ?string
-    {
-        return $skipped > 0
-            ? trans_choice('filament/pages/email-accounts.sync_error.skipped_events', $skipped)
-            : null;
     }
 
     public function failed(Throwable $exception): void

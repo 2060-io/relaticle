@@ -7,6 +7,7 @@ use Google\Service\Exception as GoogleServiceException;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Testing\Fakes\BatchFake;
 use Laravel\SerializableClosure\SerializableClosure;
@@ -363,28 +364,30 @@ function completeIncrementalEmailBatch(int $failedJobs = 0): void
     });
 }
 
-it('skips a message that failed three syncs and advances the cursor past it', function (): void {
+it('skips a message that failed three times over a day and advances the cursor past it', function (): void {
     Bus::fake();
+    Log::spy();
 
     $account = syncableAccount();
     failStoringMessage($account, 'POISON', syncs: 3);
+    $this->travel(25)->hours();
 
     syncDeltaOf($account, ['POISON', 'M2']);
 
-    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() === 1
-        && $batch->jobs->first()->messageId === 'M2');
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->pluck('messageId')->all() === ['M2']);
 
     completeIncrementalEmailBatch();
 
-    expect($account->refresh()->sync_cursor)->toBe('new-cursor')
-        ->and($account->last_error)->toBe('1 email kept failing and was skipped.');
+    expect($account->refresh()->sync_cursor)->toBe('new-cursor');
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $context['item_ids'] === ['POISON']);
 });
 
-it('still retries a message that failed only once', function (): void {
+it('still retries a message that failed only twice', function (): void {
     Bus::fake();
 
     $account = syncableAccount();
-    failStoringMessage($account, 'FLAKY', syncs: 1);
+    failStoringMessage($account, 'FLAKY', syncs: 2);
+    $this->travel(25)->hours();
 
     syncDeltaOf($account, ['FLAKY', 'M2']);
 
@@ -395,18 +398,30 @@ it('still retries a message that failed only once', function (): void {
     expect($account->refresh()->sync_cursor)->toBe('old-cursor');
 });
 
-it('advances the cursor inline when every new message failed three syncs', function (): void {
+it('still retries a message whose failures all came within the last day', function (): void {
+    Bus::fake();
+
+    $account = syncableAccount();
+    failStoringMessage($account, 'OUTAGE', syncs: 3);
+    $this->travel(23)->hours();
+
+    syncDeltaOf($account, ['OUTAGE']);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->pluck('messageId')->all() === ['OUTAGE']);
+});
+
+it('advances the cursor inline when every new message keeps failing', function (): void {
     Bus::fake();
 
     $account = syncableAccount();
     failStoringMessage($account, 'POISON-1', syncs: 3);
     failStoringMessage($account, 'POISON-2', syncs: 3);
+    $this->travel(25)->hours();
 
     syncDeltaOf($account, ['POISON-1', 'POISON-2']);
 
     Bus::assertNothingBatched();
-    expect($account->refresh()->sync_cursor)->toBe('new-cursor')
-        ->and($account->last_error)->toBe('2 emails kept failing and were skipped.');
+    expect($account->refresh()->sync_cursor)->toBe('new-cursor');
 });
 
 it('forgets a failed message after a week so a later sync tries it again', function (): void {

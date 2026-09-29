@@ -53,6 +53,6 @@ final class StoreMeetingJob implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        SyncItemFailures::record($this->connectedAccount, self::class, $this->event->providerEventId);
+        SyncItemFailures::record($this->connectedAccount, self::class, $this->event->revisionKey());
     }
 }
