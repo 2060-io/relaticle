@@ -45,6 +45,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\MatchBehavior;
 use Relaticle\ImportWizard\Enums\NumberFormat;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
+use Relaticle\ImportWizard\Events\CustomFieldValuesImported;
 use Relaticle\ImportWizard\Exceptions\MissingRequiredFieldException;
 use Relaticle\ImportWizard\Exceptions\UnparsableDateException;
 use Relaticle\ImportWizard\Importers\BaseImporter;
@@ -565,6 +566,16 @@ final class ExecuteImportJob implements ShouldQueue
         }
 
         $this->pendingCustomFieldValues = [];
+
+        event(new CustomFieldValuesImported(array_values(array_map(
+            static fn (array $row): array => [
+                'entity_type' => (string) $row['entity_type'],
+                'entity_id' => (string) $row['entity_id'],
+                'custom_field_id' => (string) $row['custom_field_id'],
+                'tenant_id' => (string) $row[$tenantKey],
+            ],
+            $deduplicated,
+        ))));
 
         $changeLog = resolve(CustomFieldChangeLog::class);
 

@@ -10,7 +10,7 @@ use App\Models\People;
 use App\Support\EmailAddress;
 use Closure;
 use Illuminate\Contracts\Database\Query\Builder;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
@@ -32,7 +32,7 @@ use Relaticle\EmailIntegration\Support\CompanyDomainMatcher;
 #[Queue('emails-sync')]
 #[Timeout(300)]
 #[UniqueFor(600)]
-final class RelinkRecordHistoryJob implements ShouldBeUnique, ShouldQueue
+final class RelinkRecordHistoryJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
 
@@ -52,16 +52,16 @@ final class RelinkRecordHistoryJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $unlinkedParticipants = $this->unlinkedParticipantsMatcher($visibility, $domainMatcher, $workspaceId);
-
-        if (! $unlinkedParticipants instanceof Closure) {
-            return;
-        }
-
         $previousTenantId = TenantContextService::getCurrentTenantId();
         TenantContextService::setTenantId($workspaceId);
 
         try {
+            $unlinkedParticipants = $this->unlinkedParticipantsMatcher($visibility, $domainMatcher, $workspaceId);
+
+            if (! $unlinkedParticipants instanceof Closure) {
+                return;
+            }
+
             Email::query()
                 ->where('workspace_id', $workspaceId)
                 ->whereHas('participants', $unlinkedParticipants)
@@ -83,7 +83,7 @@ final class RelinkRecordHistoryJob implements ShouldBeUnique, ShouldQueue
     public static function shouldRelink(string $workspaceId): bool
     {
         return Feature::active(EmailIntegration::class)
-            && ConnectedAccount::query()->where('workspace_id', $workspaceId)->active()->exists();
+            && ConnectedAccount::query()->where('workspace_id', $workspaceId)->exists();
     }
 
     public function uniqueId(): string

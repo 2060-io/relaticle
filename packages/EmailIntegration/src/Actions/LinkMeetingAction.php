@@ -91,8 +91,12 @@ final readonly class LinkMeetingAction
                     $this->metrics->incrementMeetingMetrics($person, $meeting);
                 }
 
-                if ($person->company_id) {
-                    $this->autoAttach($meeting->companies(), $person->company_id);
+                $personCompany = $person->company;
+
+                if ($personCompany instanceof Company
+                    && $this->autoAttach($meeting->companies(), $personCompany->getKey())
+                    && $countsTowardIntelligence) {
+                    $this->metrics->incrementMeetingMetrics($personCompany, $meeting);
                 }
 
                 $opportunities = Opportunity::query()->where('workspace_id', $teamId)

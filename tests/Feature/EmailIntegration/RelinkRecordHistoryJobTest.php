@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Actions\Company\CreateCompany;
 use App\Actions\People\CreatePeople;
-use App\Enums\CreationSource;
 use App\Features\EmailIntegration;
 use App\Models\Company;
 use App\Models\People;
@@ -25,8 +24,18 @@ use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\MeetingAttendee;
 use Relaticle\EmailIntegration\Support\QueueRecordHistoryRelink;
+use Relaticle\ImportWizard\Data\ColumnData;
+use Relaticle\ImportWizard\Enums\RowMatchAction;
+use Relaticle\ImportWizard\Store\ImportStore;
+use Tests\Helpers\ImportExecutionFixture;
 
-mutates(RelinkRecordHistoryJob::class, QueueRecordHistoryRelink::class);
+mutates(RelinkRecordHistoryJob::class, QueueRecordHistoryRelink::class, LinkEmailAction::class, LinkMeetingAction::class);
+
+afterEach(function (): void {
+    if (isset($this->import)) {
+        ImportStore::load($this->import->id)?->destroy();
+    }
+});
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -122,17 +131,51 @@ it('queues a relink again only when the record addresses change', function (): v
     Bus::assertDispatchedTimes(RelinkRecordHistoryJob::class, 2);
 });
 
-it('queues a delayed relink for an imported record', function (string $model): void {
-    Bus::fake();
+it('links earlier mail to a person created by an import', function (): void {
+    $email = ($this->linkedEmailFrom)('jane@partner.com');
 
-    $record = $model::factory()->create([
-        'workspace_id' => $this->workspace->id,
-        'creation_source' => CreationSource::IMPORT,
+    ImportExecutionFixture::readyStore($this, ['Name', 'Email'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Jane', 'Email' => 'jane@partner.com'], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toField(source: 'Email', target: 'custom_fields_emails'),
+    ]);
+    ImportExecutionFixture::run($this);
+
+    expect($email->people()->pluck('name')->all())->toBe(['Jane']);
+});
+
+it('links earlier mail when an import adds an address to an existing person', function (): void {
+    $email = ($this->linkedEmailFrom)('jane@newco.com');
+    $person = People::factory()->create(['workspace_id' => $this->workspace->id, 'name' => 'Jane']);
+
+    ImportExecutionFixture::readyStore($this, ['Name', 'Email'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Jane', 'Email' => 'jane@newco.com'], [
+            'match_action' => RowMatchAction::Update->value,
+            'matched_id' => (string) $person->getKey(),
+        ]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toField(source: 'Email', target: 'custom_fields_emails'),
+    ]);
+    ImportExecutionFixture::run($this);
+
+    expect($email->people()->pluck('people.id')->all())->toBe([$person->getKey()]);
+});
+
+it('counts a company reached through its person in the company email metrics', function (): void {
+    $email = ($this->linkedEmailFrom)('jane@gmail.com');
+    $company = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+
+    resolve(CreatePeople::class)->execute($this->user, [
+        'name' => 'Jane',
+        'company_id' => $company->getKey(),
+        'custom_fields' => ['emails' => ['jane@gmail.com']],
     ]);
 
-    Bus::assertDispatched(RelinkRecordHistoryJob::class, fn (RelinkRecordHistoryJob $job): bool => $job->record->is($record)
-        && $job->delay !== null);
-})->with([People::class, Company::class]);
+    expect($email->companies()->pluck('companies.id')->all())->toBe([$company->getKey()])
+        ->and($company->fresh()->email_count)->toBe(1);
+});
 
 it('only relinks mail from the new record domain', function (): void {
     $unrelated = ($this->linkedEmailFrom)('buyer@elsewhere.com');
@@ -158,9 +201,32 @@ it('does not queue a relink when the feature is off', function (): void {
     Bus::assertNotDispatched(RelinkRecordHistoryJob::class);
 });
 
-it('does not queue a relink in a workspace without an active mailbox', function (): void {
+it('counts a company reached through its person in the company meeting metrics', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->getKey(),
+    ]);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->getKey(),
+        'email_address' => 'jane@gmail.com',
+        'is_self' => false,
+    ]);
+    resolve(LinkMeetingAction::class)->execute($meeting->fresh());
+    $company = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+
+    resolve(CreatePeople::class)->execute($this->user, [
+        'name' => 'Jane',
+        'company_id' => $company->getKey(),
+        'custom_fields' => ['emails' => ['jane@gmail.com']],
+    ]);
+
+    expect($meeting->companies()->pluck('companies.id')->all())->toBe([$company->getKey()])
+        ->and($company->fresh()->meeting_count)->toBe(1);
+});
+
+it('does not queue a relink in a workspace without a connected mailbox', function (): void {
     Bus::fake();
-    $this->account->update(['status' => EmailAccountStatus::REAUTH_REQUIRED]);
+    $this->account->delete();
 
     resolve(CreatePeople::class)->execute($this->user, [
         'name' => 'Jane Doe',
@@ -170,15 +236,29 @@ it('does not queue a relink in a workspace without an active mailbox', function 
     Bus::assertNotDispatched(RelinkRecordHistoryJob::class);
 });
 
+it('still relinks while the only mailbox has a sync error', function (): void {
+    $email = ($this->linkedEmailFrom)('jane@partner.com');
+    $this->account->update(['status' => EmailAccountStatus::ERROR]);
+
+    resolve(CreatePeople::class)->execute($this->user, [
+        'name' => 'Jane Doe',
+        'custom_fields' => ['emails' => ['jane@partner.com']],
+    ]);
+
+    expect($email->people()->count())->toBe(1);
+});
+
 it('leaves mail from a public email domain alone when a company claims it', function (): void {
     $email = ($this->linkedEmailFrom)('someone@gmail.com');
+    $this->workspace->update(['contact_creation_mode' => ContactCreationMode::All]);
 
     resolve(CreateCompany::class)->execute($this->user, [
         'name' => 'Google',
         'custom_fields' => ['domains' => ['gmail.com']],
     ]);
 
-    expect($email->companies()->count())->toBe(0);
+    expect($email->companies()->count())->toBe(0)
+        ->and($email->people()->count())->toBe(0);
 });
 
 it('does not touch a participant already linked to another person', function (): void {

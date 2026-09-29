@@ -4,38 +4,28 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Support;
 
-use App\Enums\CreationSource;
+use App\Enums\CrmEntity;
 use App\Enums\CustomFields\CompanyField;
 use App\Enums\CustomFields\PeopleField;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\People;
+use Illuminate\Contracts\Database\Query\Builder;
 use Relaticle\EmailIntegration\Jobs\RelinkRecordHistoryJob;
+use Relaticle\ImportWizard\Events\CustomFieldValuesImported;
 
-final readonly class QueueRecordHistoryRelink
+final class QueueRecordHistoryRelink
 {
-    private const int IMPORT_SETTLE_SECONDS = 120;
+    /** @var array<string, array<string, string>> */
+    private array $identityFieldIds = [];
+
+    /** @var array<string, bool> */
+    private array $workspaceRelinks = [];
 
     public function forIdentityValue(CustomFieldValue $value): void
     {
         if (! $value->wasRecentlyCreated && ! $value->wasChanged()) {
-            return;
-        }
-
-        $identityCode = match ($value->entity_type) {
-            'people' => PeopleField::EMAILS->value,
-            'company' => CompanyField::DOMAINS->value,
-            default => null,
-        };
-
-        if ($identityCode === null) {
-            return;
-        }
-
-        $fieldCode = CustomField::query()->withoutGlobalScopes()->whereKey($value->custom_field_id)->value('code');
-
-        if ($fieldCode !== $identityCode) {
             return;
         }
 
@@ -45,24 +35,52 @@ final readonly class QueueRecordHistoryRelink
             return;
         }
 
-        if (! RelinkRecordHistoryJob::shouldRelink((string) $record->workspace_id)) {
-            return;
+        if ($this->isIdentityField((string) $record->workspace_id, (string) $value->entity_type, (string) $value->custom_field_id)) {
+            $this->queue($record);
         }
-
-        dispatch(new RelinkRecordHistoryJob($record))->afterCommit();
     }
 
-    public function forImportedRecord(People|Company $record): void
+    public function forImportedValues(CustomFieldValuesImported $event): void
     {
-        if ($record->creation_source !== CreationSource::IMPORT) {
-            return;
+        $recordIds = [];
+
+        foreach ($event->values as $value) {
+            if ($this->isIdentityField($value['tenant_id'], $value['entity_type'], $value['custom_field_id'])) {
+                $recordIds[$value['entity_type']][$value['entity_id']] = true;
+            }
         }
 
-        if (! RelinkRecordHistoryJob::shouldRelink((string) $record->workspace_id)) {
-            return;
-        }
+        foreach ([CrmEntity::People->value => People::class, CrmEntity::Company->value => Company::class] as $entityType => $model) {
+            if (! isset($recordIds[$entityType])) {
+                continue;
+            }
 
-        // Imports bulk-write custom field values after each chunk, bypassing model events.
-        dispatch(new RelinkRecordHistoryJob($record))->afterCommit()->delay(now()->addSeconds(self::IMPORT_SETTLE_SECONDS));
+            $model::query()->whereKey(array_keys($recordIds[$entityType]))->each(fn (People|Company $record) => $this->queue($record));
+        }
+    }
+
+    private function queue(People|Company $record): void
+    {
+        $workspaceId = (string) $record->workspace_id;
+        $this->workspaceRelinks[$workspaceId] ??= RelinkRecordHistoryJob::shouldRelink($workspaceId);
+
+        if ($this->workspaceRelinks[$workspaceId]) {
+            dispatch(new RelinkRecordHistoryJob($record))->afterCommit();
+        }
+    }
+
+    private function isIdentityField(string $tenantId, string $entityType, string $customFieldId): bool
+    {
+        $this->identityFieldIds[$tenantId] ??= CustomField::query()
+            ->withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where(fn (Builder $query): Builder => $query
+                ->where(fn (Builder $people): Builder => $people->where('entity_type', CrmEntity::People->value)->where('code', PeopleField::EMAILS->value))
+                ->orWhere(fn (Builder $company): Builder => $company->where('entity_type', CrmEntity::Company->value)->where('code', CompanyField::DOMAINS->value)))
+            ->pluck('entity_type', 'id')
+            ->map(fn (mixed $type): string => (string) $type)
+            ->all();
+
+        return ($this->identityFieldIds[$tenantId][$customFieldId] ?? null) === $entityType;
     }
 }

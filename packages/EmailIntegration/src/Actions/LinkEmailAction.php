@@ -169,8 +169,13 @@ final readonly class LinkEmailAction
                     $this->metrics->incrementEmailMetrics($person, $email);
                 }
 
-                if ($person->company_id) {
-                    $this->autoAttach($email->companies(), $person->company_id);
+                $personCompany = $person->company;
+
+                if ($personCompany instanceof Company
+                    && $this->autoAttach($email->companies(), $personCompany->getKey())
+                    && ! isset($countedCompanies[$personCompany->getKey()])) {
+                    $countedCompanies[$personCompany->getKey()] = true;
+                    $this->metrics->incrementEmailMetrics($personCompany, $email);
                 }
 
                 $opportunities = Opportunity::query()->where('workspace_id', $teamId)

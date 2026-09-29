@@ -6,9 +6,7 @@ namespace Relaticle\EmailIntegration;
 
 use App\Features\EmailIntegration;
 use App\Filament\Pages\Dashboard;
-use App\Models\Company;
 use App\Models\CustomFieldValue;
-use App\Models\People;
 use App\Models\User;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
@@ -54,6 +52,7 @@ use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
 use Relaticle\EmailIntegration\Support\PublicSuffixList;
 use Relaticle\EmailIntegration\Support\QueueRecordHistoryRelink;
+use Relaticle\ImportWizard\Events\CustomFieldValuesImported;
 use SocialiteProviders\Azure\AzureExtendSocialite;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 
@@ -71,6 +70,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         $this->app->scoped(TeamMemberDirectory::class);
         $this->app->scoped(MailboxDisplayNameDirectory::class);
         $this->app->scoped(EmailVisibilityService::class);
+        $this->app->scoped(QueueRecordHistoryRelink::class);
 
         // Not gated by the feature flag: these are inert while the feature is off, and
         // static analysis (which runs with it off) can only resolve
@@ -104,8 +104,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         }
 
         CustomFieldValue::saved(fn (CustomFieldValue $value) => resolve(QueueRecordHistoryRelink::class)->forIdentityValue($value));
-        People::created(fn (People $person) => resolve(QueueRecordHistoryRelink::class)->forImportedRecord($person));
-        Company::created(fn (Company $company) => resolve(QueueRecordHistoryRelink::class)->forImportedRecord($company));
+        Event::listen(CustomFieldValuesImported::class, fn (CustomFieldValuesImported $event) => resolve(QueueRecordHistoryRelink::class)->forImportedValues($event));
 
         Event::listen(SocialiteWasCalled::class, [AzureExtendSocialite::class, 'handle']);
 
