@@ -5,8 +5,15 @@ declare(strict_types=1);
 use App\Features\OnboardSeed;
 use App\Models\CustomField;
 use App\Models\User;
+use App\Support\CustomFields\WorkspaceCustomFields;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
+use Relaticle\Chat\Agents\CrmAssistant;
+use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Services\Tools\CustomFieldsSchemaDescriber;
+
+mutates(CustomFieldsSchemaDescriber::class, CustomFieldsFilterDescriber::class, WorkspaceCustomFields::class);
 
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
@@ -98,4 +105,48 @@ it('describes a record field as record ids and a multi-select field as option la
         ->and($lines->first(fn (string $line): bool => str_contains($line, 'markets')))
         ->toContain('markets (multi-select')
         ->toContain('array of option labels or IDs');
+});
+
+it('reads the workspace custom fields once across every tool schema of a multi-step turn', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    $tools = (new CrmAssistant)->tools();
+
+    $customFieldQueriesPerStep = collect([1, 2, 3])->map(function () use ($tools): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        foreach ($tools as $tool) {
+            $tool->schema(new JsonSchemaTypeFactory);
+        }
+
+        return collect(DB::getQueryLog())
+            ->filter(fn (array $query): bool => str_contains($query['query'], 'custom_field'))
+            ->count();
+    });
+
+    expect($customFieldQueriesPerStep->all())->toBe([3, 0, 0]);
+});
+
+it('describes a custom field created after the schema was first read', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+
+    resolve(CustomFieldsSchemaDescriber::class)->describe($workspace, 'task');
+    resolve(CustomFieldsFilterDescriber::class)->describe($user, 'task');
+
+    CustomField::query()->create([
+        'tenant_id' => $workspace->getKey(),
+        'entity_type' => 'task',
+        'code' => 'effort',
+        'name' => 'Effort',
+        'type' => 'number',
+        'sort_order' => 60,
+        'validation_rules' => [],
+        'active' => true,
+        'system_defined' => false,
+    ]);
+
+    expect(resolve(CustomFieldsSchemaDescriber::class)->describe($workspace, 'task'))->toContain('effort (number')
+        ->and(resolve(CustomFieldsFilterDescriber::class)->describe($user, 'task'))->toContain('- effort (Effort');
 });

@@ -8,7 +8,7 @@ use App\Enums\CustomFieldType;
 use App\Mcp\Filters\CustomFieldSort;
 use App\Models\CustomField;
 use App\Models\User;
-use Illuminate\Contracts\Database\Query\Builder;
+use App\Support\CustomFields\WorkspaceCustomFields;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Spatie\QueryBuilder\AllowedSort;
@@ -118,18 +118,16 @@ final readonly class CustomFieldFilterSchema
      */
     private function resolveFilterableFields(User $user, string $entityType): Collection
     {
-        $workspaceId = $user->currentWorkspace->getKey();
-        $cacheKey = McpSchemaCache::filterSchemaKey($workspaceId, $entityType);
+        $workspace = $user->currentWorkspace;
+        $cacheKey = McpSchemaCache::filterSchemaKey($workspace->getKey(), $entityType);
 
         /** @var Collection<int, CustomField> */
-        return Cache::remember($cacheKey, McpSchemaCache::TTL, fn (): Collection => CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $workspaceId)
-            ->where('entity_type', $entityType)
-            ->whereNotIn('type', self::EXCLUDED_TYPES)
-            ->where(fn (Builder $q) => $q->whereNull('settings->encrypted')->orWhere('settings->encrypted', false))
-            ->active()
-            ->select('id', 'code', 'name', 'type')
-            ->get());
+        return Cache::remember($cacheKey, McpSchemaCache::TTL, fn (): Collection => resolve(WorkspaceCustomFields::class)
+            ->forEntity($workspace, $entityType)
+            ->filter(fn (CustomField $field): bool => $field->active
+                && ! in_array($field->type, self::EXCLUDED_TYPES, true)
+                && ! $field->settings->encrypted)
+            ->map(fn (CustomField $field): CustomField => $field->withoutRelations())
+            ->values());
     }
 }

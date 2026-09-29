@@ -48,6 +48,7 @@ use App\Support\CurrentSource;
 use App\Support\CurrentWorkspace;
 use App\Support\CustomFields\CustomFieldInput;
 use App\Support\CustomFields\RecordNameResolver;
+use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Impersonation\Impersonator;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
@@ -156,6 +157,7 @@ final class AppServiceProvider extends ServiceProvider
 
         $this->app->scoped(RecordNameResolver::class);
         $this->app->scoped(MediaLookup::class);
+        $this->app->scoped(WorkspaceCustomFields::class);
 
         // spatie/laravel-onboard binds OnboardingSteps as a SINGLETON, which
         // makes every workspace share one OnboardingStep instance. Its complete()
@@ -643,6 +645,7 @@ final class AppServiceProvider extends ServiceProvider
 
             if ((is_string($tenantId) || is_int($tenantId)) && is_string($entityType)) {
                 McpSchemaCache::forget($tenantId, $entityType);
+                resolve(WorkspaceCustomFields::class)->forget($tenantId);
             }
         };
 
@@ -657,6 +660,7 @@ final class AppServiceProvider extends ServiceProvider
 
             if (is_string($tenantId) || is_int($tenantId)) {
                 McpSchemaCache::forgetTenant($tenantId);
+                resolve(WorkspaceCustomFields::class)->forget($tenantId);
             }
         };
 
