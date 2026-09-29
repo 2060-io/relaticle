@@ -157,6 +157,8 @@ arch('avoid mutation')
         // Stands in for Passport's own ClientRepository singleton; PHP forbids a
         // readonly class extending a non-readonly one.
         'App\Support\Passport\ClientRepository',
+        // Extends league's BearerTokenResponse; PHP forbids a readonly class extending a non-readonly one.
+        'App\Support\Passport\WorkspaceBearerTokenResponse',
         'App\View',
         'App\Services\Favicon\Drivers',
         'App\Providers\Filament',
@@ -208,6 +210,8 @@ arch('avoid inheritance')
         // Rebound over Passport's self-bound ClientRepository singleton, so it must
         // extend the class every OAuth endpoint type-hints.
         'App\Support\Passport\ClientRepository',
+        // getExtraParams() is league's hook for extra token response fields.
+        'App\Support\Passport\WorkspaceBearerTokenResponse',
     ]);
 
 // Packages are kept final by pint (final_class, repo-wide) and strict-typed by

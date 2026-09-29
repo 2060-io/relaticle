@@ -9,6 +9,7 @@ use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
 use App\Models\Passport\AuthCode;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\Passport\WorkspaceBearerTokenResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Passport\Client;
@@ -23,6 +24,7 @@ mutates(
     AuthCode::class,
     CopyWorkspaceIdToAccessToken::class,
     SetApiWorkspaceContext::class,
+    WorkspaceBearerTokenResponse::class,
 );
 
 beforeEach(function (): void {
@@ -456,6 +458,51 @@ it('keeps the consented workspace when the client refreshes its access token', f
         ->sole();
 
     expect($refreshed->workspace_id)->toBe($this->otherWorkspace->getKey());
+});
+
+it('names the consented workspace in the token response', function (): void {
+    $consent = consentToWorkspace($this->user, $this->client, $this->otherWorkspace);
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'client_id' => $this->client->getKey(),
+        'redirect_uri' => 'https://example.com/callback',
+        'code_verifier' => $consent['verifier'],
+        'code' => $consent['code'],
+    ])
+        ->assertOk()
+        ->assertJsonPath('workspace.id', $this->otherWorkspace->getKey())
+        ->assertJsonPath('workspace.name', $this->otherWorkspace->name);
+});
+
+it('names the consented workspace when the client refreshes its access token', function (): void {
+    $tokens = completeOauthFlow($this->user, $this->client, $this->otherWorkspace);
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'client_id' => $this->client->getKey(),
+        'refresh_token' => $tokens['refresh_token'],
+        'scope' => '',
+    ])
+        ->assertOk()
+        ->assertJsonPath('workspace.id', $this->otherWorkspace->getKey())
+        ->assertJsonPath('workspace.name', $this->otherWorkspace->name);
+});
+
+it('leaves the workspace out of a token response when the token has no workspace binding', function (): void {
+    $consent = consentToWorkspace($this->user, $this->client, $this->otherWorkspace);
+
+    DB::table('oauth_auth_codes')->update(['workspace_id' => null]);
+
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'client_id' => $this->client->getKey(),
+        'redirect_uri' => 'https://example.com/callback',
+        'code_verifier' => $consent['verifier'],
+        'code' => $consent['code'],
+    ])
+        ->assertOk()
+        ->assertJsonMissingPath('workspace');
 });
 
 it('keeps the consented workspace on refresh after the consent auth code is purged', function (): void {
