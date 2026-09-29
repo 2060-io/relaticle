@@ -137,6 +137,34 @@ it('classifies a calendar invite as Scheduling from the .ics part', function ():
     ]);
 });
 
+it('stores provider values longer than 255 characters', function (): void {
+    $long = str_repeat('a', 300);
+
+    $email = resolve(StoreEmailAction::class)->execute($this->account, makeFetchedEmailData([
+        'rfcMessageId' => "<{$long}@example.com>",
+        'inReplyTo' => "<{$long}@example.com> <{$long}@example.org>",
+        'threadId' => $long,
+        'providerMessageId' => $long,
+        'participants' => [
+            ['email_address' => 'sender@external.com', 'name' => $long, 'role' => 'from'],
+            ['email_address' => 'owner@example.com', 'name' => 'Owner', 'role' => 'to'],
+        ],
+        'attachments' => [[
+            'filename' => "{$long}.pdf",
+            'mime_type' => 'application/pdf',
+            'size' => 1024,
+            'content_id' => $long,
+            'attachment_id' => 'att-1',
+            'inline_data' => null,
+        ]],
+    ]));
+
+    expect($email->rfc_message_id)->toBe("<{$long}@example.com>")
+        ->and($email->thread_id)->toBe($long)
+        ->and($email->participants()->where('role', 'from')->value('name'))->toBe($long)
+        ->and($email->attachments()->value('filename'))->toBe("{$long}.pdf");
+});
+
 it('classifies a billing sender as Invoice', function (): void {
     $data = makeFetchedEmailData([
         'subject' => 'Your monthly statement',

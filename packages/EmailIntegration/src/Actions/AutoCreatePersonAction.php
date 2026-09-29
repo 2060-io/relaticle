@@ -9,6 +9,7 @@ use App\Models\People;
 use App\Models\Workspace;
 use App\Support\Database\AdvisoryLock;
 use App\Support\EmailAddress;
+use Illuminate\Support\Str;
 use Relaticle\CustomFields\Models\CustomField as BaseCustomField;
 use Relaticle\EmailIntegration\Support\EmailAddressHeaderParser;
 use Relaticle\EmailIntegration\Support\PersonEmailMatcher;
@@ -39,7 +40,7 @@ final readonly class AutoCreatePersonAction
         ?string $companyId = null,
     ): People {
         $canonical = EmailAddress::canonicalize($emailAddress);
-        $displayName = $this->headerParser->humanName($name, $canonical) ?? $canonical;
+        $displayName = Str::substr($this->headerParser->humanName($name, $canonical) ?? $canonical, 0, 255);
         $emailField = $this->personEmailMatcher->emailField($teamId);
 
         return $this->advisoryLock->transactional("auto-create-person:{$teamId}:{$canonical}", function () use ($displayName, $canonical, $teamId, $team, $companyId, $emailField): People {

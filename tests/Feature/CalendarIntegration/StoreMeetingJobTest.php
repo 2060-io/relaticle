@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\People;
 use Illuminate\Support\Facades\Date;
 use Relaticle\EmailIntegration\Actions\StoreMeetingAction;
 use Relaticle\EmailIntegration\Data\CalendarEventData;
@@ -43,6 +44,45 @@ it('stores a calendar event via StoreMeetingJob', function (): void {
     );
 
     expect(Meeting::query()->where('provider_event_id', 'evt-123')->exists())->toBeTrue();
+});
+
+it('stores calendar values longer than 255 characters', function (): void {
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create(['email_address' => 'me@example.com']));
+    $long = str_repeat('b', 300);
+
+    $event = new CalendarEventData(
+        providerEventId: $long,
+        providerRecurringEventId: $long,
+        iCalUid: $long,
+        title: $long,
+        description: null,
+        startsAt: Date::now()->addDay(),
+        endsAt: Date::now()->addDay()->addHour(),
+        isAllDay: false,
+        location: $long,
+        htmlLink: "https://outlook.office365.com/owa/?itemid={$long}",
+        status: 'confirmed',
+        visibility: 'default',
+        organizerEmail: 'organizer@external.test',
+        organizerName: $long,
+        attendees: [
+            ['email' => 'me@example.com', 'name' => $long, 'response_status' => 'accepted', 'is_organizer' => false],
+        ],
+    );
+
+    (new StoreMeetingJob($account, $event))->handle(
+        app(StoreMeetingAction::class),
+        app(NormalizedMeetingPayloadFactory::class),
+    );
+
+    $meeting = Meeting::query()->where('provider_event_id', $long)->sole();
+
+    expect($meeting->title)->toBe($long)
+        ->and($meeting->location)->toBe($long)
+        ->and($meeting->attendees()->value('name'))->toBe($long)
+        ->and(People::query()->where('workspace_id', $account->workspace_id)->pluck('name')->all())
+        ->not->toBeEmpty()
+        ->each->toHaveLength(255);
 });
 
 it('stores the mailbox owner as host when the provider omits them from attendees', function (): void {
