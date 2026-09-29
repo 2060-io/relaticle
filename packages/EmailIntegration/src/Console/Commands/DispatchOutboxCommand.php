@@ -10,23 +10,26 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Config;
+use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailPriority;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Jobs\SendEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 
 #[Description('Release due queued emails subject to per-account rate limits.')]
 #[Signature('email:dispatch-outbox')]
 final class DispatchOutboxCommand extends Command
 {
-    public function handle(): int
+    public function handle(MarkEmailsSendFailedAction $markFailed): int
     {
         $defaultHourly = Config::integer('email-integration.outbox.defaults.hourly_send_limit');
         $defaultDaily = Config::integer('email-integration.outbox.defaults.daily_send_limit');
 
         $this->reclaimStuckSending();
+        $this->failMailOnMailboxesThatCannotSend($markFailed);
 
         ConnectedAccount::query()
             ->active()
@@ -39,6 +42,20 @@ final class DispatchOutboxCommand extends Command
             });
 
         return self::SUCCESS;
+    }
+
+    private function failMailOnMailboxesThatCannotSend(MarkEmailsSendFailedAction $markFailed): void
+    {
+        Email::query()
+            ->withoutGlobalScope(ActiveAccountScope::class)
+            ->where('status', EmailStatus::QUEUED)
+            ->where(fn (Builder $dueQuery): Builder => $dueQuery->whereNull('scheduled_for')->orWhere('scheduled_for', '<=', now()))
+            ->whereDoesntHave('connectedAccount', fn (Builder $accountQuery): Builder => $accountQuery->active())
+            ->with(['user', 'workspace'])
+            ->chunkById(100, fn (Collection $emails) => $markFailed->execute(
+                $emails->toBase(),
+                __('filament/notifications/email-send-failed.reasons.mailbox_needs_reconnect'),
+            ));
     }
 
     /**

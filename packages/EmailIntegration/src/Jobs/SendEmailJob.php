@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Relaticle\EmailIntegration\Actions\LinkEmailAction;
+use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Email;
@@ -124,14 +125,10 @@ final class SendEmailJob implements ShouldQueue
             return;
         }
 
-        if ($email->status !== EmailStatus::SENT) {
-            $email->update([
-                'status' => EmailStatus::FAILED,
-                'last_error' => $exception::class.': '.$exception->getMessage(),
-            ]);
-        }
-
-        $this->syncBatchCounters($email->batch_id);
+        resolve(MarkEmailsSendFailedAction::class)->execute(
+            collect([$email]),
+            $exception::class.': '.$exception->getMessage(),
+        );
     }
 
     private function syncBatchCounters(?string $batchId): void

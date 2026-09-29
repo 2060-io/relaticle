@@ -7,6 +7,7 @@ use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Relaticle\EmailIntegration\Actions\LinkEmailAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Data\FetchedEmailData;
@@ -22,6 +23,7 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBatch;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
+use Relaticle\EmailIntegration\Notifications\EmailSendFailedNotification;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceInterface;
 use Relaticle\EmailIntegration\Services\EmailSendingService;
@@ -57,6 +59,54 @@ it('records exception class and message on the email when the job fails', functi
     expect($email->fresh())
         ->status->toBe(EmailStatus::FAILED)
         ->last_error->toBe('RuntimeException: boom');
+});
+
+it('tells the sender when a send fails', function (): void {
+    Notification::fake();
+
+    $email = Email::create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'subject' => 'Proposal',
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::SENDING,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]);
+
+    (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom'));
+
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->count === 1
+        && $notification->subject === 'Proposal');
+});
+
+it('tells the sender once when several emails in one mass send fail', function (): void {
+    Notification::fake();
+
+    $batch = EmailBatch::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+
+    foreach (range(1, 3) as $index) {
+        $email = Email::create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->user->id,
+            'connected_account_id' => $this->account->id,
+            'batch_id' => $batch->getKey(),
+            'subject' => "Mass send {$index}",
+            'direction' => EmailDirection::OUTBOUND,
+            'status' => EmailStatus::SENDING,
+            'privacy_tier' => EmailPrivacyTier::FULL,
+            'creation_source' => EmailCreationSource::COMPOSE,
+        ]);
+
+        (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom'));
+    }
+
+    Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 1);
 });
 
 it('does not mark a delivered email as failed when a later job step throws', function (): void {
