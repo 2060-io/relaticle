@@ -66,3 +66,25 @@ it('removes a personal template when its creator is deleted', function (): void 
 
     expect(EmailTemplate::withTrashed()->whereKey($template->getKey())->exists())->toBeFalse();
 });
+
+it('removes the creator\'s trashed and other-workspace personal templates', function (): void {
+    $otherWorkspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $otherWorkspace->users()->attach($this->leaver, ['role' => 'member']);
+
+    $trashed = EmailTemplate::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => $this->leaver->id,
+        'is_shared' => false,
+    ]);
+    $trashed->delete();
+
+    $elsewhere = EmailTemplate::factory()->create([
+        'workspace_id' => $otherWorkspace->id,
+        'created_by' => $this->leaver->id,
+        'is_shared' => false,
+    ]);
+
+    resolve(DeletesUsers::class)->delete($this->leaver);
+
+    expect(EmailTemplate::withTrashed()->whereKey([$trashed->getKey(), $elsewhere->getKey()])->exists())->toBeFalse();
+});

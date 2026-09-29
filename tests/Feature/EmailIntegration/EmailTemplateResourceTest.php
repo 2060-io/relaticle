@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use App\Models\User;
 use Filament\Facades\Filament;
+use Relaticle\EmailIntegration\Actions\DeleteEmailTemplatesAction;
+use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource;
 use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource\Pages\ManageEmailTemplates;
 use Relaticle\EmailIntegration\Models\EmailTemplate;
+use Relaticle\EmailIntegration\Policies\EmailTemplatePolicy;
 
-mutates(EmailTemplate::class);
+mutates(EmailTemplate::class, EmailTemplatePolicy::class, DeleteEmailTemplatesAction::class, EmailTemplateResource::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -74,6 +77,49 @@ it('lets a workspace admin manage an orphaned shared template', function (): voi
     livewire(ManageEmailTemplates::class)
         ->assertTableActionVisible('edit', $orphan)
         ->assertTableActionVisible('delete', $orphan);
+});
+
+it('keeps an orphaned template shared when a workspace admin edits it', function (): void {
+    $admin = User::factory()->create();
+    $this->workspace->users()->attach($admin, ['role' => 'admin']);
+
+    $orphan = EmailTemplate::factory()->shared()->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => null,
+    ]);
+
+    $this->actingAs($admin);
+    Filament::setTenant($this->workspace);
+
+    livewire(ManageEmailTemplates::class)
+        ->callTableAction('edit', $orphan, data: [
+            'name' => 'Renamed by admin',
+            'is_shared' => false,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($orphan->fresh())
+        ->name->toBe('Renamed by admin')
+        ->is_shared->toBeTrue();
+});
+
+it('lets a workspace admin bulk delete an orphaned shared template', function (): void {
+    $admin = User::factory()->create();
+    $this->workspace->users()->attach($admin, ['role' => 'admin']);
+
+    $orphan = EmailTemplate::factory()->shared()->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => null,
+    ]);
+
+    $this->actingAs($admin);
+    Filament::setTenant($this->workspace);
+
+    livewire(ManageEmailTemplates::class)
+        ->selectTableRecords([$orphan])
+        ->callAction([['name' => 'delete', 'context' => ['table' => true, 'bulk' => true]]]);
+
+    expect(EmailTemplate::query()->whereKey($orphan->getKey())->exists())->toBeFalse();
 });
 
 it('denies an orphaned shared template to a member without the email-manage capability', function (): void {

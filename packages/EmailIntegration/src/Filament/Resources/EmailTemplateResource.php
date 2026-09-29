@@ -69,7 +69,8 @@ final class EmailTemplateResource extends Resource
 
             Toggle::make('is_shared')
                 ->label(__('filament/resources/email-template.fields.is_shared.label'))
-                ->helperText(__('filament/resources/email-template.fields.is_shared.helper_text')),
+                ->helperText(__('filament/resources/email-template.fields.is_shared.helper_text'))
+                ->disabled(fn (?EmailTemplate $record): bool => $record instanceof EmailTemplate && $record->created_by === null),
         ]);
     }
 
