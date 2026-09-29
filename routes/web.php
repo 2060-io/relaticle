@@ -132,11 +132,11 @@ Route::get('/.well-known/security.txt', function (): Response {
 })->name('securityTxt');
 
 Route::get('/sitemap.xml', function (): Response {
-    $disk = Storage::disk('public');
+    $sitemap = Storage::disk('public')->get('sitemap.xml');
 
-    abort_unless($disk->exists('sitemap.xml'), Response::HTTP_NOT_FOUND);
+    abort_if($sitemap === null, Response::HTTP_NOT_FOUND);
 
-    return response((string) $disk->get('sitemap.xml'), Response::HTTP_OK, [
+    return response($sitemap, Response::HTTP_OK, [
         'Content-Type' => 'application/xml; charset=UTF-8',
         'Cache-Control' => 'public, max-age=3600',
     ]);
