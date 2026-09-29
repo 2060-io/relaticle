@@ -136,6 +136,8 @@ arch('avoid mutation')
         // Request-scoped media lookup cache, same shape: filled as list endpoints
         // prime it, reset per request via the scoped container binding.
         'App\Support\Media\MediaLookup',
+        // Job-scoped custom field cache per workspace, same shape as MediaLookup.
+        'App\Support\CustomFields\WorkspaceCustomFields',
         // Request/job-scoped creation-source cache, same shape as
         // RequestActivityBatch above: mutable by design, reset per request/job
         // via the scoped container binding in AppServiceProvider.

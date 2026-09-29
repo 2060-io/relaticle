@@ -8,6 +8,7 @@ use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\CustomFields\WorkspaceCustomFields;
 
 /**
  * The read-path twin of {@see CustomFieldsSchemaDescriber}.
@@ -25,6 +26,7 @@ final readonly class CustomFieldsFilterDescriber
 {
     public function __construct(
         private CustomFieldFilterSchema $filterSchema,
+        private WorkspaceCustomFields $customFields,
     ) {}
 
     public function describe(User $user, string $entityType): string
@@ -71,23 +73,14 @@ final readonly class CustomFieldsFilterDescriber
     }
 
     /**
-     * Narrowed to the codes actually being described, so tenants whose filterable
-     * fields are all non-choice skip the options join entirely.
-     *
      * @param  list<string>  $codes
      * @return array<string, list<string>>
      */
     private function optionLabels(Workspace $workspace, string $entityType, array $codes): array
     {
-        return CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $workspace->getKey())
-            ->where('entity_type', $entityType)
+        return $this->customFields->forEntity($workspace, $entityType)
+            ->where('active', true)
             ->whereIn('code', $codes)
-            ->active()
-            ->with(['options:id,custom_field_id,name'])
-            ->select('id', 'code')
-            ->get()
             ->mapWithKeys(fn (CustomField $field): array => [
                 (string) $field->code => array_values(array_map(strval(...), $field->options->pluck('name')->all())),
             ])
