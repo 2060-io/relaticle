@@ -51,10 +51,10 @@ model (`App\Enums\MediaCollection`). Two exemptions: import CSVs under
   the conversation so the row has its owner from the start, and deleting the
   conversation deletes the file. It is parsed from a temp copy
   (`ChatAttachment::withLocalFile()`) and handed to the import wizard, never served, and
-  it stays out of `pending-uploads`, whose allowlist is documents and images. `sent_at` in `custom_properties` is metadata (the
-  single-use guard), not ownership. Only uploads nobody sent within a day are deleted,
-  by `chat:purge-unsent-attachments`. It still carries `workspace_id`, so workspace
-  deletion sweeps it with everything else.
+  it stays out of `pending-uploads`, whose allowlist is documents and images. `sent_at`
+  in `custom_properties` is metadata (the single-use guard), not ownership. Only
+  uploads nobody sent within a day are deleted, by `chat:purge-unsent-attachments`. It
+  still carries `workspace_id`, so workspace deletion sweeps it with everything else.
 - Do not add a `FileUpload::make(` or configure rich editor attachments with
   `fileAttachmentsDisk(` / `fileAttachmentsDirectory(` outside
   `app/Filament/CustomFields/RichEditorFieldType.php` and
