@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Relaticle\EmailIntegration\Policies\EmailTemplatePolicy;
 
+/**
+ * @property string|null $created_by
+ * @property bool $is_shared
+ * @property User|null $creator
+ */
 #[UsePolicy(EmailTemplatePolicy::class)]
 final class EmailTemplate extends Model
 {

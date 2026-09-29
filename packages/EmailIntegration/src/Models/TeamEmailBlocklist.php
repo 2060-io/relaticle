@@ -19,6 +19,7 @@ use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
  * @property EmailVisibilityEnforcement $enforcement_level
  * @property string $value
  * @property bool $include_subdomains
+ * @property string|null $created_by
  * @property User|null $creator
  */
 final class TeamEmailBlocklist extends Model

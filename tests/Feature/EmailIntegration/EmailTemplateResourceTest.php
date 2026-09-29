@@ -30,8 +30,8 @@ it('bulk delete removes the user\'s own templates', function (): void {
         ->selectTableRecords([$mineA, $mineB])
         ->callAction([['name' => 'delete', 'context' => ['table' => true, 'bulk' => true]]]);
 
-    expect(EmailTemplate::whereKey($mineA->getKey())->exists())->toBeFalse()
-        ->and(EmailTemplate::whereKey($mineB->getKey())->exists())->toBeFalse();
+    expect(EmailTemplate::query()->whereKey($mineA->getKey())->exists())->toBeFalse()
+        ->and(EmailTemplate::query()->whereKey($mineB->getKey())->exists())->toBeFalse();
 });
 
 it('bulk delete preserves a shared template created by another user', function (): void {
@@ -52,8 +52,48 @@ it('bulk delete preserves a shared template created by another user', function (
         ->selectTableRecords([$mine, $theirShared])
         ->callAction([['name' => 'delete', 'context' => ['table' => true, 'bulk' => true]]]);
 
-    expect(EmailTemplate::whereKey($mine->getKey())->exists())->toBeFalse()
-        ->and(EmailTemplate::whereKey($theirShared->getKey())->exists())->toBeTrue();
+    expect(EmailTemplate::query()->whereKey($mine->getKey())->exists())->toBeFalse()
+        ->and(EmailTemplate::query()->whereKey($theirShared->getKey())->exists())->toBeTrue();
+});
+
+it('lets a workspace admin manage an orphaned shared template', function (): void {
+    $admin = User::factory()->create();
+    $this->workspace->users()->attach($admin, ['role' => 'admin']);
+
+    $orphan = EmailTemplate::factory()->shared()->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => null,
+    ]);
+
+    expect($admin->can('update', $orphan))->toBeTrue()
+        ->and($admin->can('delete', $orphan))->toBeTrue();
+
+    $this->actingAs($admin);
+    Filament::setTenant($this->workspace);
+
+    livewire(ManageEmailTemplates::class)
+        ->assertTableActionVisible('edit', $orphan)
+        ->assertTableActionVisible('delete', $orphan);
+});
+
+it('denies an orphaned shared template to a member without the email-manage capability', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => 'member']);
+
+    $orphan = EmailTemplate::factory()->shared()->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => null,
+    ]);
+
+    expect($member->can('update', $orphan))->toBeFalse()
+        ->and($member->can('delete', $orphan))->toBeFalse();
+
+    $this->actingAs($member);
+    Filament::setTenant($this->workspace);
+
+    livewire(ManageEmailTemplates::class)
+        ->assertTableActionHidden('edit', $orphan)
+        ->assertTableActionHidden('delete', $orphan);
 });
 
 it('denies template writes to a creator who no longer belongs to the workspace', function (): void {

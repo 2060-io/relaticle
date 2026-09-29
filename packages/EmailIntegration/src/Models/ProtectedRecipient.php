@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
+ * @property string|null $created_by
  * @property User|null $creator
  */
 final class ProtectedRecipient extends Model

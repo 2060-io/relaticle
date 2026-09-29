@@ -391,6 +391,7 @@ final class EmailVisibilityService
             })
             ->map(function (TeamEmailBlocklist $entry): array {
                 $enforcement = $entry->enforcement_level;
+                $creator = $entry->creator;
 
                 return [
                     'key' => 'custom-'.$entry->getKey(),
@@ -399,7 +400,9 @@ final class EmailVisibilityService
                     'include_subdomains' => $entry->include_subdomains,
                     'enforcement' => $enforcement->getLabel(),
                     'enforcement_value' => $enforcement->value,
-                    'source' => $entry->creator->name,
+                    'source' => $creator === null
+                        ? (string) __('filament/pages/email-privacy-settings.visibility.table.unknown_user')
+                        : $creator->name,
                     'is_system' => false,
                     'entry_id' => $entry->getKey(),
                     'updated_at' => $entry->updated_at?->toFormattedDateString(),

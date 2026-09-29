@@ -94,6 +94,21 @@ it('hides custom visibility rows that duplicate inferred workspace domains', fun
         ->and(collect($rows)->firstWhere('address', 'outskill.com')['enforcement_value'])->toBe('protected');
 });
 
+it('shows an unknown source for a visibility row whose creator was deleted', function (): void {
+    TeamEmailBlocklist::factory()->protected()->domain('vendor-partner.test')->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => null,
+    ]);
+
+    $rows = $this->service->visibilityTableRows(
+        $this->workspace,
+        TeamEmailBlocklist::query()->where('workspace_id', $this->workspace->id)->get(),
+    );
+
+    expect(collect($rows)->firstWhere('address', 'vendor-partner.test')['source'])
+        ->toBe('Unknown');
+});
+
 it('prefers blocked over protected when resolving record mailbox copy', function (): void {
     $person = People::factory()->create([
         'workspace_id' => $this->workspace->id,

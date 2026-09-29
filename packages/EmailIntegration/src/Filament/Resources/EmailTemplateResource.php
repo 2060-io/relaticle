@@ -113,14 +113,14 @@ final class EmailTemplateResource extends Resource
                     ->hiddenLabel()
                     ->tooltip(__('filament/resources/email-template.actions.edit.label'))
                     ->icon(Heroicon::OutlinedPencilSquare)
-                    ->visible(fn (EmailTemplate $record): bool => $record->created_by === auth()->id()),
+                    ->visible(fn (EmailTemplate $record): bool => auth()->user()?->can('update', $record) === true),
 
                 DeleteAction::make()
                     ->label(__('filament/resources/email-template.actions.delete.label'))
                     ->hiddenLabel()
                     ->tooltip(__('filament/resources/email-template.actions.delete.label'))
                     ->icon(Heroicon::OutlinedTrash)
-                    ->visible(fn (EmailTemplate $record): bool => $record->created_by === auth()->id()),
+                    ->visible(fn (EmailTemplate $record): bool => auth()->user()?->can('delete', $record) === true),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

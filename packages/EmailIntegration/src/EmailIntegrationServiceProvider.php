@@ -6,6 +6,7 @@ namespace Relaticle\EmailIntegration;
 
 use App\Features\EmailIntegration;
 use App\Filament\Pages\Dashboard;
+use App\Models\User;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Database\Eloquent\Model;
@@ -37,6 +38,7 @@ use Relaticle\EmailIntegration\Livewire\UserEmailPrivacySettings;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Models\EmailTemplate;
 use Relaticle\EmailIntegration\Models\EmailThread;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Services\Contracts\CalendarServiceFactoryInterface;
@@ -82,6 +84,16 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
             'email_access_request' => EmailAccessRequest::class,
             'meeting' => Meeting::class,
         ]);
+
+        // Workspace rules outlive their creator; a personal template leaves with them,
+        // even while the feature is off.
+        User::deleting(function (User $user): void {
+            EmailTemplate::query()
+                ->withoutGlobalScopes()
+                ->where('created_by', $user->getKey())
+                ->where('is_shared', false)
+                ->forceDelete();
+        });
 
         if (! Feature::for(null)->active(EmailIntegration::class)) {
             return;
