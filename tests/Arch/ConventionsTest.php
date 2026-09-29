@@ -588,14 +588,10 @@ it('keeps runtime file access off local-only disks and paths', function (): void
         /** @var SplFileInfo $file */
         foreach ($files as $file) {
             $relative = str_replace($root.'/', '', $file->getPathname());
-
-            if (in_array($relative, $allowed, true)) {
-                continue;
-            }
-
             $source = (string) file_get_contents($file->getPathname());
+            $permitted = in_array($relative, $allowed, true) ? 1 : 0;
 
-            if (preg_match('/Storage::disk\([\'"](local|public)[\'"]\)|->useDisk\([\'"](local|public)[\'"]\)|\bpublic_path\(|\bstorage_path\(|->getRealPath\(/', $source) === 1) {
+            if (preg_match_all('/Storage::disk\([\'"](local|public)[\'"]\)|->useDisk\([\'"](local|public)[\'"]\)|\bpublic_path\(|\bstorage_path\(|->getRealPath\(/', $source) > $permitted) {
                 $offenders[] = $relative;
             }
         }
