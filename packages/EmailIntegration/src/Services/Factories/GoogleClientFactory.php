@@ -48,6 +48,8 @@ final readonly class GoogleClientFactory
                 );
             }
 
+            $this->assertStillConnected($account);
+
             $account->update(array_filter([
                 'access_token' => $newToken['access_token'] ?? null,
                 // Google may rotate the refresh token; keep the existing one when absent.
@@ -57,5 +59,14 @@ final readonly class GoogleClientFactory
         }
 
         return $client;
+    }
+
+    private function assertStillConnected(ConnectedAccount $account): void
+    {
+        throw_unless(
+            ConnectedAccount::query()->whereKey($account->getKey())->exists(),
+            RuntimeException::class,
+            'invalid_grant: the mailbox was disconnected while its token was refreshing',
+        );
     }
 }

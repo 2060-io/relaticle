@@ -168,3 +168,31 @@ it('throws RuntimeException when the refresh endpoint returns an error', functio
     expect(fn () => resolve(MicrosoftGraphClientFactory::class)->make($account))
         ->toThrow(RuntimeException::class);
 });
+
+it('does not store refreshed tokens on a mailbox that was disconnected meanwhile', function (): void {
+    Http::fake([
+        'https://login.microsoftonline.com/*' => Http::response([
+            'access_token' => 'minted-after-disconnect',
+            'refresh_token' => 'rotated-after-disconnect',
+            'expires_in' => 3600,
+        ]),
+    ]);
+
+    $user = User::factory()->withWorkspace()->create();
+    $account = ConnectedAccount::factory()
+        ->azure()
+        ->for($user)
+        ->create([
+            'workspace_id' => $user->currentWorkspace->getKey(),
+            'access_token' => 'expired-token',
+            'refresh_token' => 'refresh-1',
+            'token_expires_at' => now()->subMinute(),
+        ]);
+
+    ConnectedAccount::query()->whereKey($account->getKey())->update(['deleted_at' => now(), 'access_token' => null, 'refresh_token' => null]);
+
+    expect(fn () => resolve(MicrosoftGraphClientFactory::class)->make($account))
+        ->toThrow(RuntimeException::class, 'invalid_grant');
+
+    expect(ConnectedAccount::withTrashed()->findOrFail($account->getKey())->refresh_token)->toBeNull();
+});

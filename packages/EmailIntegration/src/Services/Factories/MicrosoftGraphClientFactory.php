@@ -55,10 +55,21 @@ final readonly class MicrosoftGraphClientFactory
 
         $payload = $response->json();
 
+        $this->assertStillConnected($account);
+
         $account->update([
             'access_token' => (string) $payload['access_token'],
             'refresh_token' => $payload['refresh_token'] ?? $account->refresh_token,
             'token_expires_at' => now()->addSeconds((int) ($payload['expires_in'] ?? 3600)),
         ]);
+    }
+
+    private function assertStillConnected(ConnectedAccount $account): void
+    {
+        throw_unless(
+            ConnectedAccount::query()->whereKey($account->getKey())->exists(),
+            RuntimeException::class,
+            'invalid_grant: the mailbox was disconnected while its token was refreshing',
+        );
     }
 }

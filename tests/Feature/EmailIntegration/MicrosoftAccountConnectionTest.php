@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Providers\AppServiceProvider;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Socialite\Facades\Socialite;
@@ -313,6 +314,7 @@ it('dispatches history import when a disconnected account is reconnected', funct
 });
 
 it('dispatches history import when reconnecting a mailbox whose listing stopped', function (): void {
+    Http::fake(['https://oauth2.googleapis.com/revoke' => Http::response()]);
     $user = User::factory()->withWorkspace()->create();
     $this->actingAs($user);
 
@@ -706,6 +708,7 @@ it('stores a separate connected account when the same mailbox is connected in a 
 });
 
 it('reconnects a previously default mailbox without violating the live default constraint', function (): void {
+    Http::fake(['https://oauth2.googleapis.com/revoke' => Http::response()]);
     Bus::fake();
 
     $user = User::factory()->withWorkspace()->create();

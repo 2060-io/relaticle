@@ -17,10 +17,11 @@ final readonly class DisconnectConnectedAccountAction
 
     public function execute(ConnectedAccount $account): void
     {
-        $grant = $account->refresh_token ?? $account->access_token;
+        $grant = null;
 
-        DB::transaction(function () use ($account): void {
+        DB::transaction(function () use ($account, &$grant): void {
             $this->stopCalendarPushChannel->execute($account);
+            $grant = $account->refresh_token ?? $account->access_token;
             // Account is soft-deleted, so the DB-level cascade on email_signatures never
             // fires. Remove dependent signatures and blocklist entries explicitly to avoid
             // orphaned rows whose connectedAccount relation resolves to null.
@@ -51,6 +52,6 @@ final readonly class DisconnectConnectedAccountAction
             }
         });
 
-        $this->grantRevoker->revoke($account->provider, $grant);
+        $this->grantRevoker->revoke($account, $grant);
     }
 }
