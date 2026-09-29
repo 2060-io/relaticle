@@ -5,8 +5,11 @@ declare(strict_types=1);
 use App\Events\WorkspaceCreated;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -223,4 +226,23 @@ it('parses and loads a csv when temporary uploads live on a disk with no local p
     $this->createdStoreIds[] = $import->id;
 
     expect($import->total_rows)->toBe(2);
+});
+
+it('reports a csv whose local copy cannot be written instead of parsing it as empty', function (): void {
+    Exceptions::fake();
+    $fake = Storage::fake(FileUploadConfiguration::disk());
+    Storage::set(FileUploadConfiguration::disk(), new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+    {
+        public function readStream(mixed $path): mixed
+        {
+            return fopen('php://output', 'w');
+        }
+    });
+
+    $component = mountUploadStep($this);
+    $component->set('uploadedFile', makeCsvFile("Name,Email\nJohn,john@test.com\n"));
+
+    expect($component->get('isParsed'))->toBeFalse();
+    $component->assertHasErrors(['uploadedFile' => 'Unable to process this file. Please check the format and try again.']);
+    Exceptions::assertReported(RuntimeException::class);
 });

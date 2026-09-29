@@ -7,6 +7,7 @@ namespace App\Support\Media;
 use App\Exceptions\UploadException;
 use Closure;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 final readonly class LocalCopy
 {
@@ -26,7 +27,7 @@ final readonly class LocalCopy
         try {
             touch($path);
             chmod($path, 0600);
-            file_put_contents($path, $stream);
+            throw_if(file_put_contents($path, $stream) === false, RuntimeException::class, 'The file could not be copied to a local temp path.');
 
             return $callback($path);
         } finally {
