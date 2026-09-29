@@ -48,6 +48,7 @@ use App\Support\CurrentSource;
 use App\Support\CurrentWorkspace;
 use App\Support\CustomFields\CustomFieldInput;
 use App\Support\CustomFields\RecordNameResolver;
+use App\Support\CustomFields\RestoreConflictMessage;
 use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Impersonation\Impersonator;
 use App\Support\Markdown\TableAwareLeagueDriver;
@@ -56,12 +57,15 @@ use App\Support\Passport\ClientRepository;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Actions\Exports\ExportColumn;
+use Filament\Actions\RestoreAction;
+use Filament\Actions\RestoreBulkAction;
 use Filament\Auth\Notifications\NoticeOfEmailChangeRequest;
 use Filament\Auth\Notifications\ResetPassword;
 use Filament\Auth\Notifications\VerifyEmail;
 use Filament\Auth\Notifications\VerifyEmailChange;
 use Filament\Facades\Filament;
 use Filament\Livewire\Notifications;
+use Filament\Notifications\Notification;
 use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentColor;
@@ -674,6 +678,41 @@ final class AppServiceProvider extends ServiceProvider
     private function configureFilament(): void
     {
         ExportColumn::configureUsing(fn (ExportColumn $column): ExportColumn => $column->preventFormulaInjection());
+
+        RestoreAction::configureUsing(fn (RestoreAction $action): RestoreAction => $action->before(function (RestoreAction $action, Model $record): void {
+            $conflict = resolve(RestoreConflictMessage::class)->for($record, $action->getRecordTitle(...));
+
+            if ($conflict === null) {
+                return;
+            }
+
+            Notification::make()
+                ->danger()
+                ->title(__('filament/panel.restore_blocked.title', ['record' => $action->getRecordTitle($record)]))
+                ->body(__('filament/panel.restore_blocked.fix', ['conflict' => $conflict]))
+                ->send();
+
+            $action->cancel();
+        }));
+
+        RestoreBulkAction::configureUsing(fn (RestoreBulkAction $action): RestoreBulkAction => $action->before(function (RestoreBulkAction $action, Collection $records): void {
+            $conflicts = $records
+                ->map(fn (Model $record): ?string => transform(
+                    resolve(RestoreConflictMessage::class)->for($record, $action->getRecordTitle(...)),
+                    fn (string $conflict): string => __('filament/panel.restore_blocked.bulk_line', ['record' => $action->getRecordTitle($record), 'conflict' => $conflict]),
+                ))
+                ->filter();
+
+            if ($conflicts->isEmpty()) {
+                return;
+            }
+
+            Notification::make()
+                ->warning()
+                ->title(trans_choice('filament/panel.restore_blocked.bulk_title', $conflicts->count(), ['count' => $conflicts->count()]))
+                ->body($conflicts->implode(' '))
+                ->send();
+        }));
 
         $slideOverActions = ['create', 'edit', 'view'];
 

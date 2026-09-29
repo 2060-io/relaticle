@@ -5,10 +5,12 @@ declare(strict_types=1);
 use App\Filament\Resources\PeopleResource;
 use App\Filament\Resources\PeopleResource\Pages\ListPeople;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Model;
 
 mutates(PeopleResource::class);
@@ -145,6 +147,71 @@ it('can delete a person', function (): void {
         ->callAction(TestAction::make('delete')->table($record));
 
     $this->assertSoftDeleted($record);
+});
+
+function personWithEmails(User $user, string $name, array $emails, bool $trashed = false): People
+{
+    $person = People::factory()->recycle([$user, $user->currentWorkspace])->create(['name' => $name]);
+    $emailsField = CustomField::query()->withoutGlobalScopes()
+        ->where('tenant_id', $user->currentWorkspace->getKey())
+        ->where('entity_type', 'people')
+        ->where('code', 'emails')
+        ->firstOrFail();
+
+    $person->saveCustomFieldValue($emailsField, $emails, $user->currentWorkspace);
+
+    if ($trashed) {
+        $person->delete();
+    }
+
+    return $person;
+}
+
+it('restores a deleted person whose email is still free', function (): void {
+    $person = personWithEmails($this->user, 'Grace Hopper', ['grace@navy.mil'], trashed: true);
+
+    livewire(ListPeople::class)
+        ->filterTable('trashed', false)
+        ->callAction(TestAction::make('restore')->table($person));
+
+    expect($person->fresh()->trashed())->toBeFalse();
+});
+
+it('refuses to restore a deleted person whose email another person now holds', function (): void {
+    $person = personWithEmails($this->user, 'Grace Hopper', ['grace@navy.mil'], trashed: true);
+    personWithEmails($this->user, 'Grace Returns', ['grace@navy.mil']);
+
+    livewire(ListPeople::class)
+        ->filterTable('trashed', false)
+        ->callAction(TestAction::make('restore')->table($person))
+        ->assertNotified(
+            Notification::make()
+                ->danger()
+                ->title('Grace Hopper can\'t be restored')
+                ->body('grace@navy.mil in Emails now belongs to Grace Returns. Change or remove it there, then restore.'),
+        );
+
+    expect($person->fresh()->trashed())->toBeTrue();
+});
+
+it('bulk restores the free people and names the ones it skipped', function (): void {
+    $free = personWithEmails($this->user, 'Ada Lovelace', ['ada@example.test'], trashed: true);
+    $blocked = personWithEmails($this->user, 'Grace Hopper', ['grace@navy.mil'], trashed: true);
+    personWithEmails($this->user, 'Grace Returns', ['grace@navy.mil']);
+
+    livewire(ListPeople::class)
+        ->filterTable('trashed', false)
+        ->selectTableRecords([$free, $blocked])
+        ->callAction([['name' => 'restore', 'context' => ['table' => true, 'bulk' => true]]])
+        ->assertNotified(
+            Notification::make()
+                ->warning()
+                ->title('1 record wasn\'t restored')
+                ->body('Grace Hopper: grace@navy.mil in Emails now belongs to Grace Returns.'),
+        );
+
+    expect($free->fresh()->trashed())->toBeFalse()
+        ->and($blocked->fresh()->trashed())->toBeTrue();
 });
 
 it('validates name is required on create', function (): void {
