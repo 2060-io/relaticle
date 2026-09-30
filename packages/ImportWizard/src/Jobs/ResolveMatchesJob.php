@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\MatchResolver;
@@ -33,14 +34,12 @@ final class ResolveMatchesJob implements ShouldQueue
         }
 
         $import = Import::query()->findOrFail($this->importId);
-        $store = ImportStore::load($this->importId);
-
-        if (! $store instanceof ImportStore) {
-            return;
-        }
-
         $importer = $import->getImporter();
 
-        new MatchResolver($store, $import, $importer)->resolve();
+        try {
+            ImportStore::withWriteLock($this->importId, fn (ImportStore $store) => new MatchResolver($store, $import, $importer)->resolve());
+        } catch (ImportStoreException $e) {
+            throw_unless($e->isNotFound(), $e);
+        }
     }
 }

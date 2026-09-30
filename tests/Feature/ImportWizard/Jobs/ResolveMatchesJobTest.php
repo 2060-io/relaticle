@@ -9,12 +9,14 @@ use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Data\RelationshipMatch;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -34,7 +36,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (isset($this->import)) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
         $this->import->delete();
     }
 });
@@ -58,6 +60,12 @@ function createStoreForMatchResolution(
 
     $store = ImportStore::create($import->id);
     $store->query()->insert($rows);
+
+    if (ImportStore::isRemote()) {
+        $store->persist();
+        $store->close();
+        $store = ImportStore::forRead($import->id);
+    }
 
     $context->import = $import;
     $context->store = $store;
@@ -252,3 +260,80 @@ it('resolves Update when CSV email column contains comma-separated values matchi
 it('handles missing import gracefully', function (): void {
     (new ResolveMatchesJob('nonexistent-id', (string) $this->workspace->id))->handle();
 })->throws(ModelNotFoundException::class);
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('writes an update match for an existing record into the remote store', function (): void {
+        $person = People::factory()->create([
+            'name' => 'Existing',
+            'workspace_id' => $this->workspace->id,
+        ]);
+
+        createStoreForMatchResolution($this, ['ID', 'Name'], [
+            makeMatchRow(2, ['ID' => (string) $person->id, 'Name' => 'Updated']),
+        ], [
+            ColumnData::toField(source: 'ID', target: 'id'),
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        (new ResolveMatchesJob($this->import->id))->handle();
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+
+        expect($row->match_action)->toBe(RowMatchAction::Update)
+            ->and($row->matched_id)->toBe((string) $person->id);
+    });
+
+    it('writes a create match for every row when no match field is mapped', function (): void {
+        createStoreForMatchResolution($this, ['Name'], [
+            makeMatchRow(2, ['Name' => 'John']),
+            makeMatchRow(3, ['Name' => 'Jane']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        (new ResolveMatchesJob($this->import->id))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->get();
+
+        expect($rows)->toHaveCount(2)
+            ->and($rows->every(fn ($row): bool => $row->match_action === RowMatchAction::Create))->toBeTrue();
+    });
+
+    it('fails with a lock timeout instead of writing when another writer holds the store', function (): void {
+        createStoreForMatchResolution($this, ['Name'], [
+            makeMatchRow(2, ['Name' => 'John']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+
+        expect(fn () => (new ResolveMatchesJob($this->import->id))->handle())
+            ->toThrow(ImportStoreException::class);
+
+        $held->release();
+
+        expect(ImportStore::forRead($this->import->id)->query()->first()->match_action)->toBeNull();
+    });
+
+    it('returns quietly when the store was deleted', function (): void {
+        createStoreForMatchResolution($this, ['Name'], [
+            makeMatchRow(2, ['Name' => 'John']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        ImportStore::delete($this->import->id);
+
+        (new ResolveMatchesJob($this->import->id))->handle();
+
+        expect(ImportStore::exists($this->import->id))->toBeFalse();
+    });
+});

@@ -8,6 +8,7 @@ use App\Models\CustomField;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Enums\FieldDataType;
@@ -15,6 +16,7 @@ use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Data\ImportField;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -35,7 +37,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (isset($this->import)) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
         $this->import->delete();
     }
 });
@@ -60,6 +62,12 @@ function createValidationStore(
 
     $store = ImportStore::create($import->id);
     $store->query()->insert($rows);
+
+    if (ImportStore::isRemote()) {
+        $store->persist();
+        $store->close();
+        $store = ImportStore::forRead($import->id);
+    }
 
     $context->import = $import;
     $context->store = $store;
@@ -457,4 +465,121 @@ it('skips format validation for name matcher on entity link', function (): void 
     expect($row->hasValidationError('Company'))->toBeFalse()
         ->and($row->relationships)->not->toBeNull()
         ->and($row->relationships)->toHaveCount(1);
+});
+
+function makeBrandColorColumn(): ColumnData
+{
+    $column = ColumnData::toField(source: 'Color', target: 'custom_fields_brand_color');
+    $column->importField = new ImportField(
+        key: 'custom_fields_brand_color',
+        label: 'Brand Color',
+        rules: ['regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
+        isCustomField: true,
+        type: FieldDataType::STRING,
+    );
+
+    return $column;
+}
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('writes validation errors into the remote store', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+            makeValidationRow(2, ['Name' => 'Jane', 'Color' => '#ff5733']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+
+        expect($rows[0]->hasValidationError('Color'))->toBeTrue()
+            ->and($rows[1]->hasValidationError('Color'))->toBeFalse();
+    });
+
+    it('leaves validation off a row whose value was corrected', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color'], [
+                'corrections' => json_encode(['Color' => '#ff5733']),
+            ]),
+            makeValidationRow(2, ['Name' => 'Jane', 'Color' => 'also-not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+
+        expect($rows[0]->validation)->toBeNull()
+            ->and($rows[1]->hasValidationError('Color'))->toBeTrue();
+    });
+
+    it('writes entity link relationships into the remote store', function (): void {
+        $column = ColumnData::toEntityLink(source: 'Company', matcherKey: 'name', entityLinkKey: 'company');
+
+        createValidationStore($this, ['Name', 'Company'], [
+            makeValidationRow(2, ['Name' => 'John', 'Company' => 'Acme Corp']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+
+        expect($row->relationships->sole()->name)->toBe('Acme Corp');
+    });
+
+    it('fails with a lock timeout instead of writing when another writer holds the store', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+
+        expect(fn () => (new ValidateColumnJob($this->import->id, $column))->handle())
+            ->toThrow(ImportStoreException::class);
+
+        $held->release();
+
+        expect(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
+    });
+
+    it('returns quietly when the store was deleted', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        ImportStore::delete($this->import->id);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        expect(ImportStore::exists($this->import->id))->toBeFalse();
+    });
 });
