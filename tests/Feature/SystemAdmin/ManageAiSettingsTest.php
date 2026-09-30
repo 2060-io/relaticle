@@ -502,3 +502,47 @@ it('flags a row the provider will not serve tools on', function (): void {
         ->assertSuccessful()
         ->assertSee('No tool calls, so this model is offered to nobody');
 });
+
+it('refuses to enable a model that is missing a price, and names it', function (): void {
+    $before = config('chat.models');
+
+    livewire(ManageAiSettings::class)
+        ->fillForm(catalogState(['models' => [ChatCatalog::entry(['label' => 'Luna', 'cache_write_per_mtok' => null])]]))
+        ->call('save')
+        ->assertNotified('Set all four prices before enabling a model');
+
+    expect(config('chat.models'))->toBe($before);
+});
+
+it('saves a disabled model that carries no prices', function (): void {
+    livewire(ManageAiSettings::class)
+        ->fillForm(catalogState(['models' => [
+            ChatCatalog::entry(),
+            ChatCatalog::entry([
+                'label' => 'Haiku 4.5',
+                'model' => 'claude-haiku-4-5-20251001',
+                'enabled' => false,
+                'auto' => false,
+                'input_per_mtok' => null,
+                'output_per_mtok' => null,
+                'cache_read_per_mtok' => null,
+                'cache_write_per_mtok' => null,
+            ]),
+        ]]))
+        ->call('save')
+        ->assertNotified('Saved');
+
+    expect(collect(config('chat.models'))->pluck('model')->all())
+        ->toContain('claude-haiku-4-5-20251001');
+});
+
+it('stores the cache prices with the entry', function (): void {
+    livewire(ManageAiSettings::class)
+        ->fillForm(catalogState())
+        ->call('save')
+        ->assertNotified('Saved');
+
+    expect(config('chat.models')[0])
+        ->cache_read_per_mtok->toBe(0.3)
+        ->cache_write_per_mtok->toBe(3.75);
+});

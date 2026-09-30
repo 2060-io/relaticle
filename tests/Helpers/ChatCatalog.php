@@ -31,6 +31,8 @@ final class ChatCatalog
             'credit_multiplier' => 1.0,
             'input_per_mtok' => 3.0,
             'output_per_mtok' => 15.0,
+            'cache_read_per_mtok' => 0.3,
+            'cache_write_per_mtok' => 3.75,
             'auto' => true,
             'enabled' => true,
             'capabilities' => ['supports_tools' => true, 'write_guard' => 'api'],

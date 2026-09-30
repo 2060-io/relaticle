@@ -13,7 +13,7 @@ final readonly class ModelRegistry
     /** @var list<ModelDescriptor> */
     private array $models;
 
-    /** @var array<string, array{input_per_mtok: float, output_per_mtok: float}> */
+    /** @var array<string, array{input_per_mtok: float, output_per_mtok: float, cache_read_per_mtok: ?float, cache_write_per_mtok: ?float}> */
     private array $rates;
 
     /** @var array<string, float> */
@@ -199,7 +199,7 @@ final readonly class ModelRegistry
     }
 
     /**
-     * @return array{input_per_mtok: float, output_per_mtok: float}|null
+     * @return array{input_per_mtok: float, output_per_mtok: float, cache_read_per_mtok: ?float, cache_write_per_mtok: ?float}|null
      */
     public function ratesFor(string $model): ?array
     {

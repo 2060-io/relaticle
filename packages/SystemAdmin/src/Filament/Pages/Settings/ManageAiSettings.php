@@ -152,6 +152,8 @@ final class ManageAiSettings extends Page
                                     Hidden::make('credit_multiplier')->default(1.0),
                                     Hidden::make('input_per_mtok'),
                                     Hidden::make('output_per_mtok'),
+                                    Hidden::make('cache_read_per_mtok'),
+                                    Hidden::make('cache_write_per_mtok'),
                                     Toggle::make('auto')->inline(false),
                                     Toggle::make('enabled')->inline(false),
                                     Icon::make(fn (Get $get): Heroicon => $this->capabilityBadge($get)['icon'])
@@ -185,14 +187,22 @@ final class ManageAiSettings extends Page
                                                 ->label('Input $ / Mtok')
                                                 ->numeric()
                                                 ->minValue(0)
-                                                ->helperText('Vendor list price. Feeds the sysadmin spend widget only.'),
+                                                ->helperText('Vendor list price. Every model call is costed from these four prices.'),
                                             TextInput::make('output_per_mtok')
                                                 ->label('Output $ / Mtok')
                                                 ->numeric()
                                                 ->minValue(0),
+                                            TextInput::make('cache_read_per_mtok')
+                                                ->label('Cache read $ / Mtok')
+                                                ->numeric()
+                                                ->minValue(0),
+                                            TextInput::make('cache_write_per_mtok')
+                                                ->label('Cache write $ / Mtok')
+                                                ->numeric()
+                                                ->minValue(0),
                                         ])
                                         ->fillForm(fn (array $arguments, Repeater $component): array => collect($component->getItemState($arguments['item']))
-                                            ->only(['min_plan', 'credit_multiplier', 'input_per_mtok', 'output_per_mtok'])
+                                            ->only(['min_plan', 'credit_multiplier', 'input_per_mtok', 'output_per_mtok', 'cache_read_per_mtok', 'cache_write_per_mtok'])
                                             ->all())
                                         ->action(function (array $arguments, array $data, Repeater $component): void {
                                             $state = $component->getState();
@@ -263,7 +273,24 @@ final class ManageAiSettings extends Page
         /** @var list<array<string, mixed>> $submitted */
         $submitted = $data['models'] ?? [];
 
-        [$models, $failure] = $this->verified($this->parseModels($submitted));
+        $entries = $this->parseModels($submitted);
+        $unpriced = array_values(array_filter(
+            $entries,
+            static fn (CatalogEntry $entry): bool => $entry->enabled && ! $entry->isFullyPriced(),
+        ));
+
+        if ($unpriced !== []) {
+            Notification::make()
+                ->title('Set all four prices before enabling a model')
+                ->body(implode(', ', array_map(static fn (CatalogEntry $entry): string => $entry->label, $unpriced)))
+                ->danger()
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        [$models, $failure] = $this->verified($entries);
 
         if ($failure !== null) {
             Notification::make()
