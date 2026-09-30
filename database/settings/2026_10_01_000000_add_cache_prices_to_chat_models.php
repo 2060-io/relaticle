@@ -10,7 +10,7 @@ return new class extends SettingsMigration
     private const array CACHE_RATIOS = [
         'anthropic' => [0.1, 1.25],
         'openai' => [0.1, 1.0],
-        'gemini' => [0.25, 1.0],
+        'gemini' => [0.1, 1.0],
     ];
 
     private const array CHEAPEST_PROVIDERS = ['anthropic', 'openai'];

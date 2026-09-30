@@ -23,6 +23,7 @@ beforeEach(function (): void {
         ['label' => 'Sonnet 5', 'provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'min_plan' => 'free', 'credit_multiplier' => 1.0, 'input_per_mtok' => 3.0, 'output_per_mtok' => 15.0, 'auto' => true, 'enabled' => true, 'capabilities' => null, 'verified_at' => null],
         ['label' => 'GPT 5.4', 'provider' => 'openai', 'model' => 'gpt-5.4', 'min_plan' => 'pro', 'credit_multiplier' => 1.5, 'input_per_mtok' => 2.5, 'output_per_mtok' => 15.0, 'auto' => false, 'enabled' => true, 'capabilities' => null, 'verified_at' => null],
         ['label' => 'GPT 6 luna', 'provider' => 'openai', 'model' => 'gpt-6-luna', 'min_plan' => 'pro', 'credit_multiplier' => 1.0, 'input_per_mtok' => null, 'output_per_mtok' => null, 'auto' => true, 'enabled' => true, 'capabilities' => null, 'verified_at' => null],
+        ['label' => 'Gemini 3.1 Pro', 'provider' => 'gemini', 'model' => 'gemini-3.1-pro', 'min_plan' => 'pro', 'credit_multiplier' => 1.5, 'input_per_mtok' => 2, 'output_per_mtok' => 12, 'auto' => false, 'enabled' => false, 'capabilities' => null, 'verified_at' => null],
     ];
     $settings->save();
 });
@@ -38,6 +39,9 @@ it('prices cache reads and writes from each provider\'s input price', function (
         ->and($byModel['gpt-5.4'])
         ->cache_read_per_mtok->toBe(0.25)
         ->cache_write_per_mtok->toBe(2.5)
+        ->and($byModel['gemini-3.1-pro'])
+        ->cache_read_per_mtok->toBe(0.2)
+        ->cache_write_per_mtok->toEqual(2.0)
         ->and($byModel['gpt-6-luna'])
         ->cache_read_per_mtok->toBeNull()
         ->cache_write_per_mtok->toBeNull();
