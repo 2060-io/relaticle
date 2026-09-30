@@ -15,6 +15,7 @@ upgradeUrl: @js(
         : null
 ),
 allowedModels: @js(app(\Relaticle\Chat\Services\ModelRegistry::class)->allowedIdsFor(app(\Relaticle\Chat\Services\ModelAccess::class)->planFor(auth()->user()?->currentWorkspace))),
+trialLocked: @js(app(\Relaticle\Chat\Services\ModelAccess::class)->isTrialLocked(auth()->user()?->currentWorkspace)),
 modelOptions: @js(app(\Relaticle\Chat\Services\ModelRegistry::class)->pickerOptions()),
 ...window.ChatModules.modelPickerModule({
     persistSelection: @js($persistSelection ?? false),

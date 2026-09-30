@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Enums\CreationSource;
 use App\Enums\Plan;
 use App\Features\OnboardSeed;
 use App\Filament\Pages\Dashboard;
+use App\Models\Company;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Laravel\Pennant\Feature;
@@ -14,6 +16,28 @@ use Relaticle\Chat\Services\ModelAccess;
 use Relaticle\Chat\Services\ModelRegistry;
 
 mutates(ModelRegistry::class, ModelAccess::class);
+
+/**
+ * @return array{
+ *     allowedModels: list<string>,
+ *     trialLocked: bool
+ * }
+ */
+function pickerState(string $html): array
+{
+    $html = html_entity_decode($html);
+
+    preg_match("/allowedModels: JSON\.parse\('(.+?)'\)/", $html, $models);
+    preg_match('/trialLocked: (true|false)/', $html, $locked);
+
+    expect($models)->not->toBeEmpty()
+        ->and($locked)->not->toBeEmpty();
+
+    return [
+        'allowedModels' => json_decode(preg_replace('/\\\\+u0022/', '"', $models[1]), true),
+        'trialLocked' => $locked[1] === 'true',
+    ];
+}
 
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
@@ -86,24 +110,43 @@ it('shows env-configured self-hosted models in the picker', function (): void {
         ->assertSee('qwen3:32b', stripInitialData: false);
 });
 
-it('tells a trial workspace without its own data how to unlock premium models', function (): void {
+it('locks premium models in the chat picker for a trial workspace without its own data', function (): void {
     $this->user->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
 
-    Livewire::test(ChatInterface::class)
-        ->assertSee('Add your own records to unlock premium models during your trial.', stripInitialData: false)
-        ->assertSee('Locked', stripInitialData: false)
-        ->assertDontSee('Available on the Pro plan.', stripInitialData: false);
+    $state = pickerState(Livewire::test(ChatInterface::class)->html());
+
+    expect($state['trialLocked'])->toBeTrue()
+        ->and($state['allowedModels'])->toContain('claude-sonnet-5')
+        ->and($state['allowedModels'])->not->toContain('claude-opus-5');
 });
 
-it('keeps the upgrade hint for a workspace on the free plan', function (): void {
-    Livewire::test(ChatInterface::class)
-        ->assertSee('Available on the Pro plan.', stripInitialData: false)
-        ->assertDontSee('Add your own records to unlock premium models during your trial.', stripInitialData: false);
-});
-
-it('shows the trial hint on the dashboard composer too', function (): void {
+it('locks premium models in the dashboard picker for a trial workspace without its own data', function (): void {
     $this->user->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
 
-    livewire(Dashboard::class)
-        ->assertSee('Add your own records to unlock premium models during your trial.', stripInitialData: false);
+    $state = pickerState(livewire(Dashboard::class)->html());
+
+    expect($state['trialLocked'])->toBeTrue()
+        ->and($state['allowedModels'])->toContain('claude-sonnet-5')
+        ->and($state['allowedModels'])->not->toContain('claude-opus-5');
+});
+
+it('keeps premium models locked without the trial flag on the free plan', function (): void {
+    $state = pickerState(Livewire::test(ChatInterface::class)->html());
+
+    expect($state['trialLocked'])->toBeFalse()
+        ->and($state['allowedModels'])->not->toContain('claude-opus-5');
+});
+
+it('unlocks premium models for a trial workspace once it holds its own record', function (): void {
+    $workspace = $this->user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
+    Company::factory()->create([
+        'workspace_id' => $workspace->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    $state = pickerState(Livewire::test(ChatInterface::class)->html());
+
+    expect($state['trialLocked'])->toBeFalse()
+        ->and($state['allowedModels'])->toContain('claude-opus-5');
 });
