@@ -54,6 +54,7 @@ use App\Support\Impersonation\Impersonator;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
 use App\Support\Passport\ClientRepository;
+use App\Support\Passport\WorkspaceBearerTokenResponse;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Actions\Exports\ExportColumn;
@@ -238,6 +239,7 @@ final class AppServiceProvider extends ServiceProvider
 
         Passport::useAuthCodeModel(McpAuthCode::class);
         Event::listen(AccessTokenCreated::class, CopyWorkspaceIdToAccessToken::class);
+        Passport::useAuthorizationServerResponseType(new WorkspaceBearerTokenResponse);
 
         // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
         Passport::tokensCan([
