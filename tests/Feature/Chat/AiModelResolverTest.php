@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\Plan;
 use App\Models\User;
 use Relaticle\Chat\Services\AiModelResolver;
+use Relaticle\Chat\Services\ModelAccess;
 use Relaticle\Chat\Services\ModelRegistry;
 
 mutates(AiModelResolver::class, ModelRegistry::class);
@@ -175,7 +176,7 @@ it('throws a clear error when no chat model is configured', function (): void {
         'chat.self_hosted' => ['url' => null, 'key' => '', 'models' => null],
     ]);
 
-    $resolver = new AiModelResolver(new ModelRegistry);
+    $resolver = new AiModelResolver(new ModelRegistry, new ModelAccess);
     $user = User::factory()->withPersonalWorkspace()->create();
 
     expect(fn (): array => $resolver->resolve($user))
