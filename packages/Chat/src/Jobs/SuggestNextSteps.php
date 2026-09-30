@@ -104,7 +104,9 @@ final class SuggestNextSteps implements ShouldQueue
                 provider: $this->provider,
             );
 
-            resolve(CreditService::class)->recordInternalUsage($this->conversationId, $response->meta->model, $response->usage);
+            rescue(function () use ($response): void {
+                resolve(CreditService::class)->recordInternalUsage($this->conversationId, $this->provider, $response->usage, $response->meta->model);
+            });
 
             if (! $response instanceof StructuredAgentResponse) {
                 return [];

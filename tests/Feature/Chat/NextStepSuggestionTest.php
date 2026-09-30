@@ -21,8 +21,10 @@ use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\CreditService;
+use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Support\NextSteps;
 use Relaticle\Chat\Tools\Task\CreateTaskTool;
+use Tests\Helpers\ChatCatalog;
 use Tests\Helpers\OpenAiResponses;
 
 mutates(SuggestNextSteps::class, NextSteps::class);
@@ -421,4 +423,56 @@ it('books the suggestion call on the ledger without charging credits', function 
 
     expect($row->credits_charged)->toBe(0)
         ->and(AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining'))->toBe(100);
+});
+
+it('books an OpenAI suggestion call on the requested model, not the dated id the provider reports', function (): void {
+    config()->set('chat.models', [ChatCatalog::entry([
+        'label' => 'GPT 5.6 luna',
+        'provider' => 'openai',
+        'model' => 'gpt-5.6-luna',
+        'input_per_mtok' => 0.5,
+        'output_per_mtok' => 2.0,
+        'auto' => false,
+    ])]);
+    app()->forgetInstance(ModelRegistry::class);
+
+    OpenAiResponses::fakeStructured(['suggestions' => [['label' => 'Add a note', 'prompt' => 'Add a note to Acme Corp']]], 'gpt-5.6-luna-2026-09-01');
+
+    $messageId = seedSuggestibleMessage('assistant', 'Your workspace is empty.');
+
+    (new SuggestNextSteps(
+        conversationId: $this->conversationId,
+        messageId: $messageId,
+        message: 'What can you help me with?',
+        reply: 'Your workspace is empty.',
+        provider: 'openai',
+    ))->handle();
+
+    $row = AiCreditTransaction::query()
+        ->where('conversation_id', $this->conversationId)
+        ->where('type', AiCreditType::Internal)
+        ->sole();
+
+    expect($row->model)->toBe(config('ai.providers.openai.models.text.cheapest'))
+        ->and($row->cost_micros)->toBe(18);
+});
+
+it('still persists the suggestions when the ledger write fails', function (): void {
+    Event::fake([NextStepsSuggested::class]);
+    NextStepSuggester::fake([['suggestions' => [['label' => 'Add a note', 'prompt' => 'Add a note to Acme Corp']]]]);
+    AiCreditTransaction::creating(fn (): never => throw new RuntimeException('ledger down'));
+
+    $messageId = seedSuggestibleMessage('assistant', 'Your workspace is empty.');
+
+    (new SuggestNextSteps(
+        conversationId: $this->conversationId,
+        messageId: $messageId,
+        message: 'What can you help me with?',
+        reply: 'Your workspace is empty.',
+        provider: 'anthropic',
+    ))->handle();
+
+    expect(persistedNextSteps($messageId))->toBe([
+        ['label' => 'Add a note', 'prompt' => 'Add a note to Acme Corp'],
+    ]);
 });

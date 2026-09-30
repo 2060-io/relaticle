@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Ai\Ai;
 use Laravel\Ai\Responses\Data\TextUsage;
 use Relaticle\Chat\Enums\AiCreditType;
 use Relaticle\Chat\Models\AgentConversation;
@@ -339,7 +340,7 @@ final readonly class CreditService
         );
     }
 
-    public function recordInternalUsage(string $conversationId, ?string $model, TextUsage $usage): void
+    public function recordInternalUsage(string $conversationId, ?string $provider, TextUsage $usage, ?string $reportedModel): void
     {
         $conversation = AgentConversation::query()->find($conversationId);
 
@@ -347,7 +348,7 @@ final readonly class CreditService
             return;
         }
 
-        $model ??= 'unknown';
+        $model = rescue(fn (): string => Ai::textProvider($provider)->cheapestTextModel(), $reportedModel) ?: 'unknown';
         $uncachedInput = $usage->uncachedInputTokens();
         $cacheRead = $usage->cacheReadInputTokens ?? 0;
         $cacheWrite = $usage->cacheWriteInputTokens ?? 0;
