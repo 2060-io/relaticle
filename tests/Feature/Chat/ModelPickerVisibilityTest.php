@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\Plan;
 use App\Features\OnboardSeed;
 use App\Filament\Pages\Dashboard;
 use App\Models\User;
@@ -9,9 +10,10 @@ use Filament\Facades\Filament;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 use Relaticle\Chat\Livewire\Chat\ChatInterface;
+use Relaticle\Chat\Services\ModelAccess;
 use Relaticle\Chat\Services\ModelRegistry;
 
-mutates(ModelRegistry::class);
+mutates(ModelRegistry::class, ModelAccess::class);
 
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
@@ -82,4 +84,26 @@ it('shows env-configured self-hosted models in the picker', function (): void {
     Livewire::test(ChatInterface::class)
         ->assertSee('llama3.1:70b', stripInitialData: false)
         ->assertSee('qwen3:32b', stripInitialData: false);
+});
+
+it('tells a trial workspace without its own data how to unlock premium models', function (): void {
+    $this->user->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
+
+    Livewire::test(ChatInterface::class)
+        ->assertSee('Add your own records to unlock premium models during your trial.', stripInitialData: false)
+        ->assertSee('Locked', stripInitialData: false)
+        ->assertDontSee('Available on the Pro plan.', stripInitialData: false);
+});
+
+it('keeps the upgrade hint for a workspace on the free plan', function (): void {
+    Livewire::test(ChatInterface::class)
+        ->assertSee('Available on the Pro plan.', stripInitialData: false)
+        ->assertDontSee('Add your own records to unlock premium models during your trial.', stripInitialData: false);
+});
+
+it('shows the trial hint on the dashboard composer too', function (): void {
+    $this->user->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
+
+    livewire(Dashboard::class)
+        ->assertSee('Add your own records to unlock premium models during your trial.', stripInitialData: false);
 });

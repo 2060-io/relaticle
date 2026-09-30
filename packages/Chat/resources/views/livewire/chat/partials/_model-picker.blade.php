@@ -1,3 +1,4 @@
+@php($trialLocked = app(\Relaticle\Chat\Services\ModelAccess::class)->isTrialLocked(auth()->user()?->currentWorkspace))
 <div
     x-data="{ menuOpen: false }"
     x-on:keydown.escape.window="menuOpen = false"
@@ -59,7 +60,7 @@
                         class="ms-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[length:var(--text-micro)] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                     >
                         <x-heroicon-m-lock-closed class="h-2.5 w-2.5" aria-hidden="true" />
-                        {{ __('Pro') }}
+                        {{ $trialLocked ? __('Locked') : __('Pro') }}
                     </span>
                     <x-heroicon-s-check-circle
                         x-show="selectedModel === opt.value && allowedModels.includes(opt.value)"
@@ -78,13 +79,17 @@
             role="status"
             class="border-t border-gray-100 px-3 py-2 text-[length:var(--text-micro)] text-gray-500 dark:border-white/5 dark:text-gray-400"
         >
-            <span>{{ __('Available on the Pro plan.') }}</span>
-            <template x-if="upgradeUrl">
-                <a
-                    :href="upgradeUrl"
-                    class="font-medium text-primary-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-primary-400"
-                >{{ __('Upgrade') }}</a>
-            </template>
+            @if ($trialLocked)
+                <span>{{ __('Add your own records to unlock premium models during your trial.') }}</span>
+            @else
+                <span>{{ __('Available on the Pro plan.') }}</span>
+                <template x-if="upgradeUrl">
+                    <a
+                        :href="upgradeUrl"
+                        class="font-medium text-primary-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-primary-400"
+                    >{{ __('Upgrade') }}</a>
+                </template>
+            @endif
         </div>
     </div>
 </div>
