@@ -179,7 +179,8 @@ describe('on a remote store disk', function (): void {
         $fresh = (string) Str::ulid();
         Storage::disk('s3')->put("imports/{$stale}.sqlite", 'stale');
         Storage::disk('s3')->put("imports/{$fresh}.sqlite", 'fresh');
-        touch(storage_path("framework/testing/disks/s3/imports/{$stale}.sqlite"), now()->subHours(25)->getTimestamp());
+        $root = Storage::disk('s3')->getConfig()['root'];
+        touch("{$root}/imports/{$stale}.sqlite", now()->subHours(25)->getTimestamp());
 
         $this->artisan('import:cleanup')
             ->expectsOutputToContain('Cleaned up 1 import(s)')
@@ -187,5 +188,24 @@ describe('on a remote store disk', function (): void {
 
         Storage::disk('s3')->assertMissing("imports/{$stale}.sqlite");
         Storage::disk('s3')->assertExists("imports/{$fresh}.sqlite");
+    });
+});
+
+describe('a stale remote file whose import row exists', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('is kept', function (): void {
+        $import = createTestImport($this, ImportStatus::Mapping, now()->subHours(2)->toIso8601String());
+        $root = Storage::disk('s3')->getConfig()['root'];
+        touch("{$root}/imports/{$import->id}.sqlite", now()->subHours(25)->getTimestamp());
+
+        $this->artisan('import:cleanup')
+            ->expectsOutputToContain('Cleaned up 0 import(s)')
+            ->assertExitCode(0);
+
+        Storage::disk('s3')->assertExists("imports/{$import->id}.sqlite");
     });
 });

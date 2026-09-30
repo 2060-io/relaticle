@@ -30,6 +30,7 @@ final class ImportStore
         private readonly bool $readOnly = false,
         private readonly bool $temporary = false,
         private ?Lock $lock = null,
+        private readonly string $file = 'data.sqlite',
     ) {}
 
     public static function isRemote(): bool
@@ -69,17 +70,23 @@ final class ImportStore
         }
 
         $directory = self::readCacheDirectory($importId);
-        $checksum = (string) self::disk()->checksum($remotePath);
+        $file = hash('xxh128', (string) self::disk()->checksum($remotePath)).'.sqlite';
 
-        if (! File::exists("{$directory}/data.sqlite") || rescue(fn (): string => File::get("{$directory}/checksum"), '', report: false) !== $checksum) {
+        if (! File::exists("{$directory}/{$file}")) {
             File::ensureDirectoryExists($directory);
             $download = "{$directory}/".Str::ulid().'.download';
-            self::download($importId, $remotePath, $download);
-            rename($download, "{$directory}/data.sqlite");
-            File::put("{$directory}/checksum", $checksum);
+
+            try {
+                self::download($importId, $remotePath, $download);
+                rename($download, "{$directory}/{$file}");
+            } finally {
+                File::delete($download);
+            }
+
+            self::pruneReadCopies($directory, $file);
         }
 
-        return new self($importId, $directory, readOnly: true);
+        return new self($importId, $directory, readOnly: true, file: $file);
     }
 
     public static function withWriteLock(string $importId, Closure $mutator, ?int $waitSeconds = null): mixed
@@ -141,9 +148,37 @@ final class ImportStore
         File::deleteDirectory(self::localDirectory($importId));
         File::deleteDirectory(self::readCacheDirectory($importId));
 
-        if (self::isRemote()) {
-            self::disk()->delete(self::remotePath($importId));
+        if (! self::isRemote()) {
+            return;
         }
+
+        $lock = self::lock(self::lockName($importId), (int) config('import-wizard.store.lock.ttl'));
+        $held = false;
+
+        try {
+            $lock->block((int) config('import-wizard.store.lock.wait.web'));
+            $held = true;
+        } catch (LockTimeoutException) {
+        }
+
+        try {
+            self::disk()->delete(self::remotePath($importId));
+        } finally {
+            if ($held) {
+                $lock->release();
+            }
+        }
+    }
+
+    public static function exists(string $importId): bool
+    {
+        if (! Str::isUlid($importId)) {
+            return false;
+        }
+
+        return self::isRemote()
+            ? self::disk()->exists(self::remotePath($importId))
+            : File::exists(self::localDirectory($importId).'/data.sqlite');
     }
 
     public static function load(string $importId): ?self
@@ -163,12 +198,16 @@ final class ImportStore
 
     public function sqlitePath(): string
     {
-        return $this->directory.'/data.sqlite';
+        return "{$this->directory}/{$this->file}";
     }
 
     public function connectionName(): string
     {
-        return $this->readOnly ? "import_read_{$this->id}" : "import_{$this->id}";
+        $name = $this->readOnly ? "import_read_{$this->id}" : "import_{$this->id}";
+
+        return $this->directory === self::localDirectory($this->id)
+            ? $name
+            : $name.'_'.substr(hash('xxh128', $this->sqlitePath()), 0, 8);
     }
 
     public function connection(): Connection
@@ -298,33 +337,22 @@ final class ImportStore
             'driver' => 'sqlite',
             'database' => $this->sqlitePath(),
             'foreign_key_constraints' => true,
+            ...($this->readOnly ? ['pragmas' => ['query_only' => 1]] : []),
         ]);
         DB::purge($name);
 
-        $connection = DB::connection($name);
-
-        if ($this->readOnly) {
-            $connection->statement('PRAGMA query_only = 1');
-        }
-
-        return $connection;
+        return DB::connection($name);
     }
 
     private static function downloadForWrite(string $importId, Lock $lock): self
     {
-        $remotePath = self::remotePath($importId);
-
-        if (! self::disk()->exists($remotePath)) {
-            $lock->release();
-
-            throw ImportStoreException::notFound($importId);
-        }
-
         $store = new self($importId, self::temporaryDirectory($importId), temporary: true, lock: $lock);
 
         try {
+            throw_unless(self::disk()->exists(self::remotePath($importId)), ImportStoreException::notFound($importId));
+
             File::ensureDirectoryExists($store->directory);
-            self::download($importId, $remotePath, $store->sqlitePath());
+            self::download($importId, self::remotePath($importId), $store->sqlitePath());
         } catch (Throwable $e) {
             $store->close();
 
@@ -332,6 +360,15 @@ final class ImportStore
         }
 
         return $store;
+    }
+
+    private static function pruneReadCopies(string $directory, string $keep): void
+    {
+        foreach (File::glob("{$directory}/*.sqlite") as $copy) {
+            if (basename($copy) !== $keep) {
+                rescue(fn (): bool => File::delete($copy), false, report: false);
+            }
+        }
     }
 
     private static function block(Lock $lock, string $importId, int $waitSeconds): void

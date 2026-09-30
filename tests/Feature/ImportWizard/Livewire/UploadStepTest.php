@@ -16,6 +16,7 @@ use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Livewire\Steps\UploadStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -273,5 +274,27 @@ describe('on a remote store disk', function (): void {
 
         expect(File::exists(config('import-wizard.storage_path')."/{$import->id}"))->toBeFalse()
             ->and(ImportStore::forRead($import->id)?->query()->count())->toBe(2);
+    });
+
+    it('removes the remote file and the import when the upload to the store disk fails', function (): void {
+        Exceptions::fake();
+        $fake = Storage::disk('s3');
+        Storage::set('s3', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                return false;
+            }
+        });
+
+        $component = mountUploadStep($this)
+            ->set('uploadedFile', makeCsvFile("Name\nAda\n"))
+            ->call('continueToMapping');
+
+        $component->assertHasErrors(['uploadedFile' => 'Unable to process this file. Please try again or use a different file.']);
+        Exceptions::assertReported(ImportStoreException::class);
+
+        expect(Import::query()->where('workspace_id', $this->workspace->getKey())->exists())->toBeFalse()
+            ->and(Storage::disk('s3')->allFiles('imports'))->toBe([]);
     });
 });

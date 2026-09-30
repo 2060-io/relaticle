@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
+use Throwable;
 
 #[Description('Clean up stale and completed import files')]
 #[Signature('import:cleanup
@@ -44,16 +45,20 @@ final class CleanupImportsCommand extends Command
             ->get();
 
         foreach ($terminalImports as $import) {
-            $store = ImportStore::forRead($import->id);
-
-            if (! $store instanceof ImportStore) {
+            if (! ImportStore::exists($import->id)) {
                 continue;
             }
 
-            $store->close();
-
             $this->info("Cleaning up files for import {$import->id} (status: {$import->status->value})");
-            ImportStore::delete($import->id);
+
+            try {
+                ImportStore::delete($import->id);
+            } catch (Throwable $e) {
+                report($e);
+
+                continue;
+            }
+
             $deleted++;
         }
 
@@ -71,7 +76,15 @@ final class CleanupImportsCommand extends Command
 
         foreach ($abandonedImports as $import) {
             $this->info("Cleaning up abandoned import {$import->id} (status: {$import->status->value})");
-            ImportStore::delete($import->id);
+
+            try {
+                ImportStore::delete($import->id);
+            } catch (Throwable $e) {
+                report($e);
+
+                continue;
+            }
+
             $import->delete();
             $deleted++;
         }
@@ -144,7 +157,15 @@ final class CleanupImportsCommand extends Command
             }
 
             $this->info("Cleaning up orphaned remote store {$id}");
-            ImportStore::delete($id);
+
+            try {
+                ImportStore::delete($id);
+            } catch (Throwable $e) {
+                report($e);
+
+                continue;
+            }
+
             $deleted++;
         }
 
