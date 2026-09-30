@@ -263,6 +263,24 @@ describe('signed put receiver', function (): void {
         TemporaryUploads::disk()->assertExists(TemporaryUploads::path($name));
     });
 
+    it('streams the body onto a media disk with no local paths and finalizes it', function (): void {
+        config()->set('media-library.disk_name', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+        $name = TemporaryUploads::newName('deck.pdf', (string) $this->workspace->getKey());
+        $url = URL::temporarySignedRoute('mcp.uploads.receive', now()->addMinutes(5), ['upload' => $name]);
+
+        $this->call('PUT', $url, [], [], [], ['CONTENT_LENGTH' => strlen(pdfBytes()), 'CONTENT_TYPE' => 'application/pdf'], pdfBytes())
+            ->assertNoContent();
+
+        expect(Storage::disk('s3')->get(TemporaryUploads::path($name)))->toBe(pdfBytes());
+
+        $media = resolve(StoreAgentUpload::class)->execute($this->user, $this->workspace, ['upload_id' => $name]);
+
+        expect($media->disk)->toBe('s3')
+            ->and($media->getCustomProperty('source'))->toBe('signed_put');
+        Storage::disk('s3')->assertMissing(TemporaryUploads::path($name));
+    });
+
     it('rejects an unsigned request', function (): void {
         $this->put(route('mcp.uploads.receive', ['upload' => TemporaryUploads::newName('deck.pdf', (string) $this->workspace->getKey())]), [], ['Content-Length' => '10'])
             ->assertForbidden();
