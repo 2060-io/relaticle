@@ -261,13 +261,13 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withSchedule(function (Schedule $schedule): void {
-        $schedule->command('app:generate-sitemap')->daily();
-        $schedule->command('import:cleanup')->hourly();
+        $schedule->command('app:generate-sitemap')->daily()->onOneServer();
+        $schedule->command('import:cleanup')->hourly()->onOneServer();
         $schedule->command('app:purge-pending-uploads')->hourly()->withoutOverlapping()->onOneServer();
-        $schedule->command('queue:prune-batches --hours=24')->daily();
-        $schedule->command('invitations:cleanup')->daily();
-        $schedule->command('activitylog:clean --force')->daily();
-        $schedule->command('chat:expire-pending-actions')->everyFiveMinutes();
+        $schedule->command('queue:prune-batches --hours=24')->daily()->onOneServer();
+        $schedule->command('invitations:cleanup')->daily()->onOneServer();
+        $schedule->command('activitylog:clean --force')->daily()->onOneServer();
+        $schedule->command('chat:expire-pending-actions')->everyFiveMinutes()->onOneServer();
         $schedule->command('chat:release-orphaned-reservations')->everyTenMinutes()->withoutOverlapping()->onOneServer();
         $schedule->command('chat:purge-unsent-attachments')->hourly()->withoutOverlapping()->onOneServer();
         $schedule->command('chat:reset-credits')->hourly()->withoutOverlapping()->onOneServer();
@@ -281,9 +281,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('notifications:send-setup-nudge')->hourly()->withoutOverlapping()->onOneServer();
 
         if (config('app.health_checks_enabled')) {
-            $schedule->command(RunHealthChecksCommand::class)->everyMinute();
-            $schedule->command(DispatchQueueCheckJobsCommand::class)->everyMinute();
-            $schedule->command(ScheduleCheckHeartbeatCommand::class)->everyMinute();
+            $schedule->command(RunHealthChecksCommand::class)->everyMinute()->onOneServer();
+            $schedule->command(DispatchQueueCheckJobsCommand::class)->everyMinute()->onOneServer();
+            $schedule->command(ScheduleCheckHeartbeatCommand::class)->everyMinute()->onOneServer();
         }
     })
     ->booting(function (): void {
