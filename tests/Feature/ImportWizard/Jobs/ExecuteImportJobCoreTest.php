@@ -15,6 +15,8 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Queue\Middleware\FailOnException;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -22,6 +24,7 @@ use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\MatchBehavior;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ExecuteImportJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -42,7 +45,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (isset($this->import)) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
         $this->import->delete();
     }
 });
@@ -915,4 +918,82 @@ it('marks import as Failed when job exhausts retries via failed() handler', func
 
     $import = $this->import->fresh();
     expect($import->status)->toBe(ImportStatus::Failed);
+});
+
+it('hands the rest of the import to a fresh job when the time box runs out', function (bool $remote): void {
+    if ($remote) {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    }
+
+    Bus::fake();
+    config()->set('import-wizard.execution_time_box', 0);
+
+    ImportExecutionFixture::readyStore($this, ['Name'], array_map(
+        fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}"], ['match_action' => RowMatchAction::Create->value]),
+        range(1, 501),
+    ), [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+
+    expect(ImportExecutionFixture::freshStore($this)->query()->where('processed', true)->count())->toBe(500)
+        ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(500)
+        ->and($this->import->refresh()->status)->toBe(ImportStatus::Importing);
+
+    Bus::assertDispatchedTimes(ExecuteImportJob::class, 1);
+})->with([
+    'local store' => [false],
+    'remote store' => [true],
+]);
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('imports every row and marks them processed in the remote store', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+            ImportExecutionFixture::row(3, ['Name' => 'Grace Hopper'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        ImportExecutionFixture::run($this);
+
+        expect(People::where('workspace_id', $this->workspace->id)->whereIn('name', ['Ada Lovelace', 'Grace Hopper'])->count())->toBe(2)
+            ->and(ImportExecutionFixture::freshStore($this)->query()->where('processed', false)->count())->toBe(0)
+            ->and($this->import->refresh()->status)->toBe(ImportStatus::Completed);
+    });
+
+    it('reclaims the execution lock a killed attempt left behind', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        Cache::lock("import-store:{$this->import->id}", 360, "execute:{$this->import->id}")->get();
+
+        ImportExecutionFixture::run($this);
+
+        expect($this->import->refresh()->status)->toBe(ImportStatus::Completed);
+    });
+
+    it('fails with a lock timeout when another writer holds the store', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(ImportStoreException::class);
+
+        $held->release();
+    });
 });

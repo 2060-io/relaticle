@@ -44,9 +44,25 @@ final class ImportExecutionFixture
         $store->query()->insert($rows);
 
         $context->import = $import;
+
+        if (ImportStore::isRemote()) {
+            $store->persist();
+            $store->close();
+            $store = self::freshStore($context);
+        }
+
         $context->store = $store;
 
         return [$import, $store];
+    }
+
+    public static function freshStore(object $context): ImportStore
+    {
+        $store = ImportStore::forRead($context->import->id);
+
+        assert($store instanceof ImportStore);
+
+        return $store;
     }
 
     public static function run(object $context): void

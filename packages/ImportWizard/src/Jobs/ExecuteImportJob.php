@@ -14,6 +14,7 @@ use App\Support\ActivityLog\CustomFieldChangeLog;
 use App\Support\CurrentSource;
 use Carbon\CarbonImmutable;
 use Filament\Notifications\Notification;
+use Illuminate\Bus\Batch;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
@@ -117,23 +118,49 @@ final class ExecuteImportJob implements ShouldQueue
 
     public function handle(): void
     {
-        CurrentSource::during(CreationSource::IMPORT, $this->runImport(...));
+        if (CurrentSource::during(CreationSource::IMPORT, $this->runImport(...))) {
+            $this->handOff();
+        }
     }
 
-    private function runImport(): void
+    private function handOff(): void
     {
+        $next = new self($this->importId, $this->workspaceId);
+
+        $this->batch() instanceof Batch
+            ? $this->batch()->add([$next])
+            : dispatch($next);
+    }
+
+    private function timeBoxExpired(int $startedAt): bool
+    {
+        return (hrtime(true) - $startedAt) / 1e9 >= (int) config('import-wizard.execution_time_box', 240);
+    }
+
+    private function runImport(): bool
+    {
+        $startedAt = hrtime(true);
         $import = Import::query()->findOrFail($this->importId);
 
         if ($import->workspace_id !== $this->workspaceId) {
-            return;
+            return false;
         }
 
-        $store = ImportStore::load($this->importId);
+        $store = ImportStore::forExecution($this->importId);
 
         if (! $store instanceof ImportStore) {
-            return;
+            return false;
         }
 
+        try {
+            return $this->runFromStore($import, $store, $startedAt);
+        } finally {
+            $store->close();
+        }
+    }
+
+    private function runFromStore(Import $import, ImportStore $store, int $startedAt): bool
+    {
         $store->ensureProcessedColumn();
 
         throw_if($store->query()->where('processed', false)->whereNull('match_action')->exists(), LogicException::class, 'Import match resolution is incomplete.');
@@ -166,13 +193,14 @@ final class ExecuteImportJob implements ShouldQueue
 
         $currentImport = resolve(CurrentImport::class);
         $currentImport->set($import->id, $import->file_name);
+        $handedOff = false;
 
         try {
-            resolve(CauserResolver::class)->withCauser($import->user, function () use ($store, $importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, $import): void {
+            resolve(CauserResolver::class)->withCauser($import->user, function () use ($store, $importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, &$handedOff, $import, $startedAt): void {
                 $store->query()
                     ->where('processed', false)
                     ->orderBy('row_number')
-                    ->chunkById(500, function (Collection $rows) use ($importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, $store, $import): void {
+                    ->chunkById(500, function (Collection $rows) use ($importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, &$handedOff, $store, $import, $startedAt): bool {
                         $existingRecords = $this->preloadExistingRecords($rows, $importer, withCustomFieldValues: $customFieldFormatMap !== []);
 
                         foreach ($rows as $row) {
@@ -182,9 +210,22 @@ final class ExecuteImportJob implements ShouldQueue
                         $this->flushCustomFieldValues();
                         $this->flushTagOptions();
                         $this->flushFailedRows($import);
+                        $store->persist();
                         $this->persistResults($import, $results);
+
+                        if ($this->timeBoxExpired($startedAt)) {
+                            $handedOff = true;
+
+                            return false;
+                        }
+
+                        return true;
                     });
             });
+
+            if ($handedOff) {
+                return true;
+            }
 
             $import->update([
                 'status' => ImportStatus::Completed,
@@ -198,6 +239,8 @@ final class ExecuteImportJob implements ShouldQueue
             $this->logImportSummary($import, $results, self::IMPORTED_EVENT);
 
             $this->notifyUser($import, $results);
+
+            return false;
         } catch (\Throwable $e) {
             $this->flushFailedRows($import);
             $this->persistResults($import, $results);
