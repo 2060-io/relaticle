@@ -529,3 +529,62 @@ it('dispatches new batches when mappings hash changes', function (): void {
 
     Bus::assertBatched(fn (): true => true);
 });
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        $rows = $this->store->query()->get()->map(fn ($row): array => $row->getRawOriginal())->all();
+        $this->store->destroy();
+
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+
+        $store = ImportStore::create($this->import->id);
+        $store->query()->insert($rows);
+        $store->persist();
+        $store->close();
+
+        $this->store = ImportStore::forRead($this->import->id);
+    });
+
+    it('saves a correction to the remote store and renders it in the same request', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+
+        $component->call('updateMappedValue', 'John', 'Johnny')
+            ->assertSee('Johnny');
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+        expect($row->corrections->get('Name'))->toBe('Johnny');
+    });
+
+    it('notifies the user and writes nothing when another writer holds the store lock', function (): void {
+        $component = mountReviewStep($this);
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('skipValue', 'John')
+            ->assertNotified(__('import-wizard-new::store.busy'));
+
+        $held->release();
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+        expect($row->skipped)->toBeNull();
+    });
+
+    it('keeps a correction when the column validates again after it', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['raw_data' => json_encode(['Name' => 'John', 'Emails' => 'bad-email'])]);
+            $store->query()->where('row_number', 3)->update(['raw_data' => json_encode(['Name' => 'Jane', 'Emails' => 'also-bad'])]);
+        });
+        $component = mountReviewStep($this);
+
+        $component->call('selectColumn', 'Emails')
+            ->call('updateMappedValue', 'bad-email', 'ada@example.com');
+        (new ValidateColumnJob($this->import->id, $this->import->getColumnMapping('Emails')))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+        expect($rows[0]->corrections->get('Emails'))->toBe('ada@example.com')
+            ->and($rows[0]->validation)->toBeNull()
+            ->and($rows[1]->hasValidationError('Emails'))->toBeTrue();
+    });
+});

@@ -69,6 +69,12 @@ function createStoreWithHeaders(object $context, array $headers, array $rows = [
     }
 
     $context->import->update(['total_rows' => count($rows)]);
+
+    if (ImportStore::isRemote()) {
+        $context->store->persist();
+        $context->store->close();
+        $context->store = ImportStore::forRead($context->import->id);
+    }
 }
 
 function mountMappingStep(object $context): Testable
@@ -246,4 +252,25 @@ it('previewValues returns sample values from SQLite', function (): void {
 
     $component->call('previewValues', 'Name')
         ->assertReturned(['John', 'Jane']);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        $this->store->destroy();
+
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+
+        $this->store = ImportStore::create($this->import->id);
+    });
+
+    it('previewValues returns sample values from the remote store', function (): void {
+        createStoreWithHeaders($this, ['Name', 'Email'], [
+            ['Name' => 'John', 'Email' => 'john@test.com'],
+            ['Name' => 'Jane', 'Email' => 'jane@test.com'],
+        ]);
+
+        mountMappingStep($this)->call('previewValues', 'Name')
+            ->assertReturned(['John', 'Jane']);
+    });
 });

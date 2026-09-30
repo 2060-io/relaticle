@@ -70,6 +70,12 @@ function createPreviewReadyStore(
 
     (new MatchResolver($store, $import, $import->getImporter()))->resolve();
 
+    if (ImportStore::isRemote()) {
+        $store->persist();
+        $store->close();
+        $store = ImportStore::forRead($import->id);
+    }
+
     $context->import = $import;
     $context->store = $store;
 
@@ -759,4 +765,28 @@ it('downloadFailedRows action is hidden when there are no failed rows', function
     $component = mountPreviewStep($this);
 
     $component->assertDontSee('Download Failed Rows');
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('finishes a time-boxed import through the batch', function (): void {
+        config()->set('import-wizard.execution_time_box', 0);
+
+        createPreviewReadyStore($this, ['Name'], array_map(
+            fn (int $number): array => makePreviewRow($number + 1, ['Name' => "Person {$number}"]),
+            range(1, 501),
+        ), [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        mountPreviewStep($this)->call('startImport');
+
+        expect($this->import->refresh()->status)->toBe(ImportStatus::Completed)
+            ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(501)
+            ->and(ImportStore::forRead($this->import->id)->query()->where('processed', true)->count())->toBe(501);
+    });
 });
