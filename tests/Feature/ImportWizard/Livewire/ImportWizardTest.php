@@ -149,6 +149,30 @@ it('cancelImport destroys store and redirects', function (): void {
     markStoreAsDestroyed($this, $store);
 });
 
+it('cancelImport leaves the store of an import from another workspace untouched', function (): void {
+    $otherUser = User::factory()->withWorkspace()->create();
+
+    $foreignImport = Import::factory()->create([
+        'workspace_id' => (string) $otherUser->currentWorkspace->id,
+        'user_id' => (string) $otherUser->id,
+        'entity_type' => ImportEntityType::People,
+        'file_name' => 'test.csv',
+        'status' => ImportStatus::Mapping,
+        'total_rows' => 1,
+        'headers' => ['Name', 'Email'],
+    ]);
+    $foreignStore = ImportStore::create($foreignImport->id);
+    $this->createdStoreIds[] = $foreignStore->id();
+
+    mountImportWizard($this, '/dashboard')
+        ->set('storeId', $foreignStore->id())
+        ->call('cancelImport')
+        ->assertRedirect('/dashboard');
+
+    expect(ImportStore::exists($foreignStore->id()))->toBeTrue()
+        ->and(Import::query()->whereKey($foreignImport->id)->exists())->toBeTrue();
+});
+
 it('startOver resets to step 1', function (): void {
     $store = createFullTestStore($this);
 
