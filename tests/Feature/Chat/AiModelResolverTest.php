@@ -7,6 +7,7 @@ use App\Models\User;
 use Relaticle\Chat\Services\AiModelResolver;
 use Relaticle\Chat\Services\ModelAccess;
 use Relaticle\Chat\Services\ModelRegistry;
+use Tests\Helpers\ChatCatalog;
 
 mutates(AiModelResolver::class, ModelRegistry::class);
 
@@ -167,6 +168,33 @@ it('returns null once the auto chain is exhausted', function (): void {
     $next = resolve(AiModelResolver::class)->failoverNext($user, 'ollama');
 
     expect($next)->toBeNull();
+});
+
+it('does not fail over to a premium model for a locked trial', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    config()->set('chat.models', [
+        ChatCatalog::entry(),
+        ChatCatalog::entry(['label' => 'Opus 5', 'model' => 'claude-opus-5', 'min_plan' => 'pro', 'auto' => true]),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
+
+    expect(resolve(AiModelResolver::class)->failoverNext($user, 'claude-sonnet-5'))->toBeNull();
+});
+
+it('fails over to a premium model for a paid Pro workspace', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    config()->set('chat.models', [
+        ChatCatalog::entry(),
+        ChatCatalog::entry(['label' => 'Opus 5', 'model' => 'claude-opus-5', 'min_plan' => 'pro', 'auto' => true]),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $next = resolve(AiModelResolver::class)->failoverNext($user, 'claude-sonnet-5');
+
+    expect($next)->not->toBeNull()
+        ->and($next['id'])->toBe('claude-opus-5');
 });
 
 it('throws a clear error when no chat model is configured', function (): void {

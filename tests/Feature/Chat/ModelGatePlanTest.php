@@ -298,6 +298,10 @@ it('refuses a premium model during a trial while the workspace holds only sample
     Queue::fake();
     $user = User::factory()->withPersonalWorkspace()->create();
     startTrial($user->currentWorkspace);
+    Company::factory()->create([
+        'workspace_id' => $user->currentWorkspace->getKey(),
+        'creation_source' => CreationSource::SYSTEM,
+    ]);
 
     $response = $this->actingAs($user)->postJson('/chat/'.seedGateConversation($user), [
         'document' => ChatDocument::fromText('hi'),
@@ -309,6 +313,28 @@ it('refuses a premium model during a trial while the workspace holds only sample
         'message' => 'Add your own records to unlock premium models during your trial.',
         'upgrade_available' => false,
         'upgrade_url' => null,
+    ]);
+    Queue::assertNotPushed(ProcessChatMessage::class);
+});
+
+it('keeps the plan refusal for an Enterprise-only model during a locked trial', function (): void {
+    Queue::fake();
+    $user = User::factory()->withPersonalWorkspace()->create();
+    config()->set('chat.models', [
+        ChatCatalog::entry(),
+        ChatCatalog::entry(['label' => 'Opus 5', 'model' => 'claude-opus-5', 'min_plan' => 'enterprise']),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+    startTrial($user->currentWorkspace);
+
+    $response = $this->actingAs($user)->postJson('/chat/'.seedGateConversation($user), [
+        'document' => ChatDocument::fromText('hi'),
+        'model' => 'claude-opus-5',
+    ]);
+
+    $response->assertStatus(403)->assertJson([
+        'error' => 'model_not_allowed',
+        'message' => 'Opus 5 is not available on the Pro plan.',
     ]);
     Queue::assertNotPushed(ProcessChatMessage::class);
 });
@@ -332,8 +358,8 @@ it('unlocks premium models once the trial workspace creates its own record throu
 
 it('runs Auto on a free model for a locked trial even when Auto would pick a premium one', function (): void {
     Queue::fake();
-    useProFirstAutoChain();
     $user = User::factory()->withPersonalWorkspace()->create();
+    useProFirstAutoChain();
     startTrial($user->currentWorkspace);
 
     $this->actingAs($user)->postJson('/chat/'.seedGateConversation($user), [
@@ -348,8 +374,8 @@ it('runs Auto on a free model for a locked trial even when Auto would pick a pre
 
 it('falls back to Auto when a locked trial user saved a premium model as their default', function (): void {
     Queue::fake();
-    useProFirstAutoChain();
     $user = User::factory()->withPersonalWorkspace()->create(['ai_preferences' => ['default_model' => 'claude-opus-5']]);
+    useProFirstAutoChain();
     startTrial($user->currentWorkspace);
 
     $this->actingAs($user)->postJson('/chat/'.seedGateConversation($user), [
@@ -364,8 +390,8 @@ it('falls back to Auto when a locked trial user saved a premium model as their d
 
 it('keeps Auto on the premium model for a paid Pro workspace', function (): void {
     Queue::fake();
-    useProFirstAutoChain();
     $user = User::factory()->withPersonalWorkspace()->create();
+    useProFirstAutoChain();
     $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
     AiCreditBalance::query()->updateOrCreate(['workspace_id' => $user->currentWorkspace->getKey()], [
         'credits_remaining' => 100,
