@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Relaticle\Chat\Agents\ConversationTitler;
 use Relaticle\Chat\Events\ConversationTitleGenerated;
+use Relaticle\Chat\Services\CreditService;
 use Relaticle\Chat\Support\ChatTelemetry;
 use Relaticle\Chat\Support\TitleSanitizer;
 use Throwable;
@@ -127,6 +128,8 @@ final class GenerateConversationTitle implements ShouldQueue
                 $this->buildPrompt(),
                 provider: $this->provider,
             );
+
+            resolve(CreditService::class)->recordInternalUsage($this->conversationId, $response->meta->model, $response->usage);
 
             if (! $response instanceof StructuredAgentResponse) {
                 return null;

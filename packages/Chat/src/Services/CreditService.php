@@ -10,7 +10,9 @@ use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 
@@ -335,6 +337,37 @@ final readonly class CreditService
             conversationId: $conversationId,
             metadata: ['reason' => $reason],
         );
+    }
+
+    public function recordInternalUsage(string $conversationId, ?string $model, TextUsage $usage): void
+    {
+        $conversation = AgentConversation::query()->find($conversationId);
+
+        if (! $conversation instanceof AgentConversation || $conversation->workspace_id === null) {
+            return;
+        }
+
+        $model ??= 'unknown';
+        $uncachedInput = $usage->uncachedInputTokens();
+        $cacheRead = $usage->cacheReadInputTokens ?? 0;
+        $cacheWrite = $usage->cacheWriteInputTokens ?? 0;
+
+        AiCreditTransaction::query()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'user_id' => $conversation->participant_id,
+            'conversation_id' => $conversationId,
+            'idempotency_key' => 'internal-'.Str::ulid(),
+            'type' => AiCreditType::Internal,
+            'model' => $model,
+            'input_tokens' => $uncachedInput,
+            'output_tokens' => $usage->outputTokens,
+            'cache_read_tokens' => $cacheRead,
+            'cache_write_tokens' => $cacheWrite,
+            'credits_charged' => 0,
+            'cost_micros' => $this->tokenCost->micros($model, $uncachedInput, $cacheRead, $cacheWrite, $usage->outputTokens),
+            'metadata' => [],
+            'created_at' => now(),
+        ]);
     }
 
     public function calculateCredits(string $model, int $toolCallsCount): int
