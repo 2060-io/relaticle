@@ -441,10 +441,10 @@ Every worker replica runs the full Horizon supervisor set. Tune the process coun
 
 ### 5. Create Admin User
 
-Open the environment's Commands tab and run:
+Open the environment's Commands tab and run the command with every value passed as an option. The Commands tab cannot answer interactive prompts.
 
 ```bash
-php artisan make:filament-user
+php artisan make:filament-user --name="Your Name" --email=you@example.com --password=your-secure-password
 ```
 
 Access your CRM at `https://your-app.laravel.cloud/app`.
