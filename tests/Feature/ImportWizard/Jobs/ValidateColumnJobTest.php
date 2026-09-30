@@ -579,7 +579,7 @@ describe('on a remote store disk', function (): void {
             $column,
         ]);
 
-        $remoteFile = storage_path("framework/testing/disks/s3/imports/{$this->import->id}.sqlite");
+        $remoteFile = Storage::disk('s3')->getConfig()['root']."/imports/{$this->import->id}.sqlite";
         touch($remoteFile, time() - 3600);
         clearstatcache();
         $modifiedAt = Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite");
