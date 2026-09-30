@@ -48,6 +48,8 @@ model (`App\Enums\MediaCollection`). Two exemptions: import CSVs under
   `config/filesystems.php`. A row keeps the disk it was uploaded to.
 - A parser that needs a filesystem path reads through `App\Support\Media\LocalCopy`,
   never `Media::getPath()` or `getRealPath()`: on a bucket disk those name no local file.
+- Import store writes go through `ImportStore::withWriteLock()`, reads through `forRead()`.
+  Never dispatch a job inside the lock closure: under the sync queue it waits on that lock.
 - A chat CSV attachment belongs to its `AgentConversation` (`chat-attachments`
   collection), never to the workspace: an upload made before the first message opens
   the conversation so the row has its owner from the start, and deleting the
