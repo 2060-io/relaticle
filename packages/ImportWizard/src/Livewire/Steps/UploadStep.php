@@ -44,8 +44,6 @@ final class UploadStep extends Component implements HasForms
 
     private ?Import $import = null;
 
-    private ?ImportStore $store = null;
-
     public function mount(ImportEntityType $entityType, ?string $storeId = null): void
     {
         $this->entityType = $entityType;
@@ -137,7 +135,6 @@ final class UploadStep extends Component implements HasForms
                     (string) auth()->id(),
                 ),
             );
-            $this->store = ImportStore::load($this->import->id);
 
             $this->dispatch('completed', storeId: $this->import->id, rowCount: $this->import->total_rows, columnCount: count($this->headers));
         } catch (ImportFileException $e) {
@@ -157,12 +154,8 @@ final class UploadStep extends Component implements HasForms
 
     private function cleanupExisting(): void
     {
-        if ($this->store instanceof ImportStore) {
-            $this->store->destroy();
-            $this->store = null;
-        }
-
         if ($this->import instanceof Import) {
+            ImportStore::delete($this->import->id);
             $this->import->delete();
             $this->import = null;
         }

@@ -264,6 +264,17 @@ function fakeDiskWithoutLocalPaths(string $disk): FilesystemAdapter
     return $remote;
 }
 
+function useRemoteImportStore(): void
+{
+    config()->set('import-wizard.store.disk', 's3');
+    fakeDiskWithoutLocalPaths('s3');
+}
+
+function importStoreLockName(string $importId): string
+{
+    return "import-store:{$importId}";
+}
+
 function onePixelPng(): string
 {
     return (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', true);

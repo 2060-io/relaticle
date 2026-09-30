@@ -44,9 +44,40 @@ final class ImportExecutionFixture
         $store->query()->insert($rows);
 
         $context->import = $import;
+        $store = self::publish($store);
         $context->store = $store;
 
         return [$import, $store];
+    }
+
+    public static function lockOwner(string $importId): string
+    {
+        return "execute:{$importId}:direct";
+    }
+
+    public static function publish(ImportStore $store): ImportStore
+    {
+        if (! ImportStore::isRemote()) {
+            return $store;
+        }
+
+        $store->persist();
+        $store->close();
+
+        $published = ImportStore::forRead($store->id());
+
+        assert($published instanceof ImportStore);
+
+        return $published;
+    }
+
+    public static function freshStore(object $context): ImportStore
+    {
+        $store = ImportStore::forRead($context->import->id);
+
+        assert($store instanceof ImportStore);
+
+        return $store;
     }
 
     public static function run(object $context): void

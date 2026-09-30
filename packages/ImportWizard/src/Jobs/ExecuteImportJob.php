@@ -14,6 +14,7 @@ use App\Support\ActivityLog\CustomFieldChangeLog;
 use App\Support\CurrentSource;
 use Carbon\CarbonImmutable;
 use Filament\Notifications\Notification;
+use Illuminate\Bus\Batch;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,6 +26,7 @@ use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Middleware\FailOnException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -46,6 +48,7 @@ use Relaticle\ImportWizard\Enums\MatchBehavior;
 use Relaticle\ImportWizard\Enums\NumberFormat;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
 use Relaticle\ImportWizard\Events\CustomFieldValuesImported;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Exceptions\MissingRequiredFieldException;
 use Relaticle\ImportWizard\Exceptions\UnparsableDateException;
 use Relaticle\ImportWizard\Importers\BaseImporter;
@@ -113,29 +116,85 @@ final class ExecuteImportJob implements ShouldQueue
     /** @return list<FailOnException> */
     public function middleware(): array
     {
-        return [new FailOnException([LogicException::class])];
+        return [new FailOnException(fn (\Throwable $e): bool => $e instanceof LogicException
+            || ($e instanceof ImportStoreException && $e->isUploadFailure()))];
     }
 
     public function handle(): void
     {
-        CurrentSource::during(CreationSource::IMPORT, $this->runImport(...));
+        if (CurrentSource::during(CreationSource::IMPORT, $this->runImport(...))) {
+            $this->handOff();
+        }
     }
 
-    private function runImport(): void
+    private function handOff(): void
     {
+        $next = new self($this->importId, $this->workspaceId);
+
+        $this->batch() instanceof Batch
+            ? $this->batch()->add([$next])
+            : dispatch($next);
+    }
+
+    private function rememberDedupMaps(): void
+    {
+        Cache::put($this->dedupCacheKey('created'), $this->createdRecords, now()->addDay());
+        Cache::put($this->dedupCacheKey('matchable'), $this->matchableValueCache, now()->addDay());
+    }
+
+    private function restoreDedupMaps(): void
+    {
+        $this->createdRecords = (array) Cache::get($this->dedupCacheKey('created'), []);
+        $this->matchableValueCache = (array) Cache::get($this->dedupCacheKey('matchable'), []);
+    }
+
+    private function forgetDedupMaps(): void
+    {
+        Cache::forget($this->dedupCacheKey('created'));
+        Cache::forget($this->dedupCacheKey('matchable'));
+    }
+
+    private function dedupCacheKey(string $map): string
+    {
+        return "import-execution:{$this->importId}:{$map}";
+    }
+
+    private function lockOwner(): string
+    {
+        return "execute:{$this->importId}:".($this->job?->uuid() ?? 'direct');
+    }
+
+    private function timeBoxExpired(int $startedAt): bool
+    {
+        return (hrtime(true) - $startedAt) / 1e9 >= (int) config('import-wizard.execution_time_box', 240);
+    }
+
+    private function runImport(): bool
+    {
+        $startedAt = hrtime(true);
         $import = Import::query()->findOrFail($this->importId);
 
         if ($import->workspace_id !== $this->workspaceId) {
-            return;
+            return false;
         }
 
-        $store = ImportStore::load($this->importId);
+        $store = ImportStore::forExecution($this->importId, $this->lockOwner());
 
         if (! $store instanceof ImportStore) {
-            return;
+            return false;
         }
 
+        try {
+            return $this->runFromStore($import, $store, $startedAt);
+        } finally {
+            $store->close();
+        }
+    }
+
+    private function runFromStore(Import $import, ImportStore $store, int $startedAt): bool
+    {
         $store->ensureProcessedColumn();
+        $this->restoreDedupMaps();
 
         throw_if($store->query()->where('processed', false)->whereNull('match_action')->exists(), LogicException::class, 'Import match resolution is incomplete.');
 
@@ -167,13 +226,14 @@ final class ExecuteImportJob implements ShouldQueue
 
         $currentImport = resolve(CurrentImport::class);
         $currentImport->set($import->id, $import->file_name);
+        $handedOff = false;
 
         try {
-            resolve(CauserResolver::class)->withCauser($import->user, function () use ($store, $importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, $import): void {
+            resolve(CauserResolver::class)->withCauser($import->user, function () use ($store, $importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, &$handedOff, $import, $startedAt): void {
                 $store->query()
                     ->where('processed', false)
                     ->orderBy('row_number')
-                    ->chunkById(500, function (Collection $rows) use ($importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, $store, $import): void {
+                    ->chunkById(500, function (Collection $rows) use ($importer, $fieldMappings, $allowedKeys, $customFieldDefs, $customFieldFormatMap, $matchField, $matchSourceColumn, $context, &$results, &$handedOff, $store, $import, $startedAt): bool {
                         $existingRecords = $this->preloadExistingRecords($rows, $importer, withCustomFieldValues: $customFieldFormatMap !== []);
 
                         foreach ($rows as $row) {
@@ -183,9 +243,23 @@ final class ExecuteImportJob implements ShouldQueue
                         $this->flushCustomFieldValues();
                         $this->flushTagOptions();
                         $this->flushFailedRows($import);
+                        $this->rememberDedupMaps();
+                        $store->persist();
                         $this->persistResults($import, $results);
+
+                        if ($this->timeBoxExpired($startedAt)) {
+                            $handedOff = true;
+
+                            return false;
+                        }
+
+                        return true;
                     });
             });
+
+            if ($handedOff) {
+                return true;
+            }
 
             $import->update([
                 'status' => ImportStatus::Completed,
@@ -196,12 +270,25 @@ final class ExecuteImportJob implements ShouldQueue
                 'failed_rows' => $results['failed'],
             ]);
 
+            $this->forgetDedupMaps();
             $this->logImportSummary($import, $results, self::IMPORTED_EVENT);
 
             $this->notifyUser($import, $results);
+
+            return false;
         } catch (\Throwable $e) {
-            $this->flushFailedRows($import);
-            $this->persistResults($import, $results);
+            $persisted = $e instanceof ImportStoreException || rescue(function () use ($store): bool {
+                $store->persist();
+
+                return true;
+            }, false, report: true);
+
+            if ($persisted) {
+                $this->flushFailedRows($import);
+                $this->persistResults($import, $results);
+            }
+
+            $this->rememberDedupMaps();
             $import->update(['status' => ImportStatus::Failed]);
 
             try {
@@ -246,6 +333,7 @@ final class ExecuteImportJob implements ShouldQueue
             $import->update(['status' => ImportStatus::Failed]);
         }
 
+        $this->forgetDedupMaps();
         $this->flushFailedRows($import);
 
         $results = [
@@ -384,6 +472,7 @@ final class ExecuteImportJob implements ShouldQueue
             $this->markProcessed($row);
         } catch (\Throwable $e) {
             $results['failed']++;
+            $this->markProcessed($row);
             $this->recordFailedRow($row->row_number, $row->raw_data->all(), $e);
             report($e);
         }

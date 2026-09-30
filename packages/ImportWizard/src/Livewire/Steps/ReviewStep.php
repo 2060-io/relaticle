@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\ImportWizard\Livewire\Steps;
 
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Bus\Batch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Connection;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -27,6 +29,7 @@ use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
 use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Livewire\Concerns\WithImportStore;
 use Relaticle\ImportWizard\Store\ImportRow;
+use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\EntityLinkValidator;
 use Relaticle\ImportWizard\Support\Validation\ColumnValidator;
 use Relaticle\ImportWizard\Support\Validation\ValidationError;
@@ -35,6 +38,8 @@ final class ReviewStep extends Component
 {
     use WithImportStore;
     use WithPagination;
+
+    private const string REENTRY = '__reentry';
 
     public string $search = '';
 
@@ -55,10 +60,8 @@ final class ReviewStep extends Component
     /** @var array<string, bool> */
     public array $failedColumns = [];
 
-    private function connection(): Connection
-    {
-        return $this->store()->connection();
-    }
+    #[Locked]
+    public int $rowRevision = 0;
 
     private function selectedColumnJsonPath(): string
     {
@@ -87,10 +90,10 @@ final class ReviewStep extends Component
         return $validator->validateFromColumn($column, $this->import()->getImporter(), $value);
     }
 
-    private function updateValidationForRawValue(string $jsonPath, string $rawValue, ?string $error): void
+    private function updateValidationForRawValue(Connection $connection, string $jsonPath, string $rawValue, ?string $error): void
     {
         if ($error === null) {
-            $this->connection()->statement('
+            $connection->statement('
                 UPDATE import_rows
                 SET validation = json_remove(validation, ?)
                 WHERE json_extract(raw_data, ?) = ?
@@ -99,7 +102,7 @@ final class ReviewStep extends Component
             return;
         }
 
-        $this->connection()->statement("
+        $connection->statement("
             UPDATE import_rows
             SET validation = json_set(COALESCE(validation, '{}'), ?, ?)
             WHERE json_extract(raw_data, ?) = ?
@@ -120,6 +123,7 @@ final class ReviewStep extends Component
             new ValidateColumnJob($this->import()->id, $column),
         ])
             ->name("Validate {$column->source}")
+            ->onQueue('imports')
             ->dispatch();
 
         $this->dispatch('validation-started');
@@ -137,9 +141,22 @@ final class ReviewStep extends Component
         $this->cacheValidationState($this->currentMappingsHash());
     }
 
-    private function clearRelationshipsForReentry(): void
+    private function writeRow(Closure $mutator): bool
     {
-        $this->connection()->statement('UPDATE import_rows SET relationships = NULL');
+        $written = $this->writeStore($mutator);
+
+        if (! $written) {
+            $this->rowRevision++;
+        }
+
+        return $written;
+    }
+
+    private function clearRelationshipsForReentry(): bool
+    {
+        return $this->writeStore(function (ImportStore $store): void {
+            $store->connection()->statement('UPDATE import_rows SET relationships = NULL');
+        });
     }
 
     private function dispatchMatchResolution(): string
@@ -150,6 +167,7 @@ final class ReviewStep extends Component
             ),
         ])
             ->name('Match resolution')
+            ->onQueue('imports')
             ->dispatch();
 
         return $batch->id;
@@ -171,7 +189,16 @@ final class ReviewStep extends Component
         }
 
         $this->cancelOldBatches($cached);
-        $this->clearRelationshipsForReentry();
+        $this->startValidation();
+    }
+
+    private function startValidation(): void
+    {
+        if (! $this->clearRelationshipsForReentry()) {
+            $this->failedColumns[self::REENTRY] = true;
+
+            return;
+        }
 
         foreach ($this->columns as $column) {
             $this->batchIds[$column->source] = $this->validateColumnAsync($column);
@@ -179,7 +206,7 @@ final class ReviewStep extends Component
 
         $this->batchIds['__match_resolution'] = $this->dispatchMatchResolution();
 
-        $this->cacheValidationState($currentHash);
+        $this->cacheValidationState($this->currentMappingsHash());
     }
 
     public function hydrate(): void
@@ -294,25 +321,30 @@ final class ReviewStep extends Component
         $this->cacheValidationState($this->currentMappingsHash());
     }
 
-    /** @return array<string, string> */
-    public function updateMappedValue(string $rawValue, string $newValue): array
+    /** @return array<string, string>|null */
+    public function updateMappedValue(string $rawValue, string $newValue): ?array
     {
         if (blank($newValue)) {
-            $this->skipValue($rawValue);
-
-            return [];
+            return $this->skip($rawValue) ? [] : null;
         }
 
         $error = $this->validateValue($this->selectedColumn, $newValue, isCorrection: true);
         $jsonPath = $this->selectedColumnJsonPath();
 
-        $this->connection()->statement("
-            UPDATE import_rows
-            SET corrections = json_set(COALESCE(corrections, '{}'), ?, ?)
-            WHERE json_extract(raw_data, ?) = ?
-        ", [$jsonPath, $newValue, $jsonPath, $rawValue]);
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $newValue, $rawValue, $error): void {
+            $store->connection()->statement("
+                UPDATE import_rows
+                SET corrections = json_set(COALESCE(corrections, '{}'), ?, ?)
+                WHERE json_extract(raw_data, ?) = ?
+            ", [$jsonPath, $newValue, $jsonPath, $rawValue]);
 
-        $this->updateValidationForRawValue($jsonPath, $rawValue, $error);
+            $this->updateValidationForRawValue($store->connection(), $jsonPath, $rawValue, $error);
+        });
+
+        if (! $written) {
+            return null;
+        }
+
         $this->revalidateEntityLinkColumn();
 
         unset($this->columnErrorStatuses);
@@ -331,13 +363,20 @@ final class ReviewStep extends Component
         $error = $this->validateValue($this->selectedColumn, $rawValue, isCorrection: false);
         $jsonPath = $this->selectedColumnJsonPath();
 
-        $this->connection()->statement('
-            UPDATE import_rows
-            SET corrections = json_remove(corrections, ?)
-            WHERE json_extract(raw_data, ?) = ?
-        ', [$jsonPath, $jsonPath, $rawValue]);
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $rawValue, $error): void {
+            $store->connection()->statement('
+                UPDATE import_rows
+                SET corrections = json_remove(corrections, ?)
+                WHERE json_extract(raw_data, ?) = ?
+            ', [$jsonPath, $jsonPath, $rawValue]);
 
-        $this->updateValidationForRawValue($jsonPath, $rawValue, $error);
+            $this->updateValidationForRawValue($store->connection(), $jsonPath, $rawValue, $error);
+        });
+
+        if (! $written) {
+            return;
+        }
+
         $this->revalidateEntityLinkColumn();
 
         unset($this->columnErrorStatuses);
@@ -345,31 +384,51 @@ final class ReviewStep extends Component
 
     public function skipValue(string $rawValue): void
     {
+        $this->skip($rawValue);
+    }
+
+    private function skip(string $rawValue): bool
+    {
         $jsonPath = $this->selectedColumnJsonPath();
         $error = $this->validateValue($this->selectedColumn, $rawValue, isCorrection: false);
 
-        $this->connection()->statement("
-            UPDATE import_rows
-            SET skipped = json_set(COALESCE(skipped, '{}'), ?, json('true')),
-                corrections = json_remove(corrections, ?)
-            WHERE json_extract(raw_data, ?) = ?
-        ", [$jsonPath, $jsonPath, $jsonPath, $rawValue]);
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $rawValue, $error): void {
+            $store->connection()->statement("
+                UPDATE import_rows
+                SET skipped = json_set(COALESCE(skipped, '{}'), ?, json('true')),
+                    corrections = json_remove(corrections, ?)
+                WHERE json_extract(raw_data, ?) = ?
+            ", [$jsonPath, $jsonPath, $jsonPath, $rawValue]);
 
-        $this->updateValidationForRawValue($jsonPath, $rawValue, $error);
+            $this->updateValidationForRawValue($store->connection(), $jsonPath, $rawValue, $error);
+        });
+
+        if (! $written) {
+            return false;
+        }
+
         $this->revalidateEntityLinkColumn();
 
         unset($this->columnErrorStatuses);
+
+        return true;
     }
 
     public function unskipValue(string $rawValue): void
     {
         $jsonPath = $this->selectedColumnJsonPath();
 
-        $this->connection()->statement('
-            UPDATE import_rows
-            SET skipped = json_remove(skipped, ?)
-            WHERE json_extract(raw_data, ?) = ?
-        ', [$jsonPath, $jsonPath, $rawValue]);
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $rawValue): void {
+            $store->connection()->statement('
+                UPDATE import_rows
+                SET skipped = json_remove(skipped, ?)
+                WHERE json_extract(raw_data, ?) = ?
+            ', [$jsonPath, $jsonPath, $rawValue]);
+        });
+
+        if (! $written) {
+            return;
+        }
 
         $this->revalidateEntityLinkColumn();
 
@@ -409,6 +468,14 @@ final class ReviewStep extends Component
 
     public function retryFailedValidation(): void
     {
+        if (isset($this->failedColumns[self::REENTRY])) {
+            unset($this->failedColumns[self::REENTRY]);
+            $this->startValidation();
+            $this->dispatch('validation-started');
+
+            return;
+        }
+
         foreach (array_keys($this->failedColumns) as $columnSource) {
             unset($this->failedColumns[$columnSource]);
 
@@ -488,6 +555,10 @@ final class ReviewStep extends Component
 
     private function cacheValidationState(string $hash): void
     {
+        if (isset($this->failedColumns[self::REENTRY])) {
+            return;
+        }
+
         Cache::put($this->validationCacheKey(), [
             'hash' => $hash,
             'batch_ids' => $this->batchIds,

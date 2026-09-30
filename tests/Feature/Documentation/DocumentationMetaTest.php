@@ -7,7 +7,7 @@ it('uses the configured per-document description as the meta description', funct
 
     preg_match('/<meta name="description" content="([^"]*)"/', $html, $meta);
 
-    expect($meta[1] ?? null)->toBe('Get Docker Compose, Coolify and Dokploy deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.');
+    expect($meta[1] ?? null)->toBe('Get Docker Compose, Coolify, Dokploy and Laravel Cloud deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.');
 });
 
 it('titles the documentation index with the brand-suffix convention', function (): void {

@@ -579,8 +579,6 @@ it('keeps runtime file access off local-only disks and paths', function (): void
         'app/Support/Media/RichContentAttachments.php',
         'packages/Chat/src/Actions/StoreChatAttachment.php',
         'packages/Documentation/src/Http/Controllers/OpenApiSpecController.php',
-        'packages/ImportWizard/src/Commands/CleanupImportsCommand.php',
-        'packages/ImportWizard/src/Store/ImportStore.php',
     ];
     $offenders = [];
 

@@ -33,7 +33,7 @@ mutates(RelinkRecordHistoryJob::class, QueueRecordHistoryRelink::class, LinkEmai
 
 afterEach(function (): void {
     if (isset($this->import)) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
     }
 });
 

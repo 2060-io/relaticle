@@ -16,6 +16,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Livewire\Steps\MappingStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(MappingStep::class, ColumnData::class, ImportField::class, ImportFieldCollection::class);
 
@@ -42,7 +43,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    $this->store->destroy();
+    ImportStore::delete($this->store->id());
     $this->import->delete();
 });
 
@@ -69,6 +70,8 @@ function createStoreWithHeaders(object $context, array $headers, array $rows = [
     }
 
     $context->import->update(['total_rows' => count($rows)]);
+
+    $context->store = ImportExecutionFixture::publish($context->store);
 }
 
 function mountMappingStep(object $context): Testable
@@ -246,4 +249,36 @@ it('previewValues returns sample values from SQLite', function (): void {
 
     $component->call('previewValues', 'Name')
         ->assertReturned(['John', 'Jane']);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        ImportStore::delete($this->store->id());
+
+        useRemoteImportStore();
+
+        $this->store = ImportStore::create($this->import->id);
+    });
+
+    it('previewValues returns sample values from the remote store', function (): void {
+        createStoreWithHeaders($this, ['Name', 'Email'], [
+            ['Name' => 'John', 'Email' => 'john@test.com'],
+            ['Name' => 'Jane', 'Email' => 'jane@test.com'],
+        ]);
+
+        mountMappingStep($this)->call('previewValues', 'Name')
+            ->assertReturned(['John', 'Jane']);
+    });
+
+    it('keeps a second reader of the same copy working after the first closes', function (): void {
+        createStoreWithHeaders($this, ['Name', 'Email'], [
+            ['Name' => 'John', 'Email' => 'john@test.com'],
+        ]);
+        $first = ImportStore::forRead($this->import->id);
+        $second = ImportStore::forRead($this->import->id);
+
+        $first->close();
+
+        expect($second->query()->count())->toBe(1);
+    });
 });
