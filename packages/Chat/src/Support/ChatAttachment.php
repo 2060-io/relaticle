@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Support;
 
 use App\Models\User;
+use App\Support\Media\LocalCopy;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 use Relaticle\Chat\Models\AgentConversation;
@@ -74,9 +76,18 @@ final readonly class ChatAttachment
         return is_string($id) ? $id : null;
     }
 
-    public function absolutePath(): string
+    /**
+     * @template TResult
+     *
+     * @param  Closure(string): TResult  $callback
+     * @return TResult
+     */
+    public function withLocalFile(Closure $callback): mixed
     {
-        return $this->media->getPath();
+        return LocalCopy::of(
+            Storage::disk($this->media->disk)->readStream($this->media->getPathRelativeToRoot()),
+            $callback,
+        );
     }
 
     public function fileExists(): bool

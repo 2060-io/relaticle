@@ -363,3 +363,12 @@ it('drops the src of an image whose id this workspace cannot resolve', function 
     expect(storedNoteBody($note, $this->body))->not->toContain('signature=')
         ->and($foreign->refresh()->model_id)->toBe($stranger->getKey());
 });
+
+it('saves a pasted image when temporary uploads live on a disk with no local paths', function (): void {
+    fakeDiskWithoutLocalPaths(FileUploadConfiguration::disk());
+    $editor = noteBodyEditor();
+
+    $id = $editor->saveUploadedFileAttachment(livewireTemporaryUpload(onePixelPng(), 'shot.png'));
+
+    expect(Media::query()->where('uuid', $id)->firstOrFail()->name)->toBe('shot.png');
+});
