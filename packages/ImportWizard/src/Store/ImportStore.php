@@ -433,7 +433,7 @@ final class ImportStore
         try {
             throw_unless(
                 is_resource($source) && is_resource($target) && stream_copy_to_stream($source, $target) !== false,
-                ImportStoreException::snapshotFailed($importId, 'download failed'),
+                ImportStoreException::downloadFailed($importId),
             );
         } finally {
             if (is_resource($source)) {

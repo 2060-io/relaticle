@@ -12,6 +12,8 @@ final class ImportStoreException extends RuntimeException
 
     private bool $lockTimeout = false;
 
+    private bool $uploadFailed = false;
+
     public static function notFound(string $importId): self
     {
         $exception = new self("Import store {$importId} does not exist.");
@@ -40,11 +42,27 @@ final class ImportStoreException extends RuntimeException
 
     public static function lockLost(string $importId): self
     {
-        return new self("The write lock on import store {$importId} expired before the upload.");
+        $exception = new self("The write lock on import store {$importId} expired before the upload.");
+        $exception->uploadFailed = true;
+
+        return $exception;
     }
 
     public static function snapshotFailed(string $importId, string $reason): self
     {
-        return new self("Could not upload import store {$importId}: {$reason}");
+        $exception = new self("Could not upload import store {$importId}: {$reason}");
+        $exception->uploadFailed = true;
+
+        return $exception;
+    }
+
+    public static function downloadFailed(string $importId): self
+    {
+        return new self("Could not download import store {$importId}.");
+    }
+
+    public function isUploadFailure(): bool
+    {
+        return $this->uploadFailed;
     }
 }

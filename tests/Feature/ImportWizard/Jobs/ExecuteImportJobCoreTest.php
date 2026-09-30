@@ -14,6 +14,7 @@ use App\Models\Task;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Queue\Middleware\FailOnException;
 use Illuminate\Support\Facades\Bus;
@@ -1023,6 +1024,59 @@ describe('on a remote store disk', function (): void {
         expect($import->status)->toBe(ImportStatus::Completed)
             ->and($import->created_rows)->toBe(501)
             ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(1);
+    });
+
+    it('retries a failed download instead of failing the job', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        Storage::set('s3', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function readStream(mixed $path): mixed
+            {
+                return null;
+            }
+        });
+        $job = (new ExecuteImportJob(
+            importId: $this->import->id,
+            workspaceId: (string) $this->workspace->id,
+        ))->withFakeQueueInteractions();
+
+        expect(fn () => $job->middleware()[0]->handle($job, fn (): mixed => $job->handle()))
+            ->toThrow(ImportStoreException::class);
+
+        $job->assertNotFailed();
+        expect(Cache::lock("import-store:{$this->import->id}", 1)->get())->toBeTrue();
+    });
+
+    it('keeps the rows a failed run already wrote so its retry does not repeat them', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+            ImportExecutionFixture::row(3, ['Name' => ''], ['match_action' => RowMatchAction::Create->value]),
+            ImportExecutionFixture::row(4, ['Name' => 'Grace Hopper'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        $failures = 0;
+        DB::listen(function (QueryExecuted $query) use (&$failures): void {
+            if ($failures === 0 && str_starts_with($query->sql, 'insert into "failed_import_rows"')) {
+                $failures++;
+
+                throw new RuntimeException('Database went away');
+            }
+        });
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(RuntimeException::class, 'Database went away');
+
+        ImportExecutionFixture::run($this);
+
+        expect(People::where('workspace_id', $this->workspace->id)->count())->toBe(2)
+            ->and($this->import->refresh()->status)->toBe(ImportStatus::Completed)
+            ->and($this->import->created_rows)->toBe(2);
     });
 
     it('fails without a retry when a snapshot cannot be uploaded and keeps the counters of what reached the database', function (): void {

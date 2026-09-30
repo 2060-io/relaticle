@@ -116,7 +116,7 @@ final class ExecuteImportJob implements ShouldQueue
     public function middleware(): array
     {
         return [new FailOnException(fn (\Throwable $e): bool => $e instanceof LogicException
-            || ($e instanceof ImportStoreException && ! $e->isLockTimeout()))];
+            || ($e instanceof ImportStoreException && $e->isUploadFailure()))];
     }
 
     public function handle(): void
@@ -271,10 +271,15 @@ final class ExecuteImportJob implements ShouldQueue
 
             return false;
         } catch (\Throwable $e) {
+            if (! $e instanceof ImportStoreException) {
+                rescue(function () use ($store): void {
+                    $store->persist();
+                }, report: false);
+            }
             $this->flushFailedRows($import);
             $this->persistResults($import, $results);
+            $this->rememberDedupMaps();
             $import->update(['status' => ImportStatus::Failed]);
-            $this->forgetDedupMaps();
 
             try {
                 $this->notifyUser($import, $results, failed: true);
