@@ -600,7 +600,7 @@ describe('on a remote store disk', function (): void {
             ->assertReturned(null)
             ->assertSet('rowRevision', 1)
             ->assertNotified(__('import-wizard-new::store.busy'))
-            ->assertDontSee('Johnny');
+            ->assertSeeHtml('wire:key="val-1-');
 
         $held->release();
     });

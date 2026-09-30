@@ -269,4 +269,16 @@ describe('on a remote store disk', function (): void {
         mountMappingStep($this)->call('previewValues', 'Name')
             ->assertReturned(['John', 'Jane']);
     });
+
+    it('keeps a second reader of the same copy working after the first closes', function (): void {
+        createStoreWithHeaders($this, ['Name', 'Email'], [
+            ['Name' => 'John', 'Email' => 'john@test.com'],
+        ]);
+        $first = ImportStore::forRead($this->import->id);
+        $second = ImportStore::forRead($this->import->id);
+
+        $first->close();
+
+        expect($second->query()->count())->toBe(1);
+    });
 });

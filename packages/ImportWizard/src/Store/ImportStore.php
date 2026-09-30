@@ -211,7 +211,7 @@ final class ImportStore
 
         return $this->directory === self::localDirectory($this->id)
             ? $name
-            : $name.'_'.substr(hash('xxh128', $this->sqlitePath()), 0, 8);
+            : $name.'_'.substr(hash('xxh128', $this->sqlitePath()), 0, 8).'_'.spl_object_id($this);
     }
 
     public function connection(): Connection
