@@ -380,7 +380,7 @@ final class PreviewStep extends Component implements HasActions, HasForms
                 importId: $this->import()->id,
                 workspaceId: $this->import()->workspace_id,
             ),
-        ])->dispatch();
+        ])->onQueue('imports')->dispatch();
 
         $this->batchId = $batch->id;
         $this->dispatch('import-polling-start');

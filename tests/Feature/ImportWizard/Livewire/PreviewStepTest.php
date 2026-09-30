@@ -367,7 +367,8 @@ it('startImport dispatches ExecuteImportJob and sets status to Importing', funct
 
     Bus::assertBatched(function ($batch) {
         return $batch->jobs->count() === 1
-            && $batch->jobs->first() instanceof ExecuteImportJob;
+            && $batch->jobs->first() instanceof ExecuteImportJob
+            && $batch->queue() === 'imports';
     });
 
     $freshImport = $this->import->fresh();

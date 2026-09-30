@@ -461,6 +461,13 @@ it('dispatches ResolveMatchesJob batch on mount', function (): void {
     Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob));
 });
 
+it('sends validation and match resolution batches to the imports queue', function (): void {
+    mountReviewStep($this);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob) && $batch->queue() === 'imports');
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ValidateColumnJob) && $batch->queue() === 'imports');
+});
+
 it('includes __match_resolution key in batchIds', function (): void {
     $component = mountReviewStep($this);
 
