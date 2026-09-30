@@ -18,8 +18,10 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\Http\HostResolver;
 use Illuminate\Contracts\Broadcasting\Broadcaster as BroadcasterContract;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Passport\AccessToken;
 use Laravel\Passport\Client;
@@ -118,6 +120,23 @@ function loginViaBrowser(User $user): AwaitableWebpage
 function pdfBytes(): string
 {
     return "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
+}
+
+function fakeDiskWithoutLocalPaths(string $disk): FilesystemAdapter
+{
+    $fake = Storage::fake($disk);
+
+    $remote = new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+    {
+        public function path(mixed $path): string
+        {
+            return '/nonexistent-remote-disk/'.ltrim((string) $path, '/');
+        }
+    };
+
+    Storage::set($disk, $remote);
+
+    return $remote;
 }
 
 function onePixelPng(): string

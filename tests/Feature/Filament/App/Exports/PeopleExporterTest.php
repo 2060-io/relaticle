@@ -145,3 +145,19 @@ test('export datetimes name and use the requesting user timezone', function () {
     expect($row[0])->toBe('2026-08-19 08:30:00')
         ->and($row[1])->toBeNull();
 });
+
+test('exports and downloads through a filament disk with no local paths', function () {
+    config()->set('filament.default_filesystem_disk', 's3');
+    fakeDiskWithoutLocalPaths('s3');
+
+    Livewire::test(ListPeople::class)
+        ->callAction('export')
+        ->assertHasNoFormErrors();
+
+    $export = Export::latest()->first();
+
+    expect($export->file_disk)->toBe('s3');
+
+    $this->get(route('filament.exports.download', ['export' => $export, 'format' => 'csv']))
+        ->assertOk();
+});

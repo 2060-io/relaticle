@@ -55,13 +55,13 @@ final readonly class ImportAttachment
             }
 
             try {
-                $import = $this->loader->load(
-                    $locked->absolutePath(),
+                $import = $locked->withLocalFile(fn (string $path): Import => $this->loader->load(
+                    $path,
                     $locked->name(),
                     $entityType,
                     (string) $workspace->getKey(),
                     (string) $user->getKey(),
-                );
+                ));
             } catch (ImportFileException $e) {
                 abort(422, $e->getMessage());
             }

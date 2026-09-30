@@ -16,7 +16,7 @@ final class MediaUrlGenerator extends DefaultUrlGenerator
     {
         // A signed route is bound to the host it was signed on, so only the
         // public URL is rewritten to the requesting host for a same-origin preview.
-        if (config("filesystems.disks.{$this->media->disk}.visibility") === 'public') {
+        if ($this->media->disk === 'public') {
             return SameOriginUrl::rewrite(parent::getUrl());
         }
 

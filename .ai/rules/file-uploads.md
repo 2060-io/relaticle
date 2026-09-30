@@ -41,18 +41,20 @@ model (`App\Enums\MediaCollection`). Two exemptions: import CSVs under
   --force` moves those onto their records.
 - Never call `Media::move()`. It copies and deletes, changing `uuid` and path.
   Ownership changes are attribute writes on the existing row.
-- `logo` collections stay on the public disk, and `chat-attachments` pins `local`.
-  Everything else follows `MEDIA_DISK`, default `local`, which must name a disk in
+- `logo` collections stay on the public disk. Everything else, `chat-attachments`
+  included, follows `MEDIA_DISK`, default `local`, which must name a disk in
   `config/filesystems.php`. A row keeps the disk it was uploaded to.
+- A parser that needs a filesystem path reads through `App\Support\Media\LocalCopy`,
+  never `Media::getPath()` or `getRealPath()`: on a bucket disk those name no local file.
 - A chat CSV attachment belongs to its `AgentConversation` (`chat-attachments`
   collection), never to the workspace: an upload made before the first message opens
   the conversation so the row has its owner from the start, and deleting the
-  conversation deletes the file. It is parsed by path and handed to the import wizard,
-  never served, which is why it pins `local` and stays out of `pending-uploads`, whose
-  allowlist is documents and images. `sent_at` in `custom_properties` is metadata (the
-  single-use guard), not ownership. Only uploads nobody sent within a day are deleted,
-  by `chat:purge-unsent-attachments`. It still carries `workspace_id`, so workspace
-  deletion sweeps it with everything else.
+  conversation deletes the file. It is parsed from a temp copy
+  (`ChatAttachment::withLocalFile()`) and handed to the import wizard, never served, and
+  it stays out of `pending-uploads`, whose allowlist is documents and images. `sent_at`
+  in `custom_properties` is metadata (the single-use guard), not ownership. Only
+  uploads nobody sent within a day are deleted, by `chat:purge-unsent-attachments`. It
+  still carries `workspace_id`, so workspace deletion sweeps it with everything else.
 - Do not add a `FileUpload::make(` or configure rich editor attachments with
   `fileAttachmentsDisk(` / `fileAttachmentsDirectory(` outside
   `app/Filament/CustomFields/RichEditorFieldType.php` and

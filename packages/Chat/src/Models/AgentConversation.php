@@ -87,13 +87,10 @@ final class AgentConversation extends Model implements HasMedia
         return $this->media()->where('collection_name', self::ATTACHMENTS_MEDIA_COLLECTION);
     }
 
-    // The CSV readers take a filesystem path, so the collection pins the local
-    // disk rather than following MEDIA_DISK.
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection(self::ATTACHMENTS_MEDIA_COLLECTION)
-            ->acceptsMimeTypes(self::ATTACHMENT_MIME_TYPES)
-            ->useDisk('local');
+            ->acceptsMimeTypes(self::ATTACHMENT_MIME_TYPES);
     }
 
     /** @param Builder<self> $query */

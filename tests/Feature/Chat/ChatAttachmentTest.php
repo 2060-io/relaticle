@@ -323,3 +323,33 @@ it('purges unsent attachments older than a day with the conversation they opened
         ->and(AgentConversation::query()->whereKey($staleSent['conversation_id'])->exists())->toBeTrue()
         ->and(ChatAttachment::find($this->user, $freshUnsent['id'])?->fileExists())->toBeTrue();
 });
+
+it('stores and imports an attachment on a media disk with no local paths', function (): void {
+    config()->set('media-library.disk_name', 's3');
+    fakeDiskWithoutLocalPaths('s3');
+
+    $id = $this->postJson(route('chat.attachments.store'), ['file' => csvUpload(5)])->json('id');
+
+    expect(Media::query()->where('uuid', $id)->firstOrFail()->disk)->toBe('s3');
+
+    $this->get(route('chat.attachments.import', ['attachment' => $id, 'entity' => 'people']))->assertRedirect();
+
+    $import = Import::query()->where('workspace_id', $this->workspace->getKey())->firstOrFail();
+    $this->createdStoreIds[] = $import->id;
+
+    expect($import->total_rows)->toBe(5)
+        ->and($import->headers)->toBe(['Name', 'Email', 'Company']);
+});
+
+it('rejects a header-only attachment on a media disk with no local paths', function (): void {
+    config()->set('media-library.disk_name', 's3');
+    fakeDiskWithoutLocalPaths('s3');
+
+    $id = $this->postJson(route('chat.attachments.store'), ['file' => csvUpload(2)])->json('id');
+    $media = Media::query()->where('uuid', $id)->firstOrFail();
+    Storage::disk('s3')->put($media->getPathRelativeToRoot(), "Name,Email\n");
+
+    $this->get(route('chat.attachments.import', ['attachment' => $id, 'entity' => 'people']))->assertStatus(422);
+
+    expect(Import::query()->where('workspace_id', $this->workspace->getKey())->exists())->toBeFalse();
+});

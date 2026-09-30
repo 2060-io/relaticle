@@ -560,6 +560,49 @@ it('keeps new file uploads on medialibrary', function (): void {
     );
 });
 
+it('keeps runtime file access off local-only disks and paths', function (): void {
+    $root = dirname(__DIR__, 2);
+    $allowed = [
+        'app/Console/Commands/BackfillRichEditorAttachmentsCommand.php',
+        'app/Console/Commands/InstallCommand.php',
+        'app/Console/Commands/LocaleDiffCommand.php',
+        'app/Models/Company.php',
+        'app/Models/Workspace.php',
+        'app/Providers/AppServiceProvider.php',
+        'app/Support/Media/RichContentAttachments.php',
+        'packages/Chat/src/Actions/StoreChatAttachment.php',
+        'packages/Documentation/src/Http/Controllers/OpenApiSpecController.php',
+        'packages/ImportWizard/src/Commands/CleanupImportsCommand.php',
+        'packages/ImportWizard/src/Store/ImportStore.php',
+    ];
+    $offenders = [];
+
+    $directories = [$root.'/app', ...glob($root.'/packages/*/src', GLOB_ONLYDIR) ?: []];
+
+    foreach ($directories as $directory) {
+        $files = new RegexIterator(
+            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory)),
+            '/(?<!\.blade)\.php$/',
+        );
+
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $relative = str_replace($root.'/', '', $file->getPathname());
+            $source = (string) file_get_contents($file->getPathname());
+            $permitted = in_array($relative, $allowed, true) ? 1 : 0;
+
+            if (preg_match_all('/Storage::disk\([\'"](local|public)[\'"]\)|->useDisk\([\'"](local|public)[\'"]\)|\bpublic_path\(|\bstorage_path\(|->getRealPath\(/', $source) > $permitted) {
+                $offenders[] = $relative;
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'Runtime files go through a configurable disk so Laravel Cloud replicas share them (docs/superpowers/specs/2026-09-28-laravel-cloud-readiness-design.md). Offending files: '.implode(', ', $offenders),
+    );
+});
+
 it('keeps the word trait out of class files so type coverage analyses them', function (): void {
     $root = dirname(__DIR__, 2);
     $offenders = [];
