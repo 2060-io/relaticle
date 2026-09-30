@@ -299,20 +299,12 @@ final class ImportStore
         $snapshot = "{$this->directory}/snapshot.sqlite";
         File::delete($snapshot);
         $this->connection()->statement('VACUUM INTO ?', [$snapshot]);
-        $size = filesize($snapshot);
-        $stream = fopen($snapshot, 'rb');
 
         try {
-            throw_unless(is_resource($stream) && self::disk()->writeStream(self::remotePath($this->id), $stream), ImportStoreException::snapshotFailed($this->id, 'write failed'));
+            retry(3, fn () => $this->upload($snapshot), 200);
         } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-
             File::delete($snapshot);
         }
-
-        throw_unless(self::disk()->size(self::remotePath($this->id)) === $size, ImportStoreException::snapshotFailed($this->id, 'size mismatch'));
     }
 
     public function close(): void
@@ -333,6 +325,22 @@ final class ImportStore
         $this->close();
 
         self::delete($this->id);
+    }
+
+    private function upload(string $snapshot): void
+    {
+        $size = filesize($snapshot);
+        $stream = fopen($snapshot, 'rb');
+
+        try {
+            throw_unless(is_resource($stream) && self::disk()->writeStream(self::remotePath($this->id), $stream), ImportStoreException::snapshotFailed($this->id, 'write failed'));
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+
+        throw_unless(self::disk()->size(self::remotePath($this->id)) === $size, ImportStoreException::snapshotFailed($this->id, 'size mismatch'));
     }
 
     private function createConnection(): Connection

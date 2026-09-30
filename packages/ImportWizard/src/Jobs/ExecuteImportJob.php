@@ -26,6 +26,7 @@ use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Middleware\FailOnException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -46,6 +47,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\MatchBehavior;
 use Relaticle\ImportWizard\Enums\NumberFormat;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Exceptions\MissingRequiredFieldException;
 use Relaticle\ImportWizard\Exceptions\UnparsableDateException;
 use Relaticle\ImportWizard\Importers\BaseImporter;
@@ -113,7 +115,8 @@ final class ExecuteImportJob implements ShouldQueue
     /** @return list<FailOnException> */
     public function middleware(): array
     {
-        return [new FailOnException([LogicException::class])];
+        return [new FailOnException(fn (\Throwable $e): bool => $e instanceof LogicException
+            || ($e instanceof ImportStoreException && ! $e->isLockTimeout()))];
     }
 
     public function handle(): void
@@ -130,6 +133,29 @@ final class ExecuteImportJob implements ShouldQueue
         $this->batch() instanceof Batch
             ? $this->batch()->add([$next])
             : dispatch($next);
+    }
+
+    private function rememberDedupMaps(): void
+    {
+        Cache::put($this->dedupCacheKey('created'), $this->createdRecords, now()->addDay());
+        Cache::put($this->dedupCacheKey('matchable'), $this->matchableValueCache, now()->addDay());
+    }
+
+    private function restoreDedupMaps(): void
+    {
+        $this->createdRecords = (array) Cache::get($this->dedupCacheKey('created'), []);
+        $this->matchableValueCache = (array) Cache::get($this->dedupCacheKey('matchable'), []);
+    }
+
+    private function forgetDedupMaps(): void
+    {
+        Cache::forget($this->dedupCacheKey('created'));
+        Cache::forget($this->dedupCacheKey('matchable'));
+    }
+
+    private function dedupCacheKey(string $map): string
+    {
+        return "import-execution:{$this->importId}:{$map}";
     }
 
     private function timeBoxExpired(int $startedAt): bool
@@ -162,6 +188,7 @@ final class ExecuteImportJob implements ShouldQueue
     private function runFromStore(Import $import, ImportStore $store, int $startedAt): bool
     {
         $store->ensureProcessedColumn();
+        $this->restoreDedupMaps();
 
         throw_if($store->query()->where('processed', false)->whereNull('match_action')->exists(), LogicException::class, 'Import match resolution is incomplete.');
 
@@ -212,6 +239,7 @@ final class ExecuteImportJob implements ShouldQueue
                         $this->flushFailedRows($import);
                         $store->persist();
                         $this->persistResults($import, $results);
+                        $this->rememberDedupMaps();
 
                         if ($this->timeBoxExpired($startedAt)) {
                             $handedOff = true;
@@ -236,6 +264,7 @@ final class ExecuteImportJob implements ShouldQueue
                 'failed_rows' => $results['failed'],
             ]);
 
+            $this->forgetDedupMaps();
             $this->logImportSummary($import, $results, self::IMPORTED_EVENT);
 
             $this->notifyUser($import, $results);
@@ -245,6 +274,7 @@ final class ExecuteImportJob implements ShouldQueue
             $this->flushFailedRows($import);
             $this->persistResults($import, $results);
             $import->update(['status' => ImportStatus::Failed]);
+            $this->forgetDedupMaps();
 
             try {
                 $this->notifyUser($import, $results, failed: true);
@@ -288,6 +318,7 @@ final class ExecuteImportJob implements ShouldQueue
             $import->update(['status' => ImportStatus::Failed]);
         }
 
+        $this->forgetDedupMaps();
         $this->flushFailedRows($import);
 
         $results = [
@@ -426,6 +457,7 @@ final class ExecuteImportJob implements ShouldQueue
             $this->markProcessed($row);
         } catch (\Throwable $e) {
             $results['failed']++;
+            $this->markProcessed($row);
             $this->recordFailedRow($row->row_number, $row->raw_data->all(), $e);
             report($e);
         }

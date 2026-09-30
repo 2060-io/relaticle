@@ -10,6 +10,8 @@ final class ImportStoreException extends RuntimeException
 {
     private bool $notFound = false;
 
+    private bool $lockTimeout = false;
+
     public static function notFound(string $importId): self
     {
         $exception = new self("Import store {$importId} does not exist.");
@@ -25,7 +27,15 @@ final class ImportStoreException extends RuntimeException
 
     public static function lockTimeout(string $importId, int $waitSeconds): self
     {
-        return new self("Could not lock import store {$importId} within {$waitSeconds}s.");
+        $exception = new self("Could not lock import store {$importId} within {$waitSeconds}s.");
+        $exception->lockTimeout = true;
+
+        return $exception;
+    }
+
+    public function isLockTimeout(): bool
+    {
+        return $this->lockTimeout;
     }
 
     public static function lockLost(string $importId): self
