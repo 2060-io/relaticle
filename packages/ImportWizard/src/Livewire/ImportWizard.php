@@ -254,7 +254,7 @@ final class ImportWizard extends Component implements HasActions, HasForms
             ->where('id', $importId)
             ->delete();
 
-        ImportStore::load($importId)?->destroy();
+        ImportStore::delete($importId);
     }
 
     private function sanitizeReturnUrl(?string $url): ?string

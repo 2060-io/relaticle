@@ -77,19 +77,25 @@ final readonly class ImportFileLoader
                 })
                 ->chunk($this->chunkSize())
                 ->each(fn (LazyCollection $chunk) => $store->query()->insert($chunk->all()));
+
+            $store->persist();
         } catch (Throwable $e) {
-            $store->destroy();
+            $store->close();
+            ImportStore::delete($import->id);
             $import->delete();
 
             throw $e;
         }
 
         if ($rowCount === 0) {
-            $store->destroy();
+            $store->close();
+            ImportStore::delete($import->id);
             $import->delete();
 
             throw new ImportFileException('Could not read file. Please re-upload.');
         }
+
+        $store->close();
 
         $import->update([
             'total_rows' => $rowCount,

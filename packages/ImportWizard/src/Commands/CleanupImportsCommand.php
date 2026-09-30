@@ -8,6 +8,8 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -27,6 +29,7 @@ final class CleanupImportsCommand extends Command
         $deleted += $this->cleanupTerminalImportFiles($completedHours);
         $deleted += $this->cleanupAbandonedImports($staleHours);
         $deleted += $this->cleanupOrphanedDirectories($staleHours);
+        $deleted += $this->cleanupOrphanedRemoteFiles($staleHours);
 
         $this->comment("Cleaned up {$deleted} import(s).");
     }
@@ -41,14 +44,16 @@ final class CleanupImportsCommand extends Command
             ->get();
 
         foreach ($terminalImports as $import) {
-            $store = ImportStore::load($import->id);
+            $store = ImportStore::forRead($import->id);
 
             if (! $store instanceof ImportStore) {
                 continue;
             }
 
+            $store->close();
+
             $this->info("Cleaning up files for import {$import->id} (status: {$import->status->value})");
-            $store->destroy();
+            ImportStore::delete($import->id);
             $deleted++;
         }
 
@@ -66,7 +71,7 @@ final class CleanupImportsCommand extends Command
 
         foreach ($abandonedImports as $import) {
             $this->info("Cleaning up abandoned import {$import->id} (status: {$import->status->value})");
-            ImportStore::load($import->id)?->destroy();
+            ImportStore::delete($import->id);
             $import->delete();
             $deleted++;
         }
@@ -77,7 +82,7 @@ final class CleanupImportsCommand extends Command
     private function cleanupOrphanedDirectories(int $staleHours): int
     {
         $deleted = 0;
-        $importsPath = storage_path('app/imports');
+        $importsPath = (string) config('import-wizard.storage_path');
 
         if (! File::isDirectory($importsPath)) {
             return 0;
@@ -109,6 +114,37 @@ final class CleanupImportsCommand extends Command
 
             $this->info("Cleaning up orphaned directory {$id}");
             File::deleteDirectory($directory);
+            $deleted++;
+        }
+
+        return $deleted;
+    }
+
+    private function cleanupOrphanedRemoteFiles(int $staleHours): int
+    {
+        if (! ImportStore::isRemote()) {
+            return 0;
+        }
+
+        $deleted = 0;
+        $staleBefore = now()->subHours($staleHours)->getTimestamp();
+        $disk = Storage::disk((string) config('import-wizard.store.disk'));
+
+        foreach ($disk->files('imports') as $file) {
+            $id = basename((string) $file, '.sqlite');
+
+            if (! Str::isUlid($id) || Import::query()->where('id', $id)->exists()) {
+                continue;
+            }
+
+            $lastModified = rescue(fn (): int => $disk->lastModified($file), null, report: false);
+
+            if ($lastModified === null || $lastModified >= $staleBefore) {
+                continue;
+            }
+
+            $this->info("Cleaning up orphaned remote store {$id}");
+            ImportStore::delete($id);
             $deleted++;
         }
 

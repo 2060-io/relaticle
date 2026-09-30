@@ -7,6 +7,8 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -315,4 +317,33 @@ it('resets storeId when store belongs to different workspace', function (): void
 
     $store->destroy();
     $import->delete();
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('cancelImport removes the remote file and this replica read copy', function (): void {
+        $store = createFullTestStore($this);
+        $store->persist();
+        $store->close();
+        $readCache = config('import-wizard.store.read_cache_path')."/{$store->id()}";
+
+        ImportStore::forRead($store->id())?->close();
+        expect(File::isDirectory($readCache))->toBeTrue();
+
+        mountImportWizard($this, '/dashboard')
+            ->set('storeId', $store->id())
+            ->call('cancelImport')
+            ->assertRedirect('/dashboard');
+
+        Storage::disk('s3')->assertMissing("imports/{$store->id()}.sqlite");
+
+        expect(File::isDirectory($readCache))->toBeFalse()
+            ->and(ImportStore::forRead($store->id()))->toBeNull();
+
+        markStoreAsDestroyed($this, $store);
+    });
 });

@@ -9,6 +9,7 @@ use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportTesting\Testable;
@@ -245,4 +246,32 @@ it('reports a csv whose local copy cannot be written instead of parsing it as em
     expect($component->get('isParsed'))->toBeFalse();
     $component->assertHasErrors(['uploadedFile' => 'Unable to process this file. Please check the format and try again.']);
     Exceptions::assertReported(RuntimeException::class);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    afterEach(function (): void {
+        foreach ($this->createdStoreIds as $storeId) {
+            ImportStore::delete($storeId);
+        }
+    });
+
+    it('keeps the uploaded rows on the store disk and nothing under storage', function (): void {
+        mountUploadStep($this)
+            ->set('uploadedFile', makeCsvFile("Name,Email\nAda,ada@example.com\nGrace,grace@example.com\n"))
+            ->call('continueToMapping')
+            ->assertHasNoErrors();
+
+        $import = Import::query()->where('workspace_id', $this->workspace->getKey())->firstOrFail();
+        $this->createdStoreIds[] = $import->id;
+
+        Storage::disk('s3')->assertExists("imports/{$import->id}.sqlite");
+
+        expect(File::exists(config('import-wizard.storage_path')."/{$import->id}"))->toBeFalse()
+            ->and(ImportStore::forRead($import->id)?->query()->count())->toBe(2);
+    });
 });

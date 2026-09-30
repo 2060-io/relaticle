@@ -6,6 +6,8 @@ use App\Events\WorkspaceCreated;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Relaticle\ImportWizard\Commands\CleanupImportsCommand;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
@@ -45,6 +47,8 @@ function createTestImport(object $context, ImportStatus $status, string $updated
     $import->saveQuietly();
 
     $store = ImportStore::create($import->id);
+    $store->persist();
+    $store->close();
 
     $context->imports[] = $import;
 
@@ -139,4 +143,49 @@ it('respects custom hours option', function (): void {
     $storePath = storage_path("app/imports/{$import->id}");
     expect(File::isDirectory($storePath))->toBeTrue();
     expect(Import::find($import->id))->not->toBeNull();
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        config()->set('import-wizard.store.disk', 's3');
+        fakeDiskWithoutLocalPaths('s3');
+    });
+
+    it('deletes the remote file of a completed import past the threshold', function (): void {
+        $import = createTestImport($this, ImportStatus::Completed, now()->subHours(3)->toIso8601String());
+        Storage::disk('s3')->assertExists("imports/{$import->id}.sqlite");
+
+        $this->artisan('import:cleanup')
+            ->expectsOutputToContain('Cleaned up 1 import(s)')
+            ->assertExitCode(0);
+
+        Storage::disk('s3')->assertMissing("imports/{$import->id}.sqlite");
+        expect(Import::find($import->id))->not->toBeNull();
+    });
+
+    it('deletes an abandoned import row and its remote file', function (): void {
+        $import = createTestImport($this, ImportStatus::Mapping, now()->subHours(25)->toIso8601String());
+
+        $this->artisan('import:cleanup')
+            ->expectsOutputToContain('Cleaned up 1 import(s)')
+            ->assertExitCode(0);
+
+        Storage::disk('s3')->assertMissing("imports/{$import->id}.sqlite");
+        expect(Import::find($import->id))->toBeNull();
+    });
+
+    it('deletes stale remote files with no import row and keeps fresh ones', function (): void {
+        $stale = (string) Str::ulid();
+        $fresh = (string) Str::ulid();
+        Storage::disk('s3')->put("imports/{$stale}.sqlite", 'stale');
+        Storage::disk('s3')->put("imports/{$fresh}.sqlite", 'fresh');
+        touch(storage_path("framework/testing/disks/s3/imports/{$stale}.sqlite"), now()->subHours(25)->getTimestamp());
+
+        $this->artisan('import:cleanup')
+            ->expectsOutputToContain('Cleaned up 1 import(s)')
+            ->assertExitCode(0);
+
+        Storage::disk('s3')->assertMissing("imports/{$stale}.sqlite");
+        Storage::disk('s3')->assertExists("imports/{$fresh}.sqlite");
+    });
 });

@@ -18,7 +18,7 @@ final class ImportWizardNewServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/import-wizard.php', 'import-wizard-new');
+        $this->mergeConfigFrom(__DIR__.'/../config/import-wizard.php', 'import-wizard');
     }
 
     public function boot(): void
