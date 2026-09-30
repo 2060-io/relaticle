@@ -1,8 +1,8 @@
 ---
 title: Self-Hosting Guide
-description: Get Docker Compose, Coolify and Dokploy deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.
+description: Get Docker Compose, Coolify, Dokploy and Laravel Cloud deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.
 order: 1
-updated: "2026-08-30"
+updated: "2026-09-30"
 ---
 
 Deploy Relaticle on your own infrastructure with Docker or manually.
@@ -368,6 +368,92 @@ php artisan make:filament-user
 ```
 
 Access your CRM at `https://crm.yourdomain.com/app`.
+
+---
+
+## Deploying on Laravel Cloud
+
+Laravel Cloud runs Relaticle without Docker. Web replicas and queue workers each get their own short-lived disk, so every file Relaticle keeps goes to object storage.
+
+### 1. Create the Application
+
+Create an application from your fork of the Relaticle repository. Attach these resources to its environment:
+
+| Resource | Setting |
+|----------|---------|
+| Database | Laravel Serverless Postgres |
+| Cache | Laravel Valkey |
+| WebSockets | Laravel Reverb |
+| Bucket | A **public** bucket with the disk name `public` |
+| Bucket | A **private** bucket with the disk name `s3` |
+
+Cloud points the disks named `public` and `s3` at the buckets, so the names must match exactly. Leave "default disk" unchecked on both buckets: the default disk stays `local`, which holds build artifacts only.
+
+### 2. Set Environment Variables
+
+Cloud injects the database, cache, Reverb, and bucket credentials. Add these:
+
+```bash
+APP_KEY=base64:your-generated-key-here
+QUEUE_CONNECTION=redis
+CACHE_STORE=redis
+BROADCAST_CONNECTION=reverb
+APP_MAINTENANCE_DRIVER=cache
+MEDIA_DISK=s3
+FILAMENT_FILESYSTEM_DISK=s3
+LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK=s3
+IMPORT_STORE_DISK=s3
+PASSPORT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
+PASSPORT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----..."
+```
+
+Generate the Passport keys once with `php artisan passport:keys --force` on your machine and paste the contents of `storage/oauth-private.key` and `storage/oauth-public.key`.
+
+`FILAMENT_FILESYSTEM_DISK` must be `s3`. Left unset, CRM exports are written to one replica's disk and downloads from another replica fail. Never point it at the public bucket: exports hold customer data.
+
+### 3. Build and Deploy Commands
+
+Cloud does not install pnpm, so the build installs the version `package.json` pins. Caching belongs in the build: a deploy command's file changes are not kept.
+
+Build command:
+
+```bash
+composer install --no-dev --optimize-autoloader
+npm install -g "$(node -p 'require("./package.json").packageManager')"
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run build
+php artisan scribe:generate
+php artisan optimize
+php artisan filament:optimize
+```
+
+Deploy command:
+
+```bash
+php artisan migrate --force
+```
+
+Cloud restarts Horizon on every deployment, so no `horizon:terminate` step is needed.
+
+### 4. Queue Workers and Scheduler
+
+Turn on the Scheduler toggle on the App cluster. Add a worker cluster, keep it awake instead of letting it sleep with the App cluster, and give it one custom background process:
+
+```bash
+php artisan horizon
+```
+
+Every worker replica runs the full Horizon supervisor set. Tune the process counts with `HORIZON_DEFAULT_MIN`, `HORIZON_DEFAULT_MAX`, `HORIZON_IMPORTS_MIN`, and `HORIZON_IMPORTS_MAX`.
+
+### 5. Create Admin User
+
+Open the environment's Commands tab and run the command with every value passed as an option. The Commands tab cannot answer interactive prompts.
+
+```bash
+php artisan make:filament-user --name="Your Name" --email=you@example.com --password=your-secure-password
+```
+
+Access your CRM at `https://your-app.laravel.cloud/app`.
 
 ---
 
