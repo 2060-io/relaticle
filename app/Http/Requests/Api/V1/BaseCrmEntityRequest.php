@@ -10,6 +10,7 @@ use App\Rules\ValidCustomFields;
 use App\Support\CustomFields\CustomFieldInput;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 
 abstract class BaseCrmEntityRequest extends FormRequest
 {
@@ -24,6 +25,26 @@ abstract class BaseCrmEntityRequest extends FormRequest
      * @return array<string, array<int, mixed>>
      */
     final public function rules(): array
+    {
+        if (config('scribe.generating') !== true) {
+            return $this->crmRules();
+        }
+
+        // Scribe's workspace is never persisted, so these reads are always empty. Pretending keeps
+        // docs generation off a database that a Laravel Cloud build reaches before `migrate` runs.
+        $rules = [];
+
+        DB::pretend(function () use (&$rules): void {
+            $rules = $this->crmRules();
+        });
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function crmRules(): array
     {
         $user = $this->authenticatedUser();
         $record = $this->existingRecord();
