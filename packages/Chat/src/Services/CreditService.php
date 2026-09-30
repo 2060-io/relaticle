@@ -16,7 +16,7 @@ use Relaticle\Chat\Models\AiCreditTransaction;
 
 final readonly class CreditService
 {
-    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods) {}
+    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods, private TokenCost $tokenCost) {}
 
     public function hasCredits(Workspace $workspace): bool
     {
@@ -279,6 +279,8 @@ final readonly class CreditService
         string $model,
         int $inputTokens,
         int $outputTokens,
+        int $cacheReadTokens = 0,
+        int $cacheWriteTokens = 0,
         int $toolCallsCount = 0,
         ?string $conversationId = null,
         int $reservedCredits = 1,
@@ -300,6 +302,9 @@ final readonly class CreditService
             userId: (string) $user->getKey(),
             conversationId: $conversationId,
             metadata: ['tool_calls_count' => $toolCallsCount],
+            cacheReadTokens: $cacheReadTokens,
+            cacheWriteTokens: $cacheWriteTokens,
+            costMicros: $this->tokenCost->micros($model, $inputTokens, $cacheReadTokens, $cacheWriteTokens, $outputTokens),
         );
     }
 
@@ -363,10 +368,14 @@ final readonly class CreditService
         ?string $userId,
         ?string $conversationId,
         array $metadata,
+        int $cacheReadTokens = 0,
+        int $cacheWriteTokens = 0,
+        ?int $costMicros = null,
     ): bool {
         return DB::transaction(function () use (
             $workspace, $resolutionKey, $type, $model, $inputTokens, $outputTokens,
             $creditsCharged, $remainingDelta, $usedDelta, $userId, $conversationId, $metadata,
+            $cacheReadTokens, $cacheWriteTokens, $costMicros,
         ): bool {
             $inserted = AiCreditTransaction::query()->insertOrIgnore([
                 'id' => (string) Str::ulid(),
@@ -378,6 +387,9 @@ final readonly class CreditService
                 'model' => $model,
                 'input_tokens' => $inputTokens,
                 'output_tokens' => $outputTokens,
+                'cache_read_tokens' => $cacheReadTokens,
+                'cache_write_tokens' => $cacheWriteTokens,
+                'cost_micros' => $costMicros,
                 'credits_charged' => $creditsCharged,
                 'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
                 'created_at' => now(),

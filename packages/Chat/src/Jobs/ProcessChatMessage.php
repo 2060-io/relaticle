@@ -345,6 +345,8 @@ final class ProcessChatMessage implements ShouldQueue
                     model: $this->resolved['model'] ?? $streamedResponse->meta->model ?? 'unknown',
                     inputTokens: $streamedResponse->usage->uncachedInputTokens(),
                     outputTokens: $streamedResponse->usage->outputTokens,
+                    cacheReadTokens: $streamedResponse->usage->cacheReadInputTokens ?? 0,
+                    cacheWriteTokens: $streamedResponse->usage->cacheWriteInputTokens ?? 0,
                     toolCallsCount: $streamedResponse->toolCalls->count(),
                     conversationId: $streamedResponse->conversationId,
                     resolutionKey: $this->resolutionKey(),
