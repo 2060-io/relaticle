@@ -45,13 +45,12 @@ final class CleanupImportsCommand extends Command
             ->get();
 
         foreach ($terminalImports as $import) {
-            if (! ImportStore::exists($import->id)) {
-                continue;
-            }
-
-            $this->info("Cleaning up files for import {$import->id} (status: {$import->status->value})");
-
             try {
+                if (! ImportStore::exists($import->id)) {
+                    continue;
+                }
+
+                $this->info("Cleaning up files for import {$import->id} (status: {$import->status->value})");
                 ImportStore::delete($import->id);
             } catch (Throwable $e) {
                 report($e);

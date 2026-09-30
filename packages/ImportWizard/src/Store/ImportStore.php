@@ -22,6 +22,8 @@ use Throwable;
 
 final class ImportStore
 {
+    private const int READ_COPY_GRACE_SECONDS = 300;
+
     private ?Connection $connection = null;
 
     private function __construct(
@@ -86,7 +88,10 @@ final class ImportStore
             self::pruneReadCopies($directory, $file);
         }
 
-        return new self($importId, $directory, readOnly: true, file: $file);
+        $store = new self($importId, $directory, readOnly: true, file: $file);
+        $store->connection();
+
+        return $store;
     }
 
     public static function withWriteLock(string $importId, Closure $mutator, ?int $waitSeconds = null): mixed
@@ -143,8 +148,9 @@ final class ImportStore
             return;
         }
 
-        DB::purge("import_{$importId}");
-        DB::purge("import_read_{$importId}");
+        collect(array_keys((array) config('database.connections')))
+            ->filter(fn (string $name): bool => str_starts_with($name, "import_{$importId}") || str_starts_with($name, "import_read_{$importId}"))
+            ->each(fn (string $name) => DB::purge($name));
         File::deleteDirectory(self::localDirectory($importId));
         File::deleteDirectory(self::readCacheDirectory($importId));
 
@@ -364,10 +370,18 @@ final class ImportStore
 
     private static function pruneReadCopies(string $directory, string $keep): void
     {
+        $graceEndsAt = now()->subSeconds(self::READ_COPY_GRACE_SECONDS)->getTimestamp();
+
         foreach (File::glob("{$directory}/*.sqlite") as $copy) {
-            if (basename($copy) !== $keep) {
-                rescue(fn (): bool => File::delete($copy), false, report: false);
+            if (basename($copy) === $keep) {
+                continue;
             }
+
+            if (rescue(fn (): int => File::lastModified($copy), 0, report: false) > $graceEndsAt) {
+                continue;
+            }
+
+            rescue(fn (): bool => File::delete($copy), false, report: false);
         }
     }
 
