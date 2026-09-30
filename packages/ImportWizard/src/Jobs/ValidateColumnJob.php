@@ -21,6 +21,7 @@ use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\EntityLinkValidator;
 use Relaticle\ImportWizard\Support\Validation\ColumnValidator;
+use Throwable;
 
 #[Timeout(120)]
 #[Tries(1)]
@@ -43,7 +44,14 @@ final class ValidateColumnJob implements ShouldQueue
         }
 
         $import = Import::query()->findOrFail($this->importId);
-        $reader = ImportStore::forRead($this->importId);
+
+        try {
+            $reader = ImportStore::forRead($this->importId);
+        } catch (Throwable $e) {
+            throw_if(ImportStore::exists($this->importId), $e);
+
+            return;
+        }
 
         if (! $reader instanceof ImportStore) {
             return;
@@ -67,7 +75,15 @@ final class ValidateColumnJob implements ShouldQueue
         $uniqueValues = $this->fetchUncorrectedUniqueValues($reader, $jsonPath);
         $results = $uniqueValues === [] ? [] : $this->validateValues($import, $uniqueValues);
 
+        if ($results === [] && ! $this->column->getType()->isDateOrDateTime()) {
+            return;
+        }
+
         ImportStore::withWriteLock($this->importId, function (ImportStore $store) use ($jsonPath, $results): void {
+            if ($this->batch()?->cancelled()) {
+                return;
+            }
+
             $this->clearValidationForCorrectedDateFields($store->connection(), $jsonPath);
 
             if ($results !== []) {
@@ -105,6 +121,10 @@ final class ValidateColumnJob implements ShouldQueue
             : $this->relationshipInserts($context, $validator, $uniqueValues, $validator->getLastFormatErrors());
 
         ImportStore::withWriteLock($this->importId, function (ImportStore $store) use ($jsonPath, $results, $context, $uniqueValues, $inserts): void {
+            if ($this->batch()?->cancelled()) {
+                return;
+            }
+
             $this->updateValidationErrors($store->connection(), $jsonPath, $results);
 
             if ($context !== null) {
@@ -259,7 +279,7 @@ final class ValidateColumnJob implements ShouldQueue
     /**
      * @param  array<int, array{raw_value: string, validation_error: string|null}>  $results
      *
-     * @throws \Throwable
+     * @throws Throwable
      */
     private function updateValidationErrors(
         Connection $connection,

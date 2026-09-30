@@ -8,7 +8,9 @@ use App\Models\CustomField;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Enums\FieldDataType;
@@ -513,7 +515,7 @@ describe('on a remote store disk', function (): void {
             makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color'], [
                 'corrections' => json_encode(['Color' => '#ff5733']),
             ]),
-            makeValidationRow(2, ['Name' => 'Jane', 'Color' => 'also-not-a-color']),
+            makeValidationRow(2, ['Name' => 'Jane', 'Color' => 'not-a-color']),
         ], [
             ColumnData::toField(source: 'Name', target: 'name'),
             $column,
@@ -582,4 +584,30 @@ describe('on a remote store disk', function (): void {
 
         expect(ImportStore::exists($this->import->id))->toBeFalse();
     });
+});
+
+it('writes nothing when its batch is cancelled while it validates', function (): void {
+    $column = makeBrandColorColumn();
+
+    createValidationStore($this, ['Name', 'Color'], [
+        makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        $column,
+    ]);
+
+    [$job] = (new ValidateColumnJob($this->import->id, $column))->withFakeBatch();
+
+    Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+    DB::listen(function (QueryExecuted $query) use ($job): void {
+        if (str_contains($query->sql, 'DISTINCT')) {
+            $job->batch()->cancel();
+        }
+    });
+
+    $job->handle();
+
+    expect($job->batch()->cancelled())->toBeTrue()
+        ->and(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
 });
