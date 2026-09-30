@@ -132,3 +132,14 @@ it('answers 404 when the file behind a signed url is gone from the disk', functi
 
     $this->get($media->getUrl())->assertNotFound();
 });
+
+it('keeps plain public urls when laravel cloud replaces the public disk config', function (): void {
+    usePublicMediaDisk();
+    config()->set('filesystems.disks.public.visibility', null);
+
+    $media = uploadPdf($this->user);
+
+    expect($media->disk)->toBe('public')
+        ->and($media->getUrl())->not->toContain('signature=')
+        ->and($media->getUrl())->not->toContain('/media/'.$media->uuid);
+});

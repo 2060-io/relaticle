@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Media\UploadPathGenerator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
 use Spatie\MediaLibrary\MediaCollections\Exceptions\FileUnacceptableForCollection;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -147,4 +148,22 @@ it('still accepts an allowed type on the attachments collection', function (): v
 
     expect($media->mime_type)->toBe('application/pdf')
         ->and($media->collection_name)->toBe(MediaCollection::Attachments->value);
+});
+
+it('resolves the s3 disk laravel cloud configures for a bucket', function (): void {
+    config()->set('filesystems.disks.s3', [
+        'driver' => 's3',
+        'key' => 'key',
+        'secret' => 'secret',
+        'bucket' => 'relaticle-private',
+        'url' => 'https://files.example.test',
+        'endpoint' => 'https://account.r2.cloudflarestorage.com',
+        'region' => 'auto',
+        'use_path_style_endpoint' => false,
+        'throw' => false,
+        'report' => false,
+    ]);
+    Storage::forgetDisk('s3');
+
+    expect(Storage::disk('s3')->getAdapter())->toBeInstanceOf(AwsS3V3Adapter::class);
 });

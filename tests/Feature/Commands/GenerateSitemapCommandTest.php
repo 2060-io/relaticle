@@ -7,6 +7,7 @@ use App\Features\Blog;
 use GuzzleHttp\HandlerStack;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Relaticle\Ink\Models\Post;
@@ -30,14 +31,7 @@ beforeEach(function (): void {
     // The generator crawls app.url before adding the blog URLs; keep it off the network.
     fakeSitemapCrawl([config('app.url') => '<html><body></body></html>']);
 
-    $this->sitemap = public_path('sitemap.xml');
-    $this->original = File::exists($this->sitemap) ? File::get($this->sitemap) : null;
-});
-
-afterEach(function (): void {
-    $this->original === null
-        ? File::delete($this->sitemap)
-        : File::put($this->sitemap, $this->original);
+    Storage::fake('public');
 });
 
 it('writes published posts into the sitemap when the blog is live', function (): void {
@@ -46,7 +40,7 @@ it('writes published posts into the sitemap when the blog is live', function ():
 
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    $xml = File::get($this->sitemap);
+    $xml = Storage::disk('public')->get('sitemap.xml');
 
     expect($xml)->toContain(route('blog.show', $post->slug))
         ->and($xml)->toContain(route('blog.index'))
@@ -60,13 +54,13 @@ it('leaves the blog out of the sitemap when the feature is off', function (): vo
 
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    expect(File::get($this->sitemap))->not->toContain(route('blog.show', $post->slug));
+    expect(Storage::disk('public')->get('sitemap.xml'))->not->toContain(route('blog.show', $post->slug));
 });
 
 it('adds help urls to the sitemap with lastmod from front matter', function (): void {
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    $xml = File::get($this->sitemap);
+    $xml = Storage::disk('public')->get('sitemap.xml');
 
     expect($xml)->toContain('<loc>'.route('help.index').'</loc>')
         ->and($xml)->toContain('<loc>'.route('help.category', ['category' => 'getting-started']).'</loc>')
@@ -89,14 +83,14 @@ it('stamps lastmod onto urls the crawler already found', function (): void {
 
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    expect(File::get($this->sitemap))
+    expect(Storage::disk('public')->get('sitemap.xml'))
         ->toMatch('#getting-started/create-your-first-company</loc>\s*<lastmod>2026-08-12#');
 });
 
 it('adds developer guide urls with lastmod from front matter', function (): void {
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    $xml = File::get($this->sitemap);
+    $xml = Storage::disk('public')->get('sitemap.xml');
 
     expect($xml)->toContain('<loc>'.route('documentation.index').'</loc>')
         ->and($xml)->toContain('<loc>'.route('aiNativeCrm').'</loc>')
@@ -123,7 +117,7 @@ it('omits lastmod for a help page with no updated front matter', function (): vo
 
     File::deleteDirectory($fixturePath);
 
-    $xml = File::get($this->sitemap);
+    $xml = Storage::disk('public')->get('sitemap.xml');
 
     expect($xml)->toContain('<loc>'.route('help.show', ['category' => 'no-date', 'slug' => 'undated-page']).'</loc>')
         ->and($xml)->not->toMatch('#no-date/undated-page</loc>\s*<lastmod>#');
@@ -139,7 +133,7 @@ it('excludes query string variants of a page already in the sitemap', function (
 
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    $xml = File::get($this->sitemap);
+    $xml = Storage::disk('public')->get('sitemap.xml');
 
     expect($xml)->toContain('<loc>'.url('/contact').'</loc>')
         ->and($xml)->not->toContain('plan=enterprise');
@@ -153,7 +147,7 @@ it('excludes non-html assets from the sitemap', function (): void {
 
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    expect(File::get($this->sitemap))->not->toContain('llms.txt');
+    expect(Storage::disk('public')->get('sitemap.xml'))->not->toContain('llms.txt');
 });
 
 it('excludes auth and utility redirect urls from the sitemap', function (): void {
@@ -168,10 +162,23 @@ it('excludes auth and utility redirect urls from the sitemap', function (): void
 
     $this->artisan('app:generate-sitemap')->assertSuccessful();
 
-    $xml = File::get($this->sitemap);
+    $xml = Storage::disk('public')->get('sitemap.xml');
 
     expect($xml)->toContain('<loc>'.url('/').'/</loc>')
         ->and($xml)->not->toContain('<loc>'.url('/login').'</loc>')
         ->and($xml)->not->toContain('<loc>'.url('/register').'</loc>')
         ->and($xml)->not->toContain('<loc>'.url('/discord').'</loc>');
+});
+
+it('serves the generated sitemap from the public disk', function (): void {
+    $this->artisan('app:generate-sitemap')->assertSuccessful();
+
+    $this->get('/sitemap.xml')
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/xml; charset=UTF-8')
+        ->assertSee(route('help.index'), false);
+});
+
+it('returns not found before the sitemap is generated', function (): void {
+    $this->get('/sitemap.xml')->assertNotFound();
 });

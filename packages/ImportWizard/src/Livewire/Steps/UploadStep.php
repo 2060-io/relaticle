@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\ImportWizard\Livewire\Steps;
 
+use App\Support\Media\LocalCopy;
 use Exception;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -95,8 +96,10 @@ final class UploadStep extends Component implements HasForms
         $this->reset(['headers', 'rowCount', 'isParsed']);
 
         try {
-            ['headers' => $this->headers, 'row_count' => $this->rowCount] = resolve(ImportFileLoader::class)
-                ->inspect($this->uploadedFile->getRealPath());
+            ['headers' => $this->headers, 'row_count' => $this->rowCount] = LocalCopy::of(
+                $this->uploadedFile->readStream(),
+                fn (string $path): array => resolve(ImportFileLoader::class)->inspect($path),
+            );
             $this->isParsed = true;
         } catch (ImportFileException $e) {
             $this->addError('uploadedFile', $e->getMessage());
@@ -124,12 +127,15 @@ final class UploadStep extends Component implements HasForms
         }
 
         try {
-            $this->import = resolve(ImportFileLoader::class)->load(
-                $this->uploadedFile->getRealPath(),
-                $this->uploadedFile->getClientOriginalName(),
-                $this->entityType,
-                $workspaceId,
-                (string) auth()->id(),
+            $this->import = LocalCopy::of(
+                $this->uploadedFile->readStream(),
+                fn (string $path): Import => resolve(ImportFileLoader::class)->load(
+                    $path,
+                    $this->uploadedFile->getClientOriginalName(),
+                    $this->entityType,
+                    $workspaceId,
+                    (string) auth()->id(),
+                ),
             );
             $this->store = ImportStore::load($this->import->id);
 
