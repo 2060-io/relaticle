@@ -387,7 +387,7 @@ Create an application from your fork of the Relaticle repository. Attach these r
 | Bucket | A **public** bucket with the disk name `public` |
 | Bucket | A **private** bucket with the disk name `s3` |
 
-Cloud points the disks named `public` and `s3` at the buckets, so the names must match exactly.
+Cloud points the disks named `public` and `s3` at the buckets, so the names must match exactly. Leave "default disk" unchecked on both buckets: the default disk stays `local`, which holds build artifacts only.
 
 ### 2. Set Environment Variables
 
@@ -397,6 +397,7 @@ Cloud injects the database, cache, Reverb, and bucket credentials. Add these:
 APP_KEY=base64:your-generated-key-here
 QUEUE_CONNECTION=redis
 CACHE_STORE=redis
+BROADCAST_CONNECTION=reverb
 APP_MAINTENANCE_DRIVER=cache
 MEDIA_DISK=s3
 FILAMENT_FILESYSTEM_DISK=s3
@@ -412,26 +413,31 @@ Generate the Passport keys once with `php artisan passport:keys --force` on your
 
 ### 3. Build and Deploy Commands
 
+Cloud does not install pnpm, so the build installs the version `package.json` pins. Caching belongs in the build: a deploy command's file changes are not kept.
+
 Build command:
 
 ```bash
 composer install --no-dev --optimize-autoloader
-pnpm install --frozen-lockfile
-pnpm build
+npm install -g "$(node -p 'require("./package.json").packageManager')"
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run build
 php artisan scribe:generate
+php artisan optimize
+php artisan filament:optimize
 ```
 
 Deploy command:
 
 ```bash
 php artisan migrate --force
-php artisan optimize
-php artisan filament:optimize
 ```
+
+Cloud restarts Horizon on every deployment, so no `horizon:terminate` step is needed.
 
 ### 4. Queue Workers and Scheduler
 
-Enable the scheduler on the app cluster. Add a worker cluster with one background process:
+Turn on the Scheduler toggle on the App cluster. Add a worker cluster, keep it awake instead of letting it sleep with the App cluster, and give it one custom background process:
 
 ```bash
 php artisan horizon
