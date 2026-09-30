@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\ImportWizard\Livewire\Steps;
 
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Bus\Batch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Connection;
@@ -37,6 +38,8 @@ final class ReviewStep extends Component
 {
     use WithImportStore;
     use WithPagination;
+
+    private const string REENTRY = '__reentry';
 
     public string $search = '';
 
@@ -138,6 +141,17 @@ final class ReviewStep extends Component
         $this->cacheValidationState($this->currentMappingsHash());
     }
 
+    private function writeRow(Closure $mutator): bool
+    {
+        $written = $this->writeStore($mutator);
+
+        if (! $written) {
+            $this->rowRevision++;
+        }
+
+        return $written;
+    }
+
     private function clearRelationshipsForReentry(): bool
     {
         return $this->writeStore(function (ImportStore $store): void {
@@ -175,7 +189,14 @@ final class ReviewStep extends Component
         }
 
         $this->cancelOldBatches($cached);
+        $this->startValidation();
+    }
+
+    private function startValidation(): void
+    {
         if (! $this->clearRelationshipsForReentry()) {
+            $this->failedColumns[self::REENTRY] = true;
+
             return;
         }
 
@@ -185,7 +206,7 @@ final class ReviewStep extends Component
 
         $this->batchIds['__match_resolution'] = $this->dispatchMatchResolution();
 
-        $this->cacheValidationState($currentHash);
+        $this->cacheValidationState($this->currentMappingsHash());
     }
 
     public function hydrate(): void
@@ -304,15 +325,13 @@ final class ReviewStep extends Component
     public function updateMappedValue(string $rawValue, string $newValue): ?array
     {
         if (blank($newValue)) {
-            $this->skipValue($rawValue);
-
-            return [];
+            return $this->skip($rawValue) ? [] : null;
         }
 
         $error = $this->validateValue($this->selectedColumn, $newValue, isCorrection: true);
         $jsonPath = $this->selectedColumnJsonPath();
 
-        $written = $this->writeStore(function (ImportStore $store) use ($jsonPath, $newValue, $rawValue, $error): void {
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $newValue, $rawValue, $error): void {
             $store->connection()->statement("
                 UPDATE import_rows
                 SET corrections = json_set(COALESCE(corrections, '{}'), ?, ?)
@@ -323,8 +342,6 @@ final class ReviewStep extends Component
         });
 
         if (! $written) {
-            $this->rowRevision++;
-
             return null;
         }
 
@@ -346,7 +363,7 @@ final class ReviewStep extends Component
         $error = $this->validateValue($this->selectedColumn, $rawValue, isCorrection: false);
         $jsonPath = $this->selectedColumnJsonPath();
 
-        $written = $this->writeStore(function (ImportStore $store) use ($jsonPath, $rawValue, $error): void {
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $rawValue, $error): void {
             $store->connection()->statement('
                 UPDATE import_rows
                 SET corrections = json_remove(corrections, ?)
@@ -367,10 +384,15 @@ final class ReviewStep extends Component
 
     public function skipValue(string $rawValue): void
     {
+        $this->skip($rawValue);
+    }
+
+    private function skip(string $rawValue): bool
+    {
         $jsonPath = $this->selectedColumnJsonPath();
         $error = $this->validateValue($this->selectedColumn, $rawValue, isCorrection: false);
 
-        $written = $this->writeStore(function (ImportStore $store) use ($jsonPath, $rawValue, $error): void {
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $rawValue, $error): void {
             $store->connection()->statement("
                 UPDATE import_rows
                 SET skipped = json_set(COALESCE(skipped, '{}'), ?, json('true')),
@@ -382,19 +404,21 @@ final class ReviewStep extends Component
         });
 
         if (! $written) {
-            return;
+            return false;
         }
 
         $this->revalidateEntityLinkColumn();
 
         unset($this->columnErrorStatuses);
+
+        return true;
     }
 
     public function unskipValue(string $rawValue): void
     {
         $jsonPath = $this->selectedColumnJsonPath();
 
-        $written = $this->writeStore(function (ImportStore $store) use ($jsonPath, $rawValue): void {
+        $written = $this->writeRow(function (ImportStore $store) use ($jsonPath, $rawValue): void {
             $store->connection()->statement('
                 UPDATE import_rows
                 SET skipped = json_remove(skipped, ?)
@@ -444,6 +468,14 @@ final class ReviewStep extends Component
 
     public function retryFailedValidation(): void
     {
+        if (isset($this->failedColumns[self::REENTRY])) {
+            unset($this->failedColumns[self::REENTRY]);
+            $this->startValidation();
+            $this->dispatch('validation-started');
+
+            return;
+        }
+
         foreach (array_keys($this->failedColumns) as $columnSource) {
             unset($this->failedColumns[$columnSource]);
 

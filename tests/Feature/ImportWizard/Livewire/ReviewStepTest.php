@@ -605,6 +605,40 @@ describe('on a remote store disk', function (): void {
         $held->release();
     });
 
+    it('returns null and re-renders the rows when a blank correction finds the store locked', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('updateMappedValue', 'John', '')
+            ->assertReturned(null)
+            ->assertSet('rowRevision', 1);
+
+        $held->release();
+    });
+
+    it('blocks Preview after a locked re-entry clear until the retry clears it', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['relationships' => json_encode([['relationship' => 'company', 'action' => 'create', 'name' => 'Stale']])]);
+        });
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component = mountReviewStep($this)
+            ->assertSet('failedColumns', ['__reentry' => true])
+            ->call('continueToPreview')
+            ->assertNotDispatched('completed');
+
+        $held->release();
+        $component->call('retryFailedValidation')
+            ->assertSet('failedColumns', []);
+
+        Bus::assertBatched(fn (): true => true);
+        expect(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->toBeNull();
+    });
+
     it('does not turn a failed snapshot into a retry notification', function (): void {
         $component = mountReviewStep($this);
         Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
