@@ -198,6 +198,8 @@ it('fails over to a premium model for a paid Pro workspace', function (): void {
 });
 
 it('throws a clear error when no chat model is configured', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
     config([
         'chat.models' => [],
         'chat.auto_chain' => [],
@@ -205,7 +207,6 @@ it('throws a clear error when no chat model is configured', function (): void {
     ]);
 
     $resolver = new AiModelResolver(new ModelRegistry, new ModelAccess);
-    $user = User::factory()->withPersonalWorkspace()->create();
 
     expect(fn (): array => $resolver->resolve($user))
         ->toThrow(RuntimeException::class, 'No chat model is configured');
