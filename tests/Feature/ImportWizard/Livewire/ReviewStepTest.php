@@ -538,8 +538,7 @@ describe('on a remote store disk', function (): void {
         $rows = $this->store->query()->get()->map(fn ($row): array => $row->getRawOriginal())->all();
         ImportStore::delete($this->store->id());
 
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
 
         $store = ImportStore::create($this->import->id);
         $store->query()->insert($rows);
@@ -561,7 +560,7 @@ describe('on a remote store disk', function (): void {
 
     it('notifies the user and writes nothing when another writer holds the store lock', function (): void {
         $component = mountReviewStep($this);
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.web', 0);
 
@@ -593,21 +592,22 @@ describe('on a remote store disk', function (): void {
 
     it('returns null and re-renders the rows when the store stays locked', function (): void {
         $component = mountReviewStep($this)->set('batchIds', []);
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.web', 0);
 
         $component->call('updateMappedValue', 'John', 'Johnny')
             ->assertReturned(null)
             ->assertSet('rowRevision', 1)
-            ->assertNotified(__('import-wizard-new::store.busy'));
+            ->assertNotified(__('import-wizard-new::store.busy'))
+            ->assertDontSee('Johnny');
 
         $held->release();
     });
 
     it('returns null and re-renders the rows when a blank correction finds the store locked', function (): void {
         $component = mountReviewStep($this)->set('batchIds', []);
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.web', 0);
 
@@ -618,25 +618,47 @@ describe('on a remote store disk', function (): void {
         $held->release();
     });
 
-    it('blocks Preview after a locked re-entry clear until the retry clears it', function (): void {
+    it('holds validation and Preview while the store is locked at mount until the retry clears the stale relationships', function (): void {
         ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
             $store->query()->where('row_number', 2)->update(['relationships' => json_encode([['relationship' => 'company', 'action' => 'create', 'name' => 'Stale']])]);
         });
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.web', 0);
 
         $component = mountReviewStep($this)
             ->assertSet('failedColumns', ['__reentry' => true])
+            ->assertSee(__('import-wizard-new::store.busy'))
             ->call('continueToPreview')
             ->assertNotDispatched('completed');
+
+        Bus::assertNothingBatched();
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull()
+            ->and(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->not->toBeNull();
 
         $held->release();
         $component->call('retryFailedValidation')
             ->assertSet('failedColumns', []);
 
-        Bus::assertBatched(fn (): true => true);
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ValidateColumnJob));
         expect(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->toBeNull();
+    });
+
+    it('keeps the pending re-entry clear when a format change revalidates a column', function (): void {
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component = mountReviewStep($this)->assertSet('failedColumns', ['__reentry' => true]);
+
+        $held->release();
+        $component->call('setColumnFormat', 'date', 'european');
+
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull();
+
+        mountReviewStep($this)->assertSet('failedColumns', []);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob));
     });
 
     it('does not turn a failed snapshot into a retry notification', function (): void {
@@ -644,31 +666,10 @@ describe('on a remote store disk', function (): void {
         Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
         DB::listen(function (QueryExecuted $query): void {
             if (str_contains($query->sql, 'UPDATE import_rows')) {
-                Cache::lock("import-store:{$this->import->id}")->forceRelease();
+                Cache::lock(importStoreLockName($this->import->id))->forceRelease();
             }
         });
 
         expect(fn () => $component->call('skipValue', 'John'))->toThrow(ImportStoreException::class);
-    });
-
-    it('leaves validation unstarted and relationships intact while the store is locked at mount', function (): void {
-        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
-            $store->query()->where('row_number', 2)->update(['relationships' => json_encode([['relationship' => 'company', 'action' => 'create', 'name' => 'Stale']])]);
-        });
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
-        $held->get();
-        config()->set('import-wizard.store.lock.wait.web', 0);
-
-        mountReviewStep($this);
-
-        Bus::assertNothingBatched();
-        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull()
-            ->and(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->not->toBeNull();
-
-        $held->release();
-        mountReviewStep($this);
-
-        Bus::assertBatched(fn (): true => true);
-        expect(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->toBeNull();
     });
 });

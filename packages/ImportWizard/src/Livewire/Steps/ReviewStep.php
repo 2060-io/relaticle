@@ -555,6 +555,10 @@ final class ReviewStep extends Component
 
     private function cacheValidationState(string $hash): void
     {
+        if (isset($this->failedColumns[self::REENTRY])) {
+            return;
+        }
+
         Cache::put($this->validationCacheKey(), [
             'hash' => $hash,
             'batch_ids' => $this->batchIds,

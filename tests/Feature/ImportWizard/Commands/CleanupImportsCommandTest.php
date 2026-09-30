@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Events\WorkspaceCreated;
 use App\Models\User;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -147,8 +148,8 @@ it('respects custom hours option', function (): void {
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
+        config()->set('import-wizard.storage_path', sys_get_temp_dir().'/import-cleanup-'.Str::ulid());
     });
 
     it('deletes the remote file of a completed import past the threshold', function (): void {
@@ -161,6 +162,32 @@ describe('on a remote store disk', function (): void {
 
         Storage::disk('s3')->assertMissing("imports/{$import->id}.sqlite");
         expect(Import::find($import->id))->not->toBeNull();
+    });
+
+    it('finds the remote files of completed imports with one listing instead of a lookup each', function (): void {
+        $first = createTestImport($this, ImportStatus::Completed, now()->subHours(3)->toIso8601String());
+        $second = createTestImport($this, ImportStatus::Failed, now()->subHours(3)->toIso8601String());
+        $fake = Storage::disk('s3');
+        $disk = new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public int $lookups = 0;
+
+            public function exists(mixed $path): bool
+            {
+                $this->lookups++;
+
+                return parent::exists($path);
+            }
+        };
+        Storage::set('s3', $disk);
+
+        $this->artisan('import:cleanup')
+            ->expectsOutputToContain('Cleaned up 2 import(s)')
+            ->assertExitCode(0);
+
+        expect($disk->lookups)->toBe(0);
+        Storage::disk('s3')->assertMissing("imports/{$first->id}.sqlite");
+        Storage::disk('s3')->assertMissing("imports/{$second->id}.sqlite");
     });
 
     it('deletes an abandoned import row and its remote file', function (): void {
@@ -193,8 +220,8 @@ describe('on a remote store disk', function (): void {
 
 describe('a stale remote file whose import row exists', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
+        config()->set('import-wizard.storage_path', sys_get_temp_dir().'/import-cleanup-'.Str::ulid());
     });
 
     it('is kept', function (): void {

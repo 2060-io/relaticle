@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -926,8 +927,7 @@ it('marks import as Failed when job exhausts retries via failed() handler', func
 
 it('hands the rest of the import to a fresh job when the time box runs out', function (bool $remote): void {
     if ($remote) {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     }
 
     Bus::fake([ExecuteImportJob::class]);
@@ -954,8 +954,7 @@ it('hands the rest of the import to a fresh job when the time box runs out', fun
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     });
 
     it('imports every row and marks them processed in the remote store', function (): void {
@@ -979,7 +978,7 @@ describe('on a remote store disk', function (): void {
         ], [
             ColumnData::toField(source: 'Name', target: 'name'),
         ]);
-        Cache::lock("import-store:{$this->import->id}", 360, "execute:{$this->import->id}")->get();
+        Cache::lock(importStoreLockName($this->import->id), 360, ImportExecutionFixture::lockOwner($this->import->id))->get();
 
         ImportExecutionFixture::run($this);
 
@@ -992,7 +991,7 @@ describe('on a remote store disk', function (): void {
         ], [
             ColumnData::toField(source: 'Name', target: 'name'),
         ]);
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.job', 0);
         $job = (new ExecuteImportJob(
@@ -1016,7 +1015,7 @@ describe('on a remote store disk', function (): void {
         ]);
         ImportStore::withWriteLock($this->import->id, fn (ImportStore $store): int => $store->query()->where('row_number', '<=', 501)->update(['processed' => true]));
         $this->import->update(['created_rows' => 500]);
-        Cache::lock("import-store:{$this->import->id}", 360, "execute:{$this->import->id}")->get();
+        Cache::lock(importStoreLockName($this->import->id), 360, ImportExecutionFixture::lockOwner($this->import->id))->get();
 
         ImportExecutionFixture::run($this);
 
@@ -1024,6 +1023,23 @@ describe('on a remote store disk', function (): void {
         expect($import->status)->toBe(ImportStatus::Completed)
             ->and($import->created_rows)->toBe(501)
             ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(1);
+    });
+
+    it('does not release the execution lock of a live handoff sibling', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $sibling = Cache::lock(importStoreLockName($this->import->id), 360, "execute:{$this->import->id}:sibling-job");
+        $sibling->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(ImportStoreException::class);
+
+        expect($sibling->isOwnedByCurrentProcess())->toBeTrue()
+            ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(0);
+        $sibling->release();
     });
 
     it('retries a failed download instead of failing the job', function (): void {
@@ -1049,7 +1065,7 @@ describe('on a remote store disk', function (): void {
             ->toThrow(ImportStoreException::class);
 
         $job->assertNotFailed();
-        expect(Cache::lock("import-store:{$this->import->id}", 1)->get())->toBeTrue();
+        expect(Cache::lock(importStoreLockName($this->import->id), 1)->get())->toBeTrue();
     });
 
     it('keeps the rows a failed run already wrote so its retry does not repeat them', function (): void {
@@ -1077,6 +1093,67 @@ describe('on a remote store disk', function (): void {
         expect(People::where('workspace_id', $this->workspace->id)->count())->toBe(2)
             ->and($this->import->refresh()->status)->toBe(ImportStatus::Completed)
             ->and($this->import->created_rows)->toBe(2);
+    });
+
+    it('remembers the dedup maps before it uploads a chunk snapshot', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        $disk = new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public string $importId = '';
+
+            /** @var list<bool> */
+            public array $rememberedAtWrite = [];
+
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                $this->rememberedAtWrite[] = Cache::has("import-execution:{$this->importId}:created");
+
+                return parent::writeStream($path, $resource, $options);
+            }
+        };
+        $disk->importId = $this->import->id;
+        Storage::set('s3', $disk);
+
+        ImportExecutionFixture::run($this);
+
+        expect($disk->rememberedAtWrite)->toBe([true]);
+    });
+
+    it('leaves the counters to the retry when the failure snapshot cannot be uploaded', function (): void {
+        Sleep::fake();
+        Exceptions::fake();
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        Storage::set('s3', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                return false;
+            }
+        });
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        DB::listen(function (QueryExecuted $query): void {
+            if (str_starts_with($query->sql, 'update "import_rows" set "processed"')) {
+                throw new RuntimeException('Database went away');
+            }
+        });
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(RuntimeException::class, 'Database went away');
+
+        $import = $this->import->refresh();
+        expect(People::where('workspace_id', $this->workspace->id)->count())->toBe(1)
+            ->and($import->created_rows)->toBe(0)
+            ->and($import->status)->toBe(ImportStatus::Failed);
+        Exceptions::assertReported(ImportStoreException::class);
     });
 
     it('fails without a retry when a snapshot cannot be uploaded and keeps the counters of what reached the database', function (): void {
@@ -1127,8 +1204,7 @@ describe('on a remote store disk', function (): void {
 
 it('finishes a handed-off import in the next job with one summary and one notification', function (bool $remote): void {
     if ($remote) {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     }
 
     Bus::fake([ExecuteImportJob::class]);

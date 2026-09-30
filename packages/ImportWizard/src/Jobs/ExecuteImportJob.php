@@ -158,6 +158,11 @@ final class ExecuteImportJob implements ShouldQueue
         return "import-execution:{$this->importId}:{$map}";
     }
 
+    private function lockOwner(): string
+    {
+        return "execute:{$this->importId}:".($this->job?->uuid() ?? 'direct');
+    }
+
     private function timeBoxExpired(int $startedAt): bool
     {
         return (hrtime(true) - $startedAt) / 1e9 >= (int) config('import-wizard.execution_time_box', 240);
@@ -172,7 +177,7 @@ final class ExecuteImportJob implements ShouldQueue
             return false;
         }
 
-        $store = ImportStore::forExecution($this->importId);
+        $store = ImportStore::forExecution($this->importId, $this->lockOwner());
 
         if (! $store instanceof ImportStore) {
             return false;
@@ -237,9 +242,9 @@ final class ExecuteImportJob implements ShouldQueue
                         $this->flushCustomFieldValues();
                         $this->flushTagOptions();
                         $this->flushFailedRows($import);
+                        $this->rememberDedupMaps();
                         $store->persist();
                         $this->persistResults($import, $results);
-                        $this->rememberDedupMaps();
 
                         if ($this->timeBoxExpired($startedAt)) {
                             $handedOff = true;
@@ -271,13 +276,17 @@ final class ExecuteImportJob implements ShouldQueue
 
             return false;
         } catch (\Throwable $e) {
-            if (! $e instanceof ImportStoreException) {
-                rescue(function () use ($store): void {
-                    $store->persist();
-                }, report: false);
+            $persisted = $e instanceof ImportStoreException || rescue(function () use ($store): bool {
+                $store->persist();
+
+                return true;
+            }, false, report: true);
+
+            if ($persisted) {
+                $this->flushFailedRows($import);
+                $this->persistResults($import, $results);
             }
-            $this->flushFailedRows($import);
-            $this->persistResults($import, $results);
+
             $this->rememberDedupMaps();
             $import->update(['status' => ImportStatus::Failed]);
 

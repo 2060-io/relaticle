@@ -7,6 +7,7 @@ use App\Enums\MediaCollection;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Relaticle\Chat\Actions\CreateConversation;
@@ -339,6 +340,23 @@ it('stores and imports an attachment on a media disk with no local paths', funct
 
     expect($import->total_rows)->toBe(5)
         ->and($import->headers)->toBe(['Name', 'Email', 'Company']);
+});
+
+it('imports an attachment into a remote import store and keeps nothing under the local storage path', function (): void {
+    config()->set('media-library.disk_name', 's3');
+    useRemoteImportStore();
+
+    $id = $this->postJson(route('chat.attachments.store'), ['file' => csvUpload(5)])->json('id');
+
+    $this->get(route('chat.attachments.import', ['attachment' => $id, 'entity' => 'people']))->assertRedirect();
+
+    $import = Import::query()->where('workspace_id', $this->workspace->getKey())->firstOrFail();
+    $this->createdStoreIds[] = $import->id;
+
+    Storage::disk('s3')->assertExists("imports/{$import->id}.sqlite");
+
+    expect(File::exists(config('import-wizard.storage_path')."/{$import->id}"))->toBeFalse()
+        ->and(ImportStore::forRead($import->id)?->query()->count())->toBe(5);
 });
 
 it('rejects a header-only attachment on a media disk with no local paths', function (): void {

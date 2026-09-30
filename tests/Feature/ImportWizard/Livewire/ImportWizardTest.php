@@ -9,11 +9,13 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Livewire\ImportWizard;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -305,7 +307,9 @@ it('resets storeId when store not found', function (): void {
 });
 
 it('rejects path traversal storeId values', function (string $maliciousId): void {
-    expect(ImportStore::forRead($maliciousId))->toBeNull();
+    expect(ImportStore::forRead($maliciousId))->toBeNull()
+        ->and(ImportStore::forExecution($maliciousId, 'execute:owner'))->toBeNull()
+        ->and(fn () => ImportStore::withWriteLock($maliciousId, fn (): null => null))->toThrow(ImportStoreException::class);
 })->with([
     '../../etc/passwd',
     '../../../secret',
@@ -345,8 +349,7 @@ it('resets storeId when store belongs to different workspace', function (): void
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     });
 
     it('cancelImport removes the remote file and this replica read copy', function (): void {
@@ -369,5 +372,42 @@ describe('on a remote store disk', function (): void {
             ->and(ImportStore::forRead($store->id()))->toBeNull();
 
         markStoreAsDestroyed($this, $store);
+    });
+
+    it('rejects path traversal ids on the write paths', function (): void {
+        expect(ImportStore::forExecution('../../etc/passwd', 'execute:owner'))->toBeNull()
+            ->and(fn () => ImportStore::withWriteLock('../../etc/passwd', fn (): null => null))->toThrow(ImportStoreException::class);
+    });
+
+    it('drops the connection config of a read copy when it closes', function (): void {
+        $store = createFullTestStore($this);
+        $store->persist();
+        $store->close();
+
+        ImportStore::forRead($store->id())?->close();
+
+        expect(collect(array_keys((array) config('database.connections')))->filter(fn (string $name): bool => str_starts_with($name, "import_read_{$store->id()}_")))->toBeEmpty();
+    });
+
+    it('prunes read copies of other imports that sat unused for a day', function (): void {
+        $store = createFullTestStore($this);
+        $store->persist();
+        $store->close();
+        $readCache = config('import-wizard.store.read_cache_path');
+        $stale = "{$readCache}/".Str::ulid();
+        $recent = "{$readCache}/".Str::ulid();
+        File::ensureDirectoryExists($stale);
+        File::ensureDirectoryExists($recent);
+        touch($stale, now()->subHours(25)->getTimestamp());
+        touch($recent, now()->subHours(23)->getTimestamp());
+        clearstatcache();
+
+        ImportStore::forRead($store->id())?->close();
+
+        expect(File::isDirectory($stale))->toBeFalse()
+            ->and(File::isDirectory($recent))->toBeTrue()
+            ->and(File::isDirectory("{$readCache}/{$store->id()}"))->toBeTrue();
+
+        File::deleteDirectory($recent);
     });
 });

@@ -24,6 +24,8 @@ final class ImportStore
 {
     private const int READ_COPY_GRACE_SECONDS = 300;
 
+    private const int READ_CACHE_RETENTION_SECONDS = 86_400;
+
     private ?Connection $connection = null;
 
     private function __construct(
@@ -86,6 +88,7 @@ final class ImportStore
             }
 
             self::pruneReadCopies($directory, $file);
+            self::pruneStaleReadDirectories($directory);
         }
 
         $store = new self($importId, $directory, readOnly: true, file: $file);
@@ -96,6 +99,8 @@ final class ImportStore
 
     public static function withWriteLock(string $importId, Closure $mutator, ?int $waitSeconds = null): mixed
     {
+        throw_unless(Str::isUlid($importId), ImportStoreException::notFound($importId));
+
         if (! self::isRemote()) {
             $store = self::forLocalWrite($importId) ?? throw ImportStoreException::notFound($importId);
 
@@ -113,10 +118,10 @@ final class ImportStore
         $store = self::downloadForWrite($importId, $lock);
 
         try {
-            $schemaVersion = $store->schemaVersion();
+            $before = $store->contentHash();
             $result = $mutator($store);
 
-            if ($store->totalChanges() > 0 || $store->schemaVersion() !== $schemaVersion) {
+            if ($store->contentHash() !== $before) {
                 $store->persist();
             }
 
@@ -126,13 +131,17 @@ final class ImportStore
         }
     }
 
-    public static function forExecution(string $importId): ?self
+    public static function forExecution(string $importId, string $owner): ?self
     {
+        if (! Str::isUlid($importId)) {
+            return null;
+        }
+
         if (! self::isRemote()) {
             return self::forLocalWrite($importId);
         }
 
-        $lock = self::lock(self::lockName($importId), (int) config('import-wizard.store.lock.execution_ttl'), "execute:{$importId}");
+        $lock = self::lock(self::lockName($importId), (int) config('import-wizard.store.lock.execution_ttl'), $owner);
 
         if (! $lock->get()) {
             $lock->release();
@@ -196,7 +205,7 @@ final class ImportStore
         return $this->id;
     }
 
-    public function connectionName(): string
+    private function connectionName(): string
     {
         $name = $this->readOnly ? "import_read_{$this->id}" : "import_{$this->id}";
 
@@ -298,7 +307,16 @@ final class ImportStore
 
     public function close(): void
     {
-        DB::purge($this->connectionName());
+        $name = $this->connectionName();
+
+        DB::purge($name);
+
+        if ($this->directory !== self::localDirectory($this->id)) {
+            $connections = (array) config('database.connections');
+            unset($connections[$name]);
+            config()->set('database.connections', $connections);
+        }
+
         $this->connection = null;
 
         if ($this->temporary) {
@@ -330,14 +348,9 @@ final class ImportStore
         throw_unless(self::disk()->size(self::remotePath($this->id)) === $size, ImportStoreException::snapshotFailed($this->id, 'size mismatch'));
     }
 
-    private function totalChanges(): int
+    private function contentHash(): string
     {
-        return (int) $this->connection()->scalar('SELECT total_changes()');
-    }
-
-    private function schemaVersion(): int
-    {
-        return (int) $this->connection()->scalar('PRAGMA schema_version');
+        return (string) hash_file('xxh128', $this->sqlitePath());
     }
 
     private function createConnection(): Connection
@@ -388,6 +401,19 @@ final class ImportStore
 
             rescue(fn (): bool => File::delete($copy), false, report: false);
         }
+    }
+
+    private static function pruneStaleReadDirectories(string $current): void
+    {
+        $staleBefore = now()->subSeconds(self::READ_CACHE_RETENTION_SECONDS)->getTimestamp();
+
+        rescue(function () use ($current, $staleBefore): void {
+            foreach (File::directories(dirname($current)) as $sibling) {
+                if ($sibling !== $current && File::lastModified($sibling) < $staleBefore) {
+                    File::deleteDirectory($sibling);
+                }
+            }
+        }, report: false);
     }
 
     private static function block(Lock $lock, string $importId, int $waitSeconds): void

@@ -251,14 +251,7 @@ it('reports a csv whose local copy cannot be written instead of parsing it as em
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
-    });
-
-    afterEach(function (): void {
-        foreach ($this->createdStoreIds as $storeId) {
-            ImportStore::delete($storeId);
-        }
+        useRemoteImportStore();
     });
 
     it('keeps the uploaded rows on the store disk and nothing under storage', function (): void {

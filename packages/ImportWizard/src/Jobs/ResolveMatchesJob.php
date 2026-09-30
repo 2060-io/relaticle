@@ -37,7 +37,13 @@ final class ResolveMatchesJob implements ShouldQueue
         $importer = $import->getImporter();
 
         try {
-            ImportStore::withWriteLock($this->importId, fn (ImportStore $store) => new MatchResolver($store, $import, $importer)->resolve());
+            ImportStore::withWriteLock($this->importId, function (ImportStore $store) use ($import, $importer): void {
+                if ($this->batch()?->cancelled()) {
+                    return;
+                }
+
+                new MatchResolver($store, $import, $importer)->resolve();
+            });
         } catch (ImportStoreException $e) {
             throw_unless($e->isNotFound(), $e);
         }

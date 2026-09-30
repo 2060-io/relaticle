@@ -25,6 +25,7 @@ use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\EntityLinkValidator;
 use Relaticle\ImportWizard\Support\Validation\ColumnValidator;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(ValidateColumnJob::class, ColumnValidator::class, EntityLinkValidator::class);
 
@@ -66,11 +67,7 @@ function createValidationStore(
     $store = ImportStore::create($import->id);
     $store->query()->insert($rows);
 
-    if (ImportStore::isRemote()) {
-        $store->persist();
-        $store->close();
-        $store = ImportStore::forRead($import->id);
-    }
+    $store = ImportExecutionFixture::publish($store);
 
     $context->import = $import;
     $context->store = $store;
@@ -486,8 +483,7 @@ function makeBrandColorColumn(): ColumnData
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     });
 
     it('writes validation errors into the remote store', function (): void {
@@ -557,7 +553,7 @@ describe('on a remote store disk', function (): void {
             $column,
         ]);
 
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.job', 0);
 
@@ -598,6 +594,42 @@ describe('on a remote store disk', function (): void {
 
         clearstatcache();
         expect(Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite"))->toBe($modifiedAt);
+    });
+
+    it('does not upload the store when a correction landed before its write and matches no row', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        $remoteFile = Storage::disk('s3')->getConfig()['root']."/imports/{$this->import->id}.sqlite";
+        $corrected = false;
+        $modifiedAt = 0;
+
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+        DB::listen(function (QueryExecuted $query) use (&$corrected, &$modifiedAt, $remoteFile): void {
+            if ($corrected || ! str_contains($query->sql, 'DISTINCT')) {
+                return;
+            }
+
+            $corrected = true;
+            ImportStore::withWriteLock($this->import->id, fn (ImportStore $store): int => $store->query()->update(['corrections' => json_encode(['Color' => '#ff5733'])]));
+            touch($remoteFile, time() - 3600);
+            clearstatcache();
+            $modifiedAt = Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite");
+        });
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        clearstatcache();
+        expect($corrected)->toBeTrue()
+            ->and(Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite"))->toBe($modifiedAt)
+            ->and(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
     });
 
     it('returns quietly when the store was deleted', function (): void {

@@ -44,9 +44,17 @@ final class CleanupImportsCommand extends Command
             ->where('updated_at', '<', now()->subHours($completedHours))
             ->get();
 
+        $remoteStoreIds = ImportStore::isRemote() && $terminalImports->isNotEmpty()
+            ? $this->remoteStoreIds()
+            : null;
+
         foreach ($terminalImports as $import) {
             try {
-                if (! ImportStore::exists($import->id)) {
+                $hasStore = $remoteStoreIds === null
+                    ? ImportStore::exists($import->id)
+                    : isset($remoteStoreIds[$import->id]);
+
+                if (! $hasStore) {
                     continue;
                 }
 
@@ -62,6 +70,18 @@ final class CleanupImportsCommand extends Command
         }
 
         return $deleted;
+    }
+
+    /** @return array<string, true> */
+    private function remoteStoreIds(): array
+    {
+        $ids = [];
+
+        foreach (Storage::disk((string) config('import-wizard.store.disk'))->files('imports') as $file) {
+            $ids[basename((string) $file, '.sqlite')] = true;
+        }
+
+        return $ids;
     }
 
     private function cleanupAbandonedImports(int $staleHours): int

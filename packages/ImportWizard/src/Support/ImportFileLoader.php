@@ -78,21 +78,13 @@ final readonly class ImportFileLoader
                 ->chunk($this->chunkSize())
                 ->each(fn (LazyCollection $chunk) => $store->query()->insert($chunk->all()));
 
+            throw_if($rowCount === 0, ImportFileException::class, 'Could not read file. Please re-upload.');
+
             $store->persist();
         } catch (Throwable $e) {
-            $store->close();
-            ImportStore::delete($import->id);
-            $import->delete();
+            $this->discard($import, $store);
 
             throw $e;
-        }
-
-        if ($rowCount === 0) {
-            $store->close();
-            ImportStore::delete($import->id);
-            $import->delete();
-
-            throw new ImportFileException('Could not read file. Please re-upload.');
         }
 
         $store->close();
@@ -103,6 +95,13 @@ final readonly class ImportFileLoader
         ]);
 
         return $import;
+    }
+
+    private function discard(Import $import, ImportStore $store): void
+    {
+        $store->close();
+        ImportStore::delete($import->id);
+        $import->delete();
     }
 
     private function reader(string $path): SimpleExcelReader

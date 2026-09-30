@@ -23,12 +23,18 @@ use Relaticle\ImportWizard\Support\EntityLinkValidator;
 use Relaticle\ImportWizard\Support\Validation\ColumnValidator;
 use Throwable;
 
-#[Timeout(120)]
+#[Timeout(self::TIMEOUT_SECONDS)]
 #[Tries(1)]
 final class ValidateColumnJob implements ShouldQueue
 {
     use Batchable;
     use Queueable;
+
+    private const int TIMEOUT_SECONDS = 120;
+
+    private const int LOCK_WAIT_MARGIN_SECONDS = 15;
+
+    private int $startedAt = 0;
 
     public function __construct(
         private readonly string $importId,
@@ -43,6 +49,7 @@ final class ValidateColumnJob implements ShouldQueue
             return;
         }
 
+        $this->startedAt = hrtime(true);
         $import = Import::query()->findOrFail($this->importId);
 
         try {
@@ -89,7 +96,7 @@ final class ValidateColumnJob implements ShouldQueue
             if ($results !== []) {
                 $this->updateValidationErrors($store->connection(), $jsonPath, $results);
             }
-        });
+        }, $this->lockWaitSeconds());
     }
 
     private function validateEntityLink(Import $import, ImportStore $reader, string $jsonPath): void
@@ -130,7 +137,17 @@ final class ValidateColumnJob implements ShouldQueue
             if ($context !== null) {
                 $this->applyRelationships($store->connection(), $jsonPath, $context['link']->key, $context['matcher']->field, $uniqueValues, $inserts);
             }
-        });
+        }, $this->lockWaitSeconds());
+    }
+
+    private function lockWaitSeconds(): int
+    {
+        $elapsed = (int) ((hrtime(true) - $this->startedAt) / 1e9);
+
+        return max(1, min(
+            (int) config('import-wizard.store.lock.wait.job'),
+            self::TIMEOUT_SECONDS - $elapsed - self::LOCK_WAIT_MARGIN_SECONDS,
+        ));
     }
 
     /**

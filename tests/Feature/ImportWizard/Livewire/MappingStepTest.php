@@ -16,6 +16,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Livewire\Steps\MappingStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(MappingStep::class, ColumnData::class, ImportField::class, ImportFieldCollection::class);
 
@@ -70,11 +71,7 @@ function createStoreWithHeaders(object $context, array $headers, array $rows = [
 
     $context->import->update(['total_rows' => count($rows)]);
 
-    if (ImportStore::isRemote()) {
-        $context->store->persist();
-        $context->store->close();
-        $context->store = ImportStore::forRead($context->import->id);
-    }
+    $context->store = ImportExecutionFixture::publish($context->store);
 }
 
 function mountMappingStep(object $context): Testable
@@ -258,8 +255,7 @@ describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
         ImportStore::delete($this->store->id());
 
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
 
         $this->store = ImportStore::create($this->import->id);
     });

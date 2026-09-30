@@ -25,6 +25,7 @@ use Relaticle\ImportWizard\Livewire\Steps\PreviewStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\MatchResolver;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(PreviewStep::class, MatchResolver::class);
 
@@ -70,11 +71,7 @@ function createPreviewReadyStore(
 
     (new MatchResolver($store, $import, $import->getImporter()))->resolve();
 
-    if (ImportStore::isRemote()) {
-        $store->persist();
-        $store->close();
-        $store = ImportStore::forRead($import->id);
-    }
+    $store = ImportExecutionFixture::publish($store);
 
     $context->import = $import;
     $context->store = $store;
@@ -769,8 +766,7 @@ it('downloadFailedRows action is hidden when there are no failed rows', function
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     });
 
     it('finishes a time-boxed import through the batch', function (): void {

@@ -9,8 +9,11 @@ use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Data\RelationshipMatch;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
@@ -21,6 +24,7 @@ use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\MatchResolver;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(ResolveMatchesJob::class, MatchResolver::class);
 
@@ -61,11 +65,7 @@ function createStoreForMatchResolution(
     $store = ImportStore::create($import->id);
     $store->query()->insert($rows);
 
-    if (ImportStore::isRemote()) {
-        $store->persist();
-        $store->close();
-        $store = ImportStore::forRead($import->id);
-    }
+    $store = ImportExecutionFixture::publish($store);
 
     $context->import = $import;
     $context->store = $store;
@@ -263,8 +263,7 @@ it('handles missing import gracefully', function (): void {
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        config()->set('import-wizard.store.disk', 's3');
-        fakeDiskWithoutLocalPaths('s3');
+        useRemoteImportStore();
     });
 
     it('writes an update match for an existing record into the remote store', function (): void {
@@ -311,7 +310,7 @@ describe('on a remote store disk', function (): void {
             ColumnData::toField(source: 'Name', target: 'name'),
         ]);
 
-        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
         $held->get();
         config()->set('import-wizard.store.lock.wait.job', 0);
 
@@ -321,6 +320,35 @@ describe('on a remote store disk', function (): void {
         $held->release();
 
         expect(ImportStore::forRead($this->import->id)->query()->first()->match_action)->toBeNull();
+    });
+
+    it('does not resolve or upload when its batch is cancelled before it takes the lock', function (): void {
+        createStoreForMatchResolution($this, ['Name'], [
+            makeMatchRow(2, ['Name' => 'John']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        $remoteFile = Storage::disk('s3')->getConfig()['root']."/imports/{$this->import->id}.sqlite";
+        touch($remoteFile, time() - 3600);
+        clearstatcache();
+        $modifiedAt = Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite");
+
+        [$job] = (new ResolveMatchesJob($this->import->id))->withFakeBatch();
+
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+        DB::listen(function (QueryExecuted $query) use ($job): void {
+            if (str_contains($query->sql, 'from "imports"')) {
+                $job->batch()->cancel();
+            }
+        });
+
+        $job->handle();
+
+        clearstatcache();
+        expect(Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite"))->toBe($modifiedAt)
+            ->and(ImportStore::forRead($this->import->id)->query()->first()->match_action)->toBeNull();
     });
 
     it('returns quietly when the store was deleted', function (): void {
