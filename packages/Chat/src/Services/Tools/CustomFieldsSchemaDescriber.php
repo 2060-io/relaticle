@@ -7,12 +7,16 @@ namespace Relaticle\Chat\Services\Tools;
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\Workspace;
+use App\Support\CustomFields\WorkspaceCustomFields;
 use Relaticle\Chat\Support\PromptText;
 use Relaticle\CustomFields\Models\CustomFieldOption;
-use Relaticle\CustomFields\Models\Scopes\CustomFieldsActivableScope;
 
 final readonly class CustomFieldsSchemaDescriber
 {
+    public function __construct(
+        private WorkspaceCustomFields $customFields,
+    ) {}
+
     /**
      * Build the per-tenant description for the chat tool's `custom_fields`
      * schema slot. The LLM sees this string and uses it to pick valid codes
@@ -20,14 +24,8 @@ final readonly class CustomFieldsSchemaDescriber
      */
     public function describe(Workspace $workspace, string $entityType): string
     {
-        $fields = CustomField::query()
-            ->withoutGlobalScope(CustomFieldsActivableScope::class)
-            ->where('tenant_id', $workspace->getKey())
-            ->where('entity_type', $entityType)
-            ->orderByDesc('active')
-            ->orderBy('code')
-            ->with(['options:id,custom_field_id,name'])
-            ->get();
+        $fields = $this->customFields->forEntity($workspace, $entityType)
+            ->sortBy([['active', 'desc'], ['code', 'asc']]);
 
         if ($fields->isEmpty()) {
             return 'No custom fields are defined for this entity type.';

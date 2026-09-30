@@ -1,0 +1,37 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Support\CustomFields;
+
+use App\Actions\CustomFields\FindEntitiesByFieldValue;
+use App\Models\CustomField;
+use Closure;
+use Illuminate\Database\Eloquent\Model;
+
+final readonly class RestoreConflictMessage
+{
+    public function __construct(private FindEntitiesByFieldValue $findEntities) {}
+
+    /** @param  Closure(Model): ?string  $recordTitle */
+    public function for(Model $record, Closure $recordTitle): ?string
+    {
+        if (! method_exists($record, 'takenUniqueCustomFieldValues')) {
+            return null;
+        }
+
+        /** @var array{customField: CustomField, value: string}|null $taken */
+        $taken = $record->takenUniqueCustomFieldValues()->first();
+
+        if ($taken === null) {
+            return null;
+        }
+
+        $holder = $this->findEntities->execute($record::class, $taken['customField'], [$taken['value']], 1)->first();
+        $holderTitle = $holder instanceof Model ? $recordTitle($holder) : null;
+
+        return $holderTitle === null
+            ? __('filament/panel.restore_blocked.conflict_with_unknown_holder', ['value' => $taken['value'], 'field' => $taken['customField']->name])
+            : __('filament/panel.restore_blocked.conflict', ['value' => $taken['value'], 'field' => $taken['customField']->name, 'holder' => $holderTitle]);
+    }
+}

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d84e7a8663baefe38858eefcb065eae7",
+    "content-hash": "1541832b52b5fd90c513653788386a67",
     "packages": [
         {
             "name": "andreiio/blade-remix-icon",
@@ -10103,16 +10103,16 @@
         },
         {
             "name": "relaticle/custom-fields",
-            "version": "v3.9.1",
+            "version": "v3.10.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/relaticle/custom-fields.git",
-                "reference": "dd2c0a23d43776cb70e775c44566b44c1372c15f"
+                "reference": "fe5433283f6323a205b087464a14869ea5c45f73"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/dd2c0a23d43776cb70e775c44566b44c1372c15f",
-                "reference": "dd2c0a23d43776cb70e775c44566b44c1372c15f",
+                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/fe5433283f6323a205b087464a14869ea5c45f73",
+                "reference": "fe5433283f6323a205b087464a14869ea5c45f73",
                 "shasum": ""
             },
             "require": {
@@ -10133,9 +10133,9 @@
                 "pestphp/pest-plugin-arch": "^4.0",
                 "pestphp/pest-plugin-laravel": "^4.0",
                 "pestphp/pest-plugin-type-coverage": "^4.0",
-                "phpstan/phpstan-deprecation-rules": "*",
+                "phpstan/phpstan-deprecation-rules": "^2.0",
                 "phpstan/phpstan-phpunit": "^2.0",
-                "rector/rector": "*",
+                "rector/rector": "^2.6",
                 "spatie/laravel-ray": "^1.26"
             },
             "bin": [
@@ -10198,7 +10198,7 @@
                 "issues": "https://github.com/relaticle/custom-fields/issues",
                 "source": "https://github.com/relaticle/custom-fields"
             },
-            "time": "2026-09-08T16:05:18+00:00"
+            "time": "2026-09-29T15:57:14+00:00"
         },
         {
             "name": "relaticle/flowforge",
