@@ -8,6 +8,8 @@ paths:
   - 'app/Http/Controllers/Media/**'
   - 'app/Observers/**'
   - 'app/Console/Commands/**'
+  - 'packages/Chat/src/**'
+  - 'packages/ImportWizard/src/**'
 ---
 
 # File uploads
