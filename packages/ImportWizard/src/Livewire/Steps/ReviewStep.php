@@ -120,6 +120,7 @@ final class ReviewStep extends Component
             new ValidateColumnJob($this->import()->id, $column),
         ])
             ->name("Validate {$column->source}")
+            ->onQueue('imports')
             ->dispatch();
 
         $this->dispatch('validation-started');
@@ -150,6 +151,7 @@ final class ReviewStep extends Component
             ),
         ])
             ->name('Match resolution')
+            ->onQueue('imports')
             ->dispatch();
 
         return $batch->id;
