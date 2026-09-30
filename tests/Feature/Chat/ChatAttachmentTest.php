@@ -39,7 +39,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     foreach ($this->createdStoreIds as $storeId) {
-        ImportStore::load($storeId)?->destroy();
+        ImportStore::delete($storeId);
     }
 });
 
@@ -261,7 +261,7 @@ it('builds a people import from the stored file and lands on the mapping step', 
         ->and($import->total_rows)->toBe(40)
         ->and($import->headers)->toBe(['Name', 'Email', 'Company'])
         ->and($import->file_name)->toBe('contacts.csv')
-        ->and(ImportStore::load($import->id)?->query()->count())->toBe(40);
+        ->and(ImportStore::forRead($import->id)?->query()->count())->toBe(40);
 
     expect(ChatAttachment::find($this->user, $id)?->importIdFor(ImportEntityType::People))->toBe($import->id);
 });

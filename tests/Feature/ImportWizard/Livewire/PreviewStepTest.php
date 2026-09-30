@@ -40,7 +40,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (isset($this->store)) {
-        $this->store->destroy();
+        ImportStore::delete($this->store->id());
     }
     if (isset($this->import)) {
         $this->import->delete();

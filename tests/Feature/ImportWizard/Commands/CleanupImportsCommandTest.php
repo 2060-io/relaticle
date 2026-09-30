@@ -26,7 +26,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     foreach ($this->imports as $import) {
-        ImportStore::load($import->id)?->destroy();
+        ImportStore::delete($import->id);
         $import->delete();
     }
 });

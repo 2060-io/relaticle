@@ -86,7 +86,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    $this->store->destroy();
+    ImportStore::delete($this->store->id());
     $this->import->delete();
 });
 
@@ -536,7 +536,7 @@ it('dispatches new batches when mappings hash changes', function (): void {
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
         $rows = $this->store->query()->get()->map(fn ($row): array => $row->getRawOriginal())->all();
-        $this->store->destroy();
+        ImportStore::delete($this->store->id());
 
         config()->set('import-wizard.store.disk', 's3');
         fakeDiskWithoutLocalPaths('s3');

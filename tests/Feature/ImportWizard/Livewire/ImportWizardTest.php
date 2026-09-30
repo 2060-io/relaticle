@@ -35,7 +35,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     foreach ($this->createdStoreIds as $storeId) {
-        ImportStore::load($storeId)?->destroy();
+        ImportStore::delete($storeId);
         Import::find($storeId)?->delete();
     }
 });
@@ -144,7 +144,7 @@ it('cancelImport destroys store and redirects', function (): void {
 
     $component->assertRedirect($returnUrl);
 
-    expect(ImportStore::load($store->id()))->toBeNull();
+    expect(ImportStore::forRead($store->id()))->toBeNull();
 
     markStoreAsDestroyed($this, $store);
 });
@@ -165,7 +165,7 @@ it('startOver resets to step 1', function (): void {
         ->and($component->get('rowCount'))->toBe(0)
         ->and($component->get('columnCount'))->toBe(0);
 
-    expect(ImportStore::load($store->id()))->toBeNull();
+    expect(ImportStore::forRead($store->id()))->toBeNull();
 
     markStoreAsDestroyed($this, $store);
 });
@@ -281,7 +281,7 @@ it('resets storeId when store not found', function (): void {
 });
 
 it('rejects path traversal storeId values', function (string $maliciousId): void {
-    expect(ImportStore::load($maliciousId))->toBeNull();
+    expect(ImportStore::forRead($maliciousId))->toBeNull();
 })->with([
     '../../etc/passwd',
     '../../../secret',
@@ -315,7 +315,7 @@ it('resets storeId when store belongs to different workspace', function (): void
     expect($component->get('currentStep'))->toBe(1)
         ->and($component->get('storeId'))->toBeNull();
 
-    $store->destroy();
+    ImportStore::delete($store->id());
     $import->delete();
 });
 

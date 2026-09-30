@@ -42,7 +42,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    $this->store->destroy();
+    ImportStore::delete($this->store->id());
     $this->import->delete();
 });
 
@@ -256,7 +256,7 @@ it('previewValues returns sample values from SQLite', function (): void {
 
 describe('on a remote store disk', function (): void {
     beforeEach(function (): void {
-        $this->store->destroy();
+        ImportStore::delete($this->store->id());
 
         config()->set('import-wizard.store.disk', 's3');
         fakeDiskWithoutLocalPaths('s3');

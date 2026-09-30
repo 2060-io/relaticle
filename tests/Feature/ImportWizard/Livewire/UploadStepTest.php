@@ -42,7 +42,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     foreach ($this->createdStoreIds as $storeId) {
-        ImportStore::load($storeId)?->destroy();
+        ImportStore::delete($storeId);
     }
 });
 
@@ -148,7 +148,7 @@ it('continueToMapping creates ImportStore with rows', function (): void {
         $this->createdStoreIds[] = $params['storeId'];
 
         $import = Import::find($params['storeId']);
-        $store = ImportStore::load($params['storeId']);
+        $store = ImportStore::forRead($params['storeId']);
 
         expect($import)->not->toBeNull()
             ->and($store)->not->toBeNull()

@@ -191,24 +191,9 @@ final class ImportStore
             : File::exists(self::localDirectory($importId).'/data.sqlite');
     }
 
-    public static function load(string $importId): ?self
-    {
-        return self::isRemote() ? null : self::forLocalWrite($importId);
-    }
-
     public function id(): string
     {
         return $this->id;
-    }
-
-    public function path(): string
-    {
-        return $this->directory;
-    }
-
-    public function sqlitePath(): string
-    {
-        return "{$this->directory}/{$this->file}";
     }
 
     public function connectionName(): string
@@ -324,11 +309,9 @@ final class ImportStore
         $this->lock = null;
     }
 
-    public function destroy(): void
+    private function sqlitePath(): string
     {
-        $this->close();
-
-        self::delete($this->id);
+        return "{$this->directory}/{$this->file}";
     }
 
     private function upload(string $snapshot): void
