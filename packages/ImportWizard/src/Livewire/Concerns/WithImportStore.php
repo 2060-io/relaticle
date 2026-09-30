@@ -67,6 +67,8 @@ trait WithImportStore
         } catch (ImportStoreException $e) {
             abort_if($e->isNotFound(), 404, 'Import session not found or expired.');
 
+            throw_unless($e->isLockTimeout(), $e);
+
             Notification::make()->title(__('import-wizard-new::store.busy'))->warning()->send();
 
             return false;

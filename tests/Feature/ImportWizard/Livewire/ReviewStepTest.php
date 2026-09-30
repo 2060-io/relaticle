@@ -8,8 +8,10 @@ use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Bus\PendingBatch;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Features\SupportTesting\Testable;
@@ -20,6 +22,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\ReviewFilter;
 use Relaticle\ImportWizard\Enums\SortDirection;
 use Relaticle\ImportWizard\Enums\SortField;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
 use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Livewire\Steps\PreviewStep;
@@ -586,5 +589,52 @@ describe('on a remote store disk', function (): void {
         expect($rows[0]->corrections->get('Emails'))->toBe('ada@example.com')
             ->and($rows[0]->validation)->toBeNull()
             ->and($rows[1]->hasValidationError('Emails'))->toBeTrue();
+    });
+
+    it('returns null and re-renders the rows when the store stays locked', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('updateMappedValue', 'John', 'Johnny')
+            ->assertReturned(null)
+            ->assertSet('rowRevision', 1)
+            ->assertNotified(__('import-wizard-new::store.busy'));
+
+        $held->release();
+    });
+
+    it('does not turn a failed snapshot into a retry notification', function (): void {
+        $component = mountReviewStep($this);
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        DB::listen(function (QueryExecuted $query): void {
+            if (str_contains($query->sql, 'UPDATE import_rows')) {
+                Cache::lock("import-store:{$this->import->id}")->forceRelease();
+            }
+        });
+
+        expect(fn () => $component->call('skipValue', 'John'))->toThrow(ImportStoreException::class);
+    });
+
+    it('leaves validation unstarted and relationships intact while the store is locked at mount', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['relationships' => json_encode([['relationship' => 'company', 'action' => 'create', 'name' => 'Stale']])]);
+        });
+        $held = Cache::lock("import-store:{$this->import->id}", 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        mountReviewStep($this);
+
+        Bus::assertNothingBatched();
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull()
+            ->and(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->not->toBeNull();
+
+        $held->release();
+        mountReviewStep($this);
+
+        Bus::assertBatched(fn (): true => true);
+        expect(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->toBeNull();
     });
 });

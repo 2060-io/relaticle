@@ -312,7 +312,7 @@
                         @endphp
 
                         <div
-                            wire:key="val-{{ $index }}-{{ crc32((string) $rawValue) }}"
+                            wire:key="val-{{ $rowRevision }}-{{ $index }}-{{ crc32((string) $rawValue) }}"
                             class="flex items-center px-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0"
                         >
                             {{-- Raw Data + Row Count --}}

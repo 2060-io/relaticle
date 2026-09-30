@@ -12,6 +12,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Enums\FieldDataType;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -566,6 +567,37 @@ describe('on a remote store disk', function (): void {
         $held->release();
 
         expect(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
+    });
+
+    it('does not upload the store when its batch is cancelled before it writes', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        $remoteFile = storage_path("framework/testing/disks/s3/imports/{$this->import->id}.sqlite");
+        touch($remoteFile, time() - 3600);
+        clearstatcache();
+        $modifiedAt = Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite");
+
+        [$job] = (new ValidateColumnJob($this->import->id, $column))->withFakeBatch();
+
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+        DB::listen(function (QueryExecuted $query) use ($job): void {
+            if (str_contains($query->sql, 'DISTINCT')) {
+                $job->batch()->cancel();
+            }
+        });
+
+        $job->handle();
+
+        clearstatcache();
+        expect(Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite"))->toBe($modifiedAt);
     });
 
     it('returns quietly when the store was deleted', function (): void {

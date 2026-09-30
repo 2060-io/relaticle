@@ -113,8 +113,12 @@ final class ImportStore
         $store = self::downloadForWrite($importId, $lock);
 
         try {
+            $schemaVersion = $store->schemaVersion();
             $result = $mutator($store);
-            $store->persist();
+
+            if ($store->totalChanges() > 0 || $store->schemaVersion() !== $schemaVersion) {
+                $store->persist();
+            }
 
             return $result;
         } finally {
@@ -341,6 +345,16 @@ final class ImportStore
         }
 
         throw_unless(self::disk()->size(self::remotePath($this->id)) === $size, ImportStoreException::snapshotFailed($this->id, 'size mismatch'));
+    }
+
+    private function totalChanges(): int
+    {
+        return (int) $this->connection()->scalar('SELECT total_changes()');
+    }
+
+    private function schemaVersion(): int
+    {
+        return (int) $this->connection()->scalar('PRAGMA schema_version');
     }
 
     private function createConnection(): Connection

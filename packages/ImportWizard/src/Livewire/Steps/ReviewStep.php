@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -55,6 +56,9 @@ final class ReviewStep extends Component
 
     /** @var array<string, bool> */
     public array $failedColumns = [];
+
+    #[Locked]
+    public int $rowRevision = 0;
 
     private function selectedColumnJsonPath(): string
     {
@@ -134,9 +138,9 @@ final class ReviewStep extends Component
         $this->cacheValidationState($this->currentMappingsHash());
     }
 
-    private function clearRelationshipsForReentry(): void
+    private function clearRelationshipsForReentry(): bool
     {
-        $this->writeStore(function (ImportStore $store): void {
+        return $this->writeStore(function (ImportStore $store): void {
             $store->connection()->statement('UPDATE import_rows SET relationships = NULL');
         });
     }
@@ -171,7 +175,9 @@ final class ReviewStep extends Component
         }
 
         $this->cancelOldBatches($cached);
-        $this->clearRelationshipsForReentry();
+        if (! $this->clearRelationshipsForReentry()) {
+            return;
+        }
 
         foreach ($this->columns as $column) {
             $this->batchIds[$column->source] = $this->validateColumnAsync($column);
@@ -294,8 +300,8 @@ final class ReviewStep extends Component
         $this->cacheValidationState($this->currentMappingsHash());
     }
 
-    /** @return array<string, string> */
-    public function updateMappedValue(string $rawValue, string $newValue): array
+    /** @return array<string, string>|null */
+    public function updateMappedValue(string $rawValue, string $newValue): ?array
     {
         if (blank($newValue)) {
             $this->skipValue($rawValue);
@@ -317,7 +323,9 @@ final class ReviewStep extends Component
         });
 
         if (! $written) {
-            return [];
+            $this->rowRevision++;
+
+            return null;
         }
 
         $this->revalidateEntityLinkColumn();
