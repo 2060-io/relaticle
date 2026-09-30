@@ -8,8 +8,10 @@ use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Bus\PendingBatch;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Features\SupportTesting\Testable;
@@ -20,6 +22,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\ReviewFilter;
 use Relaticle\ImportWizard\Enums\SortDirection;
 use Relaticle\ImportWizard\Enums\SortField;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
 use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Livewire\Steps\PreviewStep;
@@ -83,7 +86,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    $this->store->destroy();
+    ImportStore::delete($this->store->id());
     $this->import->delete();
 });
 
@@ -528,4 +531,145 @@ it('dispatches new batches when mappings hash changes', function (): void {
     mountReviewStep($this);
 
     Bus::assertBatched(fn (): true => true);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        $rows = $this->store->query()->get()->map(fn ($row): array => $row->getRawOriginal())->all();
+        ImportStore::delete($this->store->id());
+
+        useRemoteImportStore();
+
+        $store = ImportStore::create($this->import->id);
+        $store->query()->insert($rows);
+        $store->persist();
+        $store->close();
+
+        $this->store = ImportStore::forRead($this->import->id);
+    });
+
+    it('saves a correction to the remote store and renders it in the same request', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+
+        $component->call('updateMappedValue', 'John', 'Johnny')
+            ->assertSee('Johnny');
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+        expect($row->corrections->get('Name'))->toBe('Johnny');
+    });
+
+    it('notifies the user and writes nothing when another writer holds the store lock', function (): void {
+        $component = mountReviewStep($this);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('skipValue', 'John')
+            ->assertNotified(__('import-wizard-new::store.busy'));
+
+        $held->release();
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+        expect($row->skipped)->toBeNull();
+    });
+
+    it('keeps a correction when the column validates again after it', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['raw_data' => json_encode(['Name' => 'John', 'Emails' => 'bad-email'])]);
+            $store->query()->where('row_number', 3)->update(['raw_data' => json_encode(['Name' => 'Jane', 'Emails' => 'also-bad'])]);
+        });
+        $component = mountReviewStep($this);
+
+        $component->call('selectColumn', 'Emails')
+            ->call('updateMappedValue', 'bad-email', 'ada@example.com');
+        (new ValidateColumnJob($this->import->id, $this->import->getColumnMapping('Emails')))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+        expect($rows[0]->corrections->get('Emails'))->toBe('ada@example.com')
+            ->and($rows[0]->validation)->toBeNull()
+            ->and($rows[1]->hasValidationError('Emails'))->toBeTrue();
+    });
+
+    it('returns null and re-renders the rows when the store stays locked', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('updateMappedValue', 'John', 'Johnny')
+            ->assertReturned(null)
+            ->assertSet('rowRevision', 1)
+            ->assertNotified(__('import-wizard-new::store.busy'))
+            ->assertSeeHtml('wire:key="val-1-');
+
+        $held->release();
+    });
+
+    it('returns null and re-renders the rows when a blank correction finds the store locked', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('updateMappedValue', 'John', '')
+            ->assertReturned(null)
+            ->assertSet('rowRevision', 1);
+
+        $held->release();
+    });
+
+    it('holds validation and Preview while the store is locked at mount until the retry clears the stale relationships', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['relationships' => json_encode([['relationship' => 'company', 'action' => 'create', 'name' => 'Stale']])]);
+        });
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component = mountReviewStep($this)
+            ->assertSet('failedColumns', ['__reentry' => true])
+            ->assertSee(__('import-wizard-new::store.busy'))
+            ->call('continueToPreview')
+            ->assertNotDispatched('completed');
+
+        Bus::assertNothingBatched();
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull()
+            ->and(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->not->toBeNull();
+
+        $held->release();
+        $component->call('retryFailedValidation')
+            ->assertSet('failedColumns', []);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ValidateColumnJob));
+        expect(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->toBeNull();
+    });
+
+    it('keeps the pending re-entry clear when a format change revalidates a column', function (): void {
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component = mountReviewStep($this)->assertSet('failedColumns', ['__reentry' => true]);
+
+        $held->release();
+        $component->call('setColumnFormat', 'date', 'european');
+
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull();
+
+        mountReviewStep($this)->assertSet('failedColumns', []);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob));
+    });
+
+    it('does not turn a failed snapshot into a retry notification', function (): void {
+        $component = mountReviewStep($this);
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        DB::listen(function (QueryExecuted $query): void {
+            if (str_contains($query->sql, 'UPDATE import_rows')) {
+                Cache::lock(importStoreLockName($this->import->id))->forceRelease();
+            }
+        });
+
+        expect(fn () => $component->call('skipValue', 'John'))->toThrow(ImportStoreException::class);
+    });
 });

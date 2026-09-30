@@ -18,7 +18,7 @@ mutates(ChatController::class, ImportAttachment::class);
 
 afterEach(function (): void {
     foreach (Import::query()->pluck('id') as $storeId) {
-        ImportStore::load((string) $storeId)?->destroy();
+        ImportStore::delete((string) $storeId);
     }
 });
 

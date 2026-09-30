@@ -14,14 +14,22 @@ use App\Models\Task;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Queue\Middleware\FailOnException;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\MatchBehavior;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ExecuteImportJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -42,7 +50,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (isset($this->import)) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
         $this->import->delete();
     }
 });
@@ -915,4 +923,390 @@ it('marks import as Failed when job exhausts retries via failed() handler', func
 
     $import = $this->import->fresh();
     expect($import->status)->toBe(ImportStatus::Failed);
+});
+
+it('hands the rest of the import to a fresh job when the time box runs out', function (bool $remote): void {
+    if ($remote) {
+        useRemoteImportStore();
+    }
+
+    Bus::fake([ExecuteImportJob::class]);
+    config()->set('import-wizard.execution_time_box', 0);
+
+    ImportExecutionFixture::readyStore($this, ['Name'], array_map(
+        fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}"], ['match_action' => RowMatchAction::Create->value]),
+        range(1, 501),
+    ), [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+
+    expect(ImportExecutionFixture::freshStore($this)->query()->where('processed', true)->count())->toBe(500)
+        ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(500)
+        ->and($this->import->refresh()->status)->toBe(ImportStatus::Importing);
+
+    Bus::assertDispatchedTimes(ExecuteImportJob::class, 1);
+})->with([
+    'local store' => [false],
+    'remote store' => [true],
+]);
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        useRemoteImportStore();
+    });
+
+    it('imports every row and marks them processed in the remote store', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+            ImportExecutionFixture::row(3, ['Name' => 'Grace Hopper'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        ImportExecutionFixture::run($this);
+
+        expect(People::where('workspace_id', $this->workspace->id)->whereIn('name', ['Ada Lovelace', 'Grace Hopper'])->count())->toBe(2)
+            ->and(ImportExecutionFixture::freshStore($this)->query()->where('processed', false)->count())->toBe(0)
+            ->and($this->import->refresh()->status)->toBe(ImportStatus::Completed);
+    });
+
+    it('reclaims the execution lock a killed attempt left behind', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        Cache::lock(importStoreLockName($this->import->id), 360, ImportExecutionFixture::lockOwner($this->import->id))->get();
+
+        ImportExecutionFixture::run($this);
+
+        expect($this->import->refresh()->status)->toBe(ImportStatus::Completed);
+    });
+
+    it('retries a lock timeout instead of failing the job', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+        $job = (new ExecuteImportJob(
+            importId: $this->import->id,
+            workspaceId: (string) $this->workspace->id,
+        ))->withFakeQueueInteractions();
+
+        expect(fn () => $job->middleware()[0]->handle($job, fn (): mixed => $job->handle()))
+            ->toThrow(ImportStoreException::class);
+
+        $job->assertNotFailed();
+        $held->release();
+    });
+
+    it('resumes a killed attempt without repeating the rows it already processed', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], array_map(
+            fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}"], ['match_action' => RowMatchAction::Create->value]),
+            range(1, 501),
+        ), [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        ImportStore::withWriteLock($this->import->id, fn (ImportStore $store): int => $store->query()->where('row_number', '<=', 501)->update(['processed' => true]));
+        $this->import->update(['created_rows' => 500]);
+        Cache::lock(importStoreLockName($this->import->id), 360, ImportExecutionFixture::lockOwner($this->import->id))->get();
+
+        ImportExecutionFixture::run($this);
+
+        $import = $this->import->refresh();
+        expect($import->status)->toBe(ImportStatus::Completed)
+            ->and($import->created_rows)->toBe(501)
+            ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(1);
+    });
+
+    it('does not release the execution lock of a live handoff sibling', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $sibling = Cache::lock(importStoreLockName($this->import->id), 360, "execute:{$this->import->id}:sibling-job");
+        $sibling->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(ImportStoreException::class);
+
+        expect($sibling->isOwnedByCurrentProcess())->toBeTrue()
+            ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(0);
+        $sibling->release();
+    });
+
+    it('retries a failed download instead of failing the job', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        Storage::set('s3', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function readStream(mixed $path): mixed
+            {
+                return null;
+            }
+        });
+        $job = (new ExecuteImportJob(
+            importId: $this->import->id,
+            workspaceId: (string) $this->workspace->id,
+        ))->withFakeQueueInteractions();
+
+        expect(fn () => $job->middleware()[0]->handle($job, fn (): mixed => $job->handle()))
+            ->toThrow(ImportStoreException::class);
+
+        $job->assertNotFailed();
+        expect(Cache::lock(importStoreLockName($this->import->id), 1)->get())->toBeTrue();
+    });
+
+    it('keeps the rows a failed run already wrote so its retry does not repeat them', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+            ImportExecutionFixture::row(3, ['Name' => ''], ['match_action' => RowMatchAction::Create->value]),
+            ImportExecutionFixture::row(4, ['Name' => 'Grace Hopper'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        $failures = 0;
+        DB::listen(function (QueryExecuted $query) use (&$failures): void {
+            if ($failures === 0 && str_starts_with($query->sql, 'insert into "failed_import_rows"')) {
+                $failures++;
+
+                throw new RuntimeException('Database went away');
+            }
+        });
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(RuntimeException::class, 'Database went away');
+
+        ImportExecutionFixture::run($this);
+
+        expect(People::where('workspace_id', $this->workspace->id)->count())->toBe(2)
+            ->and($this->import->refresh()->status)->toBe(ImportStatus::Completed)
+            ->and($this->import->created_rows)->toBe(2);
+    });
+
+    it('remembers the dedup maps before it uploads a chunk snapshot', function (): void {
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        $disk = new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public string $importId = '';
+
+            /** @var list<bool> */
+            public array $rememberedAtWrite = [];
+
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                $this->rememberedAtWrite[] = Cache::has("import-execution:{$this->importId}:created");
+
+                return parent::writeStream($path, $resource, $options);
+            }
+        };
+        $disk->importId = $this->import->id;
+        Storage::set('s3', $disk);
+
+        ImportExecutionFixture::run($this);
+
+        expect($disk->rememberedAtWrite)->toBe([true]);
+    });
+
+    it('leaves the counters to the retry when the failure snapshot cannot be uploaded', function (): void {
+        Sleep::fake();
+        Exceptions::fake();
+        ImportExecutionFixture::readyStore($this, ['Name'], [
+            ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        Storage::set('s3', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                return false;
+            }
+        });
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        DB::listen(function (QueryExecuted $query): void {
+            if (str_starts_with($query->sql, 'update "import_rows" set "processed"')) {
+                throw new RuntimeException('Database went away');
+            }
+        });
+
+        expect(fn () => ImportExecutionFixture::run($this))->toThrow(RuntimeException::class, 'Database went away');
+
+        $import = $this->import->refresh();
+        expect(People::where('workspace_id', $this->workspace->id)->count())->toBe(1)
+            ->and($import->created_rows)->toBe(0)
+            ->and($import->status)->toBe(ImportStatus::Failed);
+        Exceptions::assertReported(ImportStoreException::class);
+    });
+
+    it('fails without a retry when a snapshot cannot be uploaded and keeps the counters of what reached the database', function (): void {
+        Sleep::fake();
+        ImportExecutionFixture::readyStore($this, ['Name'], array_map(
+            fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}"], ['match_action' => RowMatchAction::Create->value]),
+            range(1, 501),
+        ), [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+        $fake = Storage::disk('s3');
+        $disk = new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public string $importId = '';
+
+            public int $writes = 0;
+
+            /** @var list<int> */
+            public array $createdRowsAtWrite = [];
+
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                $this->writes++;
+                $this->createdRowsAtWrite[] = (int) Import::query()->whereKey($this->importId)->value('created_rows');
+
+                return $this->writes === 1 && parent::writeStream($path, $resource, $options);
+            }
+        };
+        $disk->importId = $this->import->id;
+        Storage::set('s3', $disk);
+        $job = (new ExecuteImportJob(
+            importId: $this->import->id,
+            workspaceId: (string) $this->workspace->id,
+        ))->withFakeQueueInteractions();
+
+        expect(fn () => $job->middleware()[0]->handle($job, fn (): mixed => $job->handle()))
+            ->toThrow(ImportStoreException::class);
+
+        $job->assertFailedWith(ImportStoreException::class);
+        $import = $this->import->refresh();
+        expect($import->status)->toBe(ImportStatus::Failed)
+            ->and($import->created_rows)->toBe(People::where('workspace_id', $this->workspace->id)->count())
+            ->and($import->created_rows)->toBe(501)
+            ->and(array_slice($disk->createdRowsAtWrite, 0, 2))->toBe([0, 500])
+            ->and($disk->writes)->toBe(4);
+    });
+});
+
+it('finishes a handed-off import in the next job with one summary and one notification', function (bool $remote): void {
+    if ($remote) {
+        useRemoteImportStore();
+    }
+
+    Bus::fake([ExecuteImportJob::class]);
+    config()->set('import-wizard.execution_time_box', 0);
+
+    ImportExecutionFixture::readyStore($this, ['Name'], array_map(
+        fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}"], ['match_action' => RowMatchAction::Create->value]),
+        range(1, 501),
+    ), [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+    config()->set('import-wizard.execution_time_box', 240);
+    ImportExecutionFixture::run($this);
+
+    $import = $this->import->refresh();
+    expect($import->status)->toBe(ImportStatus::Completed)
+        ->and($import->created_rows)->toBe(501)
+        ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(501)
+        ->and(Activity::query()->withoutGlobalScopes()->forSubject($import)->where('event', ExecuteImportJob::IMPORTED_EVENT)->count())->toBe(1)
+        ->and($this->user->notifications()->count())->toBe(1);
+
+    Bus::assertDispatchedTimes(ExecuteImportJob::class, 1);
+})->with([
+    'local store' => [false],
+    'remote store' => [true],
+]);
+
+it('counts a failed row once across a handoff', function (): void {
+    Bus::fake([ExecuteImportJob::class]);
+    config()->set('import-wizard.execution_time_box', 0);
+
+    ImportExecutionFixture::readyStore($this, ['Name'], [
+        ImportExecutionFixture::row(2, ['Name' => ''], ['match_action' => RowMatchAction::Create->value]),
+        ...array_map(
+            fn (int $number): array => ImportExecutionFixture::row($number + 2, ['Name' => "Person {$number}"], ['match_action' => RowMatchAction::Create->value]),
+            range(1, 500),
+        ),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+    config()->set('import-wizard.execution_time_box', 240);
+    ImportExecutionFixture::run($this);
+
+    $import = $this->import->refresh();
+    expect($import->status)->toBe(ImportStatus::Completed)
+        ->and($import->failed_rows)->toBe(1)
+        ->and($import->created_rows)->toBe(500)
+        ->and($import->failedRows()->count())->toBe(1);
+});
+
+it('links rows in later jobs to a company an earlier job auto-created', function (): void {
+    Bus::fake([ExecuteImportJob::class]);
+    config()->set('import-wizard.execution_time_box', 0);
+    $relationships = json_encode([
+        ['relationship' => 'company', 'action' => 'create', 'id' => null, 'name' => 'Shared Corp', 'behavior' => MatchBehavior::Create->value],
+    ]);
+
+    ImportExecutionFixture::readyStore($this, ['Name', 'Company'], array_map(
+        fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}", 'Company' => 'Shared Corp'], [
+            'match_action' => RowMatchAction::Create->value,
+            'relationships' => $relationships,
+        ]),
+        range(1, 501),
+    ), [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toEntityLink(source: 'Company', matcherKey: 'name', entityLinkKey: 'company'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+    config()->set('import-wizard.execution_time_box', 240);
+    ImportExecutionFixture::run($this);
+
+    $company = Company::where('workspace_id', $this->workspace->id)->where('name', 'Shared Corp')->sole();
+    expect(People::where('workspace_id', $this->workspace->id)->where('company_id', $company->id)->count())->toBe(501)
+        ->and(Cache::has("import-execution:{$this->import->id}:created"))->toBeFalse();
+});
+
+it('does not duplicate a person whose email an earlier job already created', function (): void {
+    Bus::fake([ExecuteImportJob::class]);
+    config()->set('import-wizard.execution_time_box', 0);
+
+    ImportExecutionFixture::readyStore($this, ['Name', 'Email'], [
+        ...array_map(
+            fn (int $number): array => ImportExecutionFixture::row($number + 1, ['Name' => "Person {$number}", 'Email' => "person{$number}@example.com"], ['match_action' => RowMatchAction::Create->value]),
+            range(1, 500),
+        ),
+        ImportExecutionFixture::row(502, ['Name' => 'Person 1 again', 'Email' => 'person1@example.com'], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toField(source: 'Email', target: 'custom_fields_emails'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+    config()->set('import-wizard.execution_time_box', 240);
+    ImportExecutionFixture::run($this);
+
+    $import = $this->import->refresh();
+    expect($import->created_rows)->toBe(500)
+        ->and($import->updated_rows)->toBe(1)
+        ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(500);
 });

@@ -25,6 +25,7 @@ use Relaticle\ImportWizard\Livewire\Steps\PreviewStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\MatchResolver;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(PreviewStep::class, MatchResolver::class);
 
@@ -40,7 +41,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (isset($this->store)) {
-        $this->store->destroy();
+        ImportStore::delete($this->store->id());
     }
     if (isset($this->import)) {
         $this->import->delete();
@@ -69,6 +70,8 @@ function createPreviewReadyStore(
     $store->query()->insert($rows);
 
     (new MatchResolver($store, $import, $import->getImporter()))->resolve();
+
+    $store = ImportExecutionFixture::publish($store);
 
     $context->import = $import;
     $context->store = $store;
@@ -759,4 +762,27 @@ it('downloadFailedRows action is hidden when there are no failed rows', function
     $component = mountPreviewStep($this);
 
     $component->assertDontSee('Download Failed Rows');
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        useRemoteImportStore();
+    });
+
+    it('finishes a time-boxed import through the batch', function (): void {
+        config()->set('import-wizard.execution_time_box', 0);
+
+        createPreviewReadyStore($this, ['Name'], array_map(
+            fn (int $number): array => makePreviewRow($number + 1, ['Name' => "Person {$number}"]),
+            range(1, 501),
+        ), [
+            ColumnData::toField(source: 'Name', target: 'name'),
+        ]);
+
+        mountPreviewStep($this)->call('startImport');
+
+        expect($this->import->refresh()->status)->toBe(ImportStatus::Completed)
+            ->and(People::where('workspace_id', $this->workspace->id)->count())->toBe(501)
+            ->and(ImportStore::forRead($this->import->id)->query()->where('processed', true)->count())->toBe(501);
+    });
 });

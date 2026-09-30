@@ -249,12 +249,16 @@ final class ImportWizard extends Component implements HasActions, HasForms
             return;
         }
 
-        Import::query()
+        $deleted = Import::query()
             ->forWorkspace($workspaceId)
             ->where('id', $importId)
             ->delete();
 
-        ImportStore::load($importId)?->destroy();
+        if ($deleted === 0) {
+            return;
+        }
+
+        ImportStore::delete($importId);
     }
 
     private function sanitizeReturnUrl(?string $url): ?string

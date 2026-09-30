@@ -29,7 +29,7 @@
 >
     @if ($failedColumns !== [])
         <div role="alert" class="mb-4 flex items-center justify-between gap-4 rounded-xl bg-danger-50 p-4 text-sm text-danger-700 dark:bg-danger-950/50 dark:text-danger-300">
-            <span>{{ __('Validation failed. Retry before continuing.') }}</span>
+            <span>{{ isset($failedColumns['__reentry']) ? __('import-wizard-new::store.busy') : __('Validation failed. Retry before continuing.') }}</span>
             <x-filament::button wire:click="retryFailedValidation" color="danger" size="sm">
                 {{ __('Retry validation') }}
             </x-filament::button>
@@ -312,7 +312,7 @@
                         @endphp
 
                         <div
-                            wire:key="val-{{ $index }}-{{ crc32((string) $rawValue) }}"
+                            wire:key="val-{{ $rowRevision }}-{{ $index }}-{{ crc32((string) $rawValue) }}"
                             class="flex items-center px-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0"
                         >
                             {{-- Raw Data + Row Count --}}

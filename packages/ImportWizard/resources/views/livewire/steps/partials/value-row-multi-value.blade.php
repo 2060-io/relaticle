@@ -30,8 +30,12 @@
         handleChange(detail) {
             const mvi = this.$el.querySelector('[data-multi-value-input]');
             this.$wire.updateMappedValue(this.rawValue, detail).then(errors => {
+                if (errors === null) {
+                    return;
+                }
+
                 mvi?.dispatchEvent(
-                    new CustomEvent('update-errors', { detail: { errors: errors || {} } })
+                    new CustomEvent('update-errors', { detail: { errors } })
                 );
             });
         }

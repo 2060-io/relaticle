@@ -109,7 +109,7 @@ final class PreviewStep extends Component implements HasActions, HasForms
         }
 
         $processed = $this->processedCount();
-        $total = $this->totalRowCount();
+        $total = $this->import()->total_rows;
 
         if ($processed === 0 || $total === 0) {
             return 0;
@@ -140,7 +140,7 @@ final class PreviewStep extends Component implements HasActions, HasForms
     #[Computed]
     public function totalRowCount(): int
     {
-        return $this->store()->query()->count();
+        return $this->import()->total_rows;
     }
 
     /** @return Collection<int, ColumnData> */

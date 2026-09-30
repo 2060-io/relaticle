@@ -32,7 +32,7 @@ beforeEach(function (): void {
 
 afterEach(function (): void {
     if (property_exists($this, 'import') && $this->import !== null) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
         $this->import->delete();
     }
 });
