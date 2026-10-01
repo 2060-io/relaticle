@@ -99,7 +99,7 @@ it('hides a workspace for 14 days once marked contacted', function (): void {
 
     expect($workspace->refresh()->sales_contacted_at)->not->toBeNull();
 
-    $this->travelTo(now()->addDays(13));
+    $this->travelTo(now()->addDays(13)->addHour());
     Cache::flush();
 
     livewire(SalesLeads::class)->assertCanNotSeeTableRecords([$workspace]);
