@@ -11,6 +11,7 @@ use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Company;
 use App\Models\User;
 use App\Models\Workspace;
+use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Str;
@@ -605,4 +606,36 @@ it('creates overview fixture records under a sysadmin session without a creator 
         ->and($own->account_owner_id)->toBe($owner->getKey())
         ->and($own->creation_source)->toBe(CreationSource::WEB)
         ->and(User::query()->count())->toBe($usersBefore);
+});
+
+it('filters workspaces active in at least three of the last four complete weeks', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-01 12:00:00'));
+    $weekStart = CarbonImmutable::parse('2026-09-28');
+
+    $habitOwner = OverviewData::owner(CarbonImmutable::parse('2026-08-20'));
+    $habit = OverviewData::workspaceOf($habitOwner);
+    OverviewData::ownRecord($habit, $habitOwner, $weekStart->subWeeks(1)->addDay());
+    OverviewData::ownRecord($habit, $habitOwner, $weekStart->subWeeks(2)->addDay());
+    OverviewData::typedMessage($habit, $habitOwner, $weekStart->subWeeks(4)->addDay());
+
+    $twoWeeksOwner = OverviewData::owner(CarbonImmutable::parse('2026-08-20'));
+    $twoWeeks = OverviewData::workspaceOf($twoWeeksOwner);
+    OverviewData::ownRecord($twoWeeks, $twoWeeksOwner, $weekStart->subWeeks(1)->addDay());
+    OverviewData::ownRecord($twoWeeks, $twoWeeksOwner, $weekStart->subWeeks(2)->addDay());
+
+    $sampleOnly = OverviewData::workspaceOf(OverviewData::owner(CarbonImmutable::parse('2026-08-20')));
+    foreach ([1, 2, 3] as $weeksAgo) {
+        OverviewData::sampleRecord($sampleOnly, $weekStart->subWeeks($weeksAgo)->addDay());
+    }
+
+    $internalOwner = OverviewData::internalOwner();
+    $internal = OverviewData::workspaceOf($internalOwner);
+    foreach ([1, 2, 3] as $weeksAgo) {
+        OverviewData::ownRecord($internal, $internalOwner, $weekStart->subWeeks($weeksAgo)->addDay());
+    }
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('formed_habit')
+        ->assertCanSeeTableRecords([$habit])
+        ->assertCanNotSeeTableRecords([$twoWeeks, $sampleOnly, $internal]);
 });

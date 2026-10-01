@@ -22,6 +22,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
@@ -45,6 +46,7 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
 use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
 use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
+use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
 use Relaticle\SystemAdmin\Metrics\Scopes\InternalWorkspace;
 
 final class WorkspaceResource extends Resource
@@ -271,6 +273,14 @@ final class WorkspaceResource extends Resource
                         },
                         blank: fn (Builder $query): Builder => $query,
                     ),
+                Filter::make('formed_habit')
+                    ->label('Formed a habit')
+                    ->toggle()
+                    ->query(function (Builder $query): Builder {
+                        (new FormedHabit)->apply($query, $query->getModel());
+
+                        return $query;
+                    }),
             ])
             ->recordActions([
                 ViewAction::make(),
