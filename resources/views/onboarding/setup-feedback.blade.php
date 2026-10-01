@@ -25,7 +25,7 @@
                             <x-input-error for="reason" />
                         </fieldset>
                         <label class="block text-sm text-gray-600 dark:text-gray-400" for="note">{{ __('mail.setup_feedback.note') }}</label>
-                        <textarea id="note" name="note" rows="3" maxlength="500" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white">{{ old('note') }}</textarea>
+                        <textarea id="note" name="note" rows="3" maxlength="500" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white">{{ is_string(old('note')) ? old('note') : '' }}</textarea>
                         <x-input-error for="note" />
                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700">
                             {{ __('mail.setup_feedback.send') }}

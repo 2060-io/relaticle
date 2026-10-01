@@ -93,6 +93,16 @@ it('rejects a note over 500 characters and shows the error and the typed note on
     expect($workspace->refresh()->setup_exit_reason)->toBeNull();
 });
 
+it('shows the page again after a note sent as a list instead of text', function (): void {
+    $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
+
+    $this->followingRedirects()
+        ->post(feedbackUrl($workspace->getKey(), SetupExitReason::TooHard), ['reason' => SetupExitReason::TooHard->value, 'note' => ['x']])
+        ->assertOk();
+
+    expect($workspace->refresh()->setup_exit_reason)->toBeNull();
+});
+
 it('rejects a tampered link', function (): void {
     $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
     $url = feedbackUrl($workspace->getKey(), SetupExitReason::TooHard);
