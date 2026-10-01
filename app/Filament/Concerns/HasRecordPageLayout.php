@@ -81,7 +81,10 @@ trait HasRecordPageLayout
                     ->extraAttributes(['class' => 'fi-record-pane']),
             ])
                 ->from('xl')
-                ->extraAttributes(['class' => 'fi-record-layout']),
+                ->extraAttributes([
+                    'class' => 'fi-record-layout',
+                    'x-data' => 'recordLayout',
+                ]),
         ]);
     }
 

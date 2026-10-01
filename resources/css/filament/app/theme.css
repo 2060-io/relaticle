@@ -59,7 +59,7 @@ html.fi:has(body.fi-panel-app) {
 }
 
 .fi-app-main-wrapper {
-    @apply flex min-h-0 min-w-0 flex-1 flex-col;
+    @apply flex min-h-0 min-w-0 flex-1 flex-col motion-safe:transition-[padding] motion-safe:duration-200 motion-safe:ease-out;
 
     > .fi-layout {
         @apply min-h-0 flex-1 overflow-y-auto;
@@ -221,7 +221,8 @@ html.fi:has(body.fi-panel-app) {
 html.fi-resizing {
     @apply cursor-col-resize select-none;
 
-    .fi-sidebar {
+    .fi-sidebar,
+    .fi-app-main-wrapper {
         transition: none;
     }
 
@@ -230,8 +231,21 @@ html.fi-resizing {
     }
 }
 
+.fi-resize-handle-start {
+    @apply end-auto -start-1 pointer-coarse:end-auto pointer-coarse:-start-2.5;
+}
+
 .fi-sidebar-resize-handle {
     @apply hidden lg:block;
+}
+
+.fi-chat-panel-resize-handle {
+    @apply hidden sm:block;
+}
+
+/* The chat panel docks beside the page from xl (chat-side-panel) instead of covering it. */
+html.fi-chat-docked .fi-app-main-wrapper {
+    padding-inline-end: var(--chat-panel-width);
 }
 
 .fi-sidebar-nav {
@@ -640,28 +654,47 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply rounded-xl;
 }
 
-/* Record pages: a details rail beside a work pane, edge to edge from xl. */
+/* Record pages split from xl, and only while the main area fits the rail's minimum
+   beside the pane's; the record layout sets html.fi-record-stacked when it does not. */
+@custom-variant record-split {
+    @media (width >= 80rem) {
+        &:where(html:not(.fi-record-stacked) *) {
+            @slot;
+        }
+    }
+}
+
+@property --record-pane-min-width {
+    syntax: '<length>';
+    inherits: true;
+    initial-value: 0px;
+}
+
+html.fi-record-stacked .fi-record-layout {
+    @apply flex-col items-stretch;
+}
+
 body:has(.fi-record-page) {
     @apply bg-white dark:bg-gray-900;
 }
 
 .fi-main:has(.fi-record-page) {
-    @apply xl:px-0;
+    @apply record-split:px-0;
 }
 
 .fi-record-page .fi-page-header-main-ctn {
-    @apply xl:py-0;
+    @apply record-split:py-0;
 }
 
 .fi-record-layout {
-    @apply xl:min-h-[calc(100dvh-var(--topbar-height))] xl:items-stretch xl:gap-0;
+    @apply record-split:min-h-[calc(100dvh-var(--topbar-height))] record-split:items-stretch record-split:gap-0;
 
     & > :first-child {
-        @apply xl:w-(--record-rail-width) xl:max-w-[calc(100%-var(--resize-reserve))] xl:shrink-0 xl:border-e xl:border-gray-200 xl:[--resize-reserve:var(--record-pane-min-width)] dark:xl:border-white/10;
+        @apply record-split:w-(--record-rail-width) record-split:max-w-[calc(100%-var(--resize-reserve))] record-split:shrink-0 record-split:border-e record-split:border-gray-200 record-split:[--resize-reserve:var(--record-pane-min-width)] dark:record-split:border-white/10;
     }
 
     & > :has(> .fi-record-rail-resize-handle) {
-        @apply relative hidden xl:block;
+        @apply relative hidden record-split:block;
     }
 
     & > :last-child {
@@ -670,7 +703,7 @@ body:has(.fi-record-page) {
 }
 
 .fi-record-rail {
-    @apply xl:sticky xl:top-0 xl:max-h-[calc(100dvh-var(--topbar-height))] xl:overflow-y-auto xl:px-5 xl:py-5;
+    @apply record-split:sticky record-split:top-0 record-split:max-h-[calc(100dvh-var(--topbar-height))] record-split:overflow-y-auto record-split:px-5 record-split:py-5;
 
     .fi-record-rail-section {
         @apply border-t border-gray-200 pt-4 dark:border-white/10;
@@ -699,7 +732,7 @@ body:has(.fi-record-page) {
 
 .fi-record-pane {
     .fi-tabs:not(.fi-contained) {
-        @apply mx-0 rounded-none border-b border-gray-200 bg-transparent px-0 pt-0 pb-0 shadow-none ring-0 xl:px-3.5 xl:pt-5 dark:border-white/10 dark:bg-transparent;
+        @apply mx-0 rounded-none border-b border-gray-200 bg-transparent px-0 pt-0 pb-0 shadow-none ring-0 record-split:px-3.5 record-split:pt-5 dark:border-white/10 dark:bg-transparent;
     }
 
     .fi-tabs-item {
@@ -732,7 +765,7 @@ body:has(.fi-record-page) {
         @apply rounded-none bg-transparent shadow-none ring-0 dark:bg-transparent;
 
         & > .fi-section-content-ctn > .fi-section-content {
-            @apply xl:px-6;
+            @apply record-split:px-6;
         }
     }
 }

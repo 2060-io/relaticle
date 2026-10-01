@@ -2,6 +2,7 @@
     'storageKey',
     'target',
     'label',
+    'side' => 'end',
 ])
 
 <div
@@ -9,6 +10,9 @@
         storageKey: @js($storageKey),
         width: null,
         isResizing: false,
+        get growsTowardLeft() {
+            return (@js($side) === 'start') !== (document.dir === 'rtl')
+        },
         get bounds() {
             return window.resizableWidths[this.storageKey]
         },
@@ -34,13 +38,13 @@
             if (event.button !== 0) return
 
             const edge = this.target.getBoundingClientRect()
-            const isRtl = document.dir === 'rtl'
+            const growsTowardLeft = this.growsTowardLeft
 
             event.target.setPointerCapture(event.pointerId)
             this.isResizing = true
             document.documentElement.classList.add('fi-resizing')
 
-            const move = (moveEvent) => this.apply(isRtl ? edge.right - moveEvent.clientX : moveEvent.clientX - edge.left)
+            const move = (moveEvent) => this.apply(growsTowardLeft ? edge.right - moveEvent.clientX : moveEvent.clientX - edge.left)
             const stop = () => {
                 event.target.removeEventListener('pointermove', move)
                 this.isResizing = false
@@ -53,7 +57,7 @@
             event.target.addEventListener('pointercancel', stop, { once: true })
         },
         nudge(delta) {
-            this.apply(this.clamp(this.width ?? this.target.offsetWidth) + (document.dir === 'rtl' ? -delta : delta))
+            this.apply(this.clamp(this.width ?? this.target.offsetWidth) + (this.growsTowardLeft ? -delta : delta))
             this.save()
         },
         jump(width) {
@@ -81,5 +85,5 @@
     x-bind:aria-valuemin="bounds.min"
     x-bind:aria-valuemax="bounds.max"
     tabindex="0"
-    {{ $attributes->class(['fi-resize-handle']) }}
+    {{ $attributes->class(['fi-resize-handle', 'fi-resize-handle-start' => $side === 'start']) }}
 ></div>
