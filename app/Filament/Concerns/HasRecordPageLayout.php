@@ -172,7 +172,7 @@ trait HasRecordPageLayout
             ->label($label)
             ->icon('heroicon-o-clipboard-document')
             ->actionJs(sprintf(
-                'navigator.clipboard.writeText(%s).then(() => new FilamentNotification().title(%s).success().send())',
+                'navigator.clipboard.writeText(%s).then(() => new FilamentNotification().title(%s).success().send()); close()',
                 Js::from($value),
                 Js::from($notification),
             ));
