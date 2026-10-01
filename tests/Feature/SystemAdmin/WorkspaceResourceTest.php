@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Support\Str;
 use Laravel\Cashier\Subscription;
 use Relaticle\SystemAdmin\Actions\UpdateCustomerRecord;
 use Relaticle\SystemAdmin\Filament\Pages\EditCustomerRecord;
@@ -26,6 +27,7 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Support\Impersonate;
 use Relaticle\SystemAdmin\Filament\Support\PivotSafeTableQuery;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
+use Tests\Helpers\OverviewData;
 
 mutates(UpdateCustomerRecord::class, EditCustomerRecord::class, BillingStatus::class, WorkspaceResource::class, MembersRelationManager::class, CompaniesRelationManager::class, ActivityRelationManager::class, PivotSafeTableQuery::class, Impersonate::class);
 
@@ -569,4 +571,20 @@ it('lands the owner impersonation link in the viewed workspace', function (): vo
 
     expect($link)->toStartWith(url()->getPublicUrl("impersonate/{$workspace->user_id}?"))
         ->and($query['workspace'])->toBe($workspace->getKey());
+});
+
+it('filters workspaces owned by a system administrator as internal', function (): void {
+    $internal = OverviewData::workspaceOf(OverviewData::internalOwner());
+    $external = OverviewData::workspaceOf(OverviewData::owner());
+    $ownerless = Workspace::factory()->create(['user_id' => (string) Str::ulid()]);
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('internal', true)
+        ->assertCanSeeTableRecords([$internal])
+        ->assertCanNotSeeTableRecords([$external, $ownerless]);
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('internal', false)
+        ->assertCanSeeTableRecords([$external, $ownerless])
+        ->assertCanNotSeeTableRecords([$internal]);
 });

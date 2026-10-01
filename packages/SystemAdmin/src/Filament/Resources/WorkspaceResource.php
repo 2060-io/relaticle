@@ -44,6 +44,8 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\TasksRelationManager;
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
 use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
+use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
+use Relaticle\SystemAdmin\Metrics\Scopes\InternalWorkspace;
 
 final class WorkspaceResource extends Resource
 {
@@ -251,6 +253,24 @@ final class WorkspaceResource extends Resource
                 SelectFilter::make('onboarding_referral_source')
                     ->label('Referral Source')
                     ->options(OnboardingReferralSource::class),
+                TernaryFilter::make('internal')
+                    ->label('Internal')
+                    ->placeholder('All workspaces')
+                    ->trueLabel('Owned by a system administrator')
+                    ->falseLabel('Customers only')
+                    ->queries(
+                        true: function (Builder $query): Builder {
+                            (new InternalWorkspace)->apply($query, $query->getModel());
+
+                            return $query;
+                        },
+                        false: function (Builder $query): Builder {
+                            (new ExternalWorkspace)->apply($query, $query->getModel());
+
+                            return $query;
+                        },
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
             ])
             ->recordActions([
                 ViewAction::make(),
