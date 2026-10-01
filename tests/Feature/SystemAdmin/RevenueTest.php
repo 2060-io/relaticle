@@ -27,21 +27,44 @@ afterEach(function (): void {
 });
 
 /**
- * @param  array<string, array{cents: int|null, interval: string}>  $bySubscription
+ * @param  array<string, array{cents: int|null, interval: string, expanded?: bool}|null>  $bySubscription
+ * @return ArrayObject<int, string>
  */
-function fakeStripeSubscriptions(array $bySubscription, bool $fails = false): void
+function fakeStripeSubscriptions(array $bySubscription, bool $fails = false): ArrayObject
 {
-    ApiRequestor::setHttpClient(new readonly class($bySubscription, $fails) implements ClientInterface
+    /** @var ArrayObject<int, string> $requests */
+    $requests = new ArrayObject;
+
+    ApiRequestor::setHttpClient(new readonly class($bySubscription, $fails, $requests) implements ClientInterface
     {
-        /** @param  array<string, array{cents: int|null, interval: string}>  $bySubscription */
-        public function __construct(private array $bySubscription, private bool $fails) {}
+        /**
+         * @param  array<string, array{cents: int|null, interval: string, expanded?: bool}|null>  $bySubscription
+         * @param  ArrayObject<int, string>  $requests
+         */
+        public function __construct(private array $bySubscription, private bool $fails, private ArrayObject $requests) {}
 
         public function request($method, $absUrl, $headers, $params, $hasFile, $apiMode = 'v1', $maxNetworkRetries = null): array
         {
+            $id = basename(parse_url((string) $absUrl, PHP_URL_PATH) ?: '');
+            $this->requests->append($id);
+
             throw_if($this->fails, RuntimeException::class, 'Stripe is unreachable');
 
-            $id = basename(parse_url((string) $absUrl, PHP_URL_PATH) ?: '');
             $data = $this->bySubscription[$id];
+
+            if ($data === null) {
+                return [json_encode(['error' => [
+                    'message' => "No such subscription: '{$id}'",
+                    'type' => 'invalid_request_error',
+                    'code' => 'resource_missing',
+                    'param' => 'id',
+                ]]), 404, []];
+            }
+
+            $expandsInvoice = in_array('latest_invoice', (array) ($params['expand'] ?? []), true) && ($data['expanded'] ?? true);
+            $invoice = $expandsInvoice
+                ? ['id' => 'in_'.$id, 'object' => 'invoice', 'total_excluding_tax' => $data['cents']]
+                : 'in_'.$id;
 
             return [json_encode([
                 'id' => $id,
@@ -51,10 +74,12 @@ function fakeStripeSubscriptions(array $bySubscription, bool $fails = false): vo
                     'object' => 'subscription_item',
                     'price' => ['id' => 'price_x', 'object' => 'price', 'recurring' => ['interval' => $data['interval'], 'interval_count' => 1]],
                 ]]],
-                'latest_invoice' => $data['cents'] === null ? null : ['id' => 'in_'.$id, 'object' => 'invoice', 'total_excluding_tax' => $data['cents']],
+                'latest_invoice' => $data['cents'] === null ? null : $invoice,
             ]), 200, []];
         }
     });
+
+    return $requests;
 }
 
 function payingWorkspace(Workspace $workspace, string $stripeId): Subscription
@@ -91,6 +116,57 @@ it('reports Stripe being unavailable instead of a wrong number', function (): vo
     fakeStripeSubscriptions([], fails: true);
 
     expect(resolve(Revenue::class)->monthlyMicros())->toBeNull();
+});
+
+it('does not retry a failing Stripe for ten minutes', function (): void {
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_down');
+    $requests = fakeStripeSubscriptions([], fails: true);
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBeNull();
+
+    $this->travelTo(now()->addMinutes(5));
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBeNull()
+        ->and($requests)->toHaveCount(1);
+
+    $this->travelTo(now()->addMinutes(6));
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBeNull()
+        ->and($requests)->toHaveCount(2);
+});
+
+it('reports an invoice Stripe returned only as an id as unavailable, not as zero', function (): void {
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_unexpanded');
+    fakeStripeSubscriptions(['sub_unexpanded' => ['cents' => 1_200, 'interval' => 'month', 'expanded' => false]]);
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBeNull();
+});
+
+it('never subtracts a credit invoice from MRR', function (): void {
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_credit');
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_paid');
+    fakeStripeSubscriptions([
+        'sub_credit' => ['cents' => -334, 'interval' => 'month'],
+        'sub_paid' => ['cents' => 1_200, 'interval' => 'month'],
+    ]);
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBe(12_000_000);
+});
+
+it('counts a subscription Stripe no longer knows as zero and keeps summing the rest', function (): void {
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_stale');
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_current');
+    $requests = fakeStripeSubscriptions([
+        'sub_stale' => null,
+        'sub_current' => ['cents' => 1_200, 'interval' => 'month'],
+    ]);
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBe(12_000_000);
+
+    $this->travelTo(now()->addHours(23));
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBe(12_000_000)
+        ->and($requests)->toHaveCount(2);
 });
 
 it('lists the subscriptions that count toward MRR', function (): void {

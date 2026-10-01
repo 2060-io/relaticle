@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Laravel\Cashier\Subscription;
 use Relaticle\SystemAdmin\Metrics\Scopes\CountsTowardMrr;
+use Stripe\Exception\InvalidRequestException;
 use Throwable;
 
 final readonly class Revenue
@@ -36,29 +37,52 @@ final readonly class Revenue
 
     private function monthlyAmountMicros(Subscription $subscription): ?int
     {
-        return Cache::remember("sysadmin.mrr.{$subscription->stripe_id}", now()->addDay(), function () use ($subscription): ?int {
-            try {
-                $stripe = $subscription->asStripeSubscription(['latest_invoice']);
-            } catch (Throwable $exception) {
-                report($exception);
+        $key = "sysadmin.mrr.{$subscription->stripe_id}";
 
-                return null;
-            }
+        /** @var array{micros: ?int}|null $cached */
+        $cached = Cache::get($key);
 
-            $invoice = $stripe->latest_invoice;
+        if ($cached !== null) {
+            return $cached['micros'];
+        }
 
-            if ($invoice === null || is_string($invoice)) {
-                return 0;
-            }
+        try {
+            $micros = $this->fetchMonthlyAmountMicros($subscription);
+        } catch (InvalidRequestException $exception) {
+            report($exception);
 
-            $recurring = $stripe->items->data[0]->price->recurring ?? null;
-            $count = max(1, (int) ($recurring->interval_count ?? 1));
-            $months = match ($recurring->interval ?? 'month') {
-                'year' => 12 * $count,
-                default => $count,
-            };
+            $micros = 0;
+        } catch (Throwable $exception) {
+            report($exception);
 
-            return intdiv(((int) $invoice->total_excluding_tax) * 10_000, $months);
-        });
+            $micros = null;
+        }
+
+        Cache::put($key, ['micros' => $micros], $micros === null ? now()->addMinutes(10) : now()->addDay());
+
+        return $micros;
+    }
+
+    private function fetchMonthlyAmountMicros(Subscription $subscription): ?int
+    {
+        $stripe = $subscription->asStripeSubscription(['latest_invoice']);
+        $invoice = $stripe->latest_invoice;
+
+        if ($invoice === null) {
+            return 0;
+        }
+
+        if (is_string($invoice)) {
+            return null;
+        }
+
+        $recurring = $stripe->items->data[0]->price->recurring ?? null;
+        $count = max(1, (int) ($recurring->interval_count ?? 1));
+        $months = match ($recurring->interval ?? 'month') {
+            'year' => 12 * $count,
+            default => $count,
+        };
+
+        return max(0, intdiv(((int) $invoice->total_excluding_tax) * 10_000, $months));
     }
 }
