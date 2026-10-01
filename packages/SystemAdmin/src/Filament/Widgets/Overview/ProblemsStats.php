@@ -6,8 +6,8 @@ namespace Relaticle\SystemAdmin\Filament\Widgets\Overview;
 
 use App\Enums\BillingStatus;
 use App\Models\User;
+use App\Models\UserSocialAccount;
 use App\Models\Workspace;
-use Carbon\CarbonInterface;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Relaticle\Chat\Enums\AiCreditType;
@@ -54,7 +54,7 @@ final class ProblemsStats extends StatsOverviewWidget
     {
         return ChatMessageFeedback::query()
             ->where('rating', ChatMessageFeedback::RATING_DOWN)
-            ->where('created_at', '>=', now()->startOfWeek(CarbonInterface::MONDAY))
+            ->createdThisWeek()
             ->count();
     }
 
@@ -87,7 +87,7 @@ final class ProblemsStats extends StatsOverviewWidget
         $share = $recent === 0 ? null : (int) round($stuck / $recent * 100);
 
         return Stat::make('Stuck after setup', $share === null ? "\u{2014}" : "{$share}%")
-            ->description("{$stuck} of {$recent} new owners did nothing in their first 3 days")
+            ->description($share === null ? 'No owners 3 to 30 days old yet' : "{$stuck} of {$recent} new owners did nothing in their first 3 days")
             ->color(match (true) {
                 $share === null => 'gray',
                 $share >= 60 => 'danger',
@@ -100,34 +100,56 @@ final class ProblemsStats extends StatsOverviewWidget
 
     private function leftWizard(OverviewCache $cache): Stat
     {
-        $from = ViewerTime::today()->subDays(30)->toDateString();
+        $from = ViewerTime::today()->subDays(29)->toDateString();
         $until = ViewerTime::today()->toDateString();
 
-        /** @var array{all: int, left: int, oauth: int} $counts */
-        $counts = $cache->remember("problems.wizard.{$from}", function () use ($from, $until): array {
+        /** @var array{all: int, left: int, methods: array<string, int>} $counts */
+        $counts = $cache->remember('problems.wizard.'.ViewerTime::timezone().".{$from}", function () use ($from, $until): array {
             $recent = User::query()
                 ->withGlobalScope(GenuineSignup::class, new GenuineSignup)
                 ->where('users.created_at', '>=', ViewerTime::startOfDayUtc($from))
                 ->where('users.created_at', '<=', ViewerTime::endOfDayUtc($until));
             $left = (clone $recent)->whereDoesntHave('ownedWorkspaces')->whereDoesntHave('workspaces');
+            $leftCount = $left->count();
+            $methods = ['Password' => $leftCount - (clone $left)->signedUpWith()->count()];
 
-            return [
-                'all' => $recent->count(),
-                'left' => $left->count(),
-                'oauth' => (clone $left)->whereHas('socialAccounts')->count(),
-            ];
+            foreach (UserSocialAccount::query()->distinct()->orderBy('provider_name')->pluck('provider_name') as $provider) {
+                $methods[ucfirst((string) $provider)] = (clone $left)->signedUpWith((string) $provider)->count();
+            }
+
+            return ['all' => $recent->count(), 'left' => $leftCount, 'methods' => array_filter($methods)];
         });
         $share = $counts['all'] === 0 ? null : (int) round($counts['left'] / $counts['all'] * 100);
 
         return Stat::make('Left the setup wizard', $share === null ? "\u{2014}" : "{$share}%")
-            ->description("{$counts['left']} of {$counts['all']} signups in 30 days, {$counts['oauth']} via Google or Microsoft")
-            ->color($share !== null && $share >= 10 ? 'warning' : 'success')
+            ->description($share === null ? 'No signups in the last 30 days' : "{$counts['left']} of {$counts['all']} signups in 30 days".$this->methodSplit($counts['methods']))
+            ->color(match (true) {
+                $share === null => 'gray',
+                $share >= 10 => 'warning',
+                default => 'success',
+            })
             ->extraAttributes(['title' => 'Genuine verified signups of the last 30 days who never made a workspace.'])
             ->url(UserResource::getUrl('index', ['filters' => [
                 'genuine_signup' => ['isActive' => true],
                 'no_workspace' => ['isActive' => true],
                 'signed_up' => ['from' => $from, 'until' => $until],
             ]]));
+    }
+
+    /**
+     * @param  array<string, int>  $methods
+     */
+    private function methodSplit(array $methods): string
+    {
+        if ($methods === []) {
+            return '';
+        }
+
+        return ': '.implode(', ', array_map(
+            fn (string $method, int $count): string => "{$count} {$method}",
+            array_keys($methods),
+            $methods,
+        ));
     }
 
     private function thumbsDown(OverviewCache $cache): Stat
@@ -141,6 +163,9 @@ final class ProblemsStats extends StatsOverviewWidget
                 $count <= 2 => 'warning',
                 default => 'danger',
             })
-            ->url(ChatMessageFeedbackResource::getUrl('index', ['filters' => ['rating' => ['value' => ChatMessageFeedback::RATING_DOWN]]]));
+            ->url(ChatMessageFeedbackResource::getUrl('index', ['filters' => [
+                'rating' => ['value' => ChatMessageFeedback::RATING_DOWN],
+                'this_week' => ['isActive' => true],
+            ]]));
     }
 }

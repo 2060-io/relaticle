@@ -184,7 +184,7 @@ final class UserResource extends Resource
                 TextColumn::make('onboarding_step')
                     ->label('Last wizard step')
                     ->badge()
-                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->toggleable()
                     ->placeholder("\u{2014}"),
                 TextColumn::make('currentWorkspace.name')
                     ->label('Current Workspace')

@@ -25,6 +25,6 @@ final readonly class StuckAfterSetup implements Scope
             ->whereNotExists(fn (QueryBuilder $activity): QueryBuilder => $activity
                 ->fromSub(ActivityDays::query(), 'activity')
                 ->whereColumn('activity.workspace_id', $model->qualifyColumn('id'))
-                ->whereRaw("activity.day <= ({$createdAt})::date + 3"));
+                ->whereRaw("activity.day < ({$createdAt})::date + 3"));
     }
 }
