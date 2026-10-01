@@ -724,6 +724,14 @@ body:has(.fi-record-page) {
     .fi-in-entry-has-inline-label .fi-in-entry-label {
         @apply truncate font-normal text-gray-500 dark:text-gray-400;
     }
+
+    .fi-in-entry-label-ctn {
+        @apply items-center gap-x-2;
+
+        .fi-sc-icon {
+            @apply size-4 text-gray-500 dark:text-gray-400;
+        }
+    }
 }
 
 .fi-record-details-toggle {

@@ -13,6 +13,8 @@ use App\Filament\Resources\CompanyResource\RelationManagers\NotesRelationManager
 use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\TasksRelationManager;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Schemas\Components\Icon;
+use Filament\Support\Icons\Heroicon;
 use Relaticle\ActivityLog\Filament\RelationManagers\ActivityLogRelationManager;
 use Relaticle\EmailIntegration\Filament\Concerns\ProvidesComposerToAddress;
 
@@ -39,7 +41,8 @@ final class ViewCompany extends ViewRecord
     {
         return [
             RecordChipEntry::make('accountOwner.name')
-                ->label(__('filament/resources/company.pages.view.infolist.fields.account_owner.label')),
+                ->label(__('filament/resources/company.pages.view.infolist.fields.account_owner.label'))
+                ->beforeLabel(Icon::make(Heroicon::OutlinedUserCircle)),
         ];
     }
 

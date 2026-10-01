@@ -6,6 +6,7 @@ namespace App\Filament\Concerns;
 
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Models\Company;
+use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\People;
 use Filament\Actions\Action;
@@ -19,6 +20,7 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Icon;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
@@ -26,6 +28,7 @@ use Filament\Support\Enums\FontWeight;
 use Filament\Support\Enums\Size;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Enums\Width;
+use Filament\Support\Icons\Heroicon;
 use Filament\Support\Livewire\Partials\PartialsComponentHook;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\HtmlString;
@@ -189,8 +192,14 @@ trait HasRecordPageLayout
 
     private function detailsSection(Schema $schema): Section
     {
+        $customFields = CustomFields::infolist()->forSchema($schema);
+
+        $customFieldIcons = $customFields->getFields()
+            ->mapWithKeys(fn (CustomField $field): array => [$field->getFieldName() => $field->typeData->icon]);
+
         $entries = collect($this->nativeDetailEntries())
-            ->concat(CustomFields::infolist()->forSchema($schema)->values())
+            ->concat($customFields->values()->map(fn (Entry $entry): Entry => $entry
+                ->beforeLabel(Icon::make($customFieldIcons->get($entry->getName(), Heroicon::OutlinedSquares2x2)))))
             ->map(fn (Entry $entry): Entry => $entry
                 ->inlineLabel()
                 ->columnSpan(['default' => 'full', 'lg' => 'full'])
@@ -249,15 +258,19 @@ trait HasRecordPageLayout
             ->schema([
                 RecordChipEntry::make('creator.name')
                     ->label(__('filament/record-page.fields.created_by'))
+                    ->beforeLabel(Icon::make(Heroicon::OutlinedUserCircle))
                     ->visible(fn (Company|People|Opportunity $record): bool => $this->hasMemberCreator($record)),
                 TextEntry::make('created_by')
                     ->label(__('filament/record-page.fields.created_by'))
+                    ->beforeLabel(Icon::make(Heroicon::OutlinedUserCircle))
                     ->hidden(fn (Company|People|Opportunity $record): bool => $this->hasMemberCreator($record)),
                 TextEntry::make('created_at')
                     ->label(__('filament/record-page.fields.created_at'))
+                    ->beforeLabel(Icon::make(Heroicon::OutlinedCalendar))
                     ->dateTime(),
                 TextEntry::make('updated_at')
                     ->label(__('filament/record-page.fields.updated_at'))
+                    ->beforeLabel(Icon::make(Heroicon::OutlinedArrowPath))
                     ->dateTime(),
             ])
             ->extraAttributes(['class' => 'fi-record-rail-section']);
