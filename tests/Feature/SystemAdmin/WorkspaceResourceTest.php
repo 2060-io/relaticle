@@ -639,3 +639,26 @@ it('filters workspaces active in at least three of the last four complete weeks'
         ->assertCanSeeTableRecords([$habit])
         ->assertCanNotSeeTableRecords([$twoWeeks, $sampleOnly, $internal]);
 });
+
+it('counts own records whose creator was deleted toward a habit', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-01 12:00:00'));
+    $weekStart = CarbonImmutable::parse('2026-09-28');
+
+    $workspace = OverviewData::workspaceOf(OverviewData::owner(CarbonImmutable::parse('2026-08-20')));
+    foreach ([1, 2, 3] as $weeksAgo) {
+        $at = $weekStart->subWeeks($weeksAgo)->addDay();
+
+        Company::withoutEvents(fn (): Company => Company::factory()->create([
+            'workspace_id' => $workspace->getKey(),
+            'creator_id' => null,
+            'account_owner_id' => null,
+            'creation_source' => CreationSource::WEB,
+            'created_at' => $at,
+            'updated_at' => $at,
+        ]));
+    }
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('formed_habit')
+        ->assertCanSeeTableRecords([$workspace]);
+});

@@ -32,7 +32,6 @@ final readonly class ActivityDays
                 $model::query()
                     ->withoutGlobalScope(WorkspaceScope::class)
                     ->ownData()
-                    ->whereNotNull('creator_id')
                     ->toBase()
                     ->selectRaw("creator_id::text as user_id, workspace_id::text as workspace_id, created_at::date as day, 'record' as kind, creation_source::text as source"),
             );
