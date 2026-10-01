@@ -259,7 +259,7 @@ Pass `filter` as an object keyed by field code. Each value is an operator object
 | Number, currency, date, date and time | `eq`, `gt`, `gte`, `lt`, `lte`, `is_empty` |
 | Checkbox, toggle | `eq`, `is_empty` |
 
-Choice values take the option label or its ID. An unknown or ambiguous label returns an error that lists the valid ones. Tags, email, phone and link values match their exact stored value. `not_in` and `has_none` also match records where the field is empty. `is_empty` takes `true` or `false`. Conditions combine with AND, up to 10 per call and 100 values per list.
+Select, radio, toggle buttons, multi select and checkbox list values take the option label or its ID. An unknown label returns an error listing the valid labels. An ambiguous label asks for the option ID. Tags, email, phone and link values match their exact stored value. `not_in` and `has_none` also match records where the field is empty. `is_empty` takes `true` or `false`. Conditions combine with AND, up to 10 per call and 100 values per list.
 
 ```json
 {"stage": {"not_in": ["Closed Won", "Closed Lost"]}, "amount": {"gte": 10000}}
