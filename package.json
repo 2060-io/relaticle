@@ -38,7 +38,7 @@
         "@tiptap/pm": "^3.31.3",
         "@tiptap/suggestion": "^3.31.3",
         "alpinejs": "^3.17.4",
-        "dompurify": "^3.4.15",
+        "dompurify": "^3.4.16",
         "laravel-echo": "^2.5.0",
         "marked": "^18.0.14",
         "motion": "^13.4.1",
