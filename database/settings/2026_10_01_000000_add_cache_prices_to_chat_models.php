@@ -13,7 +13,7 @@ return new class extends SettingsMigration
         'gemini' => [0.1, 1.0],
     ];
 
-    private const array CHEAPEST_PROVIDERS = ['anthropic', 'openai'];
+    private const array CHEAPEST_PROVIDERS = ['anthropic', 'openai', 'gemini'];
 
     public function up(): void
     {

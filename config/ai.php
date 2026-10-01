@@ -87,6 +87,9 @@ return [
         'gemini' => [
             'driver' => 'gemini',
             'key' => env('GEMINI_API_KEY'),
+            'models' => [
+                'text' => ['cheapest' => 'gemini-3.1-flash-lite'],
+            ],
         ],
 
         'groq' => [

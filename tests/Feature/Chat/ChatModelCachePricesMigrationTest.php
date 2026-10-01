@@ -17,6 +17,7 @@ function storedCatalog(): array
 beforeEach(function (): void {
     config()->set('ai.providers.anthropic.models.text.cheapest', 'claude-haiku-4-5-20251001');
     config()->set('ai.providers.openai.models.text.cheapest', 'gpt-5.6-luna');
+    config()->set('ai.providers.gemini.models.text.cheapest', 'gemini-3.1-flash-lite');
 
     $settings = resolve(ChatSettings::class);
     $settings->models = [
@@ -60,9 +61,9 @@ it('adds a disabled, unpriced entry for each provider\'s cheapest model once', f
     runCachePricesMigration();
     runCachePricesMigration();
 
-    $cheapest = collect(storedCatalog())->whereIn('model', ['claude-haiku-4-5-20251001', 'gpt-5.6-luna']);
+    $cheapest = collect(storedCatalog())->whereIn('model', ['claude-haiku-4-5-20251001', 'gpt-5.6-luna', 'gemini-3.1-flash-lite']);
 
-    expect($cheapest)->toHaveCount(2)
+    expect($cheapest)->toHaveCount(3)
         ->and($cheapest->pluck('enabled')->unique()->all())->toBe([false])
         ->and($cheapest->pluck('input_per_mtok')->unique()->all())->toBe([null]);
 });
