@@ -398,7 +398,15 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         // only ever flips for a resumed one. Cleared by stream_end, stream
         // failure, and the watchdog, exactly as a sent turn is.
         this.isStreaming = true;
-        this.targetBubbleFor(event.invocation_id ?? null);
+        const bubble = this.targetBubbleFor(event.invocation_id ?? null);
+
+        // A sent turn is already anchored on its user row. A turn with no user
+        // row (resume after a decision, the setup greeting) anchors on its own
+        // reply, unless the reader has scrolled away from the bottom.
+        const previous = this.messages[this.messages.indexOf(bubble) - 1];
+        if (previous?.role !== 'user' && bubble.clientKey !== this.anchorKey && this.pinnedToBottom) {
+            this.anchorTo(bubble);
+        }
     },
 
     handleTextDelta(event) {

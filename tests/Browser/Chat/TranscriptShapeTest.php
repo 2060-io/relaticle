@@ -123,6 +123,58 @@ function transcriptShapeInsertSequencedMessages(string $conversationId, User $us
     DB::table('agent_conversation_messages')->insert($rows);
 }
 
+/**
+ * @return array{top: ?int, scrollTop: int, jumpVisible: bool, anchorKey: ?string, replyHeight: int, belowFold: int}
+ */
+function transcriptShapeAnchorPosition(AwaitableWebpage $page): array
+{
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $probe = <<<JS
+        (async () => {
+            {$resolveInterface}
+
+            await new Promise((r) => setTimeout(r, 900));
+
+            const scroller = document.querySelector('[data-chat-context="conversation"] [role="log"]');
+            const row = document.querySelector('[data-client-key="' + data.anchorKey + '"]');
+            const replies = document.querySelectorAll('[data-assistant-bubble]');
+            const reply = replies[replies.length - 1];
+
+            return JSON.stringify({
+                top: row ? Math.round(row.getBoundingClientRect().top - scroller.getBoundingClientRect().top) : null,
+                scrollTop: Math.round(scroller.scrollTop),
+                jumpVisible: ! data.pinnedToBottom,
+                anchorKey: data.anchorKey,
+                replyHeight: reply ? Math.round(reply.getBoundingClientRect().height) : 0,
+                belowFold: Math.round(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight),
+            });
+        })();
+    JS;
+
+    foreach (range(1, 3) as $attempt) {
+        $position = json_decode((string) $page->script($probe), true);
+
+        if (is_array($position)) {
+            return $position;
+        }
+    }
+
+    throw new RuntimeException('The anchor probe never returned a position.');
+}
+
+function transcriptShapeRun(AwaitableWebpage $page, string $body): mixed
+{
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    return $page->script(<<<JS
+        (() => {
+            {$resolveInterface}
+            {$body}
+        })();
+    JS);
+}
+
 function transcriptShapeTopBubbleText(AwaitableWebpage $page): ?string
 {
     return $page->script(<<<'JS'
@@ -800,6 +852,314 @@ it('shows the scroll-to-bottom button whenever the transcript is scrolled up, wi
  * what it holds: the caret lands in the box without a second click, and the
  * frame grows with the text instead of sitting at one fixed width.
  */
+it('keeps every message the same height while a reply streams and after it ends', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'layout stability');
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $result = json_decode((string) $page->script(<<<JS
+        (async () => {
+            {$resolveInterface}
+
+            const measure = () => ({
+                users: [...document.querySelectorAll('[data-user-bubble]')].map((el) => el.getBoundingClientRect().height),
+                assistants: [...document.querySelectorAll('[data-assistant-bubble]')].map((el) => el.getBoundingClientRect().height),
+                actionsVisible: [...document.querySelectorAll('[data-copy-button]')].map((el) => getComputedStyle(el).visibility === 'visible'),
+            });
+
+            const assistant = (content, rendered) => ({ role: 'assistant', content, rendered, prerendered: false, pending_actions: [], display_blocks: [] });
+
+            data.messages = [
+                { role: 'user', content: 'How many companies do I have?', editing: false, editText: '' },
+                assistant('You have four companies.', true),
+                { role: 'user', content: 'Name them.', editing: false, editText: '' },
+                assistant('Airbnb, Apple, Figma and Notion.', false),
+            ];
+            data.isStreaming = true;
+            await Alpine.nextTick();
+            const streaming = measure();
+
+            data.messages[3].rendered = true;
+            data.isStreaming = false;
+            await Alpine.nextTick();
+            const settled = measure();
+
+            return JSON.stringify({ streaming, settled });
+        })();
+    JS), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($result['streaming']['users'])->toBe($result['settled']['users'])
+        ->and($result['streaming']['assistants'])->toBe($result['settled']['assistants'])
+        ->and($result['streaming']['actionsVisible'])->toBe([false, true, false, false])
+        ->and($result['settled']['actionsVisible'])->toBe([true, true, true, true]);
+});
+
+it('anchors a sent message near the top and holds it there while the reply and its late content land', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'send anchor', $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('Show me my companies in a table.');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    $sent = transcriptShapeAnchorPosition($page);
+    $sentMessageKey = transcriptShapeRun($page, <<<'JS'
+        return data.messages.findLast((m) => m.role === 'user').clientKey;
+    JS);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-anchor' });
+        data.handleTextDelta({ invocation_id: 'inv-anchor', delta: 'Here are your four companies.' });
+
+        return true;
+    JS);
+
+    $streaming = transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        const reply = data.lastAssistantBubble();
+        reply.display_blocks = [{
+            block: 'records_table',
+            title: 'Companies',
+            type: 'company',
+            core: 'name',
+            columns: [{ key: 'name', label: 'Name' }],
+            rows: ['Airbnb', 'Apple', 'Figma', 'Notion'].map((name) => ({ id: name, url: '/r/company/' + name, cells: { name } })),
+            total: 4,
+        }];
+        reply.rendered = true;
+        data.isStreaming = false;
+        data.nextSteps = [{ label: 'Import companies from a file', prompt: 'Import companies from a file' }];
+
+        return true;
+    JS);
+
+    $settled = transcriptShapeAnchorPosition($page);
+
+    expect($sent['anchorKey'])->toBe($sentMessageKey)
+        ->and($sent['top'])->toBe(48)
+        ->and([$streaming['top'], $streaming['scrollTop']])->toBe([$sent['top'], $sent['scrollTop']])
+        ->and([$settled['top'], $settled['scrollTop']])->toBe([$sent['top'], $sent['scrollTop']])
+        ->and($settled['replyHeight'])->toBeGreaterThan($streaming['replyHeight'] + 150)
+        ->and($settled['jumpVisible'])->toBeFalse();
+});
+
+it('anchors a message sent from a next-step suggestion', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'next step anchor', $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.nextSteps = [{ label: 'Show my open deals', prompt: 'Show my open deals' }];
+
+        return true;
+    JS);
+
+    transcriptShapeRun($page, <<<'JS'
+        document.querySelector('[data-chat-context="conversation"] [data-next-step]').click();
+
+        return true;
+    JS);
+
+    $sent = transcriptShapeAnchorPosition($page);
+    $sentMessageKey = transcriptShapeRun($page, <<<'JS'
+        return data.messages.findLast((m) => m.role === 'user').clientKey;
+    JS);
+
+    expect($sent['anchorKey'])->toBe($sentMessageKey)
+        ->and($sent['top'])->toBe(48);
+});
+
+it('keeps the anchored message in place when content above it grows during and after the scroll', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'growth above anchor', $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('Show me my companies in a table.');
+        data.sendMessage();
+
+        const previousRow = () => {
+            const rows = document.querySelectorAll('[data-chat-context="conversation"] [data-client-key]');
+
+            return rows[rows.length - 3];
+        };
+        setTimeout(() => { previousRow().style.paddingBottom = '40px'; }, 150);
+
+        return true;
+    JS);
+
+    $duringScroll = transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        const rows = document.querySelectorAll('[data-chat-context="conversation"] [data-client-key]');
+        rows[rows.length - 3].style.paddingBottom = '90px';
+
+        return true;
+    JS);
+
+    $afterScroll = transcriptShapeAnchorPosition($page);
+
+    expect($duringScroll['top'])->toBe(48)
+        ->and($afterScroll['top'])->toBe(48);
+});
+
+it('lets a reply taller than the viewport run below the fold instead of dragging the transcript after it', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'long reply', $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('Summarise every deal in detail.');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    $before = transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-long' });
+        data.handleTextDelta({
+            invocation_id: 'inv-long',
+            delta: Array.from({ length: 60 }, (_, i) => 'Deal ' + (i + 1) + ' moved forward this week.').join(String.fromCharCode(10, 10)),
+        });
+
+        return true;
+    JS);
+
+    $after = transcriptShapeAnchorPosition($page);
+
+    expect([$after['top'], $after['scrollTop']])->toBe([$before['top'], $before['scrollTop']])
+        ->and($after['belowFold'])->toBeGreaterThan(200)
+        ->and($after['jumpVisible'])->toBeTrue();
+});
+
+it('follows the rest of a long reply once the reader jumps to the latest message', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'jump while anchored', $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('Summarise every deal in detail.');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-follow' });
+        data.handleTextDelta({
+            invocation_id: 'inv-follow',
+            delta: Array.from({ length: 60 }, (_, i) => 'Deal ' + (i + 1) + ' moved forward this week.').join(String.fromCharCode(10, 10)),
+        });
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        Array.from(document.querySelectorAll('[data-chat-context="conversation"] [role="log"] button'))
+            .find((el) => el.getAttribute('title') === 'Scroll to latest messages')
+            .click();
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleTextDelta({
+            invocation_id: 'inv-follow',
+            delta: String.fromCharCode(10, 10) + Array.from({ length: 20 }, (_, i) => 'Note ' + (i + 1) + ' on the pipeline.').join(String.fromCharCode(10, 10)),
+        });
+
+        return true;
+    JS);
+
+    $followed = transcriptShapeAnchorPosition($page);
+
+    expect($followed['belowFold'])->toBeLessThan(2)
+        ->and($followed['jumpVisible'])->toBeFalse();
+});
+
+it('anchors a turn this tab did not send on its own reply', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'resumed turn', $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+
+    transcriptShapeRun($page, <<<'JS'
+        data.messages.push(data.ensureClientKey({ role: 'assistant', content: 'Review the proposal below.', rendered: true, prerendered: false, pending_actions: [], display_blocks: [] }));
+        data.scrollToBottom(true);
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-resume' });
+
+        return true;
+    JS);
+
+    $resumed = transcriptShapeAnchorPosition($page);
+    $resumedReplyKey = transcriptShapeRun($page, <<<'JS'
+        return data.lastAssistantBubble().clientKey;
+    JS);
+
+    expect($resumed['anchorKey'])->toBe($resumedReplyKey)
+        ->and($resumed['top'])->toBe(48);
+});
+
 it('focuses the message editor on open and grows its width with the text', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
