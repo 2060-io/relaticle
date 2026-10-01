@@ -303,6 +303,8 @@ it('prices a cancelled turn on the model it streamed and still charges one credi
 
     expect($settlement->model)->toBe('claude-opus-5')
         ->and($settlement->credits_charged)->toBe(1)
+        ->and($settlement->input_tokens)->toBe(40)
+        ->and($settlement->output_tokens)->toBe(12)
         ->and($settlement->cache_read_tokens)->toBe(1000)
         ->and($settlement->cache_write_tokens)->toBe(200)
         ->and($settlement->cost_micros)->toBe(2250)
