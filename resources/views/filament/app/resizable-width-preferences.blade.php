@@ -5,11 +5,30 @@
         'chat-panel-width': { property: '--chat-panel-width', min: 360, max: 720 },
     }
 
-    const loadResizableWidths = () => {
-        Object.entries(window.resizableWidths).forEach(([storageKey, { property, min, max }]) => {
-            const width = Number(localStorage.getItem(storageKey))
+    // Storage throws in Safari private mode and with site data blocked.
+    window.resizableWidthStore = {
+        read(storageKey) {
+            const { min, max } = window.resizableWidths[storageKey]
+            let width = null
 
-            if (width >= min && width <= max) {
+            try {
+                width = Number(localStorage.getItem(storageKey))
+            } catch {}
+
+            return width >= min && width <= max ? width : null
+        },
+        write(storageKey, width) {
+            try {
+                width === null ? localStorage.removeItem(storageKey) : localStorage.setItem(storageKey, width)
+            } catch {}
+        },
+    }
+
+    const loadResizableWidths = () => {
+        Object.entries(window.resizableWidths).forEach(([storageKey, { property }]) => {
+            const width = window.resizableWidthStore.read(storageKey)
+
+            if (width !== null) {
                 document.documentElement.style.setProperty(property, `${width}px`)
             }
         })
