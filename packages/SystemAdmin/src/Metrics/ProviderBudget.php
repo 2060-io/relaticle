@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\SystemAdmin\Metrics;
 
 use Carbon\CarbonImmutable;
+use Laravel\Ai\Enums\Lab;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Models\AiProviderCost;
 use Relaticle\Chat\Support\CatalogEntry;
@@ -14,6 +15,16 @@ final readonly class ProviderBudget
     private const array PROVIDERS = ['anthropic', 'openai', 'gemini'];
 
     private const array COST_API_PROVIDERS = ['anthropic', 'openai'];
+
+    /**
+     * laravel/ai already spells every provider it supports, on the enum case name:
+     * `OpenAI`, `DeepSeek`, `xAI`. `headline()` renders those as `Openai`, `Deepseek`,
+     * `Xai`, so ask the enum first and fall back for a provider it does not know.
+     */
+    public static function label(string $provider): string
+    {
+        return Lab::tryFrom($provider)?->name ?? str($provider)->headline()->toString();
+    }
 
     public static function unbilledNote(string $provider): string
     {

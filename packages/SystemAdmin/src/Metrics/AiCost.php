@@ -24,9 +24,14 @@ final readonly class AiCost
 
     public static function unpricedCount(?CarbonImmutable $monthStart = null): int
     {
+        $monthStart ??= now()->startOfMonth();
+        $firstPriced = AiCreditTransaction::query()->whereNotNull('cost_micros')->min('created_at');
+        $since = $firstPriced === null ? $monthStart : $monthStart->max(CarbonImmutable::parse((string) $firstPriced));
+
         return AiCreditTransaction::query()
-            ->where('created_at', '>=', $monthStart ?? now()->startOfMonth())
+            ->where('created_at', '>=', $since)
             ->whereIn('type', [AiCreditType::Chat, AiCreditType::Internal])
+            ->where('model', '!=', 'incomplete')
             ->whereNull('cost_micros')
             ->count();
     }

@@ -27,7 +27,6 @@ use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
-use Laravel\Ai\Enums\Lab;
 use Relaticle\Chat\Enums\WriteGuard;
 use Relaticle\Chat\Services\ModelProbe;
 use Relaticle\Chat\Services\ProviderModelCatalog;
@@ -580,16 +579,6 @@ final class ManageAiSettings extends Page
     }
 
     /**
-     * laravel/ai already spells every provider it supports, on the enum case name:
-     * `OpenAI`, `DeepSeek`, `xAI`. `headline()` renders those as `Openai`, `Deepseek`,
-     * `Xai`, so ask the enum first and fall back for a provider it does not know.
-     */
-    private function providerLabel(string $provider): string
-    {
-        return Lab::tryFrom($provider)?->name ?? str($provider)->headline()->toString();
-    }
-
-    /**
      * The providers this install can actually reach, plus whatever a stored row
      * already names.
      *
@@ -609,11 +598,11 @@ final class ManageAiSettings extends Page
         $options = collect($providers)
             ->filter(fn (array $connection): bool => filled($connection['key'] ?? null))
             ->keys()
-            ->mapWithKeys(fn (string $provider): array => [$provider => $this->providerLabel($provider)])
+            ->mapWithKeys(fn (string $provider): array => [$provider => ProviderBudget::label($provider)])
             ->all();
 
         if (is_string($current) && $current !== '' && ! array_key_exists($current, $options)) {
-            $options[$current] = $this->providerLabel($current).' (no API key)';
+            $options[$current] = ProviderBudget::label($current).' (no API key)';
         }
 
         return $options;

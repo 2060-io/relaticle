@@ -16,7 +16,7 @@
             <tbody>
                 @foreach ($this->providerMonth() as $row)
                     <tr class="border-t border-gray-100 dark:border-white/5">
-                        <td class="py-2 font-medium">{{ $this->providerLabel($row['provider']) }}</td>
+                        <td class="py-2 font-medium">{{ \Relaticle\SystemAdmin\Metrics\ProviderBudget::label($row['provider']) }}</td>
                         <td class="py-2">{{ \Relaticle\SystemAdmin\Metrics\Money::format($row['budget_micros']) }}</td>
                         <td class="py-2">{{ $row['billed_micros'] === null ? \Relaticle\SystemAdmin\Metrics\ProviderBudget::unbilledNote($row['provider']) : \Relaticle\SystemAdmin\Metrics\Money::format($row['billed_micros']) }}</td>
                         <td class="py-2">{{ \Relaticle\SystemAdmin\Metrics\Money::format($row['estimate_micros']) }}</td>
