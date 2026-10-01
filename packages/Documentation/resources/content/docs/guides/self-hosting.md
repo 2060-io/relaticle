@@ -2,7 +2,7 @@
 title: Self-Hosting Guide
 description: Get Docker Compose, Coolify, Dokploy and Laravel Cloud deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.
 order: 1
-updated: "2026-09-30"
+updated: "2026-10-01"
 ---
 
 Deploy Relaticle on your own infrastructure with Docker or manually.
@@ -382,12 +382,16 @@ Create an application from your fork of the Relaticle repository. Attach these r
 | Resource | Setting |
 |----------|---------|
 | Database | Laravel Serverless Postgres |
-| Cache | Laravel Valkey |
+| Cache | Laravel Valkey, with the eviction policy set to **No eviction** |
 | WebSockets | Laravel Reverb |
 | Bucket | A **public** bucket with the disk name `public` |
 | Bucket | A **private** bucket with the disk name `s3` |
 
 Cloud points the disks named `public` and `s3` at the buckets, so the names must match exactly. Leave "default disk" unchecked on both buckets: the default disk stays `local`, which holds build artifacts only.
+
+Set each bucket's allowed origins to your application's URL, such as `https://your-app.laravel.cloud`. Browsers upload files straight to the private bucket, and they need that origin to pass the bucket's CORS check.
+
+Queued jobs and Horizon live in Valkey next to the cache. An evicting policy can silently drop a queued job when memory fills, so keep No eviction.
 
 ### 2. Set Environment Variables
 
@@ -437,7 +441,7 @@ Cloud restarts Horizon on every deployment, so no `horizon:terminate` step is ne
 
 ### 4. Queue Workers and Scheduler
 
-Turn on the Scheduler toggle on the App cluster. Add a worker cluster, keep it awake instead of letting it sleep with the App cluster, and give it one custom background process:
+Turn on the Scheduler toggle on the App cluster. Worker clusters need the Growth plan or higher. Add a worker cluster, keep it awake instead of letting it sleep with the App cluster, and give it one custom background process:
 
 ```bash
 php artisan horizon
