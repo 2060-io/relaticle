@@ -1098,8 +1098,8 @@ it('follows the rest of a long reply once the reader jumps to the latest message
         ->and($followed['jumpVisible'])->toBeFalse();
 });
 
-it('keeps the transcript still while a regenerated reply replaces the anchored turn', function (): void {
-    $page = transcriptShapeOpenTwentyMessageConversation('regenerate anchor');
+it('keeps the transcript still while a resent turn replaces the anchored one', function (string $prepare, string $resend): void {
+    $page = transcriptShapeOpenTwentyMessageConversation('resent anchor');
 
     transcriptShapeRun($page, <<<'JS'
         window.fetch = () => new Promise(() => {});
@@ -1120,38 +1120,58 @@ it('keeps the transcript still while a regenerated reply replaces the anchored t
         return true;
     JS);
 
+    transcriptShapeRun($page, "{$prepare} return true;");
+
     $settled = transcriptShapeAnchorPosition($page);
 
-    transcriptShapeRun($page, <<<'JS'
+    transcriptShapeRun($page, <<<JS
         window.fetch = (url) => String(url).includes('/supersede')
-            ? Promise.resolve(new Response('{}', { status: 200 }))
+            ? new Promise((resolve) => setTimeout(() => resolve(new Response('{}', { status: 200 })), 300))
             : new Promise(() => {});
 
         const scroller = document.querySelector('[data-chat-context="conversation"] [role="log"]');
-        window.paintedScrollTops = [];
-        const sample = () => {
-            window.paintedScrollTops.push(Math.round(scroller.scrollTop));
-            if (window.paintedScrollTops.length < 60) requestAnimationFrame(() => setTimeout(sample, 0));
-        };
-        sample();
+        window.paintedScrollTops = [Math.round(scroller.scrollTop)];
+        const painted = new ResizeObserver(() => window.paintedScrollTops.push(Math.round(scroller.scrollTop)));
+        [scroller, scroller.querySelector('[x-ref="messageColumn"]')].forEach((el) => painted.observe(el));
 
-        data.regenerateMessage(data.messages.length - 1);
+        {$resend}
 
         return true;
     JS);
 
-    $regenerated = transcriptShapeAnchorPosition($page);
+    $resent = transcriptShapeAnchorPosition($page);
     $paintedScrollTops = json_decode((string) transcriptShapeRun($page, <<<'JS'
         return JSON.stringify(window.paintedScrollTops);
     JS), true, 512, JSON_THROW_ON_ERROR);
-    $regeneratedMessageKey = transcriptShapeRun($page, <<<'JS'
+    $resentMessageKey = transcriptShapeRun($page, <<<'JS'
         return data.messages.findLast((m) => m.role === 'user').clientKey;
     JS);
 
     expect(array_values(array_unique($paintedScrollTops)))->toBe([$settled['scrollTop']])
-        ->and($regenerated['anchorKey'])->toBe($regeneratedMessageKey)
-        ->and($regenerated['top'])->toBe(48);
-});
+        ->and($resent['anchorKey'])->toBe($resentMessageKey)
+        ->and($resent['top'])->toBe(48);
+})->with([
+    'regenerate' => ['', 'data.regenerateMessage(data.messages.length - 1);'],
+    'regenerate with the clamp scroll event first' => [
+        <<<'JS'
+            const log = document.querySelector('[data-chat-context="conversation"] [role="log"]');
+            new MutationObserver((records) => {
+                if (records.some((record) => record.removedNodes.length > 0)) {
+                    log.dispatchEvent(new Event('scroll'));
+                }
+            }).observe(log, { childList: true, subtree: true });
+        JS,
+        'data.regenerateMessage(data.messages.length - 1);',
+    ],
+    'edit' => [
+        'data.startEdit(data.messages.findLast((m) => m.role === "user"));',
+        <<<'JS'
+            const sent = data.messages.findLast((m) => m.role === 'user');
+            sent.editText = 'Show me my companies in a list.';
+            data.saveEdit(sent, data.messages.indexOf(sent));
+        JS,
+    ],
+]);
 
 it('anchors a turn this tab did not send on its own reply', function (): void {
     $page = transcriptShapeOpenTwentyMessageConversation('resumed turn');

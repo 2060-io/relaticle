@@ -1663,7 +1663,11 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         if (!el) return;
         this.pinnedToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
-        if (this._anchorRestTop !== null && Math.abs(el.scrollTop - this._anchorRestTop) > 1) {
+        // Content shrinking under the reader clamps scrollTop to the new bottom; that is
+        // layout moving, not the reader scrolling away from the anchor.
+        const bottom = el.scrollHeight - el.clientHeight;
+        const clampedByLayout = el.scrollTop < this._anchorRestTop && el.scrollTop >= bottom - 1;
+        if (this._anchorRestTop !== null && Math.abs(el.scrollTop - this._anchorRestTop) > 1 && !clampedByLayout) {
             this._anchorRestTop = null;
         }
     },
