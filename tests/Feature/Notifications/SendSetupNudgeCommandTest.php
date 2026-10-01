@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\ActivationStep;
 use App\Enums\CreationSource;
+use App\Enums\SetupExitReason;
 use App\Filament\Pages\ChatConversation;
 use App\Filament\Pages\Dashboard;
 use App\Mail\SetupNudgeMail;
@@ -164,4 +165,18 @@ it('points the nudge at the dashboard, never at an id-less chat URL', function (
         return $mail->conversationUrl === Dashboard::getUrl(['tenant' => $workspace], panel: 'app')
             && $mail->conversationUrl !== ChatConversation::getUrl(['tenant' => $workspace], panel: 'app');
     });
+});
+
+it('offers one-click reasons for stepping away', function (): void {
+    $owner = User::factory()->withPersonalWorkspace()->create(['name' => 'Dana Reed']);
+    $workspace = $owner->currentWorkspace;
+
+    $mail = new SetupNudgeMail($owner, $workspace, ActivationStep::FirstRecord->value, 'https://example.test/chat');
+
+    foreach (SetupExitReason::cases() as $reason) {
+        $mail->assertSeeInHtml($reason->getLabel());
+    }
+
+    $mail->assertSeeInHtml('/onboarding/feedback/'.$workspace->getKey().'/'.SetupExitReason::TooHard->value);
+    $mail->assertSeeInHtml('signature=');
 });

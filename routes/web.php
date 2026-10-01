@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\Notifications\NotificationType;
+use App\Enums\SetupExitReason;
 use App\Features\Documentation;
 use App\Features\SocialAuth;
 use App\Http\Controllers\AcceptWorkspaceInvitationController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\Impersonation\StopImpersonationController;
 use App\Http\Controllers\JoinWorkspaceViaLinkController;
 use App\Http\Controllers\Mail\UnsubscribeController;
 use App\Http\Controllers\Media\ShowMediaController;
+use App\Http\Controllers\Onboarding\SetupFeedbackController;
 use App\Http\Controllers\PrivacyPolicyController;
 use App\Http\Controllers\SwitchInvitationAccountController;
 use App\Http\Controllers\TermsOfServiceController;
@@ -150,6 +152,18 @@ Route::middleware(['signed', 'throttle:30,1,mail-unsubscribe', 'no-referrer'])->
     Route::post('/mail/unsubscribe/{user}/{type}', [UnsubscribeController::class, 'store'])
         ->whereIn('type', [NotificationType::TaskDigest->value])
         ->name('mail.unsubscribe.store');
+});
+
+Route::middleware(['signed', 'throttle:30,1,setup-feedback', 'no-referrer'])->group(function (): void {
+    $reasons = array_column(SetupExitReason::cases(), 'value');
+
+    Route::get('/onboarding/feedback/{workspace}/{reason}', [SetupFeedbackController::class, 'show'])
+        ->whereIn('reason', $reasons)
+        ->name('onboarding.feedback');
+
+    Route::post('/onboarding/feedback/{workspace}/{reason}', [SetupFeedbackController::class, 'store'])
+        ->whereIn('reason', $reasons)
+        ->name('onboarding.feedback.store');
 });
 
 Route::get('/media/{media:uuid}', ShowMediaController::class)
