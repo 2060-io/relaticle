@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\Plan;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Relaticle\Chat\Jobs\ProcessChatMessage;
@@ -257,5 +258,96 @@ it('stores no cost when the model has no cache price but the turn read the cache
         ->sole();
 
     expect($settlement->cache_read_tokens)->toBe(1000)
+        ->and($settlement->cost_micros)->toBeNull();
+});
+
+it('prices a cancelled turn on the model it streamed and still charges one credit', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())
+        ->update(['credits_remaining' => 100, 'credits_used' => 0]);
+
+    DB::table('agent_conversations')->insert([
+        'id' => 'c-6',
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $workspace->getKey(),
+        'title' => 'Test conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $turnId = '01TURNCANCELLEDAAAAAAAAAAA';
+    resolve(CreditService::class)->reserveCredit(
+        $workspace,
+        reservationKey: "reserve-{$turnId}",
+        conversationId: 'c-6',
+        userId: (string) $user->getKey(),
+    );
+
+    AnthropicSse::fake(AnthropicSse::reply('Three deals.', 'claude-opus-5-20260301'));
+    Queue::fake();
+    Cache::put('chat:cancel:c-6', true);
+
+    (new ProcessChatMessage(
+        user: $user, workspace: $workspace, message: 'How is my pipeline?', conversationId: 'c-6',
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-opus-5', 'id' => 'claude-opus-5', 'source' => 'explicit'],
+        turnId: $turnId,
+    ))->handle(resolve(CreditService::class));
+
+    $settlement = AiCreditTransaction::query()
+        ->where('workspace_id', $workspace->getKey())
+        ->where('idempotency_key', "resolve-{$turnId}")
+        ->sole();
+
+    expect($settlement->model)->toBe('claude-opus-5')
+        ->and($settlement->credits_charged)->toBe(1)
+        ->and($settlement->cache_read_tokens)->toBe(1000)
+        ->and($settlement->cache_write_tokens)->toBe(200)
+        ->and($settlement->cost_micros)->toBe(2250)
+        ->and($settlement->metadata['reason'])->toBe('cancelled');
+});
+
+it('keeps a turn that died from a provider error unpriced', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())
+        ->update(['credits_remaining' => 100, 'credits_used' => 0]);
+
+    DB::table('agent_conversations')->insert([
+        'id' => 'c-7',
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $workspace->getKey(),
+        'title' => 'Test conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $turnId = '01TURNERRORAAAAAAAAAAAAAAA';
+    resolve(CreditService::class)->reserveCredit(
+        $workspace,
+        reservationKey: "reserve-{$turnId}",
+        conversationId: 'c-7',
+        userId: (string) $user->getKey(),
+    );
+
+    AnthropicSse::fake(AnthropicSse::streamedThenError('Partial answer'));
+    Queue::fake();
+
+    expect(fn () => (new ProcessChatMessage(
+        user: $user, workspace: $workspace, message: 'How is my pipeline?', conversationId: 'c-7',
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-opus-5', 'id' => 'claude-opus-5', 'source' => 'explicit'],
+        turnId: $turnId,
+    ))->handle(resolve(CreditService::class)))->toThrow(RuntimeException::class);
+
+    $settlement = AiCreditTransaction::query()
+        ->where('workspace_id', $workspace->getKey())
+        ->where('idempotency_key', "resolve-{$turnId}")
+        ->sole();
+
+    expect($settlement->model)->toBe('incomplete')
         ->and($settlement->cost_micros)->toBeNull();
 });

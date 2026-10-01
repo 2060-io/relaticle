@@ -323,20 +323,48 @@ final readonly class CreditService
         string $resolutionKey,
         string $reason,
         int $reservedCredits = 1,
+        ?string $model = null,
+        ?TextUsage $usage = null,
     ): void {
+        if ($model === null || ! $usage instanceof TextUsage) {
+            $this->recordResolution(
+                workspace: $workspace,
+                resolutionKey: $resolutionKey,
+                type: AiCreditType::Chat,
+                model: 'incomplete',
+                inputTokens: 0,
+                outputTokens: 0,
+                creditsCharged: $reservedCredits,
+                remainingDelta: 0,
+                usedDelta: 0,
+                userId: (string) $user->getKey(),
+                conversationId: $conversationId,
+                metadata: ['reason' => $reason],
+            );
+
+            return;
+        }
+
+        $uncachedInput = $usage->uncachedInputTokens();
+        $cacheRead = $usage->cacheReadInputTokens ?? 0;
+        $cacheWrite = $usage->cacheWriteInputTokens ?? 0;
+
         $this->recordResolution(
             workspace: $workspace,
             resolutionKey: $resolutionKey,
             type: AiCreditType::Chat,
-            model: 'incomplete',
-            inputTokens: 0,
-            outputTokens: 0,
+            model: $model,
+            inputTokens: $uncachedInput,
+            outputTokens: $usage->outputTokens,
             creditsCharged: $reservedCredits,
             remainingDelta: 0,
             usedDelta: 0,
             userId: (string) $user->getKey(),
             conversationId: $conversationId,
             metadata: ['reason' => $reason],
+            cacheReadTokens: $cacheRead,
+            cacheWriteTokens: $cacheWrite,
+            costMicros: $this->tokenCost->micros($model, $uncachedInput, $cacheRead, $cacheWrite, $usage->outputTokens),
         );
     }
 

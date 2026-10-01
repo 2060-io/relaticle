@@ -312,6 +312,8 @@ final class ProcessChatMessage implements ShouldQueue
                     conversationId: $this->conversationId,
                     resolutionKey: $this->resolutionKey(),
                     reason: 'cancelled',
+                    model: $this->resolved['model'] ?? null,
+                    usage: $response->usage,
                 );
                 ChatTelemetry::breadcrumb('stream.cancelled', []);
                 $this->broadcastSafely(new ChatStreamFailed(
