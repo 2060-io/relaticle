@@ -163,6 +163,18 @@ function transcriptShapeAnchorPosition(AwaitableWebpage $page): array
     throw new RuntimeException('The anchor probe never returned a position.');
 }
 
+function transcriptShapeOpenTwentyMessageConversation(string $title): AwaitableWebpage
+{
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), $title, $conversationId);
+    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
+
+    return ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('Seeded message 0020');
+}
+
 function transcriptShapeRun(AwaitableWebpage $page, string $body): mixed
 {
     $resolveInterface = ChatBrowser::resolveInterface();
@@ -896,14 +908,7 @@ it('keeps every message the same height while a reply streams and after it ends'
 });
 
 it('anchors a sent message near the top and holds it there while the reply and its late content land', function (): void {
-    $user = User::factory()->withWorkspace()->create();
-    $workspace = $user->ownedWorkspaces()->first();
-    $conversationId = (string) Str::uuid7();
-    ChatBrowser::seedConversation($user, $workspace->getKey(), 'send anchor', $conversationId);
-    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
-
-    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
-        ->assertSourceHas('Seeded message 0020');
+    $page = transcriptShapeOpenTwentyMessageConversation('send anchor');
 
     transcriptShapeRun($page, <<<'JS'
         window.fetch = () => new Promise(() => {});
@@ -956,14 +961,7 @@ it('anchors a sent message near the top and holds it there while the reply and i
 });
 
 it('anchors a message sent from a next-step suggestion', function (): void {
-    $user = User::factory()->withWorkspace()->create();
-    $workspace = $user->ownedWorkspaces()->first();
-    $conversationId = (string) Str::uuid7();
-    ChatBrowser::seedConversation($user, $workspace->getKey(), 'next step anchor', $conversationId);
-    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
-
-    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
-        ->assertSourceHas('Seeded message 0020');
+    $page = transcriptShapeOpenTwentyMessageConversation('next step anchor');
 
     transcriptShapeRun($page, <<<'JS'
         window.fetch = () => new Promise(() => {});
@@ -988,14 +986,7 @@ it('anchors a message sent from a next-step suggestion', function (): void {
 });
 
 it('keeps the anchored message in place when content above it grows during and after the scroll', function (): void {
-    $user = User::factory()->withWorkspace()->create();
-    $workspace = $user->ownedWorkspaces()->first();
-    $conversationId = (string) Str::uuid7();
-    ChatBrowser::seedConversation($user, $workspace->getKey(), 'growth above anchor', $conversationId);
-    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
-
-    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
-        ->assertSourceHas('Seeded message 0020');
+    $page = transcriptShapeOpenTwentyMessageConversation('growth above anchor');
 
     transcriptShapeRun($page, <<<'JS'
         window.fetch = () => new Promise(() => {});
@@ -1028,14 +1019,7 @@ it('keeps the anchored message in place when content above it grows during and a
 });
 
 it('lets a reply taller than the viewport run below the fold instead of dragging the transcript after it', function (): void {
-    $user = User::factory()->withWorkspace()->create();
-    $workspace = $user->ownedWorkspaces()->first();
-    $conversationId = (string) Str::uuid7();
-    ChatBrowser::seedConversation($user, $workspace->getKey(), 'long reply', $conversationId);
-    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
-
-    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
-        ->assertSourceHas('Seeded message 0020');
+    $page = transcriptShapeOpenTwentyMessageConversation('long reply');
 
     transcriptShapeRun($page, <<<'JS'
         window.fetch = () => new Promise(() => {});
@@ -1065,14 +1049,7 @@ it('lets a reply taller than the viewport run below the fold instead of dragging
 });
 
 it('follows the rest of a long reply once the reader jumps to the latest message', function (): void {
-    $user = User::factory()->withWorkspace()->create();
-    $workspace = $user->ownedWorkspaces()->first();
-    $conversationId = (string) Str::uuid7();
-    ChatBrowser::seedConversation($user, $workspace->getKey(), 'jump while anchored', $conversationId);
-    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
-
-    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
-        ->assertSourceHas('Seeded message 0020');
+    $page = transcriptShapeOpenTwentyMessageConversation('jump while anchored');
 
     transcriptShapeRun($page, <<<'JS'
         window.fetch = () => new Promise(() => {});
@@ -1122,14 +1099,7 @@ it('follows the rest of a long reply once the reader jumps to the latest message
 });
 
 it('anchors a turn this tab did not send on its own reply', function (): void {
-    $user = User::factory()->withWorkspace()->create();
-    $workspace = $user->ownedWorkspaces()->first();
-    $conversationId = (string) Str::uuid7();
-    ChatBrowser::seedConversation($user, $workspace->getKey(), 'resumed turn', $conversationId);
-    transcriptShapeInsertSequencedMessages($conversationId, $user, 20, Date::parse('2026-08-19 08:00:00', 'UTC'));
-
-    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
-        ->assertSourceHas('Seeded message 0020');
+    $page = transcriptShapeOpenTwentyMessageConversation('resumed turn');
 
     transcriptShapeRun($page, <<<'JS'
         data.messages.push(data.ensureClientKey({ role: 'assistant', content: 'Review the proposal below.', rendered: true, prerendered: false, pending_actions: [], display_blocks: [] }));

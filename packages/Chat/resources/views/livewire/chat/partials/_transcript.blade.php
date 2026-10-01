@@ -287,7 +287,7 @@
                             <template x-if="!msg.editing">
                                 <div
                                     class="flex items-center gap-1 px-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100"
-                                    :class="isStreaming ? 'invisible' : ''"
+                                    :class="{ 'invisible': isStreaming }"
                                 >
                                     <button
                                         type="button"
@@ -404,7 +404,7 @@
                         <template x-if="msg.content">
                             <div
                                 class="mt-1 flex items-center gap-1 px-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100"
-                                :class="msg.rendered ? '' : 'invisible'"
+                                :class="{ 'invisible': !msg.rendered }"
                             >
                                 <button
                                     type="button"
