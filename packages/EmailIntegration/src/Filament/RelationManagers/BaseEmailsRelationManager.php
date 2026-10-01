@@ -42,6 +42,8 @@ abstract class BaseEmailsRelationManager extends RelationManager
 
     protected static string|\BackedEnum|null $icon = 'heroicon-o-envelope';
 
+    protected static ?string $badgeColor = 'gray';
+
     protected string $view = 'email-integration::filament.relation-managers.emails-relation-manager';
 
     public ?string $selectedEmailId = null;
@@ -61,11 +63,6 @@ abstract class BaseEmailsRelationManager extends RelationManager
         }
 
         return resolve(EmailVisibilityService::class)->visibleEmailCountBadge($ownerRecord, $user);
-    }
-
-    public static function getBadgeColor(Model $ownerRecord, string $pageClass): string
-    {
-        return 'gray';
     }
 
     protected function getCrmRecord(): Model

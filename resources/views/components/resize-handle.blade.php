@@ -8,7 +8,7 @@
 <div
     x-data="{
         storageKey: @js($storageKey),
-        width: null,
+        width: window.resizableWidthStore.read(@js($storageKey)),
         isResizing: false,
         get growsTowardLeft() {
             return (@js($side) === 'start') !== (document.dir === 'rtl')
@@ -75,7 +75,6 @@
             this.save()
         },
     }"
-    x-init="width = window.resizableWidthStore.read(storageKey)"
     x-on:pointerdown="start($event)"
     x-on:dblclick="reset()"
     x-on:keydown.arrow-left.prevent="nudge(-16)"

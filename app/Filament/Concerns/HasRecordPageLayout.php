@@ -29,7 +29,6 @@ use Filament\Support\Enums\Size;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
-use Filament\Support\Livewire\Partials\PartialsComponentHook;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Js;
@@ -124,7 +123,7 @@ trait HasRecordPageLayout
     #[On('related-records-changed')]
     public function refreshRelatedRecordCounts(): void
     {
-        resolve(PartialsComponentHook::class)->forceRender($this);
+        $this->forceRender();
     }
 
     private function recordActions(): Actions
@@ -137,7 +136,7 @@ trait HasRecordPageLayout
                 ->after(function (): void {
                     $this->getRecord()->refresh()->load('customFieldValues.customField.options');
 
-                    resolve(PartialsComponentHook::class)->forceRender($this);
+                    $this->forceRender();
                 }),
             ActionGroup::make([
                 ActionGroup::make([
