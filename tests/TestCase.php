@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
+use Knuckles\Scribe\ScribeServiceProvider;
 use Laravel\Pennant\Feature;
 use Spatie\Activitylog\Actions\LogActivityAction;
 
@@ -36,6 +37,10 @@ abstract class TestCase extends BaseTestCase
     public function createApplication(): Application
     {
         LogActivityAction::clearBeforeLoggingCallbacks();
+
+        // Scribe marks its translation layer loaded in a static, so a second `scribe:generate`
+        // in one process renders against a fresh translator that never received it.
+        ScribeServiceProvider::$customTranslationLayerLoaded = false;
 
         return parent::createApplication();
     }
