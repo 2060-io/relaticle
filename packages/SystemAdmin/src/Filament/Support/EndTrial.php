@@ -23,7 +23,7 @@ final class EndTrial
             ->authorize('endTrial')
             ->requiresConfirmation()
             ->modalHeading('End this trial now?')
-            ->modalDescription('Pro access stops now, and the workspace shows the plan choice unless it keeps legacy free access. Tonight the plan moves to Free and the owner gets the standard trial-ended email.')
+            ->modalDescription('Unless the workspace keeps legacy free access, it pauses now and shows the plan choice. Tonight the plan moves to Free and the owner gets the standard trial-ended email.')
             ->modalSubmitActionLabel('End trial')
             ->action(function (Workspace $record): void {
                 resolve(EndWorkspaceTrial::class)->execute(self::administrator(), $record);
@@ -41,7 +41,7 @@ final class EndTrial
             ->visible(fn (): bool => self::administrator()->role->canManageCustomerAccess())
             ->authorizeIndividualRecords('endTrial')
             ->requiresConfirmation()
-            ->modalDescription('Pro access stops now for each selected workspace that is still trialing. The others are skipped.')
+            ->modalDescription('Each selected workspace that is still trialing pauses now, unless it keeps legacy free access. The others are skipped.')
             ->deselectRecordsAfterCompletion()
             ->successNotificationTitle('Trials ended')
             ->failureNotificationTitle(fn (int $successCount, int $totalCount): string => $successCount === 0
