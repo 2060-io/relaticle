@@ -48,19 +48,22 @@ final readonly class Revenue
 
         try {
             $micros = $this->fetchMonthlyAmountMicros($subscription);
-        } catch (InvalidRequestException $exception) {
-            report($exception);
-
-            $micros = 0;
         } catch (Throwable $exception) {
             report($exception);
 
-            $micros = null;
+            $micros = $this->isUnknownToStripe($exception) ? 0 : null;
         }
 
         Cache::put($key, ['micros' => $micros], $micros === null ? now()->addMinutes(10) : now()->addDay());
 
         return $micros;
+    }
+
+    private function isUnknownToStripe(Throwable $exception): bool
+    {
+        return $exception instanceof InvalidRequestException
+            && $exception->getHttpStatus() === 404
+            && $exception->getStripeCode() === 'resource_missing';
     }
 
     private function fetchMonthlyAmountMicros(Subscription $subscription): ?int

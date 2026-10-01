@@ -28,20 +28,22 @@ afterEach(function (): void {
 
 /**
  * @param  array<string, array{cents: int|null, interval: string, expanded?: bool}|null>  $bySubscription
+ * @param  list<string>  $rateLimited
  * @return ArrayObject<int, string>
  */
-function fakeStripeSubscriptions(array $bySubscription, bool $fails = false): ArrayObject
+function fakeStripeSubscriptions(array $bySubscription, bool $fails = false, array $rateLimited = []): ArrayObject
 {
     /** @var ArrayObject<int, string> $requests */
     $requests = new ArrayObject;
 
-    ApiRequestor::setHttpClient(new readonly class($bySubscription, $fails, $requests) implements ClientInterface
+    ApiRequestor::setHttpClient(new readonly class($bySubscription, $fails, $requests, $rateLimited) implements ClientInterface
     {
         /**
          * @param  array<string, array{cents: int|null, interval: string, expanded?: bool}|null>  $bySubscription
          * @param  ArrayObject<int, string>  $requests
+         * @param  list<string>  $rateLimited
          */
-        public function __construct(private array $bySubscription, private bool $fails, private ArrayObject $requests) {}
+        public function __construct(private array $bySubscription, private bool $fails, private ArrayObject $requests, private array $rateLimited) {}
 
         public function request($method, $absUrl, $headers, $params, $hasFile, $apiMode = 'v1', $maxNetworkRetries = null): array
         {
@@ -49,6 +51,14 @@ function fakeStripeSubscriptions(array $bySubscription, bool $fails = false): Ar
             $this->requests->append($id);
 
             throw_if($this->fails, RuntimeException::class, 'Stripe is unreachable');
+
+            if (in_array($id, $this->rateLimited, true)) {
+                return [json_encode(['error' => [
+                    'message' => 'Too many requests',
+                    'type' => 'invalid_request_error',
+                    'code' => 'rate_limit',
+                ]]), 429, []];
+            }
 
             $data = $this->bySubscription[$id];
 
@@ -167,6 +177,13 @@ it('counts a subscription Stripe no longer knows as zero and keeps summing the r
 
     expect(resolve(Revenue::class)->monthlyMicros())->toBe(12_000_000)
         ->and($requests)->toHaveCount(2);
+});
+
+it('reports a rate-limited subscription as unavailable rather than zero', function (): void {
+    payingWorkspace(OverviewData::workspaceOf(OverviewData::owner()), 'sub_busy');
+    fakeStripeSubscriptions(['sub_busy' => ['cents' => 1_200, 'interval' => 'month']], rateLimited: ['sub_busy']);
+
+    expect(resolve(Revenue::class)->monthlyMicros())->toBeNull();
 });
 
 it('lists the subscriptions that count toward MRR', function (): void {
