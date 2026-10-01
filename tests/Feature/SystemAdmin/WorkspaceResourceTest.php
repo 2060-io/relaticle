@@ -6,17 +6,23 @@ use App\Enums\BillingStatus;
 use App\Enums\CreationSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
+use App\Features\Billing;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Company;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Billing\HostedWorkspaceAccess;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Str;
 use Laravel\Cashier\Subscription;
+use Laravel\Pennant\Feature;
+use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\SystemAdmin\Actions\UpdateCustomerRecord;
+use Relaticle\SystemAdmin\Enums\SystemAdministratorRole;
 use Relaticle\SystemAdmin\Filament\Pages\EditCustomerRecord;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\CreateWorkspace;
@@ -661,4 +667,94 @@ it('counts own records whose creator was deleted toward a habit', function (): v
     livewire(ListWorkspaces::class)
         ->filterTable('formed_habit')
         ->assertCanSeeTableRecords([$workspace]);
+});
+
+function chargeChat(Workspace $workspace, string $model, int $credits): void
+{
+    AiCreditTransaction::query()->create([
+        'workspace_id' => $workspace->getKey(),
+        'user_id' => $workspace->user_id,
+        'idempotency_key' => 'test-'.Str::ulid(),
+        'type' => AiCreditType::Chat,
+        'model' => $model,
+        'input_tokens' => 0,
+        'output_tokens' => 0,
+        'credits_charged' => $credits,
+        'metadata' => [],
+        'created_at' => now(),
+    ]);
+}
+
+it('filters trialing workspaces without own data that farm premium models or sit in an abuse timezone', function (): void {
+    config()->set('system-admin.abuse_timezones', ['Asia/Tehran']);
+
+    $byTimezone = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran'])));
+    $byPremium = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+    chargeChat($byPremium, 'claude-opus-5', 6);
+    chargeChat($byPremium, 'claude-sonnet-5', 2);
+
+    $genuineOwner = OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran']);
+    $genuine = OverviewData::trial(OverviewData::workspaceOf($genuineOwner));
+    OverviewData::ownRecord($genuine, $genuineOwner, now());
+
+    $freeTehran = OverviewData::workspaceOf(OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran']));
+    $mostlyFree = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+    chargeChat($mostlyFree, 'claude-sonnet-5', 9);
+    chargeChat($mostlyFree, 'claude-opus-5', 3);
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('abuse_suspect')
+        ->assertCanSeeTableRecords([$byTimezone, $byPremium])
+        ->assertCanNotSeeTableRecords([$genuine, $freeTehran, $mostlyFree]);
+});
+
+it('ends a trial now so the workspace pauses on the pay screen', function (): void {
+    Feature::define(Billing::class, true);
+    $workspace = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+
+    livewire(ListWorkspaces::class)
+        ->callAction(TestAction::make('endTrial')->table($workspace));
+
+    $workspace->refresh();
+
+    expect($workspace->billingStatus())->toBe(BillingStatus::TrialEnded)
+        ->and(resolve(HostedWorkspaceAccess::class)->isPaused($workspace))->toBeTrue();
+});
+
+it('ends several trials at once and skips workspaces that are not trialing', function (): void {
+    $trialA = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+    $trialB = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+    $free = OverviewData::workspaceOf(OverviewData::owner());
+
+    livewire(ListWorkspaces::class)
+        ->selectTableRecords([$trialA, $trialB, $free])
+        ->callAction(TestAction::make('endTrials')->table()->bulk());
+
+    expect($trialA->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded)
+        ->and($trialB->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded)
+        ->and($free->refresh()->trial_ends_at)->toBeNull();
+});
+
+it('hides end trial on a workspace that is not trialing', function (): void {
+    $free = OverviewData::workspaceOf(OverviewData::owner());
+
+    livewire(ListWorkspaces::class)
+        ->assertActionHidden(TestAction::make('endTrial')->table($free));
+});
+
+it('hides end trial from an administrator without customer access', function (): void {
+    $this->actingAs(SystemAdministrator::factory()->create(['role' => SystemAdministratorRole::Administrator]), 'sysadmin');
+    $workspace = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+
+    livewire(ListWorkspaces::class)
+        ->assertActionHidden(TestAction::make('endTrial')->table($workspace));
+});
+
+it('offers end trial on the workspace page', function (): void {
+    $workspace = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
+        ->callAction('endTrial');
+
+    expect($workspace->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded);
 });

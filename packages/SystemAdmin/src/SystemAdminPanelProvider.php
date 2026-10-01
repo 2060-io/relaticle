@@ -80,6 +80,8 @@ final class SystemAdminPanelProvider extends PanelProvider
     {
         parent::register();
 
+        $this->mergeConfigFrom(__DIR__.'/../config/system-admin.php', 'system-admin');
+
         // Lazy mount-parameter snapshots bypass component lifecycle hooks.
         Livewire::listen('dehydrate', function (Component $component, ComponentContext $context): void {
             $context->addMemo('authContext', IsolateAuthenticationSession::context(request()));

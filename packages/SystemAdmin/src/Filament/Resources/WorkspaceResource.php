@@ -43,8 +43,10 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\PeopleRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\SubscriptionsRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\TasksRelationManager;
+use Relaticle\SystemAdmin\Filament\Support\EndTrial;
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
 use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
+use Relaticle\SystemAdmin\Metrics\Scopes\AbuseSuspect;
 use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
 use Relaticle\SystemAdmin\Metrics\Scopes\InternalWorkspace;
@@ -281,13 +283,23 @@ final class WorkspaceResource extends Resource
 
                         return $query;
                     }),
+                Filter::make('abuse_suspect')
+                    ->label('Abuse suspect')
+                    ->toggle()
+                    ->query(function (Builder $query): Builder {
+                        (new AbuseSuspect)->apply($query, $query->getModel());
+
+                        return $query;
+                    }),
             ])
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()->action(null),
+                EndTrial::action(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    EndTrial::bulkAction(),
                     SafeDelete::bulkAction(function (Workspace $record): void {
                         resolve(DeletesTeams::class)->delete($record);
                     }),
