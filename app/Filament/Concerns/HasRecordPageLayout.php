@@ -57,6 +57,7 @@ trait HasRecordPageLayout
             $this->recordActions(),
             $this->detailsSection($schema),
             CommunicationIntelligenceInfolist::section()
+                ->icon(null)
                 ->contained(false)
                 ->extraAttributes(['class' => 'fi-record-rail-section']),
             $this->recordInfoSection(),
@@ -149,8 +150,10 @@ trait HasRecordPageLayout
                 ])->dropdown(false),
                 DeleteAction::make(),
             ])
-                ->iconButton()
+                ->button()
+                ->hiddenLabel()
                 ->color('gray')
+                ->size(Size::Small)
                 ->icon('heroicon-m-ellipsis-horizontal')
                 ->dropdownPlacement('bottom-end'),
         ])
