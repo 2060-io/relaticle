@@ -401,9 +401,10 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         const bubble = this.targetBubbleFor(event.invocation_id ?? null);
 
         // A turn with no user row (a resume, the setup greeting) anchors on its own
-        // reply, unless the reader has scrolled away from the bottom.
+        // reply, unless the reader has scrolled away from both the bottom and the anchor.
         const previous = this.messages[this.messages.indexOf(bubble) - 1];
-        if (previous?.role !== 'user' && bubble.clientKey !== this.anchorKey && this.pinnedToBottom) {
+        const readerInPlace = this.pinnedToBottom || this._anchorRestTop !== null;
+        if (previous?.role !== 'user' && bubble.clientKey !== this.anchorKey && readerInPlace) {
             this.anchorTo(bubble);
         }
     },

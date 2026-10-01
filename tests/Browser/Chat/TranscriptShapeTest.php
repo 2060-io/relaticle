@@ -1090,6 +1090,86 @@ it('lets a reply taller than the viewport run below the fold instead of dragging
         ->and($after['jumpVisible'])->toBeTrue();
 });
 
+it('offers the jump button when late content of an anchored turn lands just below the fold', function (): void {
+    $page = transcriptShapeOpenTwentyMessageConversation('late content below fold');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('How many companies do I have?');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-late' });
+        data.handleTextDelta({ invocation_id: 'inv-late', delta: 'You have four companies.' });
+        data.lastAssistantBubble().rendered = true;
+        data.isStreaming = false;
+
+        return true;
+    JS);
+
+    $settled = transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        const replies = document.querySelectorAll('[data-chat-context="conversation"] [data-assistant-bubble]');
+        replies[replies.length - 1].style.paddingBottom = (data.$refs.anchorReserve.offsetHeight + 30) + 'px';
+
+        return true;
+    JS);
+
+    $overflowed = transcriptShapeAnchorPosition($page);
+
+    expect([$overflowed['top'], $overflowed['scrollTop']])->toBe([$settled['top'], $settled['scrollTop']])
+        ->and($overflowed['belowFold'])->toBeGreaterThan(20)->toBeLessThan(80)
+        ->and($overflowed['jumpVisible'])->toBeTrue();
+});
+
+it('anchors a resumed turn on its own reply while the reader rests on an anchored reply that outgrew the viewport', function (): void {
+    $page = transcriptShapeOpenTwentyMessageConversation('resume after long reply');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('Summarise every deal in detail.');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-long-proposal' });
+        data.handleTextDelta({
+            invocation_id: 'inv-long-proposal',
+            delta: Array.from({ length: 60 }, (_, i) => 'Deal ' + (i + 1) + ' moved forward this week.').join(String.fromCharCode(10, 10)),
+        });
+        data.lastAssistantBubble().rendered = true;
+        data.isStreaming = false;
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-resumed' });
+
+        return true;
+    JS);
+
+    $resumed = transcriptShapeAnchorPosition($page);
+    $resumedReplyKey = transcriptShapeRun($page, <<<'JS'
+        return data.lastAssistantBubble().clientKey;
+    JS);
+
+    expect($resumed['anchorKey'])->toBe($resumedReplyKey)
+        ->and($resumed['top'])->toBe(48);
+});
+
 it('follows the rest of a long reply once the reader jumps to the latest message', function (): void {
     $page = transcriptShapeOpenTwentyMessageConversation('jump while anchored');
 

@@ -1661,7 +1661,9 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
 
         const el = this.$refs.messages;
         if (!el) return;
-        this.pinnedToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        // An anchored turn never follows, so any content below the fold needs the jump button.
+        const slack = this.anchorKey ? 2 : 80;
+        this.pinnedToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < slack;
 
         // Content shrinking under the reader clamps scrollTop to the new bottom; that is
         // layout moving, not the reader scrolling away from the anchor.
