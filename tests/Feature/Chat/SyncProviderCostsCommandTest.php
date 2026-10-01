@@ -101,3 +101,35 @@ it('skips a provider without a key and keeps going when another provider fails',
     expect(AiProviderCost::query()->where('provider', 'anthropic')->count())->toBe(0)
         ->and(AiProviderCost::query()->where('provider', 'openai')->value('amount_micros'))->toBe(1_500_000);
 });
+
+it('sums one day split across pages and stores nothing for a provider whose later page fails', function (): void {
+    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
+    config()->set('services.anthropic.workspace_id', null);
+    config()->set('services.openai.admin_key', 'sk-admin-openai');
+    config()->set('services.openai.project_id', null);
+
+    $day = ['starting_at' => '2026-10-05T00:00:00Z', 'ending_at' => '2026-10-06T00:00:00Z'];
+    $openAiDay = fn (float $dollars, bool $hasMore): array => [
+        'data' => [[
+            'start_time' => CarbonImmutable::parse('2026-10-05')->getTimestamp(),
+            'end_time' => CarbonImmutable::parse('2026-10-06')->getTimestamp(),
+            'results' => [['amount' => ['value' => $dollars, 'currency' => 'usd'], 'project_id' => null]],
+        ]],
+        'has_more' => $hasMore,
+        'next_page' => $hasMore ? 'page_2' : null,
+    ];
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(anthropicPage([[...$day, 'results' => [['amount' => '100', 'currency' => 'USD', 'workspace_id' => null]]]], 'page_2'))
+            ->push(anthropicPage([[...$day, 'results' => [['amount' => '50', 'currency' => 'USD', 'workspace_id' => null]]]], null)),
+        'api.openai.com/*' => Http::sequence()
+            ->push($openAiDay(2.0, true))
+            ->push(['error' => 'down'], 500),
+    ]);
+
+    $this->artisan('ai:sync-provider-costs')->assertSuccessful();
+
+    expect(AiProviderCost::query()->where('provider', 'anthropic')->value('amount_micros'))->toBe(1_500_000)
+        ->and(AiProviderCost::query()->where('provider', 'openai')->count())->toBe(0);
+});
