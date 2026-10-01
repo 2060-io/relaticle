@@ -1584,7 +1584,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
 
         const el = this.anchorElement();
         if (!el) {
-            if (this.anchorKey && !this._anchorScrollPending) this.clearAnchor();
+            this.releaseVanishedAnchor(scroller, reserve);
+
             return;
         }
 
@@ -1612,6 +1613,22 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         // A reply outgrowing the viewport fires no scroll event, yet the jump
         // button has to appear for the content now below the fold.
         this.trackScrollPosition();
+    },
+
+    // Regenerate, retry and edit splice the anchored row out and send it again a tick
+    // later, so a reader resting on it is held there instead of losing the reserve.
+    releaseVanishedAnchor(scroller, reserve) {
+        if (this._anchorScrollPending) return;
+
+        if (this._anchorRestTop === null) {
+            this.clearAnchor();
+
+            return;
+        }
+
+        const maxScrollTop = scroller.scrollHeight - scroller.clientHeight;
+        this.setAnchorReserve(Math.max(0, reserve.offsetHeight + this._anchorRestTop - maxScrollTop));
+        scroller.scrollTop = this._anchorRestTop;
     },
 
     setAnchorReserve(px) {

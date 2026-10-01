@@ -1098,6 +1098,61 @@ it('follows the rest of a long reply once the reader jumps to the latest message
         ->and($followed['jumpVisible'])->toBeFalse();
 });
 
+it('keeps the transcript still while a regenerated reply replaces the anchored turn', function (): void {
+    $page = transcriptShapeOpenTwentyMessageConversation('regenerate anchor');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('Show me my companies in a table.');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-regenerate' });
+        data.handleTextDelta({ invocation_id: 'inv-regenerate', delta: 'You have four companies.' });
+        data.lastAssistantBubble().rendered = true;
+        data.isStreaming = false;
+
+        return true;
+    JS);
+
+    $settled = transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = (url) => String(url).includes('/supersede')
+            ? Promise.resolve(new Response('{}', { status: 200 }))
+            : new Promise(() => {});
+
+        const scroller = document.querySelector('[data-chat-context="conversation"] [role="log"]');
+        window.paintedScrollTops = [];
+        const sample = () => {
+            window.paintedScrollTops.push(Math.round(scroller.scrollTop));
+            if (window.paintedScrollTops.length < 60) requestAnimationFrame(() => setTimeout(sample, 0));
+        };
+        sample();
+
+        data.regenerateMessage(data.messages.length - 1);
+
+        return true;
+    JS);
+
+    $regenerated = transcriptShapeAnchorPosition($page);
+    $paintedScrollTops = json_decode((string) transcriptShapeRun($page, <<<'JS'
+        return JSON.stringify(window.paintedScrollTops);
+    JS), true, 512, JSON_THROW_ON_ERROR);
+    $regeneratedMessageKey = transcriptShapeRun($page, <<<'JS'
+        return data.messages.findLast((m) => m.role === 'user').clientKey;
+    JS);
+
+    expect(array_values(array_unique($paintedScrollTops)))->toBe([$settled['scrollTop']])
+        ->and($regenerated['anchorKey'])->toBe($regeneratedMessageKey)
+        ->and($regenerated['top'])->toBe(48);
+});
+
 it('anchors a turn this tab did not send on its own reply', function (): void {
     $page = transcriptShapeOpenTwentyMessageConversation('resumed turn');
 
