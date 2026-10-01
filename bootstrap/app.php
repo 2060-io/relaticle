@@ -79,16 +79,20 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request): bool => $request->is('chat') || $request->is('chat/*'),
         ]);
 
-        $middleware->trustProxies(at: [
-            '127.0.0.0/8',
-            '10.0.0.0/8',
-            '172.16.0.0/12',
-            '192.168.0.0/16',
-            '169.254.0.0/16',
-            '::1/128',
-            'fc00::/7',
-            'fe80::/10',
-        ]);
+        // On Laravel Cloud the framework trusts its TLS edge itself, which reaches the app from a
+        // public IPv6 address this list would reject, turning every generated URL into http://.
+        if (! laravel_cloud()) {
+            $middleware->trustProxies(at: [
+                '127.0.0.0/8',
+                '10.0.0.0/8',
+                '172.16.0.0/12',
+                '192.168.0.0/16',
+                '169.254.0.0/16',
+                '::1/128',
+                'fc00::/7',
+                'fe80::/10',
+            ]);
+        }
 
         $middleware->prepend(SubdomainRootResponse::class);
 

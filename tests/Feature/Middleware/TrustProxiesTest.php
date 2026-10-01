@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Symfony\Component\Process\Process;
 
 beforeEach(function (): void {
     Route::get('/_trust-proxy-probe', fn (Request $request): array => [
@@ -101,3 +102,29 @@ it('emits http asset URLs when forwarded headers come from an untrusted public I
     expect($response->json('scheme'))->toBe('http');
     expect($response->json('asset'))->toStartWith('http://');
 });
+
+it('trusts the Laravel Cloud edge, which forwards HTTPS from a public IPv6 address, only on Laravel Cloud', function (string|false $laravelCloud, string $scheme): void {
+    $boot = <<<'PHP'
+        require 'vendor/autoload.php';
+        $app = require 'bootstrap/app.php';
+        $app->bootstrapWith([
+            Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables::class,
+            Illuminate\Foundation\Bootstrap\LoadConfiguration::class,
+        ]);
+        $app->make(Illuminate\Contracts\Http\Kernel::class);
+        $request = Illuminate\Http\Request::create('http://relaticle.laravel.cloud/', server: [
+            'REMOTE_ADDR' => '2600:1f18:124c:a910:b364::4',
+            'HTTP_X_FORWARDED_PROTO' => 'https',
+        ]);
+        echo (new Illuminate\Http\Middleware\TrustProxies)->handle($request, fn (Illuminate\Http\Request $request): string => $request->getScheme());
+        PHP;
+
+    $process = new Process([PHP_BINARY, '-r', $boot], base_path(), ['LARAVEL_CLOUD' => $laravelCloud]);
+
+    $process->mustRun();
+
+    expect($process->getOutput())->toBe($scheme);
+})->with([
+    'on Laravel Cloud' => ['1', 'https'],
+    'off Laravel Cloud' => [false, 'http'],
+]);
