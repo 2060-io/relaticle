@@ -14,6 +14,9 @@ use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\CompanyResource\RelationManagers\EmailsRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\MeetingsRelationManager;
+use App\Filament\Resources\CompanyResource\RelationManagers\NotesRelationManager;
+use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManager;
+use App\Filament\Resources\CompanyResource\RelationManagers\TasksRelationManager;
 use App\Models\Company;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
@@ -141,6 +144,9 @@ final class CompanyResource extends Resource
     public static function getRelations(): array
     {
         return [
+            PeopleRelationManager::class,
+            TasksRelationManager::class,
+            NotesRelationManager::class,
             EmailsRelationManager::class,
             MeetingsRelationManager::class,
             ActivityLogRelationManager::class,

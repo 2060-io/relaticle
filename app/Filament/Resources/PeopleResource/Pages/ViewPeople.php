@@ -31,9 +31,4 @@ final class ViewPeople extends ViewRecord
                 ->url(fn (People $record): ?string => $record->company ? CompanyResource::getUrl('view', [$record->company]) : null),
         ];
     }
-
-    protected function recordLangFile(): string
-    {
-        return 'filament/resources/person';
-    }
 }

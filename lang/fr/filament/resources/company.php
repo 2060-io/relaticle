@@ -50,17 +50,6 @@ return [
             ],
         ],
         'view' => [
-            'actions' => [
-                'edit' => [
-                    'label' => 'Modifier',
-                ],
-                'copy_page_url' => [
-                    'label' => "Copier l'URL de la page",
-                ],
-                'copy_record_id' => [
-                    'label' => "Copier l'identifiant",
-                ],
-            ],
             'infolist' => [
                 'fields' => [
                     'account_owner' => [

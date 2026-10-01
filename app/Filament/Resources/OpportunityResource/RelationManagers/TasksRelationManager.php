@@ -39,9 +39,6 @@ final class TasksRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('title')
             ->columns(RelatedRecordColumns::tasks())
-            ->filters([
-                //
-            ])
             ->headerActions([
                 CreateAction::make()->icon('heroicon-o-plus')->size(Size::Small),
                 AttachAction::make(),

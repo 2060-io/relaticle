@@ -36,9 +36,6 @@ final class NotesRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('title')
             ->columns(RelatedRecordColumns::notes())
-            ->filters([
-                //
-            ])
             ->headerActions([
                 CreateAction::make()->icon('heroicon-o-plus')->size(Size::Small),
             ])

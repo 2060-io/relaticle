@@ -49,8 +49,6 @@ trait HasRecordPageLayout
      */
     abstract protected function nativeDetailEntries(): array;
 
-    abstract protected function recordLangFile(): string;
-
     public function infolist(Schema $schema): Schema
     {
         return $schema->columns(1)->components([
@@ -133,7 +131,6 @@ trait HasRecordPageLayout
     {
         return Actions::make([
             EditAction::make()
-                ->label(__("{$this->recordLangFile()}.pages.view.actions.edit.label"))
                 ->icon('heroicon-o-pencil-square')
                 ->color('gray')
                 ->size(Size::Small)
@@ -146,13 +143,13 @@ trait HasRecordPageLayout
                 ActionGroup::make([
                     $this->copyToClipboardAction(
                         'copyPageUrl',
-                        __("{$this->recordLangFile()}.pages.view.actions.copy_page_url.label"),
+                        __('filament/record-page.actions.copy_page_url'),
                         static::getResource()::getUrl('view', [$this->getRecord()]),
                         __('filament/record-page.notifications.url_copied'),
                     ),
                     $this->copyToClipboardAction(
                         'copyRecordId',
-                        __("{$this->recordLangFile()}.pages.view.actions.copy_record_id.label"),
+                        __('filament/record-page.actions.copy_record_id'),
                         (string) $this->getRecord()->getKey(),
                         __('filament/record-page.notifications.id_copied'),
                     ),
@@ -175,24 +172,16 @@ trait HasRecordPageLayout
         return Action::make($name)
             ->label($label)
             ->icon('heroicon-o-clipboard-document')
-            ->action(function () use ($value, $notification): void {
-                $jsValue = Js::from($value);
-                $jsNotification = Js::from($notification);
-
-                $this->js("
-                    navigator.clipboard.writeText({$jsValue}).then(() => {
-                        new FilamentNotification()
-                            .title({$jsNotification})
-                            .success()
-                            .send()
-                    })
-                ");
-            });
+            ->actionJs(sprintf(
+                'navigator.clipboard.writeText(%s).then(() => new FilamentNotification().title(%s).success().send())',
+                Js::from($value),
+                Js::from($notification),
+            ));
     }
 
     private function detailsSection(Schema $schema): Section
     {
-        $customFields = CustomFields::infolist()->forSchema($schema);
+        $customFields = CustomFields::infolist()->withoutSections()->forSchema($schema);
 
         $customFieldIcons = $customFields->getFields()
             ->mapWithKeys(fn (CustomField $field): array => [$field->getFieldName() => $field->typeData->icon]);

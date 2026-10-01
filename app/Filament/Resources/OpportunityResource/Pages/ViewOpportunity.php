@@ -37,9 +37,4 @@ final class ViewOpportunity extends ViewRecord
                 ->url(fn (Opportunity $record): ?string => $record->contact ? PeopleResource::getUrl('view', [$record->contact]) : null),
         ];
     }
-
-    protected function recordLangFile(): string
-    {
-        return 'filament/resources/opportunity';
-    }
 }

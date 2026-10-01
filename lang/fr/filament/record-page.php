@@ -12,6 +12,10 @@ return [
         'created_at' => 'Créé le',
         'updated_at' => 'Dernière mise à jour',
     ],
+    'actions' => [
+        'copy_page_url' => "Copier l'URL de la page",
+        'copy_record_id' => "Copier l'identifiant",
+    ],
     'notifications' => [
         'url_copied' => 'URL copiée dans le presse-papiers',
         'id_copied' => "ID de l'enregistrement copié dans le presse-papiers",

@@ -64,7 +64,6 @@ use Filament\Notifications\Notification;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Resources\RelationManagers\RelationManager;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Platform;
@@ -155,7 +154,6 @@ final class AppPanelProvider extends PanelProvider
         });
 
         DeleteAction::configureUsing(fn (DeleteAction $action): DeleteAction => $action->label(__('filament/panel.actions.delete_record')));
-        Section::configureUsing(fn (Section $section): Section => $section->compact());
 
         // Filament defaults searchDebounce to 1000ms, which reads as a hung field.
         // configureUsing is global across panels, so this is guarded like the callbacks below.
