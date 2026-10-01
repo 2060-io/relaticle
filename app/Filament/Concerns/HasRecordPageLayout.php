@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Filament\Concerns;
 
 use App\Filament\Components\Infolists\RecordChipEntry;
+use App\Models\Company;
+use App\Models\Opportunity;
+use App\Models\People;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
@@ -29,7 +32,6 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Js;
 use Livewire\Attributes\On;
 use Relaticle\CustomFields\Facades\CustomFields;
-use Relaticle\EmailIntegration\Filament\Actions\ViewRecordEmailsAction;
 use Relaticle\EmailIntegration\Filament\Infolists\CommunicationIntelligenceInfolist;
 
 /**
@@ -49,15 +51,17 @@ trait HasRecordPageLayout
     public function infolist(Schema $schema): Schema
     {
         return $schema->columns(1)->components([
-            RecordChipEntry::make('name')
-                ->hiddenLabel()
-                ->chipSize('lg')
-                ->size(TextSize::Large)
-                ->weight(FontWeight::SemiBold),
-            $this->recordActions(),
+            Flex::make([
+                RecordChipEntry::make('name')
+                    ->hiddenLabel()
+                    ->chipSize('lg')
+                    ->size(TextSize::Large)
+                    ->weight(FontWeight::SemiBold),
+                $this->recordActions()->grow(false),
+            ])
+                ->verticallyAlignCenter(),
             $this->detailsSection($schema),
             CommunicationIntelligenceInfolist::section()
-                ->icon(null)
                 ->contained(false)
                 ->extraAttributes(['class' => 'fi-record-rail-section']),
             $this->recordInfoSection(),
@@ -71,6 +75,8 @@ trait HasRecordPageLayout
                 Group::make([$this->getInfolistContentComponent()])
                     ->grow(false)
                     ->extraAttributes(['class' => 'fi-record-rail']),
+                View::make('filament.app.record-rail-resize-handle')
+                    ->grow(false),
                 Group::make([$this->getRelationManagersContentComponent()])
                     ->extraAttributes(['class' => 'fi-record-pane']),
             ])
@@ -106,6 +112,7 @@ trait HasRecordPageLayout
 
         return new HtmlString(view('filament.app.record-breadcrumb', [
             'url' => $resource::getUrl('index'),
+            'icon' => $resource::getNavigationIcon(),
             'label' => $resource::getTitleCasePluralModelLabel(),
         ])->render());
     }
@@ -129,10 +136,6 @@ trait HasRecordPageLayout
 
                     resolve(PartialsComponentHook::class)->forceRender($this);
                 }),
-            ViewRecordEmailsAction::make()
-                ->label(__("{$this->recordLangFile()}.pages.view.actions.view_emails.label"))
-                ->size(Size::Small)
-                ->url(fn (): string => static::getResource()::getUrl('emails', ['record' => $this->getRecord()])),
             ActionGroup::make([
                 ActionGroup::make([
                     $this->copyToClipboardAction(
@@ -197,7 +200,6 @@ trait HasRecordPageLayout
         return Section::make(__('filament/record-page.sections.details'))
             ->contained(false)
             ->collapsible()
-            ->compact()
             ->schema([
                 Group::make([
                     ...$visible,
@@ -228,19 +230,26 @@ trait HasRecordPageLayout
         ];
     }
 
+    private function hasMemberCreator(Company|People|Opportunity $record): bool
+    {
+        return ! $record->isSystemCreated() && $record->creator !== null;
+    }
+
     private function recordInfoSection(): Section
     {
         return Section::make(__('filament/record-page.sections.record_info'))
             ->contained(false)
             ->collapsible()
             ->collapsed()
-            ->compact()
             ->dense()
             ->inlineLabel()
             ->schema([
                 RecordChipEntry::make('creator.name')
                     ->label(__('filament/record-page.fields.created_by'))
-                    ->placeholder(__('filament/record-page.empty')),
+                    ->visible(fn (Company|People|Opportunity $record): bool => $this->hasMemberCreator($record)),
+                TextEntry::make('created_by')
+                    ->label(__('filament/record-page.fields.created_by'))
+                    ->hidden(fn (Company|People|Opportunity $record): bool => $this->hasMemberCreator($record)),
                 TextEntry::make('created_at')
                     ->label(__('filament/record-page.fields.created_at'))
                     ->dateTime(),

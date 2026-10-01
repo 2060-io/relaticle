@@ -30,7 +30,7 @@
     }"
     x-show="!onChatPage"
     x-cloak
-    class="me-2"
+    class="flex items-center gap-4"
 >
     <x-filament::button
         outlined
@@ -40,7 +40,10 @@
         x-on:click="window.Livewire.dispatch('chat:toggle-panel')"
         :aria-label="$askLabel"
         :title="$askLabel"
+        class="fi-topbar-ask-btn"
     >
         <span class="hidden sm:inline">{{ $askLabel }}</span>
     </x-filament::button>
+
+    <span aria-hidden="true" class="h-5 w-px bg-gray-200 dark:bg-white/10"></span>
 </div>

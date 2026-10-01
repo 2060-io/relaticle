@@ -19,4 +19,5 @@ return [
     'empty' => '—',
     'view_all' => 'View all',
     'show_less' => 'Show less',
+    'resize_details' => 'Resize details panel',
 ];

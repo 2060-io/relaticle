@@ -33,6 +33,7 @@
 /* ─── Record page tokens ─── */
 :root {
     --record-rail-width: 24rem;
+    --record-pane-min-width: 36rem;
     --record-label-width: 8rem;
 }
 

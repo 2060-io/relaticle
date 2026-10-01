@@ -19,4 +19,5 @@ return [
     'empty' => '—',
     'view_all' => 'Tout afficher',
     'show_less' => 'Afficher moins',
+    'resize_details' => 'Redimensionner le panneau des détails',
 ];

@@ -75,25 +75,5 @@ return [
         'people' => [
             'model_label' => 'personne',
         ],
-        'notes' => [
-            'fields' => [
-                'people' => [
-                    'label' => 'Personnes',
-                ],
-            ],
-        ],
-        'tasks' => [
-            'fields' => [
-                'assignees' => [
-                    'label' => 'Responsable',
-                ],
-                'people' => [
-                    'label' => 'Personnes',
-                ],
-                'created_at' => [
-                    'label' => 'Créé le',
-                ],
-            ],
-        ],
     ],
 ];

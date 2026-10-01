@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\CompanyResource\RelationManagers;
 
-use App\Filament\Components\Tables\RecordChipColumn;
+use App\Filament\Components\Tables\RelatedRecordColumns;
 use App\Filament\Concerns\CountsRelatedRecords;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use Filament\Actions\ActionGroup;
@@ -18,7 +18,6 @@ use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 final class TasksRelationManager extends RelationManager
@@ -38,20 +37,7 @@ final class TasksRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('title')
-            ->columns([
-                TextColumn::make('title'),
-                RecordChipColumn::make('assignees.name')
-                    ->label(__('filament/resources/company.relation_managers.tasks.fields.assignees.label'))
-                    ->searchable(),
-                RecordChipColumn::make('people.name')
-                    ->label(__('filament/resources/company.relation_managers.tasks.fields.people.label'))
-                    ->searchable(),
-                TextColumn::make('created_at')
-                    ->label(__('filament/resources/company.relation_managers.tasks.fields.created_at.label'))
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(),
-            ])
+            ->columns(RelatedRecordColumns::tasks())
             ->filters([
                 //
             ])

@@ -7,6 +7,7 @@ namespace App\Filament\Resources\CompanyResource\Pages;
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Filament\Concerns\HasRecordPageLayout;
 use App\Filament\Resources\CompanyResource;
+use App\Filament\Resources\CompanyResource\RelationManagers\EmailsRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\MeetingsRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManager;
@@ -22,12 +23,13 @@ final class ViewCompany extends ViewRecord
 
     protected static string $resource = CompanyResource::class;
 
-    public function getRelationManagers(): array
+    protected function getAllRelationManagers(): array
     {
         return [
             PeopleRelationManager::class,
             TasksRelationManager::class,
             NotesRelationManager::class,
+            EmailsRelationManager::class,
             MeetingsRelationManager::class,
             ActivityLogRelationManager::class,
         ];

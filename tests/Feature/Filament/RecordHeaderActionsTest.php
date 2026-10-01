@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 use App\Features\EmailIntegration;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
+use App\Filament\Resources\CompanyResource\RelationManagers\EmailsRelationManager as CompanyEmailsRelationManager;
+use App\Filament\Resources\CompanyResource\RelationManagers\MeetingsRelationManager as CompanyMeetingsRelationManager;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
+use App\Filament\Resources\OpportunityResource\RelationManagers\EmailsRelationManager as OpportunityEmailsRelationManager;
+use App\Filament\Resources\OpportunityResource\RelationManagers\MeetingsRelationManager as OpportunityMeetingsRelationManager;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager as PeopleEmailsRelationManager;
+use App\Filament\Resources\PeopleResource\RelationManagers\MeetingsRelationManager as PeopleMeetingsRelationManager;
 use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
@@ -18,13 +24,13 @@ use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Data\VisibleCommunicationIntelligence;
 use Relaticle\EmailIntegration\Enums\ConnectionStrength;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
-use Relaticle\EmailIntegration\Filament\Actions\ViewRecordEmailsAction;
 use Relaticle\EmailIntegration\Filament\Infolists\CommunicationIntelligenceInfolist;
+use Relaticle\EmailIntegration\Filament\RelationManagers\BaseEmailsRelationManager;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 
-mutates(ViewCompany::class, ViewPeople::class, ViewOpportunity::class, ViewRecordEmailsAction::class, EmailVisibilityService::class, CommunicationIntelligenceInfolist::class, VisibleCommunicationIntelligence::class, ConnectionStrength::class);
+mutates(ViewCompany::class, ViewPeople::class, ViewOpportunity::class, BaseEmailsRelationManager::class, EmailVisibilityService::class, CommunicationIntelligenceInfolist::class, VisibleCommunicationIntelligence::class, ConnectionStrength::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -60,69 +66,78 @@ it('no longer exposes the AI summary or ask-about-this actions on an opportunity
         ->assertActionExists(TestAction::make('edit')->schemaComponent('recordActions', schema: 'infolist'));
 });
 
-function emailsRailAction(): TestAction
-{
-    return TestAction::make('viewEmails')->schemaComponent('recordActions', schema: 'infolist');
-}
-
-it('hides the emails action on company, person, and opportunity views when email integration is off', function (string $page, Closure $record): void {
-    Feature::deactivate(EmailIntegration::class);
-
-    $owner = $record($this->user, $this->workspace);
-
-    livewire($page, ['record' => $owner->getKey()])
-        ->assertActionDoesNotExist(emailsRailAction());
-})->with([
-    'company' => [
-        ViewCompany::class,
-        fn (User $user, $team): Company => Company::factory()->recycle([$user, $team])->create(),
-    ],
-    'person' => [
-        ViewPeople::class,
-        fn (User $user, $team): People => People::factory()->recycle([$user, $team])->create(),
-    ],
-    'opportunity' => [
-        ViewOpportunity::class,
-        fn (User $user, $team): Opportunity => Opportunity::factory()->recycle([$user, $team])->create(),
-    ],
-]);
-
-it('shows the emails action on company, person, and opportunity views when email integration is on', function (string $page, Closure $record): void {
-    $owner = $record($this->user, $this->workspace);
-
-    livewire($page, ['record' => $owner->getKey()])
-        ->assertActionVisible(emailsRailAction());
-})->with([
-    'company' => [
-        ViewCompany::class,
-        fn (User $user, $team): Company => Company::factory()->recycle([$user, $team])->create(),
-    ],
-    'person' => [
-        ViewPeople::class,
-        fn (User $user, $team): People => People::factory()->recycle([$user, $team])->create(),
-    ],
-    'opportunity' => [
-        ViewOpportunity::class,
-        fn (User $user, $team): Opportunity => Opportunity::factory()->recycle([$user, $team])->create(),
-    ],
-]);
-
 /**
- * @return array<string, array{0: class-string, 1: Closure(User, Workspace): (Company|Opportunity|People)}>
+ * @return array<string, array{0: class-string, 1: class-string<BaseEmailsRelationManager>, 2: class-string, 3: Closure(User, Workspace): (Company|Opportunity|People)}>
  */
-function recordEmailsHeaderPages(): array
+function recordEmailsTabPages(): array
 {
     return [
         'company' => [
             ViewCompany::class,
+            CompanyEmailsRelationManager::class,
+            CompanyMeetingsRelationManager::class,
+            fn (User $user, Workspace $team): Company => Company::factory()->recycle([$user, $team])->create(),
+        ],
+        'person' => [
+            ViewPeople::class,
+            PeopleEmailsRelationManager::class,
+            PeopleMeetingsRelationManager::class,
+            fn (User $user, Workspace $team): People => People::factory()->recycle([$user, $team])->create(),
+        ],
+        'opportunity' => [
+            ViewOpportunity::class,
+            OpportunityEmailsRelationManager::class,
+            OpportunityMeetingsRelationManager::class,
+            fn (User $user, Workspace $team): Opportunity => Opportunity::factory()->recycle([$user, $team])->create(),
+        ],
+    ];
+}
+
+/**
+ * @return array<int, class-string>
+ */
+function viewPageRelationManagers(string $page, Company|Opportunity|People $record): array
+{
+    return livewire($page, ['record' => $record->getKey()])
+        ->instance()
+        ->getRelationManagers();
+}
+
+it('hides the emails and meetings tabs on company, person, and opportunity views when email integration is off', function (string $page, string $emailsRelationManager, string $meetingsRelationManager, Closure $record): void {
+    Feature::deactivate(EmailIntegration::class);
+
+    $managers = viewPageRelationManagers($page, $record($this->user, $this->workspace));
+
+    expect($managers)->not->toContain($emailsRelationManager)
+        ->and($managers)->not->toContain($meetingsRelationManager);
+})->with(recordEmailsTabPages());
+
+it('shows the emails and meetings tabs on company, person, and opportunity views when email integration is on', function (string $page, string $emailsRelationManager, string $meetingsRelationManager, Closure $record): void {
+    $managers = viewPageRelationManagers($page, $record($this->user, $this->workspace));
+
+    expect($managers)->toContain($emailsRelationManager)
+        ->and($managers)->toContain($meetingsRelationManager);
+})->with(recordEmailsTabPages());
+
+/**
+ * @return array<string, array{0: class-string, 1: class-string<BaseEmailsRelationManager>, 2: Closure(User, Workspace): (Company|Opportunity|People)}>
+ */
+function recordEmailsBadgePages(): array
+{
+    return [
+        'company' => [
+            ViewCompany::class,
+            CompanyEmailsRelationManager::class,
             fn (User $user, Workspace $team): Company => Company::factory()->recycle([$user, $team])->create(['email_count' => 99]),
         ],
         'person' => [
             ViewPeople::class,
+            PeopleEmailsRelationManager::class,
             fn (User $user, Workspace $team): People => People::factory()->recycle([$user, $team])->create(['email_count' => 99]),
         ],
         'opportunity' => [
             ViewOpportunity::class,
+            OpportunityEmailsRelationManager::class,
             fn (User $user, Workspace $team): Opportunity => Opportunity::factory()->recycle([$user, $team])->create(['email_count' => 99]),
         ],
     ];
@@ -149,40 +164,27 @@ function attachRecordEmail(User $user, Workspace $team, Company|Opportunity|Peop
     return $email;
 }
 
-function emailsHeaderBadge(string $page, Company|Opportunity|People $record): ?string
-{
-    return livewire($page, ['record' => $record->getKey()])
-        ->instance()
-        ->getAction([emailsRailAction()->toArray()], isMounting: false)
-        ?->getBadge();
-}
-
-it('badges the emails header action with the visible count for the record', function (string $page, Closure $record): void {
+it('badges the emails tab with the visible count for the record', function (string $page, string $emailsRelationManager, Closure $record): void {
     $owner = $record($this->user, $this->workspace);
     attachRecordEmail($this->user, $this->workspace, $owner);
     attachRecordEmail($this->user, $this->workspace, $owner);
 
-    expect(emailsHeaderBadge($page, $owner))->toBe('2');
-})->with(recordEmailsHeaderPages());
+    expect($emailsRelationManager::getBadge($owner, $page))->toBe('2');
+})->with(recordEmailsBadgePages());
 
-it('colors the emails header badge so it stays readable on the gray action', function (): void {
+it('colors the emails tab badge gray like its sibling tabs', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
-    attachRecordEmail($this->user, $this->workspace, $person);
 
-    $action = livewire(ViewPeople::class, ['record' => $person->getKey()])
-        ->instance()
-        ->getAction([emailsRailAction()->toArray()], isMounting: false);
-
-    expect($action?->getBadgeColor($action->getBadge()))->toBe('primary');
+    expect(PeopleEmailsRelationManager::getBadgeColor($person, ViewPeople::class))->toBe('gray');
 });
 
-it('hides the emails header badge when the record has no visible mail', function (string $page, Closure $record): void {
+it('hides the emails tab badge when the record has no visible mail', function (string $page, string $emailsRelationManager, Closure $record): void {
     $owner = $record($this->user, $this->workspace);
 
-    expect(emailsHeaderBadge($page, $owner))->toBeNull();
-})->with(recordEmailsHeaderPages());
+    expect($emailsRelationManager::getBadge($owner, $page))->toBeNull();
+})->with(recordEmailsBadgePages());
 
-it('caps the emails header badge at 99+', function (): void {
+it('caps the emails tab badge at 99+', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
 
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
@@ -198,10 +200,10 @@ it('caps the emails header badge at 99+', function (): void {
 
     $person->emails()->attach($emails->modelKeys());
 
-    expect(emailsHeaderBadge(ViewPeople::class, $person))->toBe('99+');
+    expect(PeopleEmailsRelationManager::getBadge($person, ViewPeople::class))->toBe('99+');
 });
 
-it('does not badge private teammate mail or emails linked to another record', function (string $page, Closure $record): void {
+it('does not badge private teammate mail or emails linked to another record', function (string $page, string $emailsRelationManager, Closure $record): void {
     $owner = $record($this->user, $this->workspace);
     $other = $record($this->user, $this->workspace);
 
@@ -216,8 +218,8 @@ it('does not badge private teammate mail or emails linked to another record', fu
     ]);
     attachRecordEmail($this->user, $this->workspace, $other);
 
-    expect(emailsHeaderBadge($page, $owner))->toBe('1');
-})->with(recordEmailsHeaderPages());
+    expect($emailsRelationManager::getBadge($owner, $page))->toBe('1');
+})->with(recordEmailsBadgePages());
 
 it('renders scoped communication intelligence once on the person view', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create([
@@ -242,12 +244,10 @@ it('renders scoped communication intelligence once on the person view', function
     livewire(ViewPeople::class, ['record' => $person->getKey()])
         ->assertOk()
         ->assertSee(__('filament/communication-intelligence.heading'))
-        ->assertSee(__('filament/communication-intelligence.groups.connection'))
-        ->assertSee(__('filament/communication-intelligence.groups.email'))
-        ->assertSee(__('filament/communication-intelligence.groups.calendar'))
         ->assertSeeHtml('isCollapsed: true')
         ->assertSee(__('filament/communication-intelligence.fields.last_interaction.label'))
         ->assertSee(__('filament/communication-intelligence.fields.last_email.label'))
+        ->assertSee(__('filament/communication-intelligence.fields.next_calendar.label'))
         ->assertSee(__('filament/communication-intelligence.fields.connection_strength.label'))
         ->assertSee(__('filament/communication-intelligence.fields.strongest_connection.label'))
         ->assertSee(__('filament/communication-intelligence.connection_strength.weak'))

@@ -60,7 +60,7 @@ trait HasEmailComposeActions
         ]);
     }
 
-    protected function composeEmailAction(): Action
+    public function composeEmailAction(): Action
     {
         return Action::make('composeEmail')
             ->label(__('filament/concerns/email-compose.actions.compose.label'))

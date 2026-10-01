@@ -2,17 +2,29 @@
 
 declare(strict_types=1);
 
+use App\Enums\CreationSource;
 use App\Filament\Concerns\CountsRelatedRecords;
 use App\Filament\Concerns\HasRecordPageLayout;
 use App\Filament\Resources\CompanyResource;
+use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\CompanyResource\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\TasksRelationManager;
+use App\Filament\Resources\NoteResource\Pages\ManageNotes;
 use App\Filament\Resources\OpportunityResource;
+use App\Filament\Resources\OpportunityResource\Pages\ListOpportunities;
+use App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
+use App\Filament\Resources\OpportunityResource\RelationManagers\NotesRelationManager as OpportunityNotesRelationManager;
+use App\Filament\Resources\OpportunityResource\RelationManagers\TasksRelationManager as OpportunityTasksRelationManager;
 use App\Filament\Resources\PeopleResource;
+use App\Filament\Resources\PeopleResource\Pages\ListPeople;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Filament\Resources\PeopleResource\RelationManagers\NotesRelationManager as PeopleNotesRelationManager;
+use App\Filament\Resources\PeopleResource\RelationManagers\TasksRelationManager as PeopleTasksRelationManager;
+use App\Filament\Resources\TaskResource\Pages\ManageTasks;
+use App\Filament\Resources\TaskResource\Pages\TasksBoard;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\Opportunity;
@@ -52,6 +64,27 @@ it('titles the :dataset page with the record name under a link back to its list'
         ->assertDontSee('View Northwind Traders');
 })->with('record pages');
 
+it('marks the :dataset breadcrumb with its record type icon instead of the title', function (string $model, string $page): void {
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire($page, ['record' => $record->getKey()])
+        ->assertSeeHtml('fi-record-breadcrumb-icon')
+        ->assertDontSeeHtml('fi-topbar-page-icon');
+})->with('record pages');
+
+it('puts the record type icon before the :dataset title', function (string $page): void {
+    livewire($page)
+        ->assertSeeHtmlInOrder(['fi-topbar-page-icon', 'fi-topbar-page-title']);
+})->with([
+    'company list' => ListCompanies::class,
+    'people list' => ListPeople::class,
+    'opportunity list' => ListOpportunities::class,
+    'opportunity board' => OpportunitiesBoard::class,
+    'task list' => ManageTasks::class,
+    'task board' => TasksBoard::class,
+    'note list' => ManageNotes::class,
+]);
+
 it('offers edit, copy and delete from the details rail on the :dataset page', function (string $model, string $page): void {
     $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
 
@@ -61,6 +94,23 @@ it('offers edit, copy and delete from the details rail on the :dataset page', fu
         ->assertActionExists(railAction('copyRecordId'))
         ->assertActionExists(railAction('delete'));
 })->with('record pages');
+
+it('credits a system created record to the system in the record info', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
+        'creation_source' => CreationSource::SYSTEM,
+    ]);
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->assertSee('⊙ System');
+});
+
+it('credits a record whose creator left to a former member in the record info', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $company->forceFill(['creator_id' => null])->saveQuietly();
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->assertSee('Former Member');
+});
 
 it('deletes the record from the rail and returns to the list', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
@@ -120,6 +170,22 @@ it('shows no view all toggle when every detail fits', function (): void {
         ->assertDontSee('View all');
 });
 
+it('orders the :dataset page tabs as tasks, notes, emails, meetings, then the activity log', function (string $model, string $page): void {
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire($page, ['record' => $record->getKey()])
+        ->assertSeeInOrder(['Tasks', 'Notes', 'Emails', 'Meetings', 'Activity log']);
+})->with('record pages');
+
+it('puts a keyboard reachable resize handle between the details rail and the work pane on the :dataset page', function (string $model, string $page): void {
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire($page, ['record' => $record->getKey()])
+        ->assertSeeInOrder(['fi-record-rail', 'fi-record-rail-resize-handle', 'fi-record-pane'])
+        ->assertSeeHtml('role="separator"')
+        ->assertSeeHtml('aria-label="'.__('filament/record-page.resize_details').'"');
+})->with('record pages');
+
 it('counts related records on the work pane tabs and omits empty counts', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
     People::factory()->count(2)->recycle([$this->user, $this->workspace])->create(['company_id' => $company->getKey()]);
@@ -138,3 +204,84 @@ it('tells the record page to refresh its tab counts after a related record chang
 
     expect(NotesRelationManager::getBadge($company, ViewCompany::class))->toBe('1');
 });
+
+it('lists people on the company page by name, job title and email only', function (): void {
+    CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'people',
+        'type' => 'text',
+        'code' => 'nickname',
+        'name' => 'Nickname',
+    ]);
+
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(PeopleRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->assertTableColumnExists('name')
+        ->assertTableColumnExists('custom_fields.job_title')
+        ->assertTableColumnExists('custom_fields.emails')
+        ->assertTableColumnDoesNotExist('custom_fields.phone_number')
+        ->assertTableColumnDoesNotExist('custom_fields.linkedin')
+        ->assertTableColumnDoesNotExist('custom_fields.nickname');
+});
+
+it('lists tasks on the :dataset page by title, status, due date and assignee only', function (string $model, string $page, string $relationManager): void {
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire($relationManager, ['ownerRecord' => $record, 'pageClass' => $page])
+        ->assertTableColumnExists('title')
+        ->assertTableColumnExists('custom_fields.status')
+        ->assertTableColumnExists('custom_fields.due_date')
+        ->assertTableColumnExists('assignees.name')
+        ->assertTableColumnDoesNotExist('custom_fields.priority')
+        ->assertTableColumnDoesNotExist('custom_fields.description')
+        ->assertTableColumnDoesNotExist('people.name');
+})->with([
+    'company' => [Company::class, ViewCompany::class, TasksRelationManager::class],
+    'person' => [People::class, ViewPeople::class, PeopleTasksRelationManager::class],
+    'opportunity' => [Opportunity::class, ViewOpportunity::class, OpportunityTasksRelationManager::class],
+]);
+
+it('lists notes on the :dataset page by title and creation date only', function (string $model, string $page, string $relationManager): void {
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire($relationManager, ['ownerRecord' => $record, 'pageClass' => $page])
+        ->assertTableColumnExists('title')
+        ->assertTableColumnExists('created_at')
+        ->assertTableColumnDoesNotExist('custom_fields.body')
+        ->assertTableColumnDoesNotExist('people.name');
+})->with([
+    'company' => [Company::class, ViewCompany::class, NotesRelationManager::class],
+    'person' => [People::class, ViewPeople::class, PeopleNotesRelationManager::class],
+    'opportunity' => [Opportunity::class, ViewOpportunity::class, OpportunityNotesRelationManager::class],
+]);
+
+it('shows a related list field even when its list column is hidden by default', function (): void {
+    CustomField::query()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'people')
+        ->where('code', 'job_title')
+        ->firstOrFail()
+        ->update(['settings->list_toggleable_hidden' => true]);
+
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    People::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $company->getKey(),
+        'custom_fields' => ['job_title' => 'Head of Partnerships'],
+    ]);
+
+    livewire(PeopleRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->assertSee('Head of Partnerships');
+});
+
+it('offers no column picker on the :dataset page tabs', function (string $model, string $page, string $relationManager): void {
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire($relationManager, ['ownerRecord' => $record, 'pageClass' => $page])
+        ->assertDontSeeHtml('fi-ta-col-manager');
+})->with([
+    'company people' => [Company::class, ViewCompany::class, PeopleRelationManager::class],
+    'company tasks' => [Company::class, ViewCompany::class, TasksRelationManager::class],
+    'person notes' => [People::class, ViewPeople::class, PeopleNotesRelationManager::class],
+    'opportunity tasks' => [Opportunity::class, ViewOpportunity::class, OpportunityTasksRelationManager::class],
+]);

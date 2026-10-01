@@ -19,12 +19,22 @@
      in the panel layout reads THIS template every time rather than remembering
      anything, and the rule it enforces is simply that the topbar shows the
      heading the current page rendered and nothing otherwise. --}}
+@php
+    $headingIcon = blank($headingStart ?? null) && $this instanceof \Filament\Resources\Pages\Page
+        ? $this::getResource()::getNavigationIcon()
+        : null;
+@endphp
+
 <template x-teleport=".fi-topbar-start" data-page-heading-source>
     <div
         data-page-heading
         class="fi-topbar-page-heading"
         title="{{ str(strip_tags((string) $heading))->squish() }}"
     >
+        @if (filled($headingIcon))
+            <x-filament::icon :icon="$headingIcon" class="fi-topbar-page-icon" />
+        @endif
+
         @if (filled($headingStart ?? null))
             {{ $headingStart }}
         @endif

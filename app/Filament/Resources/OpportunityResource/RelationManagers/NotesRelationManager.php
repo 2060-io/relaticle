@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\OpportunityResource\RelationManagers;
 
+use App\Filament\Components\Tables\RelatedRecordColumns;
 use App\Filament\Concerns\CountsRelatedRecords;
 use App\Filament\Resources\NoteResource\Forms\NoteForm;
 use Filament\Actions\ActionGroup;
@@ -18,9 +19,7 @@ use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use Relaticle\CustomFields\Facades\CustomFields;
 
 final class NotesRelationManager extends RelationManager
 {
@@ -39,10 +38,7 @@ final class NotesRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('title')
-            ->columns([
-                TextColumn::make('title'),
-                ...CustomFields::table()->forModel($table->getModel())->columns(),
-            ])
+            ->columns(RelatedRecordColumns::notes())
             ->filters([
                 //
             ])

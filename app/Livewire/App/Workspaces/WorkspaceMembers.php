@@ -78,7 +78,6 @@ final class WorkspaceMembers extends BaseLivewireComponent implements Tables\Con
             ->records(fn (?string $search, int|string $page, int|string $recordsPerPage): Collection|LengthAwarePaginator => $this->roster($search, $page, $recordsPerPage))
             ->searchable()
             ->searchPlaceholder(__('workspaces.table.search_placeholder'))
-            ->paginated([10, 25, 50, 'all'])
             // The roster always holds the owner, so the only way to empty it is
             // a search that matches nobody.
             ->emptyStateIcon(Heroicon::OutlinedMagnifyingGlass)
