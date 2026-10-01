@@ -8,8 +8,10 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Filament\Widgets\WidgetConfiguration;
+use Relaticle\SystemAdmin\Filament\Widgets\Overview\CohortTable;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\MoneyStats;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\ProblemsStats;
+use Relaticle\SystemAdmin\Filament\Widgets\Overview\ValueStats;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
 
 final class Overview extends BaseDashboard
@@ -31,6 +33,8 @@ final class Overview extends BaseDashboard
     {
         return [
             MoneyStats::class,
+            ValueStats::class,
+            CohortTable::class,
             ProblemsStats::class,
         ];
     }
