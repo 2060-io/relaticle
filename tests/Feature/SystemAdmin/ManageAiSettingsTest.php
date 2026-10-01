@@ -44,6 +44,17 @@ function catalogState(array $overrides = []): array
     ], $overrides);
 }
 
+function recordChatCost(int $micros): void
+{
+    $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
+
+    AiCreditTransaction::query()->create([
+        'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'b-'.Str::ulid(),
+        'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
+        'credits_charged' => 1, 'cost_micros' => $micros, 'metadata' => [], 'created_at' => now(),
+    ]);
+}
+
 it('renders the catalog the app is actually running on', function (): void {
     livewire(ManageAiSettings::class)
         ->assertSuccessful()
@@ -569,12 +580,7 @@ it('shows this month per provider: budget, billed, our estimate', function (): v
     config($settings->toConfig());
 
     AiProviderCost::query()->create(['provider' => 'anthropic', 'date' => now()->startOfMonth(), 'amount_micros' => 10_000_000, 'fetched_at' => now()]);
-    $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
-    AiCreditTransaction::query()->create([
-        'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'b-'.Str::ulid(),
-        'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
-        'credits_charged' => 1, 'cost_micros' => 12_340_000, 'metadata' => [], 'created_at' => now(),
-    ]);
+    recordChatCost(12_340_000);
 
     livewire(ManageAiSettings::class)
         ->assertSee('This month')
@@ -583,3 +589,38 @@ it('shows this month per provider: budget, billed, our estimate', function (): v
         ->assertSee('$10.00')
         ->assertSee('-$2.34');
 });
+
+it('falls back to our estimate for a provider with an admin key and nothing synced this month', function (): void {
+    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
+    recordChatCost(12_340_000);
+
+    livewire(ManageAiSettings::class)
+        ->assertSee('Not synced yet')
+        ->assertSee('$12.34');
+});
+
+it('does not count a provider cost row from an earlier month as billed', function (): void {
+    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
+    AiProviderCost::query()->create(['provider' => 'anthropic', 'date' => now()->startOfMonth()->subDay(), 'amount_micros' => 99_000_000, 'fetched_at' => now()]);
+    recordChatCost(12_340_000);
+
+    livewire(ManageAiSettings::class)
+        ->assertSee('Not synced yet')
+        ->assertDontSee('$99.00');
+});
+
+it('says Gemini has no cost API and the others have no admin key', function (): void {
+    config(['services.anthropic.admin_key' => null, 'services.openai.admin_key' => null]);
+
+    livewire(ManageAiSettings::class)
+        ->assertSeeInOrder(['No admin key', 'No admin key', 'No cost API']);
+});
+
+it('rejects a budget that is zero or not a whole dollar amount', function (int|float $budget): void {
+    livewire(ManageAiSettings::class)
+        ->fillForm(catalogState(['provider_monthly_budgets' => ['anthropic' => $budget]]))
+        ->call('save')
+        ->assertHasFormErrors(['provider_monthly_budgets.anthropic']);
+
+    expect(config('chat.provider_monthly_budgets'))->toBe([]);
+})->with(['zero' => 0, 'fractional' => 12.5]);

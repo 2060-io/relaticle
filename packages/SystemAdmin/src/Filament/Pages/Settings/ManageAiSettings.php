@@ -234,9 +234,9 @@ final class ManageAiSettings extends Page
                         ->description('What you plan to spend per provider each month. The Overview compares it with what the provider billed.')
                         ->columns(3)
                         ->schema([
-                            TextInput::make('provider_monthly_budgets.anthropic')->label('Anthropic')->numeric()->minValue(0)->prefix('$'),
-                            TextInput::make('provider_monthly_budgets.openai')->label('OpenAI')->numeric()->minValue(0)->prefix('$'),
-                            TextInput::make('provider_monthly_budgets.gemini')->label('Gemini')->numeric()->minValue(0)->prefix('$'),
+                            TextInput::make('provider_monthly_budgets.anthropic')->label('Anthropic')->integer()->minValue(1)->prefix('$'),
+                            TextInput::make('provider_monthly_budgets.openai')->label('OpenAI')->integer()->minValue(1)->prefix('$'),
+                            TextInput::make('provider_monthly_budgets.gemini')->label('Gemini')->integer()->minValue(1)->prefix('$'),
                         ]),
                 ])
                     ->livewireSubmitHandler('save')
@@ -328,7 +328,7 @@ final class ManageAiSettings extends Page
         $settings->anthropic_effort = (string) ($data['anthropic_effort'] ?? 'high');
         $settings->provider_monthly_budgets = array_map(
             intval(...),
-            array_filter((array) ($data['provider_monthly_budgets'] ?? []), is_numeric(...)),
+            array_filter((array) ($data['provider_monthly_budgets'] ?? []), fn (mixed $value): bool => is_numeric($value) && (int) $value >= 1),
         );
         $settings->save();
 

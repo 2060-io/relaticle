@@ -13,6 +13,17 @@ final readonly class ProviderBudget
 {
     private const array PROVIDERS = ['anthropic', 'openai', 'gemini'];
 
+    private const array COST_API_PROVIDERS = ['anthropic', 'openai'];
+
+    public static function unbilledNote(string $provider): string
+    {
+        return match (true) {
+            ! self::hasCostApi($provider) => 'No cost API',
+            blank(config("services.{$provider}.admin_key")) => 'No admin key',
+            default => 'Not synced yet',
+        };
+    }
+
     /**
      * @return list<array{provider: string, budget_micros: int|null, billed_micros: int|null, estimate_micros: int, spent_micros: int, last_fetched: CarbonImmutable|null}>
      */
@@ -25,10 +36,16 @@ final readonly class ProviderBudget
         $budgets = (array) config('chat.provider_monthly_budgets', []);
 
         return array_map(function (string $provider) use ($monthStart, $estimates, $budgets): array {
-            $hasKey = filled(config("services.{$provider}.admin_key"));
-            $billed = $hasKey
-                ? (int) AiProviderCost::query()->where('provider', $provider)->where('date', '>=', $monthStart->toDateString())->sum('amount_micros')
+            $hasKey = self::hasCostApi($provider) && filled(config("services.{$provider}.admin_key"));
+            $synced = $hasKey
+                ? AiProviderCost::query()
+                    ->where('provider', $provider)
+                    ->where('date', '>=', $monthStart->toDateString())
+                    ->toBase()
+                    ->selectRaw('count(*) as days, coalesce(sum(amount_micros), 0) as micros')
+                    ->first()
                 : null;
+            $billed = $synced !== null && (int) $synced->days > 0 ? (int) $synced->micros : null;
             $lastFetched = $hasKey ? AiProviderCost::query()->where('provider', $provider)->max('fetched_at') : null;
             $budget = is_numeric($budgets[$provider] ?? null) ? ((int) $budgets[$provider]) * 1_000_000 : null;
             $estimate = $estimates[$provider] ?? 0;
@@ -57,21 +74,19 @@ final readonly class ProviderBudget
 
         $left = 0;
         $lowest = null;
-        $estimated = false;
         $lastFetched = null;
 
         foreach ($budgeted as $row) {
             $remaining = (int) $row['budget_micros'] - $row['spent_micros'];
             $share = $remaining / (int) $row['budget_micros'];
             $left += $remaining;
-            $estimated = $estimated || $row['billed_micros'] === null;
 
             if ($row['last_fetched'] !== null && ($lastFetched === null || $row['last_fetched']->greaterThan($lastFetched))) {
                 $lastFetched = $row['last_fetched'];
             }
 
             if ($lowest === null || $share < $lowest['share']) {
-                $lowest = ['provider' => $row['provider'], 'share' => $share];
+                $lowest = ['provider' => $row['provider'], 'share' => $share, 'estimated' => $row['billed_micros'] === null];
             }
         }
 
@@ -79,9 +94,14 @@ final readonly class ProviderBudget
             'left_micros' => $left,
             'lowest_provider' => $lowest['provider'],
             'lowest_share' => $lowest['share'],
-            'estimated' => $estimated,
+            'estimated' => $lowest['estimated'],
             'last_fetched' => $lastFetched?->format('M j'),
         ];
+    }
+
+    private static function hasCostApi(string $provider): bool
+    {
+        return in_array($provider, self::COST_API_PROVIDERS, true);
     }
 
     /**
