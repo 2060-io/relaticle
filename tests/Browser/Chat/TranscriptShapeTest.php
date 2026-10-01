@@ -960,6 +960,48 @@ it('anchors a sent message near the top and holds it there while the reply and i
         ->and($settled['jumpVisible'])->toBeFalse();
 });
 
+it('lands the next steps of a short anchored turn directly under the reply', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'short anchored turn');
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    transcriptShapeRun($page, <<<'JS'
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('How many companies do I have?');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    transcriptShapeRun($page, <<<'JS'
+        data.handleStreamStart({ invocation_id: 'inv-short' });
+        data.handleTextDelta({ invocation_id: 'inv-short', delta: 'You have four companies.' });
+        data.lastAssistantBubble().rendered = true;
+        data.isStreaming = false;
+        data.nextSteps = [{ label: 'Show them in a table', prompt: 'Show them in a table' }];
+
+        return true;
+    JS);
+
+    transcriptShapeAnchorPosition($page);
+
+    $gap = transcriptShapeRun($page, <<<'JS'
+        const scope = document.querySelector('[data-chat-context="conversation"]');
+        const replies = scope.querySelectorAll('[data-assistant-bubble]');
+        const reply = replies[replies.length - 1].getBoundingClientRect();
+        const step = scope.querySelector('[data-next-step]').getBoundingClientRect();
+
+        return Math.round(step.top - reply.bottom);
+    JS);
+
+    expect($gap)->toBeLessThan(80);
+});
+
 it('anchors a message sent from a next-step suggestion', function (): void {
     $page = transcriptShapeOpenTwentyMessageConversation('next step anchor');
 
