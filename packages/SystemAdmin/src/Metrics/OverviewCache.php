@@ -17,7 +17,10 @@ final readonly class OverviewCache
     {
         $version = (int) Cache::get(self::VERSION_KEY, 1);
 
-        return Cache::remember("sysadmin.overview.{$version}.{$key}", now()->addMinutes(self::MINUTES), $compute);
+        /** @var array{value: mixed} $entry */
+        $entry = Cache::remember("sysadmin.overview.{$version}.{$key}", now()->addMinutes(self::MINUTES), fn (): array => ['value' => $compute()]);
+
+        return $entry['value'];
     }
 
     public function flush(): void

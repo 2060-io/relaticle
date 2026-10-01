@@ -8,6 +8,7 @@ use App\Enums\BillingStatus;
 use App\Models\User;
 use App\Models\UserSocialAccount;
 use App\Models\Workspace;
+use Carbon\CarbonInterface;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Relaticle\Chat\Enums\AiCreditType;
@@ -154,7 +155,8 @@ final class ProblemsStats extends StatsOverviewWidget
 
     private function thumbsDown(OverviewCache $cache): Stat
     {
-        $count = (int) $cache->remember('problems.thumbs', fn (): int => self::thumbsDownThisWeek());
+        $week = now()->startOfWeek(CarbonInterface::MONDAY)->toDateString();
+        $count = (int) $cache->remember("problems.thumbs.{$week}", fn (): int => self::thumbsDownThisWeek());
 
         return Stat::make('Thumbs down this week', number_format($count))
             ->description('Answers people rated down since Monday')

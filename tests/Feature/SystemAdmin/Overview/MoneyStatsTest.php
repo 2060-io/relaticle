@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Features\Billing;
 use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
@@ -52,6 +54,31 @@ function seedProviderBudgets(int $openaiBilledDollars, int $anthropicEstimateDol
         'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'p-'.Str::ulid(),
         'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
         'credits_charged' => 1, 'cost_micros' => $anthropicEstimateDollars * 1_000_000, 'metadata' => [], 'created_at' => now(),
+    ]);
+}
+
+function useStringifyingCache(): void
+{
+    Cache::extend('stringifying', fn (): Repository => new Repository(new class extends ArrayStore
+    {
+        public function put(mixed $key, mixed $value, mixed $seconds): bool
+        {
+            return parent::put($key, is_int($value) || is_float($value) ? (string) $value : $value, $seconds);
+        }
+    }));
+
+    config()->set('cache.stores.stringifying', ['driver' => 'stringifying']);
+    config()->set('cache.default', 'stringifying');
+}
+
+function seedCost(int $micros): AiCreditTransaction
+{
+    $workspace = OverviewData::workspaceOf(OverviewData::owner());
+
+    return AiCreditTransaction::query()->create([
+        'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'k-'.Str::ulid(),
+        'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
+        'credits_charged' => 1, 'cost_micros' => $micros, 'metadata' => [], 'created_at' => now(),
     ]);
 }
 
@@ -120,10 +147,53 @@ it('hides MRR and trial tiles when billing is off', function (): void {
         ->assertSee('AI cost this month');
 });
 
-it('is the panel home and refreshes its numbers on demand', function (): void {
+it('is the panel home and shows changed numbers after Refresh redraws the page', function (): void {
     $this->get(Overview::getUrl())->assertOk()->assertSee('Overview');
 
-    livewire(Overview::class)->callAction('refresh')->assertNotified('Numbers refreshed');
+    seedCost(1_000_000);
+    livewire(MoneyStats::class)->assertSee('$1.00');
+
+    seedCost(2_000_000);
+    livewire(MoneyStats::class)->assertSee('$1.00')->assertDontSee('$3.00');
+
+    livewire(Overview::class)
+        ->callAction('refresh')
+        ->assertNotified('Numbers refreshed')
+        ->assertRedirect(Overview::getUrl());
+
+    livewire(MoneyStats::class)->assertSee('$3.00');
+});
+
+it('keeps whole numbers and decimals typed when the cache hands them back as strings', function (): void {
+    useStringifyingCache();
+    $workspace = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $workspace->getKey()], [
+        'credits_remaining' => 1000, 'credits_used' => 0, 'period_starts_at' => now()->startOfMonth(), 'period_ends_at' => now()->endOfMonth(),
+    ]);
+    AiCreditTransaction::query()->create([
+        'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'c-'.Str::ulid(),
+        'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
+        'credits_charged' => 200, 'cost_micros' => 10_000_000, 'metadata' => [], 'created_at' => now(),
+    ]);
+
+    livewire(MoneyStats::class)->assertSee('+$0.00 vs last week')->assertSee('$50.00');
+
+    livewire(MoneyStats::class)
+        ->assertSee('+$0.00 vs last week')
+        ->assertDontSee('Stripe unavailable')
+        ->assertSee('$50.00')
+        ->assertDontSee('Not enough priced usage yet');
+});
+
+it('starts a new month of cost numbers as soon as the month turns', function (): void {
+    $this->travelTo('2026-10-31 23:58:00');
+    seedCost(5_000_000);
+
+    livewire(MoneyStats::class)->assertSeeInOrder(['AI cost this month', '$5.00', 'Since Oct 31']);
+
+    $this->travelTo('2026-11-01 00:02:00');
+
+    livewire(MoneyStats::class)->assertSeeInOrder(['AI cost this month', '$0.00', 'Was $5.00 last month']);
 });
 
 it('links the cost tile to a workspaces list that sorts by cost from the query string', function (): void {

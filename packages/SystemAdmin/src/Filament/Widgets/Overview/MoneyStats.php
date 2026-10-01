@@ -33,12 +33,13 @@ final class MoneyStats extends StatsOverviewWidget
     protected function getStats(): array
     {
         $cache = new OverviewCache;
-        $cost = (int) $cache->remember('money.cost', fn (): int => AiCost::monthToDateMicros());
-        $lastMonthCost = (int) $cache->remember('money.cost.previous', fn (): int => AiCost::monthToDateMicros(now()->subMonthNoOverflow()->startOfMonth()) - AiCost::monthToDateMicros());
-        $unpriced = (int) $cache->remember('money.unpriced', fn (): int => AiCost::unpricedCount());
+        $month = now()->format('Y-m');
+        $cost = (int) $cache->remember("money.cost.{$month}", fn (): int => AiCost::monthToDateMicros());
+        $lastMonthCost = (int) $cache->remember("money.cost.previous.{$month}", fn (): int => AiCost::monthToDateMicros(now()->subMonthNoOverflow()->startOfMonth()) - AiCost::monthToDateMicros());
+        $unpriced = (int) $cache->remember("money.unpriced.{$month}", fn (): int => AiCost::unpricedCount());
         /** @var array{left_micros: int|null, lowest_provider: string|null, lowest_share: float|null, estimated: bool, last_fetched: string|null} $budget */
-        $budget = $cache->remember('money.budget', fn (): array => ProviderBudget::summary());
-        $trackingSince = $cache->remember('money.since', fn (): ?string => AiCost::trackingSince()?->format('M j'));
+        $budget = $cache->remember("money.budget.{$month}", fn (): array => ProviderBudget::summary());
+        $trackingSince = $cache->remember("money.since.{$month}", fn (): ?string => AiCost::trackingSince()?->format('M j'));
 
         $stats = [];
         $mrr = null;

@@ -56,7 +56,7 @@ final class Overview extends BaseDashboard
                 ->action(function (): void {
                     (new OverviewCache)->flush();
                     Notification::make()->title('Numbers refreshed')->success()->send();
-                    $this->dispatch('$refresh');
+                    $this->redirect(self::getUrl(), navigate: true);
                 }),
         ];
     }

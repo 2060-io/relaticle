@@ -261,3 +261,19 @@ it('hides the abuse tile when billing is off', function (): void {
 
     livewire(ProblemsStats::class)->assertDontSee('Trial abuse suspects');
 });
+
+it('starts the thumbs down count again when a new week begins', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-18 23:55:00'));
+    $user = OverviewData::owner();
+    $workspace = OverviewData::workspaceOf($user);
+    rateMessage($workspace, $user, ChatMessageFeedback::RATING_DOWN, now());
+
+    preg_match('/Thumbs down this week.*?fi-wi-stats-overview-stat-value">\s*(\d+)\s*</s', livewire(ProblemsStats::class)->html(), $sunday);
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-19 00:02:00'));
+
+    preg_match('/Thumbs down this week.*?fi-wi-stats-overview-stat-value">\s*(\d+)\s*</s', livewire(ProblemsStats::class)->html(), $monday);
+
+    expect($sunday[1])->toBe('1')
+        ->and($monday[1])->toBe('0');
+});

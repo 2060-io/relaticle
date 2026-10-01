@@ -15,6 +15,13 @@ use Tests\Helpers\OverviewData;
 
 mutates(ValueStats::class, CohortTable::class, Cohorts::class);
 
+function iconMarkup(string $name): string
+{
+    preg_match('/ d="([^"]+)"/', svg($name)->contents(), $path);
+
+    return $path[1];
+}
+
 beforeEach(function (): void {
     $this->actingAs(SystemAdministrator::factory()->create(), 'sysadmin');
     Filament::setCurrentPanel(Filament::getPanel('sysadmin'));
@@ -28,7 +35,10 @@ it('renders on an empty database', function (): void {
         ->assertSee('Is anyone getting value?')
         ->assertSee('Real signups')
         ->assertSee('Reached first value')
-        ->assertSee('Formed a habit');
+        ->assertSee('Formed a habit')
+        ->assertSee('No real signups that week')
+        ->assertDontSee('0 of 0')
+        ->assertSeeHtml(iconMarkup('heroicon-m-minus'));
 
     livewire(CohortTable::class)->assertOk();
 });
@@ -52,6 +62,77 @@ it('counts real signups and first value for the latest week with 7 days of follo
         ->filterTable('reached_first_value')
         ->assertCanSeeTableRecords([$fast])
         ->assertCanNotSeeTableRecords([$slow, $nextWeek]);
+});
+
+it('points the signup arrow by the change against the week before', function (): void {
+    OverviewData::owner(CarbonImmutable::parse('2026-09-08 10:00:00'));
+    OverviewData::owner(CarbonImmutable::parse('2026-09-09 10:00:00'));
+    OverviewData::owner(CarbonImmutable::parse('2026-09-15 10:00:00'));
+
+    livewire(ValueStats::class)
+        ->assertSee('Week of Sep 14, -1 vs the week before')
+        ->assertSeeHtml(iconMarkup('heroicon-m-arrow-trending-down'));
+
+    Cache::flush();
+    OverviewData::owner(CarbonImmutable::parse('2026-09-16 10:00:00'));
+
+    livewire(ValueStats::class)
+        ->assertSee('Week of Sep 14, +0 vs the week before')
+        ->assertSeeHtml(iconMarkup('heroicon-m-minus'));
+
+    Cache::flush();
+    OverviewData::owner(CarbonImmutable::parse('2026-09-17 10:00:00'));
+
+    livewire(ValueStats::class)
+        ->assertSee('Week of Sep 14, +1 vs the week before')
+        ->assertSeeHtml(iconMarkup('heroicon-m-arrow-trending-up'));
+});
+
+it('measures a week only once every timezone has seen its last signup for 7 days', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-05 12:00:00'));
+
+    livewire(ValueStats::class)->assertSee('Week of Sep 14')->assertDontSee('Week of Sep 21');
+});
+
+it('keeps each administrator calendar to its own cached signup counts', function (): void {
+    OverviewData::owner(CarbonImmutable::parse('2026-09-20 20:00:00'));
+    $auckland = SystemAdministrator::factory()->create(['timezone' => 'Pacific/Auckland']);
+
+    livewire(ValueStats::class)->assertSee('Week of Sep 14, +1 vs the week before');
+
+    $this->actingAs($auckland, 'sysadmin');
+
+    livewire(ValueStats::class)->assertSee('Week of Sep 14, +0 vs the week before');
+});
+
+it('moves to the new week and its counts as soon as the week turns', function (): void {
+    OverviewData::owner(CarbonImmutable::parse('2026-09-15 10:00:00'));
+
+    foreach (['2026-09-22 10:00:00', '2026-09-23 10:00:00', '2026-09-24 10:00:00'] as $at) {
+        OverviewData::owner(CarbonImmutable::parse($at));
+    }
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-05 23:58:00'));
+    livewire(ValueStats::class)->assertSee('Week of Sep 14, +1 vs the week before');
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-06 00:02:00'));
+    livewire(ValueStats::class)->assertSee('Week of Sep 21, +2 vs the week before');
+});
+
+it('moves the habit and cohort numbers to the new week as soon as the week turns', function (): void {
+    $owner = OverviewData::owner(CarbonImmutable::parse('2026-08-20 10:00:00'));
+
+    foreach (['2026-09-01', '2026-09-08', '2026-09-15'] as $day) {
+        OverviewData::ownRecord(OverviewData::workspaceOf($owner), $owner, CarbonImmutable::parse("{$day} 10:00:00"));
+    }
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-04 23:58:00'));
+    livewire(ValueStats::class)->assertSee('+0 vs a week earlier');
+    livewire(CohortTable::class)->assertDontSee('Sep 28');
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-05 00:02:00'));
+    livewire(ValueStats::class)->assertSee('-1 vs a week earlier');
+    livewire(CohortTable::class)->assertSee('Sep 28');
 });
 
 it('counts workspaces that formed a habit as the workspace list shows them', function (): void {
