@@ -158,7 +158,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'press', 'compare', 'alternatives', 'ai', 'ai-native-crm', 'self-hosted',
 
         // Communication
-        'mail', 'email', 'contact', 'feedback', 'abuse', 'report',
+        'mail', 'email', 'contact', 'feedback', 'onboarding', 'abuse', 'report',
 
         // Infrastructure & framework
         'filament', 'livewire', 'storage', 'imports', 'horizon', 'scalar', 'engagement',
