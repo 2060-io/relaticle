@@ -789,3 +789,35 @@ it('offers end trial on the workspace page', function (): void {
 
     expect($workspace->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded);
 });
+
+function costRow(Workspace $workspace, int $micros, ?CarbonImmutable $at = null): void
+{
+    AiCreditTransaction::query()->create([
+        'workspace_id' => $workspace->getKey(),
+        'user_id' => $workspace->user_id,
+        'idempotency_key' => 'cost-'.Str::ulid(),
+        'type' => AiCreditType::Chat,
+        'model' => 'claude-sonnet-5',
+        'input_tokens' => 0,
+        'output_tokens' => 0,
+        'credits_charged' => 1,
+        'cost_micros' => $micros,
+        'metadata' => [],
+        'created_at' => $at ?? now(),
+    ]);
+}
+
+it('sorts workspaces by AI cost this month', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-15 12:00:00'));
+    $cheap = OverviewData::workspaceOf(OverviewData::owner());
+    $expensive = OverviewData::workspaceOf(OverviewData::owner());
+    costRow($cheap, 100_000);
+    costRow($expensive, 2_500_000);
+    costRow($cheap, 9_000_000, CarbonImmutable::parse('2026-09-30 12:00:00'));
+
+    livewire(ListWorkspaces::class)
+        ->sortTable('ai_cost_this_month', 'desc')
+        ->assertCanSeeTableRecords([$expensive, $cheap], inOrder: true)
+        ->assertTableColumnStateSet('ai_cost_this_month', '$2.50', $expensive)
+        ->assertTableColumnStateSet('ai_cost_this_month', '$0.10', $cheap);
+});
