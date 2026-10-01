@@ -6,6 +6,7 @@ namespace Relaticle\SystemAdmin\Filament\Pages\Settings;
 
 use App\Enums\Plan;
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
@@ -33,6 +34,7 @@ use Relaticle\Chat\Services\ProviderModelCatalog;
 use Relaticle\Chat\Settings\ChatSettings;
 use Relaticle\Chat\Support\CatalogEntry;
 use Relaticle\Chat\Support\Measurement;
+use Relaticle\SystemAdmin\Metrics\ProviderBudget;
 use UnitEnum;
 
 /**
@@ -72,6 +74,7 @@ final class ManageAiSettings extends Page
         $this->form->fill([
             'models' => $settings->models,
             'anthropic_effort' => $settings->anthropic_effort,
+            'provider_monthly_budgets' => $settings->provider_monthly_budgets,
         ]);
     }
 
@@ -227,6 +230,14 @@ final class ManageAiSettings extends Page
                                 ])
                                 ->required(),
                         ]),
+                    Section::make('Budgets')
+                        ->description('What you plan to spend per provider each month. The Overview compares it with what the provider billed.')
+                        ->columns(3)
+                        ->schema([
+                            TextInput::make('provider_monthly_budgets.anthropic')->label('Anthropic')->numeric()->minValue(0)->prefix('$'),
+                            TextInput::make('provider_monthly_budgets.openai')->label('OpenAI')->numeric()->minValue(0)->prefix('$'),
+                            TextInput::make('provider_monthly_budgets.gemini')->label('Gemini')->numeric()->minValue(0)->prefix('$'),
+                        ]),
                 ])
                     ->livewireSubmitHandler('save')
                     ->footer([
@@ -236,6 +247,14 @@ final class ManageAiSettings extends Page
                     ]),
             ])
             ->statePath('data');
+    }
+
+    /**
+     * @return list<array{provider: string, budget_micros: int|null, billed_micros: int|null, estimate_micros: int, spent_micros: int, last_fetched: CarbonImmutable|null}>
+     */
+    public function providerMonth(): array
+    {
+        return ProviderBudget::rows();
     }
 
     /**
@@ -307,6 +326,10 @@ final class ManageAiSettings extends Page
         $before = $settings->toConfig();
         $settings->models = $models;
         $settings->anthropic_effort = (string) ($data['anthropic_effort'] ?? 'high');
+        $settings->provider_monthly_budgets = array_map(
+            intval(...),
+            array_filter((array) ($data['provider_monthly_budgets'] ?? []), is_numeric(...)),
+        );
         $settings->save();
 
         config($settings->toConfig());

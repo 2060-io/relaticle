@@ -111,6 +111,8 @@ return [
 
     'anthropic_effort' => env('CHAT_ANTHROPIC_EFFORT', 'high'),
 
+    'provider_monthly_budgets' => [],
+
     /*
     |--------------------------------------------------------------------------
     | Provider Stream-Start Rate (per second, per provider)

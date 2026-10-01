@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 use App\Enums\Plan;
 use App\Models\ActivityLog\Activity;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Models\AiCreditTransaction;
+use Relaticle\Chat\Models\AiProviderCost;
 use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Settings\ChatSettings;
 use Relaticle\SystemAdmin\Filament\Pages\Settings\ManageAiSettings;
@@ -545,4 +550,36 @@ it('stores the cache prices with the entry', function (): void {
     expect(config('chat.models')[0])
         ->cache_read_per_mtok->toBe(0.3)
         ->cache_write_per_mtok->toBe(3.75);
+});
+
+it('saves a monthly budget per provider', function (): void {
+    livewire(ManageAiSettings::class)
+        ->fillForm(catalogState(['provider_monthly_budgets' => ['anthropic' => 200, 'openai' => 50, 'gemini' => null]]))
+        ->call('save')
+        ->assertNotified('Saved');
+
+    expect(config('chat.provider_monthly_budgets'))->toBe(['anthropic' => 200, 'openai' => 50]);
+});
+
+it('shows this month per provider: budget, billed, our estimate', function (): void {
+    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
+    $settings = resolve(ChatSettings::class);
+    $settings->provider_monthly_budgets = ['anthropic' => 200];
+    $settings->save();
+    config($settings->toConfig());
+
+    AiProviderCost::query()->create(['provider' => 'anthropic', 'date' => now()->startOfMonth(), 'amount_micros' => 10_000_000, 'fetched_at' => now()]);
+    $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
+    AiCreditTransaction::query()->create([
+        'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'b-'.Str::ulid(),
+        'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
+        'credits_charged' => 1, 'cost_micros' => 12_340_000, 'metadata' => [], 'created_at' => now(),
+    ]);
+
+    livewire(ManageAiSettings::class)
+        ->assertSee('This month')
+        ->assertSee('$200.00')
+        ->assertSee('$12.34')
+        ->assertSee('$10.00')
+        ->assertSee('-$2.34');
 });

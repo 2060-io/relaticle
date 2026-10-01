@@ -29,6 +29,9 @@ final class ChatSettings extends Settings
 
     public string $anthropic_effort;
 
+    /** @phpstan-var array<string, int> */
+    public array $provider_monthly_budgets;
+
     public static function group(): string
     {
         return 'chat';
@@ -42,6 +45,7 @@ final class ChatSettings extends Settings
         return [
             'chat.models' => $this->models,
             'chat.anthropic_effort' => $this->anthropic_effort,
+            'chat.provider_monthly_budgets' => $this->provider_monthly_budgets,
         ];
     }
 }

@@ -14,6 +14,6 @@ final readonly class Money
             return self::EMPTY;
         }
 
-        return '$'.number_format($micros / 1_000_000, 2);
+        return ($micros < 0 ? '-' : '').'$'.number_format(abs($micros) / 1_000_000, 2);
     }
 }
