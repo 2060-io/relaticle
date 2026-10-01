@@ -88,8 +88,6 @@ html.fi:has(body.fi-panel-app) {
 /* Sidebar Enhancements */
 .fi-sidebar {
     @apply h-full border-r border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900;
-    scrollbar-width: thin;
-    scrollbar-color: theme('colors.gray.300') transparent;
 }
 
 /* Heroicons draw a 1.5 stroke on a 24 grid, a 1px line at the sidebar's 16px,
@@ -249,9 +247,13 @@ html.fi-chat-docked .fi-app-main-wrapper {
 }
 
 .fi-sidebar-nav {
-    @apply gap-y-5 overflow-x-hidden overflow-y-auto pt-2.5;
+    @apply gap-y-5 pt-2.5;
     scrollbar-width: thin;
-    scrollbar-color: theme('colors.gray.300') transparent;
+    scrollbar-color: var(--color-gray-300) transparent;
+}
+
+.dark .fi-sidebar-nav {
+    scrollbar-color: var(--color-gray-700) transparent;
 }
 
 .fi-sidebar-item {
@@ -285,7 +287,7 @@ html.fi-chat-docked .fi-app-main-wrapper {
 
 .fi-sidebar-item.fi-active {
     > .fi-sidebar-item-btn {
-        @apply bg-gray-100 font-medium dark:bg-white/10;
+        @apply bg-gray-100 dark:bg-white/10;
 
         .fi-sidebar-item-label {
             @apply font-medium;

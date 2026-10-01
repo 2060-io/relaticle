@@ -219,7 +219,7 @@
                                 x-bind:class="{ 'opacity-100': isOpen }"
                                 class="flex size-6 items-center justify-center rounded-md text-gray-500 opacity-0 transition hover:bg-gray-200/70 hover:text-gray-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 group-hover/chat-item:opacity-100 pointer-coarse:opacity-100 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
                             >
-                                <x-heroicon-m-ellipsis-horizontal class="size-4" />
+                                <x-heroicon-o-ellipsis-horizontal class="size-4" />
                             </button>
                         </x-slot>
 

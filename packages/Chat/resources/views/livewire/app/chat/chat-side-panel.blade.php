@@ -7,11 +7,8 @@
             {{-- From xl the panel docks beside the page instead of covering it. --}}
             dockFrom: 1280,
 
-            {{-- The panel only learns the id of a brand-new conversation from the
-                 client, so the header menu tracks it here rather than round-tripping
-                 to the server (which would remount the chat mid-stream). Read from
-                 $wire, never rendered into x-data: a changed x-data re-inits the
-                 component, and init() closes an open panel. --}}
+            {{-- Read from $wire, never rendered into x-data: a changed x-data re-inits
+                 the component, and init() closes an open panel. --}}
             currentConversationId: $wire.conversationId,
             historyOpen: false,
             historyLoading: false,
