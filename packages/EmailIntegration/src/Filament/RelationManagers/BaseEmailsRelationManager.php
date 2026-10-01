@@ -9,6 +9,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Tables\Table;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphPivot;
@@ -70,6 +71,13 @@ abstract class BaseEmailsRelationManager extends RelationManager
     protected function getCrmRecord(): Model
     {
         return $this->getOwnerRecord();
+    }
+
+    public function table(Table $table): Table
+    {
+        // The tab lists emails() itself. The default relationship table skips the
+        // visibility scopes and Livewire lets a client call getTableRecords().
+        return $table->modifyQueryUsing(fn (Builder $query): Builder => $query->whereRaw('0 = 1'));
     }
 
     #[On('composer:sent')]
