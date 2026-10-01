@@ -72,6 +72,7 @@ final class UserFactory extends Factory
 
             // Update the relationship
             $user->ownedWorkspaces()->save($workspace);
+            $user->switchWorkspace($workspace);
         });
     }
 
