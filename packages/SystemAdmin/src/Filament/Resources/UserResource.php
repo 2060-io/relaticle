@@ -25,6 +25,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\Indicator;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
@@ -280,7 +281,12 @@ final class UserResource extends Resource
                     ])
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['from'] ?? null, fn (Builder $q, mixed $date): Builder => $q->where('users.created_at', '>=', ViewerTime::startOfDayUtc((string) $date)))
-                        ->when($data['until'] ?? null, fn (Builder $q, mixed $date): Builder => $q->where('users.created_at', '<=', ViewerTime::endOfDayUtc((string) $date)))),
+                        ->when($data['until'] ?? null, fn (Builder $q, mixed $date): Builder => $q->where('users.created_at', '<=', ViewerTime::endOfDayUtc((string) $date))))
+                    ->indicateUsing(fn (array $data): array => collect(['from' => 'Signed up from', 'until' => 'Signed up until'])
+                        ->filter(fn (string $label, string $field): bool => is_string($data[$field] ?? null) && $data[$field] !== '')
+                        ->map(fn (string $label, string $field): Indicator => Indicator::make("{$label}: {$data[$field]}")->removeField($field))
+                        ->values()
+                        ->all()),
             ])
             ->recordActions([
                 ViewAction::make(),

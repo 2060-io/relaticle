@@ -535,7 +535,9 @@ it('filters users by signup date', function (): void {
     livewire(ListUsers::class)
         ->filterTable('signed_up', ['from' => '2026-09-15', 'until' => '2026-09-21'])
         ->assertCanSeeTableRecords([$inside])
-        ->assertCanNotSeeTableRecords([$outside]);
+        ->assertCanNotSeeTableRecords([$outside])
+        ->assertSee('Signed up from: 2026-09-15')
+        ->assertSee('Signed up until: 2026-09-21');
 });
 
 it('shows how each user signed up', function (): void {
