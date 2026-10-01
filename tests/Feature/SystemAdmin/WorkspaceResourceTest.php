@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\BillingStatus;
+use App\Enums\CreationSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
 use App\Models\ActivityLog\Activity;
@@ -587,4 +588,21 @@ it('filters workspaces owned by a system administrator as internal', function ()
         ->filterTable('internal', false)
         ->assertCanSeeTableRecords([$external, $ownerless])
         ->assertCanNotSeeTableRecords([$internal]);
+});
+
+it('creates overview fixture records under a sysadmin session without a creator or a stray user', function (): void {
+    $owner = OverviewData::owner();
+    $workspace = OverviewData::workspaceOf($owner);
+    $usersBefore = User::query()->count();
+
+    $sample = OverviewData::sampleRecord($workspace, now())->refresh();
+    $own = OverviewData::ownRecord($workspace, $owner, now())->refresh();
+
+    expect($sample->creator_id)->toBeNull()
+        ->and($sample->account_owner_id)->toBeNull()
+        ->and($sample->creation_source)->toBe(CreationSource::SYSTEM)
+        ->and($own->creator_id)->toBe($owner->getKey())
+        ->and($own->account_owner_id)->toBe($owner->getKey())
+        ->and($own->creation_source)->toBe(CreationSource::WEB)
+        ->and(User::query()->count())->toBe($usersBefore);
 });

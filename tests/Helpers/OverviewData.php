@@ -44,6 +44,7 @@ final class OverviewData
         return Company::factory()->create([
             'workspace_id' => $workspace->getKey(),
             'creator_id' => $creator->getKey(),
+            'account_owner_id' => $creator->getKey(),
             'creation_source' => $source,
             'created_at' => $at,
             'updated_at' => $at,
@@ -52,13 +53,14 @@ final class OverviewData
 
     public static function sampleRecord(Workspace $workspace, CarbonImmutable $at): Company
     {
-        return Company::factory()->create([
+        return Company::withoutEvents(fn (): Company => Company::factory()->create([
             'workspace_id' => $workspace->getKey(),
             'creator_id' => null,
+            'account_owner_id' => null,
             'creation_source' => CreationSource::SYSTEM,
             'created_at' => $at,
             'updated_at' => $at,
-        ]);
+        ]));
     }
 
     public static function typedMessage(Workspace $workspace, User $user, CarbonImmutable $at): void
@@ -95,9 +97,11 @@ final class OverviewData
 
     public static function internalOwner(): User
     {
-        $administrator = SystemAdministrator::factory()->create();
+        $administrator = SystemAdministrator::factory()->create([
+            'email' => 'Founder.'.Str::lower(Str::random(8)).'@Example.COM',
+        ]);
 
-        return self::owner(attributes: ['email' => mb_strtoupper($administrator->email)]);
+        return self::owner(attributes: ['email' => $administrator->email]);
     }
 
     public static function trial(Workspace $workspace): Workspace
