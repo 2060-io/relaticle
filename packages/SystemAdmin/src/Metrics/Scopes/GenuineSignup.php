@@ -32,7 +32,7 @@ final readonly class GenuineSignup implements Scope
                 ->whereRaw("workspace_user.created_at <= {$createdAt} + interval '24 hours'"))
             ->whereNotIn($id, InternalWorkspace::ownerIds())
             ->whereNotIn($id, Workspace::query()
-                ->withGlobalScope(AbuseSuspect::class, new AbuseSuspect)
+                ->withGlobalScope(TrialFarmer::class, new TrialFarmer)
                 ->whereNotNull('user_id')
                 ->select('user_id'));
     }

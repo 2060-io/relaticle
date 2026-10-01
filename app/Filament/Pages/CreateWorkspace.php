@@ -262,6 +262,11 @@ final class CreateWorkspace extends RegisterTenant
             ]);
     }
 
+    public function skipAttribution(): void
+    {
+        $this->recordWizardStep(SetupWizardStep::Attribution);
+    }
+
     private function recordWizardStep(SetupWizardStep $step): null
     {
         $user = auth()->user();

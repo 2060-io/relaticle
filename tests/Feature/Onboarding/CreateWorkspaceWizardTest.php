@@ -986,3 +986,35 @@ it('leaves the recorded wizard step alone when a user adds another workspace', f
 
     expect($user->refresh()->onboarding_step)->toBeNull();
 });
+
+it('records the attribution step when the user skips it', function (): void {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->fillForm([
+            'user_name' => 'Dana Reed',
+            'name' => 'Skip Corp',
+            'onboarding_referral_source' => 'not-a-listed-source',
+        ])
+        ->goToNextWizardStep()
+        ->call('skipAttribution')
+        ->assertHasNoFormErrors();
+
+    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
+});
+
+it('keeps the furthest wizard step when the user goes back and continues again', function (): void {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->fillForm(['user_name' => 'Dana Reed', 'name' => 'Back Corp'])
+        ->goToNextWizardStep()
+        ->goToNextWizardStep()
+        ->goToPreviousWizardStep()
+        ->goToPreviousWizardStep()
+        ->goToNextWizardStep();
+
+    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
+});

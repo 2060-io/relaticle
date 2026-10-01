@@ -11,6 +11,12 @@ final readonly class RecordOnboardingStep
 {
     public function execute(User $user, SetupWizardStep $step): void
     {
+        $recorded = $user->onboarding_step;
+
+        if ($recorded instanceof SetupWizardStep && ! $recorded->isBefore($step)) {
+            return;
+        }
+
         $user->forceFill(['onboarding_step' => $step])->save();
     }
 }

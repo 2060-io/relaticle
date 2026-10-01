@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\OnboardingUseCase;
+use App\Enums\SetupWizardStep;
 use App\Features\SetupConversation;
 use App\Filament\Pages\CreateWorkspace;
 use App\Models\User;
@@ -104,4 +105,25 @@ it('stores the use case and its sub-option chosen in the browser', function (): 
     expect($workspace->onboarding_use_case)->toBe(OnboardingUseCase::Recruiting)
         ->and($workspace->onboarding_context)->toBe(['sourcing'])
         ->and($workspace->name)->toBe('Hiring Desk');
+});
+
+it('records the attribution step when the user skips it in the browser', function (): void {
+    Queue::fake();
+
+    $user = User::factory()->create();
+
+    loginViaBrowser($user)
+        ->assertPathIs('/app/new')
+        ->navigate('/app/new')
+        ->assertSee('Create your workspace')
+        ->type('[id="form.name"]', 'Skipped Desk')
+        ->press('Continue')
+        ->waitForText('How did you hear about us?')
+        ->press('Skip')
+        ->waitForText('Help us customize your workspace')
+        ->click('[for$="onboarding_use_case-other"]')
+        ->press('Get started')
+        ->assertPathContains('/skipped-desk');
+
+    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
 });

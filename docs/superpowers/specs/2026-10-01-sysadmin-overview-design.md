@@ -103,8 +103,9 @@ turns), and two measurement hooks record where new users stop (wizard step, setu
 | Internal workspace | Its owner's canonical email equals a `system_administrators.email` (lower-cased) | `Scopes\InternalWorkspace` (and its inverse `Scopes\ExternalWorkspace`) |
 | Own data | A company, person, opportunity, task or note whose `creation_source` is not `system` | `HasCreator::ownData()` scope |
 | Active day | A day on which a user created own data or sent a typed chat message (`AgentConversationMessage::typed()`) | `Metrics\ActivityDays` |
-| Abuse suspect | A `Trialing` workspace with no own data, and either at least half its chat credits spent on models whose `min_plan` is above Free, or an owner timezone in `system-admin.abuse_timezones` | `Scopes\AbuseSuspect` |
-| Genuine signup | Verified; not an invited teammate (no membership in someone else's workspace within 24 hours of signing up); owns no abuse-suspect and no internal workspace | `Scopes\GenuineSignup` |
+| Trial farmer | A workspace that used its Pro trial (`pro_trial_used_at` set) with no own data, and either at least half its chat credits spent on models whose `min_plan` is above Free, or an owner timezone in `system-admin.abuse_timezones`. Holds after the trial ends | `Scopes\TrialFarmer` |
+| Abuse suspect | A `Trialing` trial farmer: the ones End trial now can still act on | `Scopes\AbuseSuspect` |
+| Genuine signup | Verified; not an invited teammate (no membership in someone else's workspace within 24 hours of signing up); owns no trial-farmer and no internal workspace | `Scopes\GenuineSignup` |
 | First value | A genuine signup who created own data within 7 days of signing up | `Scopes\ReachedFirstValue` |
 | Habit | A non-internal workspace with an active day in at least 3 of the last 4 complete weeks | `Scopes\FormedHabit` |
 | Stuck after setup | A genuine owner's personal workspace, 3 to 30 days old, with no own data and no typed chat message in its first 3 days | `Scopes\StuckAfterSetup` |

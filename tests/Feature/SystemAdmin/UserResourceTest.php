@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\Notifications\NotificationChannel;
 use App\Enums\Notifications\NotificationType;
+use App\Enums\Plan;
 use App\Enums\SocialiteProvider;
 use App\Enums\SubscriberTagEnum;
 use App\Enums\WorkspaceRole;
@@ -545,4 +546,35 @@ it('shows how each user signed up', function (): void {
     livewire(ListUsers::class)
         ->assertTableColumnStateSet('signup_method', 'Password', $password)
         ->assertTableColumnStateSet('signup_method', 'Google', $google);
+});
+
+it('keeps trial farmers out of genuine signups once their trial has ended', function (): void {
+    config()->set('system-admin.abuse_timezones', ['Asia/Tehran']);
+
+    $farmer = OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran']);
+    $builder = OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran']);
+    OverviewData::ownRecord(OverviewData::workspaceOf($builder), $builder, now());
+
+    foreach ([$farmer, $builder] as $owner) {
+        OverviewData::trial(OverviewData::workspaceOf($owner))
+            ->forceFill(['plan' => Plan::Free, 'trial_ends_at' => now()->subDay()])
+            ->save();
+    }
+
+    livewire(ListUsers::class)
+        ->filterTable('genuine_signup')
+        ->assertCanSeeTableRecords([$builder])
+        ->assertCanNotSeeTableRecords([$farmer]);
+});
+
+it('shows a password signup who linked a social account later as Password', function (): void {
+    $user = OverviewData::owner(CarbonImmutable::parse('2026-09-01 10:00:00'));
+    UserSocialAccount::factory()->create([
+        'user_id' => $user->getKey(),
+        'provider_name' => 'google',
+        'created_at' => CarbonImmutable::parse('2026-09-20 10:00:00'),
+    ]);
+
+    livewire(ListUsers::class)
+        ->assertTableColumnStateSet('signup_method', 'Password', $user);
 });
