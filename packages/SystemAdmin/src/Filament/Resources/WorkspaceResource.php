@@ -53,6 +53,7 @@ use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
 use Relaticle\SystemAdmin\Metrics\Scopes\InternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\StuckAfterSetup;
+use Relaticle\SystemAdmin\Metrics\WorkspaceJourney;
 
 final class WorkspaceResource extends Resource
 {
@@ -174,6 +175,15 @@ final class WorkspaceResource extends Resource
                     TextEntry::make('updated_at')
                         ->dateTime(),
                 ])->columnSpanFull()->columns(),
+                Section::make('Journey')
+                    ->columnSpanFull()
+                    ->columns(2)
+                    ->schema(array_map(
+                        fn (string $label): TextEntry => TextEntry::make('journey_'.str($label)->slug('_'))
+                            ->label($label)
+                            ->state(fn (Workspace $record): string => WorkspaceJourney::facts($record)[$label]),
+                        ['Signed up', 'Signup method', 'Last wizard step', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'AI cost this month', 'Setup exit reason', 'Internal'],
+                    )),
             ]);
     }
 
@@ -248,6 +258,12 @@ final class WorkspaceResource extends Resource
                     ->label('Exit reason')
                     ->badge()
                     ->tooltip(fn (Workspace $record): ?string => $record->setup_exit_note)
+                    ->toggleable()
+                    ->placeholder("\u{2014}"),
+                TextColumn::make('sales_contacted_at')
+                    ->label('Contacted at')
+                    ->dateTime()
+                    ->sortable()
                     ->toggleable()
                     ->placeholder("\u{2014}"),
                 TextColumn::make('created_at')

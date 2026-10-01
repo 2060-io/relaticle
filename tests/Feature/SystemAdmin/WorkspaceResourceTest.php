@@ -35,10 +35,11 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\MembersRelationManager;
 use Relaticle\SystemAdmin\Filament\Support\Impersonate;
 use Relaticle\SystemAdmin\Filament\Support\PivotSafeTableQuery;
+use Relaticle\SystemAdmin\Metrics\WorkspaceJourney;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Tests\Helpers\OverviewData;
 
-mutates(UpdateCustomerRecord::class, EditCustomerRecord::class, BillingStatus::class, WorkspaceResource::class, MembersRelationManager::class, CompaniesRelationManager::class, ActivityRelationManager::class, PivotSafeTableQuery::class, Impersonate::class);
+mutates(UpdateCustomerRecord::class, EditCustomerRecord::class, BillingStatus::class, WorkspaceResource::class, MembersRelationManager::class, CompaniesRelationManager::class, ActivityRelationManager::class, PivotSafeTableQuery::class, Impersonate::class, WorkspaceJourney::class);
 
 beforeEach(function (): void {
     $this->actingAs(SystemAdministrator::factory()->create(), 'sysadmin');
@@ -831,4 +832,31 @@ it('shows the reason a stuck owner gave for stepping away', function (): void {
     livewire(ListWorkspaces::class)
         ->assertTableColumnStateSet('setup_exit_reason', SetupExitReason::TooHard, $stepped)
         ->assertTableColumnStateSet('setup_exit_reason', null, $silent);
+});
+
+it('shows the journey of a workspace on its page', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-15 12:00:00'));
+    $owner = OverviewData::owner(CarbonImmutable::parse('2026-10-01 09:00:00'));
+    $workspace = OverviewData::workspaceOf($owner);
+    OverviewData::ownRecord($workspace, $owner, CarbonImmutable::parse('2026-10-02 09:00:00'));
+    OverviewData::typedMessage($workspace, $owner, CarbonImmutable::parse('2026-10-03 09:00:00'));
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
+        ->assertSee('Journey')
+        ->assertSee('Password')
+        ->assertSee('Oct 2, 2026')
+        ->assertSee('2 active days');
+});
+
+it('marks a workspace contacted from its page', function (): void {
+    $workspace = OverviewData::workspaceOf(OverviewData::owner());
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
+        ->callAction('contacted')
+        ->assertNotified('Marked as contacted');
+
+    expect($workspace->refresh()->sales_contacted_at)->not->toBeNull();
+
+    livewire(ListWorkspaces::class)
+        ->assertTableColumnStateSet('sales_contacted_at', $workspace->sales_contacted_at, $workspace);
 });

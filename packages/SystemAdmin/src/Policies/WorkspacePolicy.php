@@ -35,6 +35,11 @@ final class WorkspacePolicy
         return $admin->role->canImpersonate() && $workspace->owner !== null;
     }
 
+    public function markContacted(): bool
+    {
+        return true;
+    }
+
     public function endTrial(SystemAdministrator $admin, Workspace $workspace): bool
     {
         return $admin->role->canManageCustomerAccess()

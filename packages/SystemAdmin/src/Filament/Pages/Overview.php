@@ -11,6 +11,7 @@ use Filament\Widgets\WidgetConfiguration;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\CohortTable;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\MoneyStats;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\ProblemsStats;
+use Relaticle\SystemAdmin\Filament\Widgets\Overview\SalesLeads;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\ValueStats;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
 
@@ -35,6 +36,7 @@ final class Overview extends BaseDashboard
             MoneyStats::class,
             ValueStats::class,
             CohortTable::class,
+            SalesLeads::class,
             ProblemsStats::class,
         ];
     }
