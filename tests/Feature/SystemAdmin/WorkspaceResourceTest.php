@@ -728,11 +728,25 @@ it('ends several trials at once and skips workspaces that are not trialing', fun
 
     livewire(ListWorkspaces::class)
         ->selectTableRecords([$trialA, $trialB, $free])
-        ->callAction(TestAction::make('endTrials')->table()->bulk());
+        ->callAction(TestAction::make('endTrials')->table()->bulk())
+        ->assertNotified('Ended 2 of 3 trials');
 
     expect($trialA->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded)
         ->and($trialB->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded)
         ->and($free->refresh()->trial_ends_at)->toBeNull();
+});
+
+it('reports success when every selected workspace is trialing', function (): void {
+    $trialA = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+    $trialB = OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+
+    livewire(ListWorkspaces::class)
+        ->selectTableRecords([$trialA, $trialB])
+        ->callAction(TestAction::make('endTrials')->table()->bulk())
+        ->assertNotified('Trials ended');
+
+    expect($trialA->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded)
+        ->and($trialB->refresh()->billingStatus())->toBe(BillingStatus::TrialEnded);
 });
 
 it('hides end trial on a workspace that is not trialing', function (): void {
@@ -748,6 +762,23 @@ it('hides end trial from an administrator without customer access', function ():
 
     livewire(ListWorkspaces::class)
         ->assertActionHidden(TestAction::make('endTrial')->table($workspace));
+});
+
+it('hides the end trials bulk action from an administrator without customer access', function (): void {
+    $this->actingAs(SystemAdministrator::factory()->create(['role' => SystemAdministratorRole::Administrator]), 'sysadmin');
+    OverviewData::trial(OverviewData::workspaceOf(OverviewData::owner()));
+
+    livewire(ListWorkspaces::class)
+        ->assertActionHidden(TestAction::make('endTrials')->table()->bulk());
+});
+
+it('warns instead of reporting success when no selected workspace is trialing', function (): void {
+    $free = OverviewData::workspaceOf(OverviewData::owner());
+
+    livewire(ListWorkspaces::class)
+        ->selectTableRecords([$free])
+        ->callAction(TestAction::make('endTrials')->table()->bulk())
+        ->assertNotified('No trialing workspaces selected');
 });
 
 it('offers end trial on the workspace page', function (): void {
