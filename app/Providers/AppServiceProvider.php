@@ -53,6 +53,7 @@ use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Impersonation\Impersonator;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
+use App\Support\Migrations\TenantMigration;
 use App\Support\Passport\ClientRepository;
 use App\Support\Passport\WorkspaceBearerTokenResponse;
 use Carbon\CarbonImmutable;
@@ -78,6 +79,8 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
@@ -293,11 +296,13 @@ final class AppServiceProvider extends ServiceProvider
         $this->configureFilament();
         $this->configureCommunityCounts();
         $this->configureLivewire();
+        $this->configureMacros();
         $this->configureRateLimiting();
         $this->configureScribe();
 
         $this->configureActivityLog();
         $this->configureBlog();
+        $this->configureDevCommands();
     }
 
     /**
@@ -791,5 +796,20 @@ final class AppServiceProvider extends ServiceProvider
         Facades\View::composer('home.partials.works-with', function (View $view): void {
             $view->with('formattedDockerPulls', resolve(DockerHubService::class)->getFormattedPullCount());
         });
+    }
+
+    private function configureMacros(): void
+    {
+        Blueprint::macro('teams', function (): void {
+            TenantMigration::addForeignKey($this);
+        });
+    }
+
+    private function configureDevCommands(): void
+    {
+        DevCommands::artisan(
+            'schedule:work',
+        );
+        DevCommands::except('reverb', 'queue');
     }
 }

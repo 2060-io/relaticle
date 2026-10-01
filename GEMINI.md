@@ -17,6 +17,7 @@ no composer.json of their own. Service providers are registered in
 | `packages/ImportWizard` | CSV import flows |
 | `packages/Documentation` | Public docs pages |
 | `packages/OnboardSeed` | Demo/onboarding data seeding |
+| `packages/EmailIntegration` | Email + calendar sync (Gmail/Microsoft Graph), sharing, privacy |
 
 Create a new package only for a genuinely separable subsystem with its own panel,
 routes, or lifecycle. A new CRM entity is not one of those; it goes in `app/`. Package
@@ -27,6 +28,10 @@ anatomy mirrors a Laravel app: `src/`, `config/`, `routes/`, `resources/`,
 
 - `App` must not depend on `Relaticle\SystemAdmin`; `Relaticle\SystemAdmin` may
   only reach back into `App\Models`, `App\Enums`, `App\Rules`
+- `packages/EmailIntegration` owns its controllers, jobs, policies, views, config and
+  timeline entries. `App\Http`, `App\Jobs`, `App\Policies`, `App\ActivityLog` and
+  `App\Console` must not use it. The app reaches it only from CRM resources, models,
+  onboarding and panel wiring, and anything it exposes to them checks the feature flag
 - Never use the custom-fields package models directly. Use the `App\Models\CustomField*`
   subclasses (runtime model swapping is configured in `AppServiceProvider`)
 - `packages/SystemAdmin` is excluded from PHPStan. When adding or removing enum
