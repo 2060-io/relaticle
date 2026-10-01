@@ -213,9 +213,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
     _scrollAnimationTimer: null,
     anchorKey: null,
     _anchorScrollPending: false,
-    // Where an in-flight anchor scroll is headed, and where the reader came to
-    // rest on the anchor after it. Layout changes above the anchor retarget the
-    // first and carry the second along, until the reader scrolls away.
+    // An in-flight anchor scroll's target, then where the reader came to rest on
+    // it. Layout changes above the anchor move both, until the reader scrolls away.
     _anchorScrollTarget: null,
     _anchorRestTop: null,
     _anchorObserver: null,
@@ -1478,12 +1477,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         return !!group && Array.isArray(group.actions) && group.actions.length > 1;
     },
 
-    // The user owns the scroll position. Without an anchored turn (a reopened
-    // conversation, a reload mid-turn), streaming autoscrolls ONLY while they
-    // are pinned near the bottom; once they scroll up to read, new content lands
-    // below them and the jump-to-latest button takes them back. force=true is
-    // for landing on a conversation. An anchored turn never follows: its reply
-    // grows into the reserve instead.
+    // Follows streaming only while the reader is pinned near the bottom, and never
+    // in an anchored turn, whose reply grows into the reserve. force lands a conversation.
     scrollToBottom(force = false) {
         if (this.anchorKey) return;
         if (!force && !this.pinnedToBottom) return;
@@ -1531,7 +1526,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
             if (this.destroyed) return;
             this.scrollAnimating = false;
             if (this._anchorScrollTarget !== null) {
-                this._anchorRestTop = Math.abs(el.scrollTop - this._anchorScrollTarget) <= 1 ? this._anchorScrollTarget : null;
+                const landed = Math.abs(el.scrollTop - this._anchorScrollTarget) <= 1;
+                this._anchorRestTop = landed ? this._anchorScrollTarget : null;
                 this._anchorScrollTarget = null;
             }
             // A wheel/trackpad gesture cancels a smooth scroll mid-flight, so
@@ -1540,19 +1536,16 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         }, 700);
     },
 
-    // A turn starts with its first row at the top of the transcript, and a
-    // spacer below the transcript reserves the rest of the viewport. The reply,
-    // its record blocks and the next-step strip grow into that reserve, so
-    // nothing on screen moves, and the reserve stays until the next turn.
+    // A turn's first row sits at the top and a spacer reserves the viewport below it,
+    // so the reply and its late blocks grow into the reserve without moving anything.
     anchorTo(msg) {
         if (!msg?.clientKey) return;
 
         this.anchorKey = msg.clientKey;
         this._anchorScrollPending = true;
 
-        // The row may not be rendered yet (edit, regenerate and next-step sends
-        // run inside a $nextTick), so the first sync that finds it scrolls: this
-        // frame's, or the observer's when the row lands.
+        // Edit, regenerate and next-step sends render the row a tick later, so the
+        // first sync that finds it scrolls: this frame's, or the observer's.
         requestAnimationFrame(() => {
             if (!this.destroyed) this.syncAnchorReserve();
         });
@@ -1577,12 +1570,13 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         const rect = el.getBoundingClientRect();
         const edge = rect.height > ANCHOR_TALL_ROW_PX ? rect.bottom - ANCHOR_TALL_ROW_TAIL_PX : rect.top;
 
-        return Math.max(0, Math.round(edge - scroller.getBoundingClientRect().top + scroller.scrollTop - ANCHOR_GAP_PX));
+        const offset = edge - scroller.getBoundingClientRect().top + scroller.scrollTop;
+
+        return Math.max(0, Math.round(offset - ANCHOR_GAP_PX));
     },
 
-    // Sizes the reserve so the furthest the transcript can scroll is exactly the
-    // anchor position. Measured against scrollHeight rather than summed from
-    // padding, so it holds in both the page and the side panel.
+    // Sizes the reserve so the transcript scrolls no further than the anchor. Measured
+    // against scrollHeight, not summed from padding, so the side panel holds too.
     syncAnchorReserve() {
         const scroller = this.$refs.messages;
         const reserve = this.$refs.anchorReserve;
@@ -1625,9 +1619,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         if (reserve) reserve.style.height = `${Math.round(px)}px`;
     },
 
-    // Runs before paint, so a resized transcript never shows a frame with the
-    // old reserve. The reserve sits outside both observed boxes, so writing it
-    // cannot re-trigger the observer.
+    // Runs before paint, so no frame shows a stale reserve. The reserve sits outside
+    // both observed boxes, so writing it cannot re-trigger the observer.
     initAnchorObserver() {
         this.teardownAnchorObserver();
         if (typeof ResizeObserver === 'undefined') return;

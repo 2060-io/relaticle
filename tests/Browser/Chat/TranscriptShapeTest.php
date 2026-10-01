@@ -847,11 +847,6 @@ it('shows the scroll-to-bottom button whenever the transcript is scrolled up, wi
         ->and($backAtBottom['distanceFromBottom'])->toBeLessThan(2);
 });
 
-/**
- * Editing a message opens an input the user can type into immediately, sized to
- * what it holds: the caret lands in the box without a second click, and the
- * frame grows with the text instead of sitting at one fixed width.
- */
 it('keeps every message the same height while a reply streams and after it ends', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
@@ -1160,6 +1155,11 @@ it('anchors a turn this tab did not send on its own reply', function (): void {
         ->and($resumed['top'])->toBe(48);
 });
 
+/**
+ * Editing a message opens an input the user can type into immediately, sized to
+ * what it holds: the caret lands in the box without a second click, and the
+ * frame grows with the text instead of sitting at one fixed width.
+ */
 it('focuses the message editor on open and grows its width with the text', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();

@@ -400,8 +400,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         this.isStreaming = true;
         const bubble = this.targetBubbleFor(event.invocation_id ?? null);
 
-        // A sent turn is already anchored on its user row. A turn with no user
-        // row (resume after a decision, the setup greeting) anchors on its own
+        // A turn with no user row (a resume, the setup greeting) anchors on its own
         // reply, unless the reader has scrolled away from the bottom.
         const previous = this.messages[this.messages.indexOf(bubble) - 1];
         if (previous?.role !== 'user' && bubble.clientKey !== this.anchorKey && this.pinnedToBottom) {
