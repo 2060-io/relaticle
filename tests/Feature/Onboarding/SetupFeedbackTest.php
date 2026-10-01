@@ -76,7 +76,7 @@ it('stores a note of 499 visible characters whose line breaks the browser submit
     $workspace->refresh();
     expect($workspace->setup_exit_reason)->toBe(SetupExitReason::TooHard)
         ->and($workspace->setup_exit_note)->toBe(str_replace("\r\n", "\n", $browserNote))
-        ->and(mb_strlen((string) $workspace->setup_exit_note))->toBe(499);
+        ->and((string) $workspace->setup_exit_note)->toHaveLength(499);
 });
 
 it('rejects a note over 500 characters and shows the error and the typed note on the page', function (): void {
