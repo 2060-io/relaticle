@@ -468,6 +468,27 @@ describe('subject privacy enforcement', function (): void {
             ->assertSee(__('filament/pages/email-inbox.list_empty.no_results', ['search' => 'Secret Subject']));
     });
 
+    it('leaves a teammate private email out of the list', function (): void {
+        $this->actingAs($this->viewer);
+
+        [$visible, $private] = collect([EmailPrivacyTier::METADATA_ONLY, EmailPrivacyTier::PRIVATE])
+            ->map(fn (EmailPrivacyTier $tier): Email => Email::factory()->create([
+                'workspace_id' => $this->workspace->id,
+                'user_id' => $this->owner->id,
+                'connected_account_id' => $this->account->getKey(),
+                'privacy_tier' => $tier,
+            ]))
+            ->each(fn (Email $email) => $this->person->emails()->attach($email->getKey()))
+            ->all();
+
+        livewire(EmailsRelationManager::class, [
+            'ownerRecord' => $this->person,
+            'pageClass' => ViewPeople::class,
+        ])
+            ->assertSeeHtml("email-list-row-{$visible->getKey()}")
+            ->assertDontSeeHtml("email-list-row-{$private->getKey()}");
+    });
+
     it('returns no emails when a client calls the table records method directly', function (): void {
         $this->actingAs($this->viewer);
 
