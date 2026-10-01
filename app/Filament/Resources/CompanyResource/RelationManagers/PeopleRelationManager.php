@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\CompanyResource\RelationManagers;
 
 use App\Filament\Components\Tables\RecordChipColumn;
+use App\Filament\Concerns\CountsRelatedRecords;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
@@ -20,6 +21,8 @@ use Relaticle\CustomFields\Facades\CustomFields;
 
 final class PeopleRelationManager extends RelationManager
 {
+    use CountsRelatedRecords;
+
     protected static string $relationship = 'people';
 
     protected static ?string $modelLabel = null;

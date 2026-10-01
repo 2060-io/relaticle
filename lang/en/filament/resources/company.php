@@ -69,20 +69,8 @@ return [
             ],
             'infolist' => [
                 'fields' => [
-                    'name' => [
-                        'label' => '',
-                    ],
-                    'creator' => [
-                        'label' => 'Created By',
-                    ],
                     'account_owner' => [
                         'label' => 'Account Owner',
-                    ],
-                    'created_at' => [
-                        'label' => 'Created Date',
-                    ],
-                    'updated_at' => [
-                        'label' => 'Last Updated',
                     ],
                 ],
             ],

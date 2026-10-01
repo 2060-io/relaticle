@@ -1,6 +1,6 @@
 {{-- The app panel's page title, shown in the topbar rather than in the page body.
 
-     Expects: $heading, and optionally $headingEnd.
+     Expects: $heading, and optionally $headingStart and $headingEnd.
 
      The teleport target lives inside the Topbar Livewire component, which is not
      re-rendered by a page navigation and whose own morph removes any child it did
@@ -25,6 +25,10 @@
         class="fi-topbar-page-heading"
         title="{{ str(strip_tags((string) $heading))->squish() }}"
     >
+        @if (filled($headingStart ?? null))
+            {{ $headingStart }}
+        @endif
+
         <h1 class="fi-topbar-page-title">{{ $heading }}</h1>
 
         @if (filled($headingEnd ?? null))

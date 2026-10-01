@@ -33,7 +33,8 @@ final class CommunicationIntelligenceInfolist
             ->icon(Heroicon::ChartBar)
             ->compact()
             ->schema([
-                Grid::make(['default' => 1, 'lg' => 3])
+                Grid::make(['default' => 1, '@2xl' => 3, '!@lg' => 3])
+                    ->gridContainer()
                     ->schema([
                         Fieldset::make(__("{$translationKey}.groups.connection"))
                             ->schema([

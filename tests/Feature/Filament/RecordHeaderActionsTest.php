@@ -11,6 +11,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
@@ -38,7 +39,7 @@ it('no longer exposes the AI summary or ask-about-this actions on a company', fu
     livewire(ViewCompany::class, ['record' => $company->getKey()])
         ->assertActionDoesNotExist('generateSummary')
         ->assertActionDoesNotExist('askAboutThis')
-        ->assertActionExists('edit');
+        ->assertActionExists(TestAction::make('edit')->schemaComponent('recordActions', schema: 'infolist'));
 });
 
 it('no longer exposes the AI summary or ask-about-this actions on a person', function (): void {
@@ -47,7 +48,7 @@ it('no longer exposes the AI summary or ask-about-this actions on a person', fun
     livewire(ViewPeople::class, ['record' => $person->getKey()])
         ->assertActionDoesNotExist('generateSummary')
         ->assertActionDoesNotExist('askAboutThis')
-        ->assertActionExists('edit');
+        ->assertActionExists(TestAction::make('edit')->schemaComponent('recordActions', schema: 'infolist'));
 });
 
 it('no longer exposes the AI summary or ask-about-this actions on an opportunity', function (): void {
@@ -56,8 +57,13 @@ it('no longer exposes the AI summary or ask-about-this actions on an opportunity
     livewire(ViewOpportunity::class, ['record' => $opportunity->getKey()])
         ->assertActionDoesNotExist('generateSummary')
         ->assertActionDoesNotExist('askAboutThis')
-        ->assertActionExists('edit');
+        ->assertActionExists(TestAction::make('edit')->schemaComponent('recordActions', schema: 'infolist'));
 });
+
+function emailsRailAction(): TestAction
+{
+    return TestAction::make('viewEmails')->schemaComponent('recordActions', schema: 'infolist');
+}
 
 it('hides the emails action on company, person, and opportunity views when email integration is off', function (string $page, Closure $record): void {
     Feature::deactivate(EmailIntegration::class);
@@ -65,7 +71,7 @@ it('hides the emails action on company, person, and opportunity views when email
     $owner = $record($this->user, $this->workspace);
 
     livewire($page, ['record' => $owner->getKey()])
-        ->assertActionHidden('viewEmails');
+        ->assertActionDoesNotExist(emailsRailAction());
 })->with([
     'company' => [
         ViewCompany::class,
@@ -85,7 +91,7 @@ it('shows the emails action on company, person, and opportunity views when email
     $owner = $record($this->user, $this->workspace);
 
     livewire($page, ['record' => $owner->getKey()])
-        ->assertActionVisible('viewEmails');
+        ->assertActionVisible(emailsRailAction());
 })->with([
     'company' => [
         ViewCompany::class,
@@ -147,7 +153,7 @@ function emailsHeaderBadge(string $page, Company|Opportunity|People $record): ?s
 {
     return livewire($page, ['record' => $record->getKey()])
         ->instance()
-        ->getAction('viewEmails', isMounting: false)
+        ->getAction([emailsRailAction()->toArray()], isMounting: false)
         ?->getBadge();
 }
 
@@ -165,7 +171,7 @@ it('colors the emails header badge so it stays readable on the gray action', fun
 
     $action = livewire(ViewPeople::class, ['record' => $person->getKey()])
         ->instance()
-        ->getAction('viewEmails', isMounting: false);
+        ->getAction([emailsRailAction()->toArray()], isMounting: false);
 
     expect($action?->getBadgeColor($action->getBadge()))->toBe('primary');
 });

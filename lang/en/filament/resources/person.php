@@ -69,12 +69,6 @@ return [
             ],
             'infolist' => [
                 'fields' => [
-                    'avatar' => [
-                        'label' => '',
-                    ],
-                    'name' => [
-                        'label' => '',
-                    ],
                     'company' => [
                         'label' => 'Company',
                     ],

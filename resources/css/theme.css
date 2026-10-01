@@ -30,6 +30,12 @@
     --text-micro--line-height: 0.9375rem;
 }
 
+/* ─── Record page tokens ─── */
+:root {
+    --record-rail-width: 24rem;
+    --record-label-width: 8rem;
+}
+
 /* ─── Motion tokens ─── */
 /* If you change --ease-out-expo, also update the `ease` array in hero-agent-preview.blade.php */
 :root {

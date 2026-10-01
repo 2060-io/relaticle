@@ -537,6 +537,79 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply rounded-xl;
 }
 
+/* Record pages: a details rail beside a work pane, edge to edge from xl. */
+.fi-main:has(.fi-record-page) {
+    @apply xl:px-0;
+}
+
+.fi-record-page .fi-page-header-main-ctn {
+    @apply xl:py-0;
+}
+
+.fi-record-layout {
+    @apply xl:min-h-[calc(100dvh-4rem)] xl:items-stretch xl:gap-0;
+
+    & > :first-child {
+        @apply xl:w-(--record-rail-width) xl:shrink-0 xl:border-e xl:border-gray-200 dark:xl:border-white/10;
+    }
+
+    & > :last-child {
+        @apply min-w-0;
+    }
+}
+
+.fi-record-rail {
+    @apply xl:sticky xl:top-0 xl:max-h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:px-5 xl:py-5;
+
+    .fi-record-rail-section {
+        @apply border-t border-gray-200 pt-4 dark:border-white/10;
+    }
+
+    .fi-section-header-heading {
+        @apply text-sm font-medium text-gray-500 dark:text-gray-400;
+    }
+
+    .fi-in-entry.fi-in-entry-has-inline-label {
+        @apply grid-cols-[var(--record-label-width)_minmax(0,1fr)] items-start gap-x-3;
+
+        .fi-in-entry-content-col {
+            @apply col-span-1 min-w-0;
+        }
+    }
+
+    .fi-in-entry-has-inline-label .fi-in-entry-label {
+        @apply truncate font-normal text-gray-500 dark:text-gray-400;
+    }
+}
+
+.fi-record-details-toggle {
+    @apply justify-self-start text-sm font-medium text-gray-500 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white;
+}
+
+.fi-record-pane {
+    @apply xl:px-6 xl:py-5;
+
+    .fi-tabs:not(.fi-contained) {
+        @apply mx-0 rounded-none border-b border-gray-200 bg-transparent p-0 shadow-none ring-0 dark:border-white/10 dark:bg-transparent;
+    }
+
+    .fi-tabs-item {
+        @apply -mb-px rounded-none border-b-2 border-transparent bg-transparent px-2.5 hover:bg-transparent dark:bg-transparent dark:hover:bg-transparent;
+
+        &.fi-active {
+            @apply border-primary-600 dark:border-primary-400;
+        }
+    }
+}
+
+.fi-record-breadcrumb-link {
+    @apply shrink-0 font-normal text-gray-500 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white;
+}
+
+.fi-record-breadcrumb-separator {
+    @apply -mx-1 text-gray-300 dark:text-gray-600;
+}
+
 /* Page sub-navigation tabs (workspace settings). Filament centres the strip;
    every heading and section on these pages is left-aligned, so a centred strip
    reads as a stray floating element. */
