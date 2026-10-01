@@ -13,10 +13,20 @@
                     <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">{{ __('mail.setup_feedback.done_body') }}</p>
                 @else
                     <h1 class="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">{{ __('mail.setup_feedback.heading', ['workspace' => $workspace->name]) }}</h1>
-                    <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ $reason->getLabel() }}</p>
+                    <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">{{ __('mail.setup_feedback.hint') }}</p>
                     <form method="POST" action="{{ request()->fullUrl() }}" class="mt-6 space-y-4">
+                        <fieldset class="space-y-2">
+                            @foreach($reasons as $option)
+                                <label class="flex items-center gap-2 text-sm text-gray-900 dark:text-white">
+                                    <input type="radio" name="reason" value="{{ $option->value }}" @checked(old('reason', $reason->value) === $option->value) class="accent-primary-600">
+                                    {{ $option->getLabel() }}
+                                </label>
+                            @endforeach
+                            <x-input-error for="reason" />
+                        </fieldset>
                         <label class="block text-sm text-gray-600 dark:text-gray-400" for="note">{{ __('mail.setup_feedback.note') }}</label>
-                        <textarea id="note" name="note" rows="3" maxlength="500" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white"></textarea>
+                        <textarea id="note" name="note" rows="3" maxlength="500" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-white">{{ old('note') }}</textarea>
+                        <x-input-error for="note" />
                         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700">
                             {{ __('mail.setup_feedback.send') }}
                         </button>
