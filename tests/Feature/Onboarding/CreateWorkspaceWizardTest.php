@@ -8,6 +8,7 @@ use App\Actions\User\UpdateUserName;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
+use App\Enums\SetupWizardStep;
 use App\Enums\WorkspaceRole;
 use App\Features\Billing as BillingFeature;
 use App\Features\OnboardSeed;
@@ -958,4 +959,30 @@ it('redirects subsequent workspaces to dashboard', function (): void {
         ->call('register')
         ->assertHasNoFormErrors()
         ->assertRedirect(Dashboard::getUrl(['tenant' => $user->fresh()->currentWorkspace]));
+});
+
+it('records each setup wizard step the user finishes', function (): void {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $wizard = livewire(CreateWorkspace::class)
+        ->fillForm(['user_name' => 'Dana Reed', 'name' => 'Step Corp'])
+        ->goToNextWizardStep();
+
+    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Workspace);
+
+    $wizard->goToNextWizardStep();
+
+    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
+});
+
+it('leaves the recorded wizard step alone when a user adds another workspace', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->fillForm(['name' => 'Second Corp'])
+        ->goToNextWizardStep();
+
+    expect($user->refresh()->onboarding_step)->toBeNull();
 });

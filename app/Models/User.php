@@ -8,6 +8,7 @@ use App\Casts\AsCanonicalEmail;
 use App\Data\NotificationPreferences;
 use App\Enums\Notifications\NotificationChannel;
 use App\Enums\Notifications\NotificationType;
+use App\Enums\SetupWizardStep;
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
 use App\Models\Concerns\HasProfilePhoto;
@@ -62,6 +63,7 @@ use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
  * @property CarbonImmutable|null $email_sign_in_enabled_at
  * @property CarbonImmutable|null $last_login_at
  * @property CarbonImmutable|null $email_bounced_at
+ * @property SetupWizardStep|null $onboarding_step
  * @property string|null $mailcoach_subscriber_uuid
  * @property string|null $subscriber_profile_hash
  * @property string|null $rejected_subscriber_profile_hash
@@ -132,6 +134,7 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
             'email_sign_in_enabled_at' => 'datetime',
             'last_login_at' => 'datetime',
             'email_bounced_at' => 'datetime',
+            'onboarding_step' => SetupWizardStep::class,
             'password' => 'hashed',
             'default_email_sharing_tier' => EmailPrivacyTier::class,
             'ai_preferences' => 'array',
