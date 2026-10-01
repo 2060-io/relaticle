@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Relaticle\SystemAdmin\Actions\MarkWorkspaceContacted;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\SalesLeads;
 use Relaticle\SystemAdmin\Metrics\SalesLeadsQuery;
@@ -24,14 +25,24 @@ beforeEach(function (): void {
 });
 
 it('lists non-paying customers with real use, most active first, and says why', function (): void {
+    $light = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    OverviewData::ownRecord(OverviewData::workspaceOf($light), $light, now()->subDay());
+
+    $bulk = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    for ($record = 0; $record < 5; $record++) {
+        OverviewData::ownRecord(OverviewData::workspaceOf($bulk), $bulk, now()->subDay());
+    }
+
+    $steady = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    foreach ([1, 2, 3] as $daysAgo) {
+        OverviewData::ownRecord(OverviewData::workspaceOf($steady), $steady, now()->subDays($daysAgo));
+    }
+
     $busy = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
     foreach ([1, 2, 3] as $daysAgo) {
         OverviewData::ownRecord(OverviewData::workspaceOf($busy), $busy, now()->subDays($daysAgo));
     }
     OverviewData::ownRecord(OverviewData::workspaceOf($busy), $busy, now()->subDay(), CreationSource::API);
-
-    $light = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
-    OverviewData::ownRecord(OverviewData::workspaceOf($light), $light, now()->subDay());
 
     $sampleOnly = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
     OverviewData::sampleRecord(OverviewData::workspaceOf($sampleOnly), now()->subDay());
@@ -40,8 +51,14 @@ it('lists non-paying customers with real use, most active first, and says why', 
     OverviewData::ownRecord(OverviewData::workspaceOf($internal), $internal, now()->subDay());
 
     livewire(SalesLeads::class)
-        ->assertCanSeeTableRecords([OverviewData::workspaceOf($busy), OverviewData::workspaceOf($light)], inOrder: true)
+        ->assertCanSeeTableRecords([
+            OverviewData::workspaceOf($busy),
+            OverviewData::workspaceOf($steady),
+            OverviewData::workspaceOf($bulk),
+            OverviewData::workspaceOf($light),
+        ], inOrder: true)
         ->assertCanNotSeeTableRecords([OverviewData::workspaceOf($sampleOnly), OverviewData::workspaceOf($internal)])
+        ->assertSee('4 records, 3 active days')
         ->assertSee('uses API');
 });
 
@@ -82,8 +99,47 @@ it('hides a workspace for 14 days once marked contacted', function (): void {
 
     expect($workspace->refresh()->sales_contacted_at)->not->toBeNull();
 
-    $this->travelTo(now()->addDays(15));
+    $this->travelTo(now()->addDays(13));
+    Cache::flush();
+
+    livewire(SalesLeads::class)->assertCanNotSeeTableRecords([$workspace]);
+
+    $this->travelTo(now()->addDays(2));
     Cache::flush();
 
     livewire(SalesLeads::class)->assertCanSeeTableRecords([$workspace]);
+});
+
+it('shows at most ten workspaces', function (): void {
+    for ($workspace = 0; $workspace < 11; $workspace++) {
+        $owner = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+        OverviewData::ownRecord(OverviewData::workspaceOf($owner), $owner, now()->subDay());
+    }
+
+    expect(livewire(SalesLeads::class)->instance()->getTableRecords())->toHaveCount(10);
+});
+
+it('counts the last 30 calendar days, today included, as active days', function (): void {
+    $owner = OverviewData::owner(CarbonImmutable::parse('2026-08-01'));
+    $workspace = OverviewData::workspaceOf($owner);
+    OverviewData::ownRecord($workspace, $owner, CarbonImmutable::parse('2026-09-15 12:00:00'));
+    OverviewData::ownRecord($workspace, $owner, CarbonImmutable::parse('2026-09-16 12:00:00'));
+    OverviewData::ownRecord($workspace, $owner, now());
+
+    livewire(SalesLeads::class)->assertSee('3 records, 2 active days');
+});
+
+it('lists a workspace whose owner no longer exists, without an email action', function (): void {
+    $departed = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    $orphaned = OverviewData::workspaceOf($departed);
+    OverviewData::ownRecord($orphaned, $departed, now()->subDay());
+    $orphaned->forceFill(['user_id' => (string) Str::ulid()])->save();
+
+    $present = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    OverviewData::ownRecord(OverviewData::workspaceOf($present), $present, now()->subDay());
+
+    livewire(SalesLeads::class)
+        ->assertCanSeeTableRecords([$orphaned, OverviewData::workspaceOf($present)])
+        ->assertActionHidden(TestAction::make('emailOwner')->table($orphaned))
+        ->assertActionVisible(TestAction::make('emailOwner')->table(OverviewData::workspaceOf($present)));
 });

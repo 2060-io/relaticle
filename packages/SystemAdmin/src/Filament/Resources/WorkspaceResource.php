@@ -182,7 +182,7 @@ final class WorkspaceResource extends Resource
                         fn (string $label): TextEntry => TextEntry::make('journey_'.str($label)->slug('_'))
                             ->label($label)
                             ->state(fn (Workspace $record): string => WorkspaceJourney::facts($record)[$label]),
-                        ['Signed up', 'Signup method', 'Last wizard step', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'AI cost this month', 'Setup exit reason', 'Internal'],
+                        ['Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'AI cost this month', 'Setup exit reason', 'Internal'],
                     )),
             ]);
     }

@@ -55,7 +55,8 @@ final class SalesLeads extends TableWidget
                     ->label('Email owner')
                     ->icon('heroicon-o-envelope')
                     ->color('gray')
-                    ->url(fn (Workspace $record): ?string => $record->owner === null ? null : "mailto:{$record->owner->email}"),
+                    ->visible(fn (Workspace $record): bool => $record->owner !== null)
+                    ->url(fn (Workspace $record): string => "mailto:{$record->owner?->email}"),
                 Action::make('contacted')
                     ->label('Contacted')
                     ->icon('heroicon-o-check')

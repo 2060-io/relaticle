@@ -19,7 +19,7 @@ final readonly class SalesLeadsQuery
      */
     public static function make(): Builder
     {
-        $since = now()->subDays(30)->toDateString();
+        $since = now()->subDays(29)->toDateString();
 
         return Workspace::query()
             ->withGlobalScope(ExternalWorkspace::class, new ExternalWorkspace)

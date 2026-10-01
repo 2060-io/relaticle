@@ -845,7 +845,32 @@ it('shows the journey of a workspace on its page', function (): void {
         ->assertSee('Journey')
         ->assertSee('Password')
         ->assertSee('Oct 2, 2026')
+        ->assertSee('2 active days')
+        ->assertDontSee('Last wizard step');
+});
+
+it('counts the last 30 calendar days, today included, as the journey active days', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-15 12:00:00'));
+    $owner = OverviewData::owner(CarbonImmutable::parse('2026-08-01'));
+    $workspace = OverviewData::workspaceOf($owner);
+    OverviewData::ownRecord($workspace, $owner, CarbonImmutable::parse('2026-09-15 12:00:00'));
+    OverviewData::ownRecord($workspace, $owner, CarbonImmutable::parse('2026-09-16 12:00:00'));
+    OverviewData::ownRecord($workspace, $owner, now());
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
         ->assertSee('2 active days');
+});
+
+it('shows the journey of a workspace whose owner no longer exists', function (): void {
+    $departed = OverviewData::owner();
+    $workspace = OverviewData::workspaceOf($departed);
+    OverviewData::ownRecord($workspace, $departed, now());
+    $workspace->forceFill(['user_id' => (string) Str::ulid()])->save();
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
+        ->assertSee('Journey')
+        ->assertSee('1 active day')
+        ->assertSeeInOrder(['Signed up', "\u{2014}", 'Signup method', "\u{2014}", 'First own record']);
 });
 
 it('marks a workspace contacted from its page', function (): void {

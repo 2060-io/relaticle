@@ -25,7 +25,7 @@ final readonly class ActivityDays
             ->join('agent_conversations', 'agent_conversations.id', '=', 'agent_conversation_messages.conversation_id')
             ->whereNotNull('agent_conversations.workspace_id')
             ->toBase()
-            ->selectRaw("agent_conversation_messages.participant_id::text as user_id, agent_conversations.workspace_id::text as workspace_id, agent_conversation_messages.created_at::date as day, 'message' as kind, 'chat_message' as source");
+            ->selectRaw("agent_conversation_messages.participant_id::text as user_id, agent_conversations.workspace_id as workspace_id, agent_conversation_messages.created_at::date as day, 'message' as kind, 'chat_message' as source");
 
         foreach (self::RECORD_MODELS as $model) {
             $union->unionAll(
@@ -33,7 +33,7 @@ final readonly class ActivityDays
                     ->withoutGlobalScope(WorkspaceScope::class)
                     ->ownData()
                     ->toBase()
-                    ->selectRaw("creator_id::text as user_id, workspace_id::text as workspace_id, created_at::date as day, 'record' as kind, creation_source::text as source"),
+                    ->selectRaw("creator_id::text as user_id, workspace_id as workspace_id, created_at::date as day, 'record' as kind, creation_source::text as source"),
             );
         }
 
