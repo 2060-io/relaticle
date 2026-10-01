@@ -173,9 +173,28 @@ it('shows no view all toggle when every detail fits', function (): void {
 it('orders the :dataset page tabs as tasks, notes, emails, meetings, then the activity log', function (string $model, string $page): void {
     $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
 
-    livewire($page, ['record' => $record->getKey()])
-        ->assertSeeInOrder(['Tasks', 'Notes', 'Emails', 'Meetings', 'Activity log']);
+    $tabs = collect(livewire($page, ['record' => $record->getKey()])->instance()->getRelationManagers())
+        ->map(fn (string $manager): string => class_basename($manager))
+        ->reject(fn (string $manager): bool => $manager === 'PeopleRelationManager')
+        ->values()
+        ->all();
+
+    expect($tabs)->toBe([
+        'TasksRelationManager',
+        'NotesRelationManager',
+        'EmailsRelationManager',
+        'MeetingsRelationManager',
+        'ActivityLogRelationManager',
+    ]);
 })->with('record pages');
+
+it('puts the people tab first on the company page', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $tabs = livewire(ViewCompany::class, ['record' => $company->getKey()])->instance()->getRelationManagers();
+
+    expect(class_basename(reset($tabs)))->toBe('PeopleRelationManager');
+});
 
 it('puts a keyboard reachable resize handle between the details rail and the work pane on the :dataset page', function (string $model, string $page): void {
     $record = $model::factory()->recycle([$this->user, $this->workspace])->create();

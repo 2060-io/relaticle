@@ -96,24 +96,15 @@ it('stays open, docked beside the page, when a chat is picked from its history',
         ->click('[data-chat-side-panel] button[aria-label="View history"]')
         ->click('[data-chat-side-panel] span[title="Acme onboarding"]');
 
-    $isOpenAfterPick = $page->script(<<<'JS'
-        async () => {
-            const panel = document.querySelector('[data-chat-side-panel]');
-            const deadline = Date.now() + 10_000;
+    $page->assertScript('Alpine.$data(document.querySelector("[data-chat-side-panel]")).$wire.conversationId', 'side-panel-pick')
+        ->assertScript(<<<'JS'
+            (() => {
+                const panel = document.querySelector('[data-chat-side-panel]');
 
-            while (Date.now() < deadline && Alpine.$data(panel).$wire.conversationId !== 'side-panel-pick') {
-                await new Promise((resolve) => setTimeout(resolve, 50));
-            }
-
-            await new Promise((resolve) => setTimeout(resolve, 500));
-
-            return Alpine.$data(panel).open && getComputedStyle(panel).display !== 'none';
-        }
-    JS);
-
-    expect($isOpenAfterPick)->toBeTrue();
-
-    $page->assertScript($contentMeetsPanel)
+                return Alpine.$data(panel).open && getComputedStyle(panel).display !== 'none';
+            })()
+        JS)
+        ->assertScript($contentMeetsPanel)
         ->assertNoJavaScriptErrors();
 });
 

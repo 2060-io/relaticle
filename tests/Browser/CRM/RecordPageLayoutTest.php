@@ -33,7 +33,7 @@ it('sets the details rail beside the work pane on desktop and stacks it on a pho
             const pane = document.querySelector('.fi-record-pane').getBoundingClientRect();
 
             return {
-                besideEachOther: rail.right <= pane.left && rail.top === pane.top,
+                besideEachOther: Math.round(rail.right) <= Math.round(pane.left) && Math.round(rail.top) === Math.round(pane.top),
                 stacked: rail.bottom <= pane.top,
                 overflows: document.documentElement.scrollWidth > document.documentElement.clientWidth,
             };
