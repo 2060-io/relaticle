@@ -52,6 +52,7 @@ use Relaticle\SystemAdmin\Metrics\Scopes\AbuseSuspect;
 use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
 use Relaticle\SystemAdmin\Metrics\Scopes\InternalWorkspace;
+use Relaticle\SystemAdmin\Metrics\Scopes\StuckAfterSetup;
 
 final class WorkspaceResource extends Resource
 {
@@ -243,6 +244,12 @@ final class WorkspaceResource extends Resource
                     ->state(fn (Workspace $record): string => Money::format(AiCost::workspaceMonthMicros($record)))
                     ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy(AiCost::workspaceMonthSubquery(), $direction))
                     ->toggleable(),
+                TextColumn::make('setup_exit_reason')
+                    ->label('Exit reason')
+                    ->badge()
+                    ->tooltip(fn (Workspace $record): ?string => $record->setup_exit_note)
+                    ->toggleable()
+                    ->placeholder("\u{2014}"),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
@@ -295,6 +302,14 @@ final class WorkspaceResource extends Resource
                     ->toggle()
                     ->query(function (Builder $query): Builder {
                         (new AbuseSuspect)->apply($query, $query->getModel());
+
+                        return $query;
+                    }),
+                Filter::make('stuck_after_setup')
+                    ->label('Stuck after setup')
+                    ->toggle()
+                    ->query(function (Builder $query): Builder {
+                        (new StuckAfterSetup)->apply($query, $query->getModel());
 
                         return $query;
                     }),

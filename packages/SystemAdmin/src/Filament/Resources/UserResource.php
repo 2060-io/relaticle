@@ -269,6 +269,10 @@ final class UserResource extends Resource
 
                         return $query;
                     }),
+                Filter::make('no_workspace')
+                    ->label('No workspace')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereDoesntHave('ownedWorkspaces')->whereDoesntHave('workspaces')),
                 Filter::make('signed_up')
                     ->schema([
                         DatePicker::make('from')->label('Signed up from'),
