@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Scribe\OpenApi\ErrorResponsesGenerator;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Relaticle\Documentation\Http\Controllers\OpenApiSpecController;
 
@@ -42,6 +43,8 @@ it('keeps empty yaml maps as json objects so the spec stays valid openapi', func
 });
 
 it('documents the error envelope, scoped abilities, and rate limits on every operation', function (): void {
+    expect(Schema::hasTable('custom_fields'))->toBeTrue();
+
     $generatedView = resource_path('views/scribe/index.blade.php');
     $committedView = File::get($generatedView);
 
