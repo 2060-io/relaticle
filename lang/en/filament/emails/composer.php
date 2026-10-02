@@ -100,6 +100,5 @@ return [
     ],
     'validation' => [
         'body_required' => 'Write a message before sending.',
-        'recipient_not_allowed' => 'Choose a recipient from your workspace records or suggested addresses.',
     ],
 ];

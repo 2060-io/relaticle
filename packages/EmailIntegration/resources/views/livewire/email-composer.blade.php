@@ -154,7 +154,6 @@
                     :from-account="$this->fromAccount"
                     :recipient-suggestions="$this->recipientSuggestions"
                     :recipient-options="$this->recipientOptions"
-                    :allowed-recipient-addresses="$this->allowedRecipientAddresses"
                 />
 
                 {{-- Body: Filament RichEditor with floating toolbar only --}}

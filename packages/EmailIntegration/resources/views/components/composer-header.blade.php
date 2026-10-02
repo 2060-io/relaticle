@@ -8,7 +8,6 @@
     'fromAccount' => null,
     'recipientSuggestions' => [],
     'recipientOptions' => [],
-    'allowedRecipientAddresses' => [],
 ])
 
 @php
@@ -53,7 +52,6 @@
                     :autofocus="true"
                     :suggestions="$recipientSuggestions"
                     :options="$recipientOptions"
-                    :allowed-addresses="$allowedRecipientAddresses"
                     class="w-full"
                 />
             </div>
@@ -85,7 +83,6 @@
                     wire:model="cc"
                     :suggestions="$recipientSuggestions"
                     :options="$recipientOptions"
-                    :allowed-addresses="$allowedRecipientAddresses"
                     class="w-full"
                 />
             </div>
@@ -103,7 +100,6 @@
                     wire:model="bcc"
                     :suggestions="$recipientSuggestions"
                     :options="$recipientOptions"
-                    :allowed-addresses="$allowedRecipientAddresses"
                     class="w-full"
                 />
             </div>

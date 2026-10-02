@@ -57,7 +57,6 @@ use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Models\EmailTemplate;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
-use Relaticle\EmailIntegration\Services\AllowedRecipientService;
 use Relaticle\EmailIntegration\Services\EmailTemplateRenderService;
 use Relaticle\EmailIntegration\Services\ForwardAttachmentCopyService;
 use Relaticle\EmailIntegration\Services\MassSendRecipientResolver;
@@ -457,24 +456,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             'subject' => ['required', 'string', 'max:255'],
         ]);
 
-        $recipientErrors = resolve(AllowedRecipientService::class)->validationErrors(
-            $this->authUser(),
-            $this->to,
-            $this->cc,
-            $this->bcc,
-            $this->threadRecipientAllowlist(),
-        );
-
-        foreach ($recipientErrors as $key => $messages) {
-            foreach ($messages as $message) {
-                $this->addError($key, $message);
-            }
-        }
-
-        if ($recipientErrors !== []) {
-            return;
-        }
-
         $bodyHtml = $this->bodyHtmlForPersistence();
 
         // `bodyHtml`'s raw state is never truly "empty" (an untouched RichEditor still
@@ -694,37 +675,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             'forward' => EmailCreationSource::FORWARD,
             default => EmailCreationSource::COMPOSE,
         };
-    }
-
-    /**
-     * Reply and reply-all pre-fill thread participants that may not yet appear in
-     * CRM records or autocomplete. Forwards and net-new compose do not get extras.
-     *
-     * @return list<string>
-     */
-    private function threadRecipientAllowlist(): array
-    {
-        if (! in_array($this->replyMode, ['reply', 'reply_all'], true)) {
-            return [];
-        }
-
-        $emailId = $this->sourceEmailId ?? $this->inReplyToEmailId;
-
-        if ($emailId === null) {
-            return [];
-        }
-
-        $email = $this->replyableEmail($emailId);
-
-        if (! $email instanceof Email) {
-            return [];
-        }
-
-        return array_values($email->participants
-            ->pluck('email_address')
-            ->filter(fn (?string $address): bool => filled($address))
-            ->map(fn (string $address): string => $address)
-            ->all());
     }
 
     /**
@@ -1134,21 +1084,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     public function recipientSuggestions(): array
     {
         return resolve(RecipientSuggestionService::class)->addressesFor($this->authUser());
-    }
-
-    /**
-     * Every address the composer may commit or send to. Wider than {@see recipientOptions},
-     * which caps autocomplete rows for performance.
-     *
-     * @return list<string>
-     */
-    #[Computed]
-    public function allowedRecipientAddresses(): array
-    {
-        return resolve(AllowedRecipientService::class)->addressesFor(
-            $this->authUser(),
-            $this->threadRecipientAllowlist(),
-        );
     }
 
     /**
