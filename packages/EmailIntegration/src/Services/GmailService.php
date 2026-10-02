@@ -466,13 +466,7 @@ final readonly class GmailService implements MailServiceInterface
      */
     private function isBulkCategory(array $labelIds): bool
     {
-        foreach (self::BULK_CATEGORIES as $category) {
-            if (in_array('CATEGORY_'.strtoupper($category), $labelIds, true)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(self::BULK_CATEGORIES, fn (string $category): bool => in_array('CATEGORY_'.strtoupper($category), $labelIds, true));
     }
 
     /**
