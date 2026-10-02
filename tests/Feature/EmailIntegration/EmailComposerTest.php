@@ -709,6 +709,13 @@ it('notifies when an inline reply draft is saved on dismiss', function (): void 
         ->assertSet('isOpen', false);
 });
 
+it('subscribes each dock only to the events it answers', function (): void {
+    expect(Livewire::test(EmailComposer::class)->effects['listeners'])
+        ->toBe(['composer:open'])
+        ->and(Livewire::test(EmailComposer::class, ['dock' => 'inline'])->effects['listeners'])
+        ->toBe(['composer:reply', 'composer:dismiss-inline', 'composer:resume-draft']);
+});
+
 it('opens a saved draft that has no body', function (): void {
     $draft = Email::query()->create([
         'workspace_id' => $this->user->current_workspace_id,
@@ -891,12 +898,17 @@ it('suggests the most recent correspondents first', function (): void {
         ->toBeLessThan(array_search('aaron@older.example', $suggestions, true));
 });
 
-it('reads recipient suggestions once across composer round-trips', function (): void {
+it('reads recipient suggestions and options once across composer round-trips', function (): void {
     $suggestionQueries = 0;
+    $optionQueries = 0;
 
-    DB::listen(function (QueryExecuted $query) use (&$suggestionQueries): void {
+    DB::listen(function (QueryExecuted $query) use (&$suggestionQueries, &$optionQueries): void {
         if (str_contains($query->sql, 'recent_emails')) {
             $suggestionQueries++;
+        }
+
+        if (str_contains($query->sql, 'from "people"') && str_contains($query->sql, 'limit 300')) {
+            $optionQueries++;
         }
     });
 
@@ -905,7 +917,8 @@ it('reads recipient suggestions once across composer round-trips', function (): 
         ->call('toggleCc')
         ->call('toggleBcc');
 
-    expect($suggestionQueries)->toBe(1);
+    expect($suggestionQueries)->toBe(1)
+        ->and($optionQueries)->toBe(1);
 });
 
 it('keeps suggesting the viewer\'s correspondents when a teammate\'s private mail is newer', function (): void {

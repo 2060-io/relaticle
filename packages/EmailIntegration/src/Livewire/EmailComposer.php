@@ -32,7 +32,6 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Number;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
-use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -166,6 +165,20 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     #[Locked]
     public ?string $pageRecordId = null;
 
+    /**
+     * @return array<string, string>
+     */
+    protected function getListeners(): array
+    {
+        return $this->dock === 'inline'
+            ? [
+                'composer:reply' => 'openReply',
+                'composer:dismiss-inline' => 'dismissInline',
+                'composer:resume-draft' => 'resumeDraftFor',
+            ]
+            : ['composer:open' => 'open'];
+    }
+
     public function mount(): void
     {
         $this->pageTo ??= ComposerPageTo::email();
@@ -192,7 +205,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
     /**
      * `$draftId` is its own parameter, not a `$payload` key. Livewire resolves
-     * `#[On]` listener arguments by matching each incoming event parameter to
+     * event listener arguments by matching each incoming event parameter to
      * a method parameter BY NAME (`Livewire\ImplicitlyBoundMethod`, layered on
      * Laravel's container method-call binding), and this applies uniformly
      * whether the event came from a PHP-side `$this->dispatch('composer:open',
@@ -210,7 +223,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     linkRecordId?: string,
      * }  $payload
      */
-    #[On('composer:open')]
     public function open(array $payload = [], ?string $draftId = null): void
     {
         // Compose belongs to the floating window. Both instances hear the event.
@@ -276,7 +288,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      * Only the inline instance answers, so the floating window stays free for a
      * separate compose draft.
      */
-    #[On('composer:reply')]
     public function openReply(string $emailId, string $mode = 'reply'): void
     {
         if ($this->dock !== 'inline') {
@@ -344,7 +355,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      * The draft answers the email that was on screen, so it must not stay attached
      * under a different one. Anything typed is saved as a draft on the way out.
      */
-    #[On('composer:dismiss-inline')]
     public function dismissInline(): void
     {
         if ($this->dock !== 'inline' || ! $this->isOpen) {
@@ -359,7 +369,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      * A draft written here and left behind should be waiting under that message, not
      * only findable by hunting through the Drafts tab.
      */
-    #[On('composer:resume-draft')]
     public function resumeDraftFor(string $emailId): void
     {
         if ($this->dock !== 'inline' || $this->isOpen) {
@@ -1117,7 +1126,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     avatarColor: string,
      * }>
      */
-    #[Computed]
+    #[Computed(persist: true, seconds: 300)]
     public function recipientOptions(): array
     {
         $teamId = (string) $this->authUser()->current_workspace_id;
