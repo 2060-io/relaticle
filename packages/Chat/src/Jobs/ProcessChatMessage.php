@@ -81,7 +81,7 @@ final class ProcessChatMessage implements ShouldQueue
      * @param  list<array{type: string, id: string, label: string}>  $mentions
      * @param  array<string, mixed>  $document
      * @param  array{type: string, id: string, label: string}|null  $pageContext
-     * @param  array{id: string, name: string, row_count: int}|null  $attachment
+     * @param  array{id: string, name: string, kind: 'text'|'rows', row_count: int}|null  $attachment
      */
     public function __construct(
         private readonly User $user,

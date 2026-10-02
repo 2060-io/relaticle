@@ -151,11 +151,12 @@
                                     :class="showsTextBubble(msg) ? '' : 'rounded-br-md'"
                                 >
                                     <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 ring-1 ring-gray-900/5 dark:bg-white/10 dark:text-gray-300 dark:ring-white/10">
-                                        <x-heroicon-o-table-cells class="h-4 w-4" aria-hidden="true" />
+                                        <x-heroicon-o-table-cells x-show="msg.attachment.kind !== 'text'" class="h-4 w-4" aria-hidden="true" />
+                                        <x-heroicon-o-document-text x-show="msg.attachment.kind === 'text'" class="h-4 w-4" aria-hidden="true" />
                                     </span>
                                     <span class="flex min-w-0 flex-col text-start">
                                         <span class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="msg.attachment.name"></span>
-                                        <span class="text-xs text-gray-500 dark:text-gray-400" x-text="attachmentRowLabel(msg.attachment.row_count)"></span>
+                                        <span x-show="msg.attachment.kind !== 'text'" class="text-xs text-gray-500 dark:text-gray-400" x-text="attachmentRowLabel(msg.attachment.row_count)"></span>
                                     </span>
                                 </div>
                             </template>
