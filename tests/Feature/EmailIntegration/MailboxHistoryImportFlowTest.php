@@ -15,7 +15,6 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction;
-use Relaticle\EmailIntegration\Actions\RecordMailboxHistoryImportStoreFailureAction;
 use Relaticle\EmailIntegration\Actions\RetryMailboxHistoryImportFailuresAction;
 use Relaticle\EmailIntegration\Actions\StartMailboxHistoryImportAction;
 use Relaticle\EmailIntegration\Actions\StoreEmailAction;
@@ -41,7 +40,6 @@ mutates(
     ConnectedAccount::class,
     EmailAccessNotificationHandler::class,
     InitialEmailSyncJob::class,
-    RecordMailboxHistoryImportStoreFailureAction::class,
     RetryMailboxHistoryImportFailuresAction::class,
     StartMailboxHistoryImportAction::class,
     MailboxHistoryImportService::class,
@@ -108,7 +106,7 @@ it('does not cancel the import batch when a store job fails', function (): void 
 
     expect($account->fresh()?->status)->toBe(EmailAccountStatus::ACTIVE)
         ->and($account->fresh()?->last_error)->toBeNull()
-        ->and(resolve(MailboxHistoryImportService::class)->failureGeneration($batchId))->toBe(1);
+        ->and(Bus::findBatch($batchId)?->cancelled())->toBeFalse();
 });
 
 it('does not record last_error when a store job fails outside the history import batch', function (): void {
@@ -637,38 +635,6 @@ it('retries only failed jobs from the history import batch', function (): void {
     expect(resolve(RetryMailboxHistoryImportFailuresAction::class)->execute($account->user, $account, $batchId))->toBeTrue();
 });
 
-it('bumps the import issue dismiss token when a store failure is recorded again', function (): void {
-    Cache::flush();
-
-    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
-        'sync_cursor' => 'history-done',
-        'history_import_batch_id' => 'batch-dismiss-token',
-    ]));
-
-    DB::table('job_batches')->insert([
-        'id' => 'batch-dismiss-token',
-        'name' => 'Mailbox history import',
-        'total_jobs' => 1,
-        'pending_jobs' => 0,
-        'failed_jobs' => 1,
-        'failed_job_ids' => json_encode(['failed-uuid']),
-        'options' => serialize([]),
-        'cancelled_at' => null,
-        'created_at' => now()->getTimestamp(),
-        'finished_at' => now()->getTimestamp(),
-    ]);
-
-    $action = resolve(RecordMailboxHistoryImportStoreFailureAction::class);
-
-    $action->execute($account, 'batch-dismiss-token');
-
-    expect($account->fresh()->mailboxHistoryImportFailureDismissToken())->toBe('batch-dismiss-token:1');
-
-    $action->execute($account->fresh(), 'batch-dismiss-token');
-
-    expect($account->fresh()->mailboxHistoryImportFailureDismissToken())->toBe('batch-dismiss-token:2');
-});
-
 it('surfaces the failure summary after the import batch finishes with failed jobs', function (): void {
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
         'sync_cursor' => 'history-1',
@@ -913,7 +879,6 @@ it('recovers the failed email through the notification retry using the real queu
     expect($user->notifications()->count())->toBe(2);
 
     livewire(EmailAccountsPage::class)
-        ->assertDontSee(__('filament/pages/email-accounts.history_import_failure.badge'))
         ->assertSee(__('filament/pages/email-accounts.in_sync'));
 });
 

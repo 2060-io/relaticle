@@ -16,7 +16,6 @@ use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Config;
-use Relaticle\EmailIntegration\Actions\RecordMailboxHistoryImportStoreFailureAction;
 use Relaticle\EmailIntegration\Actions\StoreEmailAction;
 use Relaticle\EmailIntegration\Enums\EmailFolder;
 use Relaticle\EmailIntegration\Jobs\Concerns\ReleasesOnProviderRateLimit;
@@ -162,17 +161,6 @@ final class StoreEmailJob implements ShouldBeUnique, ShouldQueue
     public function failed(Throwable $exception): void
     {
         SyncItemFailures::record($this->connectedAccount, self::class, $this->messageId);
-
-        $batch = $this->batch();
-        $batchId = $batch?->id;
-        $historyBatchId = $this->connectedAccount->history_import_batch_id;
-
-        if (is_string($batchId) && is_string($historyBatchId) && $batchId === $historyBatchId) {
-            resolve(RecordMailboxHistoryImportStoreFailureAction::class)->execute(
-                $this->connectedAccount,
-                $historyBatchId,
-            );
-        }
     }
 
     private function doesItAlreadyExists(): bool

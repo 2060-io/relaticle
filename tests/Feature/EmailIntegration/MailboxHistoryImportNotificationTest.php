@@ -326,7 +326,6 @@ it('notifies with issues when some store jobs permanently fail', function (): vo
     assertMailboxImportRetryAction($notification->data, $account, $batchId);
 
     livewire(EmailAccountsPage::class)
-        ->assertDontSee(__('filament/pages/email-accounts.history_import_failure.badge'))
         ->assertDontSee(__('filament/pages/email-accounts.actions.retry_failed_import.label'))
         ->assertSee(__('filament/pages/email-accounts.in_sync'));
 

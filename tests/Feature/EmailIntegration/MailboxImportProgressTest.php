@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Filament\Resources\CompanyResource;
+use App\Filament\Resources\PeopleResource;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
@@ -236,4 +238,47 @@ it('treats a batch whose only pending jobs failed again after a retry as complet
     ]);
 
     expect(resolve(MailboxHistoryImportService::class)->isRunning($account->fresh()))->toBeFalse();
+});
+
+it('shows the syncing badge and initial import count on the accounts page', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $this->actingAs($user);
+    Filament::setTenant($user->currentWorkspace);
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $user->currentWorkspace->getKey(),
+        'user_id' => $user->getKey(),
+        'sync_cursor' => null,
+        'initial_sync_imported' => 57,
+        'initial_sync_estimated' => 100,
+    ]));
+
+    livewire(EmailAccountsPage::class)
+        ->assertSee($account->email_address)
+        ->assertSee(__('filament/pages/email-accounts.importing'))
+        ->assertSee(trans_choice('filament/pages/email-accounts.importing_count', 57, ['count' => 57]));
+});
+
+it('does not show an importing mailbox on the people or companies list', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $this->actingAs($user);
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+    Filament::setTenant($user->currentWorkspace);
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $user->currentWorkspace->getKey(),
+        'user_id' => $user->getKey(),
+        'email_address' => 'sync-status@example.com',
+        'sync_cursor' => null,
+        'initial_sync_imported' => 643,
+        'initial_sync_estimated' => 1128,
+    ]));
+
+    $this->get(PeopleResource::getUrl('index'))
+        ->assertOk()
+        ->assertDontSee($account->email_address);
+
+    $this->get(CompanyResource::getUrl('index'))
+        ->assertOk()
+        ->assertDontSee($account->email_address);
 });

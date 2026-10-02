@@ -170,41 +170,6 @@ it('refreshes the outbox and failed badges when a failed email is retried', func
         ->toMatchArray(['outbox' => 1, 'failed' => 0]);
 });
 
-it('does not mark an email as read when the page is loaded on another tab', function (): void {
-    $email = Email::factory()->inbound()->full()->create([
-        'workspace_id' => $this->workspace->id,
-        'user_id' => $this->user->id,
-        'connected_account_id' => $this->account->id,
-        'sent_at' => now(),
-    ]);
-
-    Livewire::withQueryParams(['tab' => 'drafts'])
-        ->test(EmailInboxPage::class)
-        ->assertSet('tab', EmailPageTab::DRAFTS)
-        ->assertSet('selectedEmailId', null);
-
-    expect($email->reads()->where('user_id', $this->user->id)->exists())->toBeFalse();
-});
-
-it('saves an email privacy tier from the sharing cards', function (): void {
-    $email = Email::factory()->inbound()->create([
-        'workspace_id' => $this->workspace->id,
-        'user_id' => $this->user->id,
-        'connected_account_id' => $this->account->id,
-        'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,
-    ]);
-
-    Livewire::test(EmailInboxPage::class)
-        ->callAction('manageSharing', data: [
-            'privacy_tier' => EmailPrivacyTier::FULL->value,
-            'shares' => [],
-        ], arguments: ['emailId' => $email->id])
-        ->assertHasNoActionErrors()
-        ->assertNotified('Sharing settings saved.');
-
-    expect($email->fresh()->privacy_tier)->toBe(EmailPrivacyTier::FULL);
-});
-
 it('offers a direct gmail connect on drafts when no mailbox is connected', function (): void {
     $this->account->forceDelete();
 

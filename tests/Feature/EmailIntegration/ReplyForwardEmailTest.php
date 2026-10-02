@@ -17,9 +17,6 @@ use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
-use Relaticle\EmailIntegration\Filament\Concerns\HasEmailComposeActions;
-use Relaticle\EmailIntegration\Filament\Concerns\RedirectsToGrantSend;
-use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Livewire\EmailComposer;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
@@ -29,7 +26,7 @@ use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Services\ForwardAttachmentCopyService;
 use Relaticle\EmailIntegration\Support\QueuedSendNotifier;
 
-mutates(EmailsRelationManager::class, EmailInboxPage::class, EmailComposer::class, Email::class, HasEmailComposeActions::class, RedirectsToGrantSend::class, ConnectedAccount::class, QueuedSendNotifier::class, SendEmailAction::class, SaveEmailDraftAction::class, ForwardAttachmentCopyService::class);
+mutates(EmailsRelationManager::class, EmailComposer::class, Email::class, ConnectedAccount::class, QueuedSendNotifier::class, SendEmailAction::class, SaveEmailDraftAction::class, ForwardAttachmentCopyService::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -85,113 +82,16 @@ beforeEach(function (): void {
     ]);
 });
 
-it('rejects a malformed recipient in the reply modal', function (): void {
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['sender@contact.com'],
-                'cc' => ['john'],
-                'bcc' => [],
-                'subject' => 'Re: Original Subject',
-                'body_html' => '<p>Reply body</p>',
-                'in_reply_to_email_id' => $this->inboundEmail->id,
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply'],
-        )
-        ->assertHasFormErrors(['cc.0']);
+it('rejects a malformed cc recipient on an inline reply', function (): void {
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'reply')
+        ->set('cc', ['john'])
+        ->set('bodyHtml', '<p>Reply body</p>')
+        ->call('send')
+        ->assertHasErrors(['cc.0'])
+        ->assertSet('isOpen', true);
 
     expect(Email::query()->where('direction', EmailDirection::OUTBOUND)->exists())->toBeFalse();
-});
-
-it('reply persists a queued Email with REPLY creation_source', function (): void {
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['sender@contact.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Re: Original Subject',
-                'body_html' => '<p>Reply body</p>',
-                'in_reply_to_email_id' => $this->inboundEmail->id,
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply'],
-        )
-        ->assertNotified('Email queued');
-
-    $reply = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::REPLY)
-        ->firstOrFail();
-
-    expect($reply->status)->toBe(EmailStatus::QUEUED)
-        ->and($reply->thread_id)->toBe($this->inboundEmail->thread_id)
-        ->and($reply->in_reply_to)->toBe($this->inboundEmail->rfc_message_id);
-});
-
-it('keeps the undo window when a thread reply is queued from the inbox', function (): void {
-    livewire(EmailInboxPage::class)
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['sender@contact.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Re: Original Subject',
-                'body_html' => '<p>Inbox reply</p>',
-                'in_reply_to_email_id' => $this->inboundEmail->id,
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply'],
-        );
-
-    $reply = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::REPLY)
-        ->firstOrFail();
-
-    $notification = collect(session('filament.claimed_notifications'))
-        ->firstWhere('title', __('filament/concerns/email-compose.notifications.queued.title'));
-
-    expect($reply->scheduled_for)->not->toBeNull()
-        ->and($notification)->not->toBeNull()
-        ->and(collect($notification['actions'])->pluck('name')->all())->toContain('undo');
-});
-
-it('forward persists a queued Email with FORWARD creation_source', function (): void {
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['forward-to@example.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Fwd: Original Subject',
-                'body_html' => '<p>Forwarded</p>',
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'forward'],
-        );
-
-    $forward = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::FORWARD)
-        ->firstOrFail();
-
-    expect($forward->status)->toBe(EmailStatus::QUEUED)
-        ->and($forward->in_reply_to)->toBeNull();
 });
 
 it('renders an email body in a sandboxed iframe with sanitized content', function (): void {
@@ -435,134 +335,6 @@ it('restores the plain-text original when a saved forward is reopened', function
         ->sole();
 
     expect($forward->body->body_html)->toContain('Please review the invoice by Friday.');
-});
-
-it('includes the original plain-text body when forwarding from the relation manager', function (): void {
-    $this->inboundEmail->body->update([
-        'body_html' => null,
-        'body_text' => 'Please review the invoice by Friday.',
-    ]);
-
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['forward-to@example.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Fwd: Original Subject',
-                'body_html' => '<p>FYI</p>',
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'forward'],
-        );
-
-    $forward = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::FORWARD)
-        ->firstOrFail();
-
-    expect($forward->body->body_html)
-        ->toContain('FYI')
-        ->toContain('Please review the invoice by Friday.')
-        ->toContain('---------- Forwarded message ----------');
-});
-
-it('includes the original plain-text body when forwarding from the inbox', function (): void {
-    $this->inboundEmail->body->update([
-        'body_html' => null,
-        'body_text' => 'Please review the invoice by Friday.',
-    ]);
-
-    livewire(EmailInboxPage::class)
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['forward-to@example.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Fwd: Original Subject',
-                'body_html' => '<p>FYI</p>',
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'forward'],
-        );
-
-    $forward = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::FORWARD)
-        ->firstOrFail();
-
-    expect($forward->body->body_html)
-        ->toContain('FYI')
-        ->toContain('Please review the invoice by Friday.')
-        ->toContain('---------- Forwarded message ----------');
-});
-
-it('includes the original attachments when forwarding from the relation manager modal', function (): void {
-    Storage::fake(EmailAttachment::DISK);
-
-    $attachment = inboundStoredAttachment($this->inboundEmail, 'contract.pdf', 'signed-contract');
-
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['forward-to@example.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Fwd: Original Subject',
-                'body_html' => '<p>See attached contract</p>',
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'forward'],
-        );
-
-    $forward = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::FORWARD)
-        ->sole();
-
-    $sentAttachment = $forward->attachments->sole();
-
-    expect($sentAttachment->filename)->toBe('contract.pdf')
-        ->and($sentAttachment->storage_path)->not->toBe($attachment->storage_path);
-
-    Storage::disk(EmailAttachment::DISK)->assertExists((string) $sentAttachment->storage_path);
-    expect(Storage::disk(EmailAttachment::DISK)->get((string) $sentAttachment->storage_path))->toBe('signed-contract');
-});
-
-it('includes the original attachments when forwarding from the inbox modal', function (): void {
-    Storage::fake(EmailAttachment::DISK);
-
-    inboundStoredAttachment($this->inboundEmail, 'contract.pdf', 'signed-contract');
-
-    livewire(EmailInboxPage::class)
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['forward-to@example.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Fwd: Original Subject',
-                'body_html' => '<p>See attached contract</p>',
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'forward'],
-        );
-
-    $forward = Email::query()
-        ->where('direction', EmailDirection::OUTBOUND)
-        ->where('creation_source', EmailCreationSource::FORWARD)
-        ->sole();
-
-    expect($forward->attachments->sole()->filename)->toBe('contract.pdf');
 });
 
 it('a forward saved as a draft keeps its source without threading against it', function (): void {
@@ -855,9 +627,12 @@ it('the docked composer closes when the reader moves to another email', function
         'thread_id' => 'thread-def',
     ]);
 
-    // Selecting a different email must tell the dock to stand down — a draft that
-    // answers one message cannot stay docked under another.
-    livewire(EmailInboxPage::class)
+    $this->person->emails()->attach([$this->inboundEmail->getKey(), $other->getKey()]);
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $this->person,
+        'pageClass' => ViewPeople::class,
+    ])
         ->set('selectedEmailId', $this->inboundEmail->id)
         ->call('selectEmail', $other->id)
         ->assertDispatched('composer:dismiss-inline');
@@ -887,98 +662,16 @@ it('the floating composer ignores reply events, and the docked one ignores compo
 });
 
 it('reply_all persists a queued Email with REPLY_ALL creation_source', function (): void {
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['sender@contact.com', 'cc-person@contact.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Re: Original Subject',
-                'body_html' => '<p>Reply all body</p>',
-                'in_reply_to_email_id' => $this->inboundEmail->id,
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply_all'],
-        );
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'reply_all')
+        ->set('bodyHtml', '<p>Reply all body</p>')
+        ->call('send')
+        ->assertHasNoErrors();
 
     expect(Email::query()
         ->where('direction', EmailDirection::OUTBOUND)
         ->where('creation_source', EmailCreationSource::REPLY_ALL)
         ->exists())->toBeTrue();
-});
-
-it('does not queue a reply when the mailbox cannot send', function (): void {
-    $this->account->update([
-        'capabilities' => [
-            'email' => true,
-            'send' => false,
-            'calendar' => false,
-        ],
-    ]);
-
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['sender@contact.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Re: Original Subject',
-                'body_html' => '<p>Reply body</p>',
-                'in_reply_to_email_id' => $this->inboundEmail->id,
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply'],
-        )
-        ->assertNotNotified();
-
-    expect(Email::query()->where('direction', EmailDirection::OUTBOUND)->exists())->toBeFalse();
-});
-
-it('opens grant permission instead of reply when the mailbox cannot send', function (): void {
-    $this->account->update([
-        'capabilities' => [
-            'email' => true,
-            'send' => false,
-            'calendar' => false,
-        ],
-    ]);
-
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->call('openReplyModal', $this->inboundEmail->id, 'reply')
-        ->assertActionMounted('grantSendPermission');
-
-    livewire(EmailInboxPage::class)
-        ->call('openReplyModal', $this->inboundEmail->id, 'reply')
-        ->assertActionMounted('grantSendPermission');
-});
-
-it('redirects to oauth when grant permission is confirmed from the record emails tab', function (): void {
-    $this->account->update([
-        'capabilities' => [
-            'email' => true,
-            'send' => false,
-            'calendar' => false,
-        ],
-    ]);
-
-    $component = livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction('grantSendPermission');
-
-    assertRedirectedToMailboxOAuth($component, 'gmail', $this->account->workspace);
 });
 
 it('opens the grant permission empty state when replying from a mailbox that cannot send', function (): void {
@@ -1000,64 +693,22 @@ it('opens the grant permission empty state when replying from a mailbox that can
     expect(Email::query()->where('direction', EmailDirection::OUTBOUND)->exists())->toBeFalse();
 });
 
-it('opens grant permission instead of reply when the mailbox is not active', function (EmailAccountStatus $status): void {
+it('opens the grant permission empty state when replying from a mailbox that is not active', function (EmailAccountStatus $status): void {
     $this->account->update(['status' => $status]);
 
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->call('openReplyModal', $this->inboundEmail->id, 'reply')
-        ->assertActionMounted('grantSendPermission');
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'reply')
+        ->assertSet('isOpen', true)
+        ->assertSee(__('filament/emails/composer.grant_send.description'))
+        ->set('bodyHtml', '<p>Reply body</p>')
+        ->call('send')
+        ->assertSet('isOpen', true);
 
-    livewire(EmailInboxPage::class)
-        ->call('openReplyModal', $this->inboundEmail->id, 'reply')
-        ->assertActionMounted('grantSendPermission');
+    expect(Email::query()->where('direction', EmailDirection::OUTBOUND)->exists())->toBeFalse();
 })->with([
     'error' => EmailAccountStatus::ERROR,
     'reauth required' => EmailAccountStatus::REAUTH_REQUIRED,
 ]);
-
-it('does not queue a reply when the mailbox has a sync error', function (): void {
-    $this->account->update(
-        ConnectedAccount::factory()->error()->make()->only(['status', 'last_error']),
-    );
-
-    livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction(
-            'replyForwardEmail',
-            data: [
-                'connected_account_id' => $this->account->id,
-                'to' => ['sender@contact.com'],
-                'cc' => [],
-                'bcc' => [],
-                'subject' => 'Re: Original Subject',
-                'body_html' => '<p>Reply body</p>',
-                'in_reply_to_email_id' => $this->inboundEmail->id,
-            ],
-            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply'],
-        )
-        ->assertNotNotified();
-
-    expect(Email::query()->where('direction', EmailDirection::OUTBOUND)->exists())->toBeFalse();
-});
-
-it('redirects to oauth when grant permission is confirmed for a mailbox that needs reconnect', function (): void {
-    $this->account->update(
-        ConnectedAccount::factory()->error()->make()->only(['status', 'last_error']),
-    );
-
-    $component = livewire(EmailsRelationManager::class, [
-        'ownerRecord' => $this->person,
-        'pageClass' => ViewPeople::class,
-    ])
-        ->callAction('grantSendPermission');
-
-    assertRedirectedToMailboxOAuth($component, 'gmail', $this->account->workspace);
-});
 
 function inboundStoredAttachment(Email $email, string $filename, string $contents, bool $inline = false, ?string $contentId = null): EmailAttachment
 {

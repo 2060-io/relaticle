@@ -507,8 +507,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
                 'creation_source' => $this->creationSource(),
                 'privacy_tier' => EmailPrivacyTier::from((string) $this->privacyTier),
                 'batch_id' => null,
-                // Interactive sends from the composer keep the undo-send window (matches
-                // the surface being replaced, HasEmailComposeActions::buildSendData()).
+                // Interactive sends from the composer keep the undo-send window.
                 'priority' => EmailPriority::PRIORITY,
                 'attachments' => $attachmentPaths,
                 'attachment_file_names' => $attachmentNames,

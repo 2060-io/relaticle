@@ -6,7 +6,6 @@ return [
     'navigation_label' => 'Emails',
     'account_filter' => [
         'label' => 'Account',
-        'all' => 'All accounts',
     ],
     'tabs' => [
         'drafts' => 'Drafts',
@@ -131,7 +130,6 @@ return [
     ],
     'mark_all_read' => [
         'label' => 'Mark all read',
-        'notification' => '{0}No unread emails to mark|{1}1 email marked as read|[2,*]:count emails marked as read',
     ],
     'reply_forward' => [
         'modal_headings' => [
@@ -191,30 +189,6 @@ return [
     'compose_form' => [
         'signature' => [
             'label' => 'Signature',
-        ],
-    ],
-    'reply_form' => [
-        'from' => [
-            'label' => 'From',
-        ],
-        'to' => [
-            'label' => 'To',
-            'placeholder' => 'email@example.com',
-        ],
-        'cc' => [
-            'label' => 'CC',
-            'placeholder' => 'email@example.com',
-        ],
-        'bcc' => [
-            'label' => 'BCC',
-            'placeholder' => 'email@example.com',
-        ],
-        'message' => [
-            'label' => 'Message',
-        ],
-        'privacy' => [
-            'label' => 'Who can see this email?',
-            'helper_text' => 'Defaults to your workspace or personal sharing setting.',
         ],
     ],
 ];

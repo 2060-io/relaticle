@@ -20,6 +20,7 @@ use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Notification;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
+use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Filament\Concerns\HasEmailReaderActions;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseEmailsRelationManager;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -781,6 +782,172 @@ it('does not match snippet text when a subject share overrides a full default', 
         ->assertSee('Quarterly forecast')
         ->set('search', 'Secret preview text')
         ->assertSee(__('filament/pages/email-inbox.list_empty.no_results', ['search' => 'Secret preview text']));
+});
+
+it('does not match a teammate\'s BCC participant when searching record emails', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+    $team = $owner->currentWorkspace;
+    $viewer = User::factory()->create(['current_workspace_id' => $team->id]);
+    $team->users()->attach($viewer, ['role' => 'member']);
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $team->id,
+        'user_id' => $owner->id,
+    ]));
+
+    $person = People::factory()->create([
+        'workspace_id' => $team->id,
+        'creator_id' => $owner->id,
+    ]);
+
+    $bcc = 'secret-bcc@example.com';
+
+    $email = Email::factory()->create([
+        'workspace_id' => $team->id,
+        'user_id' => $owner->id,
+        'connected_account_id' => $account->getKey(),
+        'status' => EmailStatus::SYNCED,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'subject' => 'Internal update',
+        'snippet' => 'Nothing searchable here',
+        'is_internal' => false,
+    ]);
+
+    EmailParticipant::query()->create([
+        'email_id' => $email->id,
+        'email_address' => 'customer@acme.com',
+        'name' => 'Customer',
+        'role' => EmailParticipantRole::TO,
+    ]);
+
+    EmailParticipant::query()->create([
+        'email_id' => $email->id,
+        'email_address' => $bcc,
+        'name' => 'Hidden recipient',
+        'role' => EmailParticipantRole::BCC,
+    ]);
+
+    $person->emails()->attach($email->getKey());
+
+    $this->actingAs($viewer);
+    Filament::setTenant($team);
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->assertSeeHtml("email-list-row-{$email->getKey()}")
+        ->set('search', $bcc)
+        ->assertDontSeeHtml("email-list-row-{$email->getKey()}")
+        ->set('search', 'Customer')
+        ->assertSeeHtml("email-list-row-{$email->getKey()}");
+});
+
+it('still matches BCC participants on record emails the viewer owns', function (): void {
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'is_default' => true,
+    ]));
+
+    $bcc = 'own-bcc@example.com';
+
+    $email = Email::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $account->getKey(),
+        'status' => EmailStatus::SYNCED,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'subject' => 'Internal update',
+        'snippet' => 'Nothing searchable here',
+    ]);
+
+    EmailParticipant::query()->create([
+        'email_id' => $email->id,
+        'email_address' => $bcc,
+        'name' => 'Hidden recipient',
+        'role' => EmailParticipantRole::BCC,
+    ]);
+
+    $this->person->emails()->attach($email->getKey());
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $this->person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->set('search', $bcc)
+        ->assertSeeHtml("email-list-row-{$email->getKey()}");
+});
+
+it('does not match hidden subject text when the viewer only has a disconnected synced copy', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+    $team = $owner->currentWorkspace;
+    $viewer = User::factory()->create(['current_workspace_id' => $team->id]);
+    $team->users()->attach($viewer, ['role' => 'member']);
+
+    $ownerAccount = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $team->id,
+        'user_id' => $owner->id,
+    ]));
+
+    $viewerAccount = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $team->id,
+        'user_id' => $viewer->id,
+    ]));
+
+    $person = People::factory()->create([
+        'workspace_id' => $team->id,
+        'creator_id' => $owner->id,
+    ]);
+
+    $rfcMessageId = '<test-disconnected-copy@example.com>';
+
+    $email = Email::factory()->inbound()->create([
+        'workspace_id' => $team->id,
+        'user_id' => $owner->id,
+        'connected_account_id' => $ownerAccount->getKey(),
+        'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,
+        'rfc_message_id' => $rfcMessageId,
+        'subject' => 'This is mass email test',
+        'snippet' => 'Secret preview text',
+        'is_internal' => false,
+    ]);
+
+    $viewerCopy = Email::factory()->inbound()->create([
+        'workspace_id' => $team->id,
+        'user_id' => $viewer->id,
+        'connected_account_id' => $viewerAccount->getKey(),
+        'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,
+        'rfc_message_id' => $rfcMessageId,
+        'subject' => 'This is mass email test',
+        'snippet' => 'Secret preview text',
+        'is_internal' => false,
+    ]);
+
+    $viewerAccount->delete();
+
+    EmailParticipant::query()->create([
+        'email_id' => $email->id,
+        'email_address' => 'laravelproject4u@gmail.com',
+        'name' => null,
+        'role' => EmailParticipantRole::TO,
+    ]);
+
+    $person->emails()->attach([$email->getKey(), $viewerCopy->getKey()]);
+
+    $this->actingAs($viewer);
+    Filament::setTenant($team);
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->assertSeeHtml("email-list-row-{$email->getKey()}")
+        ->assertDontSeeHtml("email-list-row-{$viewerCopy->getKey()}")
+        ->set('search', 'this is mass')
+        ->assertDontSeeHtml("email-list-row-{$email->getKey()}")
+        ->assertDontSeeHtml("email-list-row-{$viewerCopy->getKey()}")
+        ->assertSee(__('filament/pages/email-inbox.list_empty.no_results', ['search' => 'this is mass']));
 });
 
 it('shows a request access pill on record mailbox rows without body access', function (): void {

@@ -290,7 +290,6 @@ it('does not show history import failure recovery on account settings', function
     ]);
 
     livewire(EmailAccountSettingsPage::class, ['account' => $this->account->id])
-        ->assertDontSee(__('filament/pages/email-accounts.history_import_failure.badge'))
         ->assertDontSee(__('filament/pages/email-accounts.actions.retry_failed_import.label'));
 });
 

@@ -104,9 +104,6 @@ return [
         'heading' => 'Some items could not be synced',
     ],
     'importing' => 'Syncing',
-    'importing_calendar' => 'Syncing calendar',
-    'importing_email' => 'Syncing email',
-    'importing_email_and_calendar' => 'Syncing email and calendar',
     'importing_percent' => ':percent%',
     'importing_count' => '{1}:count email|[2,*]:count emails',
     'statuses' => [
@@ -117,21 +114,10 @@ return [
     ],
     'history_import' => [
         'processed' => ':processed of :total processed',
-        'failed_jobs' => '{1}1 message could not be synced|[2,*]:count messages could not be synced',
         'successful_jobs' => ':count imported successfully',
     ],
     'history_import_failure' => [
-        'badge' => 'Some emails failed to sync',
-        'dismiss' => 'Dismiss',
         'max_attempts' => 'This message could not be stored after several tries. Use Retry above. If it keeps failing, wait a few minutes and try again.',
-    ],
-    'sync_status' => [
-        'title_syncing' => 'Syncing',
-        'title_complete' => 'Sync complete',
-        'meetings_processed' => '{1}:count meeting synced|[2,*]:count meetings synced',
-        'emails_processed' => '{1}:count email synced|[2,*]:count emails synced',
-        'close' => 'Dismiss',
-        'open_settings' => 'Open account settings',
     ],
     'capabilities' => [
         'email' => 'Email',

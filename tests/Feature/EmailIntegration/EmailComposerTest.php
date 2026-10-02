@@ -27,7 +27,6 @@ use Relaticle\EmailIntegration\Enums\EmailFolder;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
-use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Livewire\EmailComposer;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -735,19 +734,6 @@ it('does not save empty drafts on close', function (): void {
         ->call('close');
 
     expect(Email::query()->where('status', EmailStatus::DRAFT)->exists())->toBeFalse();
-});
-
-it('never lists drafts in the mail panes', function (): void {
-    Livewire::test(EmailComposer::class)
-        ->dispatch('composer:open')
-        ->set('to', ['d@example.com'])
-        ->set('subject', 'Hidden draft')
-        ->set('bodyHtml', '<p>b</p>')
-        ->call('close');
-
-    Livewire::test(EmailInboxPage::class)
-        ->call('setFolder', 'all')
-        ->assertDontSee('Hidden draft');
 });
 
 it('does not load another user\'s draft into the composer', function (): void {

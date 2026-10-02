@@ -117,8 +117,7 @@ it('does not show an import issue callout on home when store jobs failed', funct
     ]);
 
     livewire(MeetingsHomeWidget::class)
-        ->assertDontSee('data-testid="meetings-import-issue"', escape: false)
-        ->assertDontSee(__('filament/pages/email-accounts.history_import_failure.badge'));
+        ->assertDontSee('data-testid="meetings-import-issue"', escape: false);
 });
 
 it('does not name failing mailboxes on home when more than one import failed', function (): void {
@@ -145,8 +144,7 @@ it('does not name failing mailboxes on home when more than one import failed', f
     }
 
     livewire(MeetingsHomeWidget::class)
-        ->assertDontSee('data-testid="meetings-import-issue"', escape: false)
-        ->assertDontSee(__('filament/pages/email-accounts.history_import_failure.badge'));
+        ->assertDontSee('data-testid="meetings-import-issue"', escape: false);
 });
 
 it('does not show an import issue callout on home when no store job failed', function (): void {
@@ -161,8 +159,7 @@ it('does not show an import issue callout on home when no store job failed', fun
     ]);
 
     livewire(MeetingsHomeWidget::class)
-        ->assertDontSee('data-testid="meetings-import-issue"', escape: false)
-        ->assertDontSee(__('filament/pages/email-accounts.history_import_failure.badge'));
+        ->assertDontSee('data-testid="meetings-import-issue"', escape: false);
 });
 
 it('does not offer a retry control on home after import store failures', function (): void {
