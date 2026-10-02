@@ -194,9 +194,7 @@ it('opens the composer from the drafts empty state when a mailbox is connected',
         ->assertSee(__('filament/concerns/email-compose.actions.compose.label'))
         ->assertTableHeaderActionsExistInOrder(['composeEmail'])
         ->assertTableEmptyStateActionsExistInOrder(['composeEmail', 'connectMailbox'])
-        ->assertTableActionHidden('connectMailbox')
-        ->callAction(TestAction::make('composeEmail')->table())
-        ->assertDispatched('composer:open');
+        ->assertTableActionHidden('connectMailbox');
 });
 
 it('keeps the drafts empty copy when the mailbox cannot send', function (): void {
@@ -270,9 +268,11 @@ it('lists only the signed-in user\'s own drafts', function (): void {
 it('opens a draft in the composer', function (): void {
     $draft = makeDraft($this->user, $this->account);
 
-    Livewire::test(DraftsTable::class)
-        ->callAction(TestAction::make('openDraft')->table($draft))
-        ->assertDispatched('composer:open', draftId: (string) $draft->getKey());
+    $openDraft = Livewire::test(DraftsTable::class)->instance()->getTable()->getAction('openDraft');
+
+    expect($openDraft->record($draft)->getLivewireClickHandler())
+        ->toStartWith("\$dispatch('composer:open'")
+        ->toContain((string) $draft->getKey());
 });
 
 it('deletes a draft from the drafts table, attachment rows and files included', function (): void {

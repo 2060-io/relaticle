@@ -6,7 +6,10 @@ use App\Enums\CustomFields\PeopleField;
 use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
+use Relaticle\EmailIntegration\Enums\EmailCreationSource;
+use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
+use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Livewire\EmailComposer;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -90,5 +93,76 @@ it('lists a CRM person once when they are also a recent correspondent', function
         ->waitForText(__('filament/emails/composer.title'))
         ->type('[role="combobox"]', 'dana@globex')
         ->assertScript('Array.from(document.querySelectorAll("[role=option]")).filter((option) => option.offsetParent !== null && option.textContent.includes("dana@globex.example")).length', 1)
+        ->assertNoJavaScriptErrors();
+});
+
+it('opens the composer from a record emails tab addressed to the person and closes it', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'user_id' => $user->id,
+        'workspace_id' => $workspace->id,
+        'sync_cursor' => 'history-done',
+        'last_synced_at' => now(),
+    ]));
+
+    $person = People::factory()->for($workspace)->create(['name' => 'Jane Customer', 'creator_id' => $user->id]);
+    $emailsField = CustomField::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $workspace->id)
+        ->where('entity_type', 'people')
+        ->where('code', PeopleField::EMAILS->value)
+        ->firstOrFail();
+    $person->saveCustomFieldValue($emailsField, ['jane@acme-customer.example'], $workspace);
+
+    $floatingComposer = 'Livewire.all().map((component) => Livewire.find(component.id)).find((component) => component.get("dock") === "floating")';
+
+    visit('/app/login')
+        ->type('[id="form.email"]', $user->email)
+        ->click('button[type="submit"]')
+        ->type('[id="form.password"]', 'password')
+        ->click('button[type="submit"]')
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
+        ->click('[role="tab"]:has-text("Emails")')
+        ->click('button[x-tooltip][wire\\:click*="composer:open"]')
+        ->waitForText(__('filament/emails/composer.title'))
+        ->assertScript("{$floatingComposer}.get('to')[0]", 'jane@acme-customer.example')
+        ->assertScript("{$floatingComposer}.get('linkRecordId')", (string) $person->getKey())
+        ->click('button[wire\\:click="close"]')
+        ->assertMissing('#email-composer-subject')
+        ->assertNoJavaScriptErrors();
+});
+
+it('opens a saved draft from the drafts table', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'user_id' => $user->id,
+        'workspace_id' => $workspace->id,
+        'sync_cursor' => 'history-done',
+        'last_synced_at' => now(),
+    ]));
+    Email::query()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $user->id,
+        'connected_account_id' => $account->id,
+        'subject' => 'Half-written pitch',
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::DRAFT,
+        'privacy_tier' => EmailPrivacyTier::PRIVATE,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]);
+
+    visit('/app/login')
+        ->type('[id="form.email"]', $user->email)
+        ->click('button[type="submit"]')
+        ->type('[id="form.password"]', 'password')
+        ->click('button[type="submit"]')
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/email")
+        ->click('button[wire\\:click*="draftId"]')
+        ->assertVisible('#email-composer-subject')
+        ->assertValue('#email-composer-subject', 'Half-written pitch')
         ->assertNoJavaScriptErrors();
 });

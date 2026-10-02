@@ -67,11 +67,6 @@ abstract class BaseEmailsRelationManager extends RelationManager
         return resolve(EmailVisibilityService::class)->visibleEmailCountBadge($ownerRecord, $user);
     }
 
-    protected function getCrmRecord(): Model
-    {
-        return $this->getOwnerRecord();
-    }
-
     public function table(Table $table): Table
     {
         // The tab lists emails() itself. The default relationship table skips the

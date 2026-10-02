@@ -95,7 +95,7 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
                     ->hiddenLabel()
                     ->tooltip(__('filament/pages/email-inbox.drafts.actions.open'))
                     ->icon(Heroicon::OutlinedPencilSquare)
-                    ->action(fn (Email $record) => $this->dispatch('composer:open', draftId: (string) $record->getKey())),
+                    ->dispatch('composer:open', fn (Email $record): array => ['draftId' => (string) $record->getKey()]),
                 Action::make('deleteDraft')
                     ->label(__('filament/pages/email-inbox.drafts.actions.delete'))
                     ->hiddenLabel()
@@ -165,9 +165,7 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
             ->icon(Heroicon::OutlinedPencilSquare)
             ->tooltip(__('filament/concerns/email-compose.actions.compose.tooltip'))
             ->visible(fn (): bool => $this->hasMailbox())
-            ->action(function (): void {
-                $this->dispatch('composer:open');
-            });
+            ->dispatch('composer:open');
     }
 
     /**
