@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Livewire\DraftsTable;
@@ -55,6 +56,17 @@ it('opens the floating composer from the drafts table header', function (): void
         ->assertTableHeaderActionsExistInOrder(['composeEmail'])
         ->callAction(TestAction::make('composeEmail')->table())
         ->assertDispatched('composer:open');
+});
+
+it('checks for a connected mailbox once per drafts table render', function (): void {
+    DB::enableQueryLog();
+
+    livewire(DraftsTable::class);
+
+    $mailboxLookups = collect(DB::getQueryLog())
+        ->filter(fn (array $query): bool => str_starts_with($query['query'], 'select exists(select * from "connected_accounts"'));
+
+    expect($mailboxLookups)->toHaveCount(1);
 });
 
 it('does not put compose on the outbox table header', function (): void {

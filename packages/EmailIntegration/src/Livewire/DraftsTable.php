@@ -41,6 +41,8 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
     use InteractsWithSchemas;
     use InteractsWithTable;
 
+    private ?bool $hasMailbox = null;
+
     public function table(Table $table): Table
     {
         $composeEmail = $this->composeEmailAction();
@@ -191,7 +193,7 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
 
     private function hasMailbox(): bool
     {
-        return ConnectedAccount::hasConnectedFor($this->authUser(), $this->currentWorkspace());
+        return $this->hasMailbox ??= ConnectedAccount::hasConnectedFor($this->authUser(), $this->currentWorkspace());
     }
 
     private function currentWorkspace(): ?Workspace
