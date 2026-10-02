@@ -1095,7 +1095,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     /**
      * @return list<string>
      */
-    #[Computed]
+    #[Computed(persist: true, seconds: 300)]
     public function recipientSuggestions(): array
     {
         return resolve(RecipientSuggestionService::class)->addressesFor($this->authUser());

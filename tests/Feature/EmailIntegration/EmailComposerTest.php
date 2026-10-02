@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Factories\Sequence;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -869,6 +870,23 @@ it('suggests the most recent correspondents first', function (): void {
 
     expect(array_search('zoe@newer.example', $suggestions, true))
         ->toBeLessThan(array_search('aaron@older.example', $suggestions, true));
+});
+
+it('reads recipient suggestions once across composer round-trips', function (): void {
+    $suggestionQueries = 0;
+
+    DB::listen(function (QueryExecuted $query) use (&$suggestionQueries): void {
+        if (str_contains($query->sql, 'recent_emails')) {
+            $suggestionQueries++;
+        }
+    });
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->call('toggleCc')
+        ->call('toggleBcc');
+
+    expect($suggestionQueries)->toBe(1);
 });
 
 it('keeps suggesting the viewer\'s correspondents when a teammate\'s private mail is newer', function (): void {
