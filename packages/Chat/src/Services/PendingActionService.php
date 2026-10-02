@@ -44,6 +44,7 @@ use Relaticle\Chat\Events\PendingActionResolved;
 use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Support\ProposalCoreFields;
+use Relaticle\Chat\Support\ProposalLabel;
 use Relaticle\Chat\Support\ProposalOwnership;
 use Relaticle\Chat\Support\ProposalPayload;
 use Relaticle\Chat\Support\ProposalProgress;
@@ -675,7 +676,7 @@ final readonly class PendingActionService
                 continue;
             }
 
-            $label = $item === null ? null : $this->recordLabel($item['data'], $item['display']);
+            $label = $item === null ? null : ProposalLabel::of($action->entity_type, $item['data'], $item['display']);
             $entries[] = [
                 'record' => $label ?? __('record :position', ['position' => (int) $index + 1]),
                 'fields' => $fields,
@@ -736,7 +737,7 @@ final readonly class PendingActionService
             }
 
             $item = $items[(int) $index] ?? null;
-            $label = $item === null ? null : $this->recordLabel($item['data'], $item['display']);
+            $label = $item === null ? null : ProposalLabel::of($action->entity_type, $item['data'], $item['display']);
             $labels[] = $label ?? __('record :position', ['position' => (int) $index + 1]);
         }
 
@@ -800,7 +801,7 @@ final readonly class PendingActionService
     public function resolveActionLabel(PendingAction $action): ?string
     {
         $labels = array_values(array_filter(array_map(
-            fn (array $item): ?string => $this->recordLabel($item['data'], $item['display']),
+            static fn (array $item): ?string => ProposalLabel::of($action->entity_type, $item['data'], $item['display']),
             ProposalPayload::from($action)->items(),
         )));
 
@@ -855,41 +856,12 @@ final readonly class PendingActionService
             $item = $items[(int) $index] ?? null;
             $records[] = [
                 'id' => (string) $id,
-                'label' => $item === null ? null : $this->recordLabel($item['data'], $item['display']),
+                'label' => $item === null ? null : ProposalLabel::of($action->entity_type, $item['data'], $item['display']),
                 'url' => $resolver->referenceUrl($action->entity_type, (string) $id),
             ];
         }
 
         return $records;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @param  array<string, mixed>  $display
-     */
-    private function recordLabel(array $data, array $display): ?string
-    {
-        foreach (['name', 'title', 'email'] as $field) {
-            if (is_string($data[$field] ?? null) && $data[$field] !== '') {
-                return $data[$field];
-            }
-        }
-
-        $fields = is_array($display['fields'] ?? null) ? $display['fields'] : [];
-
-        foreach ($fields as $row) {
-            if (! is_array($row) || ! in_array($row['label'] ?? null, ['Name', 'Title', 'Email'], true)) {
-                continue;
-            }
-
-            $value = $row['new'] ?? $row['value'] ?? $row['old'] ?? null;
-
-            if (is_string($value) && $value !== '') {
-                return $value;
-            }
-        }
-
-        return null;
     }
 
     private function resolveResultRecordId(PendingAction $action): ?string

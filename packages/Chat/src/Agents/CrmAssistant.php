@@ -685,10 +685,7 @@ PROMPT;
         ];
 
         foreach ($this->supersededProposals as $proposal) {
-            $label = $proposal['label'] !== null
-                ? '"'.$this->sanitizeLabel($proposal['label']).'"'
-                : '(unnamed)';
-            $lines[] = "- {$proposal['operation']} {$proposal['entity_type']} {$label}";
+            $lines[] = "- {$proposal['operation']} {$proposal['entity_type']} ".ResolvedActionText::quoted($proposal['label']);
         }
 
         $lines[] = '</superseded_proposals>';
