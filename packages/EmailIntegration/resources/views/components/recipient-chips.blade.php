@@ -11,7 +11,12 @@
     $listboxId = Str::slug($wireModel ?: 'recipients').'-suggestions';
     $removeLabel = __('filament/emails/composer.actions.remove_recipient');
     $avatarColor = static fn (string $name): string => ['primary', 'success', 'warning', 'danger', 'info'][abs(crc32(mb_strtolower($name))) % 5];
+    $optionEmails = collect($options)
+        ->pluck('email')
+        ->filter()
+        ->map(fn (string $email): string => mb_strtolower($email));
     $manualOptions = collect($suggestions)
+        ->reject(fn (string $suggestion): bool => $optionEmails->contains(mb_strtolower($suggestion)))
         ->map(fn (string $suggestion): array => [
             'type' => 'email',
             'id' => $suggestion,
@@ -23,6 +28,7 @@
             'circular' => true,
             'avatarColor' => $avatarColor($suggestion),
         ])
+        ->values()
         ->all();
 @endphp
 
