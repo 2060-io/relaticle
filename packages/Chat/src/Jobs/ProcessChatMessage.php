@@ -26,9 +26,11 @@ use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
 use Laravel\Ai\Exceptions\RateLimitedException;
 use Laravel\Ai\Exceptions\StreamErrorException;
+use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\Data\ToolCall as ToolCallData;
 use Laravel\Ai\Responses\StreamedAgentResponse;
 use Laravel\Ai\Streaming\Events\Error;
+use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\StreamEvent;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
@@ -332,6 +334,8 @@ final class ProcessChatMessage implements ShouldQueue
             }
 
             $response->then(function (StreamedAgentResponse $streamedResponse) use ($creditService, $startedAt): void {
+                $refundedBlankTurn = $this->settleBlankTurn($streamedResponse, $creditService);
+
                 // input_tokens stays the UNCACHED remainder, with the cache legs next
                 // to it; credits are still priced on model + tool calls, not tokens.
                 ChatTelemetry::breadcrumb('stream.completed', [
@@ -346,17 +350,19 @@ final class ProcessChatMessage implements ShouldQueue
                     conversationId: $streamedResponse->conversationId,
                 ));
 
-                $creditService->settleReservation(
-                    workspace: $this->workspace,
-                    user: $this->user,
-                    type: AiCreditType::Chat,
-                    model: $this->resolved['model'] ?? $streamedResponse->meta->model ?? 'unknown',
-                    inputTokens: $streamedResponse->usage->uncachedInputTokens(),
-                    outputTokens: $streamedResponse->usage->outputTokens,
-                    toolCallsCount: $streamedResponse->toolCalls->count(),
-                    conversationId: $streamedResponse->conversationId,
-                    resolutionKey: $this->resolutionKey(),
-                );
+                if (! $refundedBlankTurn) {
+                    $creditService->settleReservation(
+                        workspace: $this->workspace,
+                        user: $this->user,
+                        type: AiCreditType::Chat,
+                        model: $this->resolved['model'] ?? $streamedResponse->meta->model ?? 'unknown',
+                        inputTokens: $streamedResponse->usage->uncachedInputTokens(),
+                        outputTokens: $streamedResponse->usage->outputTokens,
+                        toolCallsCount: $streamedResponse->toolCalls->count(),
+                        conversationId: $streamedResponse->conversationId,
+                        resolutionKey: $this->resolutionKey(),
+                    );
+                }
 
                 $this->persistMentions($streamedResponse->userMessageId);
                 $this->persistUserDocument($streamedResponse->userMessageId);
@@ -888,7 +894,7 @@ final class ProcessChatMessage implements ShouldQueue
         // the document is built from that same text so both columns agree.
         $assistantContent = AssistantText::finalReply($streamedResponse->text, $this->textAfterLastToolCall, $this->sawToolCall);
 
-        if ($assistantContent === '') {
+        if (trim($assistantContent) === '') {
             return;
         }
 
@@ -910,6 +916,57 @@ final class ProcessChatMessage implements ShouldQueue
                 'content' => $assistantContent,
                 'document' => json_encode($document, JSON_THROW_ON_ERROR),
                 'meta' => json_encode($meta, JSON_THROW_ON_ERROR),
+            ]);
+    }
+
+    private function settleBlankTurn(StreamedAgentResponse $streamedResponse, CreditService $creditService): bool
+    {
+        if ($this->sawToolCall) {
+            return false;
+        }
+
+        if (trim(AssistantText::finalReply($streamedResponse->text, $this->textAfterLastToolCall, $this->sawToolCall)) !== '') {
+            return false;
+        }
+
+        $creditService->refundReservation(
+            $this->workspace,
+            resolutionKey: $this->resolutionKey(),
+            conversationId: $this->conversationId,
+        );
+
+        $this->acknowledgeBlankTurn($streamedResponse->assistantMessageId, $this->blankTurnMessage($streamedResponse));
+
+        ChatTelemetry::breadcrumb('stream.blank_reply', ['model' => $this->resolved['model'] ?? null]);
+
+        return true;
+    }
+
+    private function blankTurnMessage(StreamedAgentResponse $streamedResponse): string
+    {
+        $reason = $streamedResponse->events->whereInstanceOf(StreamEnd::class)->last()?->reason;
+
+        return match ($reason) {
+            FinishReason::Length->value => __('This reply ran out of room before it said anything. Ask again, or ask for a shorter answer.'),
+            FinishReason::ContentFilter->value => __('The model declined to answer this. Try rephrasing your request.'),
+            default => __('Noted. Go on, or ask me a question.'),
+        };
+    }
+
+    private function acknowledgeBlankTurn(?string $assistantMessageId, string $acknowledgement): void
+    {
+        if ($assistantMessageId === null) {
+            return;
+        }
+
+        $document = $this->getParser()->buildFromText($acknowledgement, [], $this->workspace);
+
+        DB::table('agent_conversation_messages')
+            ->where('id', $assistantMessageId)
+            ->update([
+                'content' => $acknowledgement,
+                'document' => json_encode($document, JSON_THROW_ON_ERROR),
+                'steps' => StoredSteps::text($acknowledgement),
             ]);
     }
 
