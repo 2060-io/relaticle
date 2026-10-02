@@ -66,10 +66,8 @@ use Filament\Auth\Notifications\ResetPassword;
 use Filament\Auth\Notifications\VerifyEmail;
 use Filament\Auth\Notifications\VerifyEmailChange;
 use Filament\Facades\Filament;
-use Filament\Forms\Components\Repeater;
 use Filament\Livewire\Notifications;
 use Filament\Notifications\Notification;
-use Filament\Schemas\Components\EmptyState;
 use Filament\Schemas\Components\Section;
 use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
@@ -690,8 +688,6 @@ final class AppServiceProvider extends ServiceProvider
         ExportColumn::configureUsing(fn (ExportColumn $column): ExportColumn => $column->preventFormulaInjection());
 
         Section::configureUsing(fn (Section $section): Section => $section->compact());
-        EmptyState::configureUsing(fn (EmptyState $emptyState): EmptyState => $emptyState->compact());
-        Repeater::configureUsing(fn (Repeater $repeater): Repeater => $repeater->compact());
 
         RestoreAction::configureUsing(fn (RestoreAction $action): RestoreAction => $action->before(function (RestoreAction $action, Model $record): void {
             $conflict = resolve(RestoreConflictMessage::class)->for($record, $action->getRecordTitle(...));

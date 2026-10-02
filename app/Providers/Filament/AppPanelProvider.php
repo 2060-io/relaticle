@@ -64,6 +64,7 @@ use Filament\Notifications\Notification;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\EmptyState;
 use Filament\Schemas\Schema;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Platform;
@@ -160,6 +161,10 @@ final class AppPanelProvider extends PanelProvider
         Select::configureUsing(fn (Select $select): Select => $this->isCurrentPanel()
             ? $select->searchDebounce(250)
             : $select);
+
+        EmptyState::configureUsing(fn (EmptyState $emptyState): EmptyState => $this->isCurrentPanel()
+            ? $emptyState->compact()
+            : $emptyState);
 
         // Table and Schema configuration is global, so both callbacks have to check
         // which panel is actually serving the request before they touch the format.
