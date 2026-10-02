@@ -29,7 +29,18 @@ use Relaticle\EmailIntegration\Support\BlocklistDomainMatcher;
  */
 final readonly class VisibleEmailScope implements Scope
 {
-    public function __construct(private User $viewer) {}
+    private bool $appliesMailboxBlocklist;
+
+    private bool $appliesWorkspaceBlocklist;
+
+    // Builders apply a scope once per compile, so the rule lookups run here, once per query.
+    public function __construct(private User $viewer)
+    {
+        $teamId = $viewer->current_workspace_id;
+
+        $this->appliesMailboxBlocklist = $teamId === null || $this->workspaceHasMailboxBlocklist($teamId);
+        $this->appliesWorkspaceBlocklist = $teamId !== null && $this->workspaceHasBlockedEntry($teamId);
+    }
 
     /**
      * @param  Builder<covariant TModel>  $builder
@@ -43,11 +54,11 @@ final readonly class VisibleEmailScope implements Scope
             ->where('workspace_id', $teamId)
             ->where(function (Builder $visibilityQuery) use ($viewerId, $teamId): void {
                 // Both anti-joins scan every participant row, so they run only when a rule exists.
-                if ($teamId === null || $this->workspaceHasMailboxBlocklist($teamId)) {
+                if ($this->appliesMailboxBlocklist) {
                     $this->excludeEmailsMatchingMailboxBlocklist($visibilityQuery);
                 }
 
-                if ($teamId !== null && $this->workspaceHasBlockedEntry($teamId)) {
+                if ($teamId !== null && $this->appliesWorkspaceBlocklist) {
                     $this->excludeEmailsWithBlockedParticipant($visibilityQuery, $teamId);
                 }
 

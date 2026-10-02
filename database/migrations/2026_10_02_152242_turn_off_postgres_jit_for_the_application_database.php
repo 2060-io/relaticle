@@ -15,7 +15,7 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('ALTER DATABASE '.DB::getQueryGrammar()->wrap(DB::getDatabaseName()).' SET jit = off');
+        DB::unprepared("DO $$ BEGIN EXECUTE format('ALTER DATABASE %I SET jit = off', current_database()); END $$");
     }
 
     private function applicationRoleOwnsDatabase(): bool
