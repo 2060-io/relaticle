@@ -101,12 +101,7 @@ it('prices a retired model from its disabled entry', function (): void {
     ]);
 
     expect(freshRegistry()->ratesFor('claude-opus-4-7'))
-        ->toBe([
-            'input_per_mtok' => 5.0,
-            'output_per_mtok' => 25.0,
-            'cache_read_per_mtok' => 0.3,
-            'cache_write_per_mtok' => 3.75,
-        ]);
+        ->toBe(['input_per_mtok' => 5.0, 'output_per_mtok' => 25.0]);
 });
 
 it('reports no rates for a model that carries none', function (): void {

@@ -4,14 +4,9 @@ declare(strict_types=1);
 
 use App\Enums\Plan;
 use App\Models\ActivityLog\Activity;
-use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
-use Relaticle\Chat\Enums\AiCreditType;
-use Relaticle\Chat\Models\AiCreditTransaction;
-use Relaticle\Chat\Models\AiProviderCost;
 use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Settings\ChatSettings;
 use Relaticle\SystemAdmin\Filament\Pages\Settings\ManageAiSettings;
@@ -42,17 +37,6 @@ function catalogState(array $overrides = []): array
         'models' => [ChatCatalog::entry()],
         'anthropic_effort' => 'high',
     ], $overrides);
-}
-
-function recordChatCost(int $micros): void
-{
-    $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
-
-    AiCreditTransaction::query()->create([
-        'workspace_id' => $workspace->getKey(), 'user_id' => $workspace->user_id, 'idempotency_key' => 'b-'.Str::ulid(),
-        'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
-        'credits_charged' => 1, 'cost_micros' => $micros, 'metadata' => [], 'created_at' => now(),
-    ]);
 }
 
 it('renders the catalog the app is actually running on', function (): void {
@@ -518,109 +502,3 @@ it('flags a row the provider will not serve tools on', function (): void {
         ->assertSuccessful()
         ->assertSee('No tool calls, so this model is offered to nobody');
 });
-
-it('refuses to enable a model that is missing a price, and names it', function (): void {
-    $before = config('chat.models');
-
-    livewire(ManageAiSettings::class)
-        ->fillForm(catalogState(['models' => [ChatCatalog::entry(['label' => 'Luna', 'cache_write_per_mtok' => null])]]))
-        ->call('save')
-        ->assertNotified('Set all four prices before enabling a model');
-
-    expect(config('chat.models'))->toBe($before);
-});
-
-it('saves a disabled model that carries no prices', function (): void {
-    livewire(ManageAiSettings::class)
-        ->fillForm(catalogState(['models' => [
-            ChatCatalog::entry(),
-            ChatCatalog::entry([
-                'label' => 'Haiku 4.5',
-                'model' => 'claude-haiku-4-5-20251001',
-                'enabled' => false,
-                'auto' => false,
-                'input_per_mtok' => null,
-                'output_per_mtok' => null,
-                'cache_read_per_mtok' => null,
-                'cache_write_per_mtok' => null,
-            ]),
-        ]]))
-        ->call('save')
-        ->assertNotified('Saved');
-
-    expect(collect(config('chat.models'))->pluck('model')->all())
-        ->toContain('claude-haiku-4-5-20251001');
-});
-
-it('stores the cache prices with the entry', function (): void {
-    livewire(ManageAiSettings::class)
-        ->fillForm(catalogState())
-        ->call('save')
-        ->assertNotified('Saved');
-
-    expect(config('chat.models')[0])
-        ->cache_read_per_mtok->toBe(0.3)
-        ->cache_write_per_mtok->toBe(3.75);
-});
-
-it('saves a monthly budget per provider', function (): void {
-    livewire(ManageAiSettings::class)
-        ->fillForm(catalogState(['provider_monthly_budgets' => ['anthropic' => 200, 'openai' => 50, 'gemini' => null]]))
-        ->call('save')
-        ->assertNotified('Saved');
-
-    expect(config('chat.provider_monthly_budgets'))->toBe(['anthropic' => 200, 'openai' => 50]);
-});
-
-it('shows this month per provider: budget, billed, our estimate', function (): void {
-    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
-    $settings = resolve(ChatSettings::class);
-    $settings->provider_monthly_budgets = ['anthropic' => 200];
-    $settings->save();
-    config($settings->toConfig());
-
-    AiProviderCost::query()->create(['provider' => 'anthropic', 'date' => now()->startOfMonth(), 'amount_micros' => 10_000_000, 'fetched_at' => now()]);
-    recordChatCost(12_340_000);
-
-    livewire(ManageAiSettings::class)
-        ->assertSee('This month')
-        ->assertSee('$200.00')
-        ->assertSee('$12.34')
-        ->assertSee('$10.00')
-        ->assertSee('-$2.34');
-});
-
-it('falls back to our estimate for a provider with an admin key and nothing synced this month', function (): void {
-    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
-    recordChatCost(12_340_000);
-
-    livewire(ManageAiSettings::class)
-        ->assertSee('Not synced yet')
-        ->assertSee('$12.34');
-});
-
-it('does not count a provider cost row from an earlier month as billed', function (): void {
-    config()->set('services.anthropic.admin_key', 'sk-ant-admin-test');
-    AiProviderCost::query()->create(['provider' => 'anthropic', 'date' => now()->startOfMonth()->subDay(), 'amount_micros' => 99_000_000, 'fetched_at' => now()]);
-    recordChatCost(12_340_000);
-
-    livewire(ManageAiSettings::class)
-        ->assertSee('Not synced yet')
-        ->assertDontSee('$99.00');
-});
-
-it('says Gemini has no cost API and the others have no admin key', function (): void {
-    config(['services.anthropic.admin_key' => null, 'services.openai.admin_key' => null]);
-
-    livewire(ManageAiSettings::class)
-        ->assertSeeInOrder(['No admin key', 'No admin key', 'No cost API']);
-});
-
-it('rejects a budget that is zero or not a whole dollar amount', function (int|float $budget): void {
-    livewire(ManageAiSettings::class)
-        ->fillForm(catalogState(['provider_monthly_budgets' => ['anthropic' => $budget]]))
-        ->call('save')
-        ->assertHasFormErrors(['provider_monthly_budgets.anthropic']);
-
-    expect(config('chat.provider_monthly_budgets'))->toBe([]);
-})->with(['zero' => 0, 'fractional' => 12.5]);

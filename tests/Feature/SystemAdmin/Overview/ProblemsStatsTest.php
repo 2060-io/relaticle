@@ -206,7 +206,7 @@ it('counts trial abuse suspects as the workspace list shows them and notes who i
     AiCreditTransaction::query()->create([
         'workspace_id' => $suspect->getKey(), 'user_id' => $suspect->user_id, 'idempotency_key' => 'p-'.Str::ulid(),
         'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
-        'credits_charged' => 1, 'cost_micros' => 1_000, 'metadata' => [], 'created_at' => now()->subDay(),
+        'credits_charged' => 1, 'metadata' => [], 'created_at' => now()->subDay(),
     ]);
 
     livewire(ProblemsStats::class)
@@ -226,7 +226,7 @@ it('says no suspect spent credits this week when their spending is older', funct
     AiCreditTransaction::query()->create([
         'workspace_id' => $suspect->getKey(), 'user_id' => $suspect->user_id, 'idempotency_key' => 'p-'.Str::ulid(),
         'type' => AiCreditType::Chat, 'model' => 'claude-sonnet-5', 'input_tokens' => 0, 'output_tokens' => 0,
-        'credits_charged' => 1, 'cost_micros' => 1_000, 'metadata' => [], 'created_at' => now()->subDays(8),
+        'credits_charged' => 1, 'metadata' => [], 'created_at' => now()->subDays(8),
     ]);
 
     livewire(ProblemsStats::class)->assertSee('None spent credits this week');

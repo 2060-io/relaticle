@@ -216,8 +216,7 @@ would undercharge every turn on that entry, silently.
 
 ## One catalog list: cloud in settings, self-hosted in env, capabilities probed
 `chat.models` is the whole catalog. Each entry carries its own Auto membership (`auto`
-plus list order), its own four prices (`input_per_mtok`, `output_per_mtok`,
-`cache_read_per_mtok`, `cache_write_per_mtok`) and its own
+plus list order), its own price (`input_per_mtok`/`output_per_mtok`) and its own
 `capabilities`. There is no `chat.auto_chain` and no `chat.model_costs`; folding them in
 is what makes a dangling Auto id and an unpriced model impossible rather than unlikely.
 Edited from the sysadmin panel at /sysadmin/ai-models, seeded from `config/chat.php`.
@@ -257,7 +256,7 @@ key that is only in the stored array and not in the schema silently disappears t
 time the form is saved, taking every price on every model with it in one click. Filament renders
 `Hidden` components inside a table repeater without giving them a column, which is
 exactly what makes this work. `ManageAiSettingsTest` pins it; do not "tidy away" those
-Hidden fields (the plan, the multiplier and the four prices).
+three Hidden fields.
 
 ## A Filament Select bound to live provider options must merge the current value
 `ManageAiSettings::modelOptions()` adds the entry's stored model to the option list. A

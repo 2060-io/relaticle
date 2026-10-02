@@ -46,8 +46,6 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Support\EndTrial;
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
 use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
-use Relaticle\SystemAdmin\Metrics\AiCost;
-use Relaticle\SystemAdmin\Metrics\Money;
 use Relaticle\SystemAdmin\Metrics\Scopes\AbuseSuspect;
 use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
@@ -182,7 +180,7 @@ final class WorkspaceResource extends Resource
                         fn (string $label): TextEntry => TextEntry::make('journey_'.str($label)->slug('_'))
                             ->label($label)
                             ->state(fn (Workspace $record): string => WorkspaceJourney::facts($record)[$label]),
-                        ['Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'AI cost this month', 'Internal'],
+                        ['Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'Internal'],
                     )),
             ]);
     }
@@ -249,11 +247,6 @@ final class WorkspaceResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('—'),
-                TextColumn::make('ai_cost_this_month')
-                    ->label('AI cost this month')
-                    ->state(fn (Workspace $record): string => Money::format(AiCost::workspaceMonthMicros($record)))
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy(AiCost::workspaceMonthSubquery(), $direction))
-                    ->toggleable(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),

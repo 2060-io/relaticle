@@ -21,10 +21,8 @@ use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\CreditService;
-use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Support\NextSteps;
 use Relaticle\Chat\Tools\Task\CreateTaskTool;
-use Tests\Helpers\ChatCatalog;
 use Tests\Helpers\OpenAiResponses;
 
 mutates(SuggestNextSteps::class, NextSteps::class);
@@ -426,16 +424,6 @@ it('books the suggestion call on the ledger without charging credits', function 
 });
 
 it('books an OpenAI suggestion call on the requested model, not the dated id the provider reports', function (): void {
-    config()->set('chat.models', [ChatCatalog::entry([
-        'label' => 'GPT 5.6 luna',
-        'provider' => 'openai',
-        'model' => 'gpt-5.6-luna',
-        'input_per_mtok' => 0.5,
-        'output_per_mtok' => 2.0,
-        'auto' => false,
-    ])]);
-    app()->forgetInstance(ModelRegistry::class);
-
     OpenAiResponses::fakeStructured(['suggestions' => [['label' => 'Add a note', 'prompt' => 'Add a note to Acme Corp']]], 'gpt-5.6-luna-2026-09-01');
 
     $messageId = seedSuggestibleMessage('assistant', 'Your workspace is empty.');
@@ -453,8 +441,7 @@ it('books an OpenAI suggestion call on the requested model, not the dated id the
         ->where('type', AiCreditType::Internal)
         ->sole();
 
-    expect($row->model)->toBe(config('ai.providers.openai.models.text.cheapest'))
-        ->and($row->cost_micros)->toBe(18);
+    expect($row->model)->toBe(config('ai.providers.openai.models.text.cheapest'));
 });
 
 it('still persists the suggestions when the ledger write fails', function (): void {

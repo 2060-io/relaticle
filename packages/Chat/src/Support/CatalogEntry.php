@@ -34,8 +34,6 @@ final readonly class CatalogEntry
         public float $creditMultiplier,
         public ?float $inputPerMtok,
         public ?float $outputPerMtok,
-        public ?float $cacheReadPerMtok,
-        public ?float $cacheWritePerMtok,
         public bool $auto,
         public bool $enabled,
         public ?Measurement $measurement,
@@ -72,8 +70,6 @@ final readonly class CatalogEntry
             creditMultiplier: is_numeric($entry['credit_multiplier'] ?? null) ? (float) $entry['credit_multiplier'] : 1.0,
             inputPerMtok: is_numeric($entry['input_per_mtok'] ?? null) ? (float) $entry['input_per_mtok'] : null,
             outputPerMtok: is_numeric($entry['output_per_mtok'] ?? null) ? (float) $entry['output_per_mtok'] : null,
-            cacheReadPerMtok: is_numeric($entry['cache_read_per_mtok'] ?? null) ? (float) $entry['cache_read_per_mtok'] : null,
-            cacheWritePerMtok: is_numeric($entry['cache_write_per_mtok'] ?? null) ? (float) $entry['cache_write_per_mtok'] : null,
             // Cast rather than compare: a Filament toggle hands back "1", and pint's
             // strict_comparison fixer rewrites any `==` put here.
             auto: (bool) ($entry['auto'] ?? false),
@@ -102,8 +98,6 @@ final readonly class CatalogEntry
             'credit_multiplier' => $this->creditMultiplier,
             'input_per_mtok' => $this->inputPerMtok,
             'output_per_mtok' => $this->outputPerMtok,
-            'cache_read_per_mtok' => $this->cacheReadPerMtok,
-            'cache_write_per_mtok' => $this->cacheWritePerMtok,
             'auto' => $this->auto,
             'enabled' => $this->enabled,
             'capabilities' => $this->measurement?->toCapabilities(),
@@ -121,8 +115,6 @@ final readonly class CatalogEntry
             creditMultiplier: $this->creditMultiplier,
             inputPerMtok: $this->inputPerMtok,
             outputPerMtok: $this->outputPerMtok,
-            cacheReadPerMtok: $this->cacheReadPerMtok,
-            cacheWritePerMtok: $this->cacheWritePerMtok,
             auto: $this->auto,
             enabled: $this->enabled,
             measurement: $measurement,
@@ -157,7 +149,7 @@ final readonly class CatalogEntry
     }
 
     /**
-     * @return array{input_per_mtok: float, output_per_mtok: float, cache_read_per_mtok: ?float, cache_write_per_mtok: ?float}|null
+     * @return array{input_per_mtok: float, output_per_mtok: float}|null
      */
     public function rate(): ?array
     {
@@ -168,17 +160,7 @@ final readonly class CatalogEntry
         return [
             'input_per_mtok' => $this->inputPerMtok,
             'output_per_mtok' => $this->outputPerMtok,
-            'cache_read_per_mtok' => $this->cacheReadPerMtok,
-            'cache_write_per_mtok' => $this->cacheWritePerMtok,
         ];
-    }
-
-    public function isFullyPriced(): bool
-    {
-        return $this->inputPerMtok !== null
-            && $this->outputPerMtok !== null
-            && $this->cacheReadPerMtok !== null
-            && $this->cacheWritePerMtok !== null;
     }
 
     private static function plan(mixed $plan): Plan

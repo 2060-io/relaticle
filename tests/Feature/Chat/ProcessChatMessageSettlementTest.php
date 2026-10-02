@@ -11,9 +11,7 @@ use Relaticle\Chat\Jobs\ProcessChatMessage;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Services\CreditService;
-use Relaticle\Chat\Services\ModelRegistry;
 use Tests\Helpers\AnthropicSse;
-use Tests\Helpers\ChatCatalog;
 
 it('refunds the reservation when a job fails without ever streaming', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
@@ -200,68 +198,10 @@ it('settles a completed turn on the model it requested and the uncached input to
     expect($settlement->model)->toBe('claude-opus-5')
         ->and($settlement->credits_charged)->toBe(3)
         ->and($settlement->input_tokens)->toBe(40)
-        ->and($settlement->output_tokens)->toBe(12)
-        ->and($settlement->cache_read_tokens)->toBe(1000)
-        ->and($settlement->cache_write_tokens)->toBe(200)
-        ->and($settlement->cost_micros)->toBe(2250);
+        ->and($settlement->output_tokens)->toBe(12);
 });
 
-it('stores no cost when the model has no cache price but the turn read the cache', function (): void {
-    $user = User::factory()->withPersonalWorkspace()->create();
-    $workspace = $user->currentWorkspace;
-
-    config()->set('chat.models', [ChatCatalog::entry([
-        'label' => 'Opus 5',
-        'model' => 'claude-opus-5',
-        'min_plan' => 'pro',
-        'input_per_mtok' => 5.0,
-        'output_per_mtok' => 25.0,
-        'cache_read_per_mtok' => null,
-        'cache_write_per_mtok' => null,
-    ])]);
-    app()->forgetInstance(ModelRegistry::class);
-
-    $workspace->forceFill(['plan' => Plan::Pro])->save();
-    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())
-        ->update(['credits_remaining' => 100, 'credits_used' => 0]);
-
-    DB::table('agent_conversations')->insert([
-        'id' => 'c-5',
-        'participant_type' => 'user',
-        'participant_id' => $user->getKey(),
-        'workspace_id' => $workspace->getKey(),
-        'title' => 'Test conversation',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
-
-    $turnId = '01TURNUNPRICEDAAAAAAAAAAAA';
-    resolve(CreditService::class)->reserveCredit(
-        $workspace,
-        reservationKey: "reserve-{$turnId}",
-        conversationId: 'c-5',
-        userId: (string) $user->getKey(),
-    );
-
-    AnthropicSse::fake(AnthropicSse::reply('Three deals.', 'claude-opus-5-20260301'));
-    Queue::fake();
-
-    (new ProcessChatMessage(
-        user: $user, workspace: $workspace, message: 'How is my pipeline?', conversationId: 'c-5',
-        resolved: ['provider' => 'anthropic', 'model' => 'claude-opus-5', 'id' => 'claude-opus-5', 'source' => 'explicit'],
-        turnId: $turnId,
-    ))->handle(resolve(CreditService::class));
-
-    $settlement = AiCreditTransaction::query()
-        ->where('workspace_id', $workspace->getKey())
-        ->where('model', '!=', 'system')
-        ->sole();
-
-    expect($settlement->cache_read_tokens)->toBe(1000)
-        ->and($settlement->cost_micros)->toBeNull();
-});
-
-it('prices a cancelled turn on the model it streamed and still charges one credit', function (): void {
+it('records a cancelled turn on the model it streamed and still charges one credit', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $workspace->forceFill(['plan' => Plan::Pro])->save();
@@ -305,13 +245,10 @@ it('prices a cancelled turn on the model it streamed and still charges one credi
         ->and($settlement->credits_charged)->toBe(1)
         ->and($settlement->input_tokens)->toBe(40)
         ->and($settlement->output_tokens)->toBe(12)
-        ->and($settlement->cache_read_tokens)->toBe(1000)
-        ->and($settlement->cache_write_tokens)->toBe(200)
-        ->and($settlement->cost_micros)->toBe(2250)
         ->and($settlement->metadata['reason'])->toBe('cancelled');
 });
 
-it('keeps a turn that died from a provider error unpriced', function (): void {
+it('records a turn that died from a provider error as incomplete', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $workspace->forceFill(['plan' => Plan::Pro])->save();
@@ -350,6 +287,5 @@ it('keeps a turn that died from a provider error unpriced', function (): void {
         ->where('idempotency_key', "resolve-{$turnId}")
         ->sole();
 
-    expect($settlement->model)->toBe('incomplete')
-        ->and($settlement->cost_micros)->toBeNull();
+    expect($settlement->model)->toBe('incomplete');
 });

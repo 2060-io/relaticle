@@ -19,10 +19,8 @@ use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Services\CreditService;
-use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Support\ConversationTitleGate;
 use Relaticle\Chat\Support\TitleSanitizer;
-use Tests\Helpers\ChatCatalog;
 use Tests\Helpers\ChatDocument;
 use Tests\Helpers\OpenAiResponses;
 
@@ -503,22 +501,11 @@ it('books the title call on the ledger without charging credits', function (): v
     expect($row->type)->toBe(AiCreditType::Internal)
         ->and($row->credits_charged)->toBe(0)
         ->and($row->model)->toBe(config('ai.providers.anthropic.models.text.cheapest'))
-        ->and($row->cost_micros)->toBe(0)
         ->and($row->user_id)->toBe((string) $this->user->getKey())
         ->and(AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining'))->toBe(100);
 });
 
 it('books an OpenAI title call on the requested model, not the dated id the provider reports', function (): void {
-    config()->set('chat.models', [ChatCatalog::entry([
-        'label' => 'GPT 5.6 luna',
-        'provider' => 'openai',
-        'model' => 'gpt-5.6-luna',
-        'input_per_mtok' => 0.5,
-        'output_per_mtok' => 2.0,
-        'auto' => false,
-    ])]);
-    app()->forgetInstance(ModelRegistry::class);
-
     OpenAiResponses::fakeStructured(['has_topic' => true, 'title' => 'Follow Up With Acme'], 'gpt-5.6-luna-2026-09-01');
 
     $conversationId = seedTitlingConversation('Create a follow-up task for Sarah at Acme next Tuesday');
@@ -532,8 +519,7 @@ it('books an OpenAI title call on the requested model, not the dated id the prov
 
     $row = AiCreditTransaction::query()->where('conversation_id', $conversationId)->sole();
 
-    expect($row->model)->toBe(config('ai.providers.openai.models.text.cheapest'))
-        ->and($row->cost_micros)->toBe(18);
+    expect($row->model)->toBe(config('ai.providers.openai.models.text.cheapest'));
 });
 
 it('still applies the title when the ledger write fails', function (): void {

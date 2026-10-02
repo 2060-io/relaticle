@@ -40,7 +40,6 @@ final readonly class WorkspaceJourney
             'Active days (30d)' => "{$activeDays} active ".Str::plural('day', $activeDays),
             'Typed chat messages' => number_format($messages),
             'Credits used this period' => number_format($creditsUsed),
-            'AI cost this month' => Money::format(AiCost::workspaceMonthMicros($workspace)),
             'Internal' => Workspace::query()->whereKey($workspace->getKey())->withGlobalScope(InternalWorkspace::class, new InternalWorkspace)->exists() ? 'Yes' : 'No',
         ];
     }

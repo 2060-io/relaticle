@@ -92,14 +92,4 @@ return [
             'large' => ['price' => env('STRIPE_PRICE_CREDITS_5K'), 'credits' => 5_000],
         ],
     ],
-
-    'anthropic' => [
-        'admin_key' => env('ANTHROPIC_ADMIN_KEY'),
-        'workspace_id' => env('ANTHROPIC_COST_WORKSPACE_ID'),
-    ],
-
-    'openai' => [
-        'admin_key' => env('OPENAI_ADMIN_KEY'),
-        'project_id' => env('OPENAI_COST_PROJECT_ID'),
-    ],
 ];

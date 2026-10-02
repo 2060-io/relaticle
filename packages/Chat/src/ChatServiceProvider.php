@@ -34,7 +34,6 @@ use Relaticle\Chat\Commands\ExpirePendingActionsCommand;
 use Relaticle\Chat\Commands\PurgeUnsentAttachmentsCommand;
 use Relaticle\Chat\Commands\ReleaseOrphanedReservationsCommand;
 use Relaticle\Chat\Commands\ResetCreditsCommand;
-use Relaticle\Chat\Commands\SyncProviderCostsCommand;
 use Relaticle\Chat\Livewire\App\Chat\ChatAllChatsPanel;
 use Relaticle\Chat\Livewire\App\Chat\ChatSidebarNav;
 use Relaticle\Chat\Livewire\App\Chat\ChatSidePanel;
@@ -112,7 +111,6 @@ final class ChatServiceProvider extends ServiceProvider
             PurgeUnsentAttachmentsCommand::class,
             ReleaseOrphanedReservationsCommand::class,
             ResetCreditsCommand::class,
-            SyncProviderCostsCommand::class,
         ]);
     }
 

@@ -6,7 +6,6 @@ namespace Relaticle\SystemAdmin\Filament\Pages\Settings;
 
 use App\Enums\Plan;
 use BackedEnum;
-use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
@@ -27,13 +26,13 @@ use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
+use Laravel\Ai\Enums\Lab;
 use Relaticle\Chat\Enums\WriteGuard;
 use Relaticle\Chat\Services\ModelProbe;
 use Relaticle\Chat\Services\ProviderModelCatalog;
 use Relaticle\Chat\Settings\ChatSettings;
 use Relaticle\Chat\Support\CatalogEntry;
 use Relaticle\Chat\Support\Measurement;
-use Relaticle\SystemAdmin\Metrics\ProviderBudget;
 use UnitEnum;
 
 /**
@@ -73,7 +72,6 @@ final class ManageAiSettings extends Page
         $this->form->fill([
             'models' => $settings->models,
             'anthropic_effort' => $settings->anthropic_effort,
-            'provider_monthly_budgets' => $settings->provider_monthly_budgets,
         ]);
     }
 
@@ -154,8 +152,6 @@ final class ManageAiSettings extends Page
                                     Hidden::make('credit_multiplier')->default(1.0),
                                     Hidden::make('input_per_mtok'),
                                     Hidden::make('output_per_mtok'),
-                                    Hidden::make('cache_read_per_mtok'),
-                                    Hidden::make('cache_write_per_mtok'),
                                     Toggle::make('auto')->inline(false),
                                     Toggle::make('enabled')->inline(false),
                                     Icon::make(fn (Get $get): Heroicon => $this->capabilityBadge($get)['icon'])
@@ -189,22 +185,14 @@ final class ManageAiSettings extends Page
                                                 ->label('Input $ / Mtok')
                                                 ->numeric()
                                                 ->minValue(0)
-                                                ->helperText('Vendor list price. Every model call is costed from these four prices.'),
+                                                ->helperText('Vendor list price. Feeds the sysadmin spend widget only.'),
                                             TextInput::make('output_per_mtok')
                                                 ->label('Output $ / Mtok')
                                                 ->numeric()
                                                 ->minValue(0),
-                                            TextInput::make('cache_read_per_mtok')
-                                                ->label('Cache read $ / Mtok')
-                                                ->numeric()
-                                                ->minValue(0),
-                                            TextInput::make('cache_write_per_mtok')
-                                                ->label('Cache write $ / Mtok')
-                                                ->numeric()
-                                                ->minValue(0),
                                         ])
                                         ->fillForm(fn (array $arguments, Repeater $component): array => collect($component->getItemState($arguments['item']))
-                                            ->only(['min_plan', 'credit_multiplier', 'input_per_mtok', 'output_per_mtok', 'cache_read_per_mtok', 'cache_write_per_mtok'])
+                                            ->only(['min_plan', 'credit_multiplier', 'input_per_mtok', 'output_per_mtok'])
                                             ->all())
                                         ->action(function (array $arguments, array $data, Repeater $component): void {
                                             $state = $component->getState();
@@ -229,14 +217,6 @@ final class ManageAiSettings extends Page
                                 ])
                                 ->required(),
                         ]),
-                    Section::make('Budgets')
-                        ->description('What you plan to spend per provider each month. The Overview compares it with what the provider billed.')
-                        ->columns(3)
-                        ->schema([
-                            TextInput::make('provider_monthly_budgets.anthropic')->label('Anthropic')->integer()->minValue(1)->prefix('$'),
-                            TextInput::make('provider_monthly_budgets.openai')->label('OpenAI')->integer()->minValue(1)->prefix('$'),
-                            TextInput::make('provider_monthly_budgets.gemini')->label('Gemini')->integer()->minValue(1)->prefix('$'),
-                        ]),
                 ])
                     ->livewireSubmitHandler('save')
                     ->footer([
@@ -246,14 +226,6 @@ final class ManageAiSettings extends Page
                     ]),
             ])
             ->statePath('data');
-    }
-
-    /**
-     * @return list<array{provider: string, budget_micros: int|null, billed_micros: int|null, estimate_micros: int, spent_micros: int, last_fetched: CarbonImmutable|null}>
-     */
-    public function providerMonth(): array
-    {
-        return ProviderBudget::rows();
     }
 
     /**
@@ -291,24 +263,7 @@ final class ManageAiSettings extends Page
         /** @var list<array<string, mixed>> $submitted */
         $submitted = $data['models'] ?? [];
 
-        $entries = $this->parseModels($submitted);
-        $unpriced = array_values(array_filter(
-            $entries,
-            static fn (CatalogEntry $entry): bool => $entry->enabled && ! $entry->isFullyPriced(),
-        ));
-
-        if ($unpriced !== []) {
-            Notification::make()
-                ->title('Set all four prices before enabling a model')
-                ->body(implode(', ', array_map(static fn (CatalogEntry $entry): string => $entry->label, $unpriced)))
-                ->danger()
-                ->persistent()
-                ->send();
-
-            return;
-        }
-
-        [$models, $failure] = $this->verified($entries);
+        [$models, $failure] = $this->verified($this->parseModels($submitted));
 
         if ($failure !== null) {
             Notification::make()
@@ -325,10 +280,6 @@ final class ManageAiSettings extends Page
         $before = $settings->toConfig();
         $settings->models = $models;
         $settings->anthropic_effort = (string) ($data['anthropic_effort'] ?? 'high');
-        $settings->provider_monthly_budgets = array_map(
-            intval(...),
-            array_filter((array) ($data['provider_monthly_budgets'] ?? []), fn (mixed $value): bool => is_numeric($value) && (int) $value >= 1),
-        );
         $settings->save();
 
         config($settings->toConfig());
@@ -579,6 +530,16 @@ final class ManageAiSettings extends Page
     }
 
     /**
+     * laravel/ai already spells every provider it supports, on the enum case name:
+     * `OpenAI`, `DeepSeek`, `xAI`. `headline()` renders those as `Openai`, `Deepseek`,
+     * `Xai`, so ask the enum first and fall back for a provider it does not know.
+     */
+    private function providerLabel(string $provider): string
+    {
+        return Lab::tryFrom($provider)?->name ?? str($provider)->headline()->toString();
+    }
+
+    /**
      * The providers this install can actually reach, plus whatever a stored row
      * already names.
      *
@@ -598,11 +559,11 @@ final class ManageAiSettings extends Page
         $options = collect($providers)
             ->filter(fn (array $connection): bool => filled($connection['key'] ?? null))
             ->keys()
-            ->mapWithKeys(fn (string $provider): array => [$provider => ProviderBudget::label($provider)])
+            ->mapWithKeys(fn (string $provider): array => [$provider => $this->providerLabel($provider)])
             ->all();
 
         if (is_string($current) && $current !== '' && ! array_key_exists($current, $options)) {
-            $options[$current] = ProviderBudget::label($current).' (no API key)';
+            $options[$current] = $this->providerLabel($current).' (no API key)';
         }
 
         return $options;

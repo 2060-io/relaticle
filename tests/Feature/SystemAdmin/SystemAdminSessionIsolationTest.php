@@ -303,7 +303,7 @@ it('rejects a saved staff page snapshot on the customer host after staff logout'
 })->with([
     'model catalog' => ['/ai-models', 'ManageAiSettings'],
     'dashboard' => ['/', '\\Pages\\Overview'],
-    'lazy widget' => ['/', 'MoneyStats'],
+    'lazy widget' => ['/', 'ValueStats'],
     'shared global search' => ['/', 'GlobalSearch'],
     'shared notifications' => ['/', 'DatabaseNotifications'],
     'shared topbar' => ['/', 'Topbar'],

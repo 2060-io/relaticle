@@ -26,9 +26,6 @@ use Relaticle\Chat\Enums\AiCreditType;
  * @property int $input_tokens
  * @property int $output_tokens
  * @property int $credits_charged
- * @property int $cache_read_tokens
- * @property int $cache_write_tokens
- * @property int|null $cost_micros
  * @property array<string, mixed>|null $metadata
  */
 #[Fillable([
@@ -40,9 +37,6 @@ use Relaticle\Chat\Enums\AiCreditType;
     'model',
     'input_tokens',
     'output_tokens',
-    'cache_read_tokens',
-    'cache_write_tokens',
-    'cost_micros',
     'credits_charged',
     'metadata',
     'created_at',
@@ -63,9 +57,6 @@ final class AiCreditTransaction extends Model
             'type' => AiCreditType::class,
             'input_tokens' => 'integer',
             'output_tokens' => 'integer',
-            'cache_read_tokens' => 'integer',
-            'cache_write_tokens' => 'integer',
-            'cost_micros' => 'integer',
             'credits_charged' => 'integer',
             'metadata' => 'array',
             'created_at' => 'datetime',

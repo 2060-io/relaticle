@@ -19,7 +19,7 @@ use Relaticle\Chat\Models\AiCreditTransaction;
 
 final readonly class CreditService
 {
-    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods, private TokenCost $tokenCost) {}
+    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods) {}
 
     public function hasCredits(Workspace $workspace): bool
     {
@@ -282,8 +282,6 @@ final readonly class CreditService
         string $model,
         int $inputTokens,
         int $outputTokens,
-        int $cacheReadTokens = 0,
-        int $cacheWriteTokens = 0,
         int $toolCallsCount = 0,
         ?string $conversationId = null,
         int $reservedCredits = 1,
@@ -305,9 +303,6 @@ final readonly class CreditService
             userId: (string) $user->getKey(),
             conversationId: $conversationId,
             metadata: ['tool_calls_count' => $toolCallsCount],
-            cacheReadTokens: $cacheReadTokens,
-            cacheWriteTokens: $cacheWriteTokens,
-            costMicros: $this->tokenCost->micros($model, $inputTokens, $cacheReadTokens, $cacheWriteTokens, $outputTokens),
         );
     }
 
@@ -345,16 +340,12 @@ final readonly class CreditService
             return;
         }
 
-        $uncachedInput = $usage->uncachedInputTokens();
-        $cacheRead = $usage->cacheReadInputTokens ?? 0;
-        $cacheWrite = $usage->cacheWriteInputTokens ?? 0;
-
         $this->recordResolution(
             workspace: $workspace,
             resolutionKey: $resolutionKey,
             type: AiCreditType::Chat,
             model: $model,
-            inputTokens: $uncachedInput,
+            inputTokens: $usage->uncachedInputTokens(),
             outputTokens: $usage->outputTokens,
             creditsCharged: $reservedCredits,
             remainingDelta: 0,
@@ -362,9 +353,6 @@ final readonly class CreditService
             userId: (string) $user->getKey(),
             conversationId: $conversationId,
             metadata: ['reason' => $reason],
-            cacheReadTokens: $cacheRead,
-            cacheWriteTokens: $cacheWrite,
-            costMicros: $this->tokenCost->micros($model, $uncachedInput, $cacheRead, $cacheWrite, $usage->outputTokens),
         );
     }
 
@@ -377,9 +365,6 @@ final readonly class CreditService
         }
 
         $model = rescue(fn (): string => Ai::textProvider($provider)->cheapestTextModel(), $reportedModel) ?: 'unknown';
-        $uncachedInput = $usage->uncachedInputTokens();
-        $cacheRead = $usage->cacheReadInputTokens ?? 0;
-        $cacheWrite = $usage->cacheWriteInputTokens ?? 0;
 
         AiCreditTransaction::query()->create([
             'workspace_id' => $conversation->workspace_id,
@@ -388,12 +373,9 @@ final readonly class CreditService
             'idempotency_key' => 'internal-'.Str::ulid(),
             'type' => AiCreditType::Internal,
             'model' => $model,
-            'input_tokens' => $uncachedInput,
+            'input_tokens' => $usage->uncachedInputTokens(),
             'output_tokens' => $usage->outputTokens,
-            'cache_read_tokens' => $cacheRead,
-            'cache_write_tokens' => $cacheWrite,
             'credits_charged' => 0,
-            'cost_micros' => $this->tokenCost->micros($model, $uncachedInput, $cacheRead, $cacheWrite, $usage->outputTokens),
             'metadata' => [],
             'created_at' => now(),
         ]);
@@ -430,14 +412,10 @@ final readonly class CreditService
         ?string $userId,
         ?string $conversationId,
         array $metadata,
-        int $cacheReadTokens = 0,
-        int $cacheWriteTokens = 0,
-        ?int $costMicros = null,
     ): bool {
         return DB::transaction(function () use (
             $workspace, $resolutionKey, $type, $model, $inputTokens, $outputTokens,
             $creditsCharged, $remainingDelta, $usedDelta, $userId, $conversationId, $metadata,
-            $cacheReadTokens, $cacheWriteTokens, $costMicros,
         ): bool {
             $inserted = AiCreditTransaction::query()->insertOrIgnore([
                 'id' => (string) Str::ulid(),
@@ -449,9 +427,6 @@ final readonly class CreditService
                 'model' => $model,
                 'input_tokens' => $inputTokens,
                 'output_tokens' => $outputTokens,
-                'cache_read_tokens' => $cacheReadTokens,
-                'cache_write_tokens' => $cacheWriteTokens,
-                'cost_micros' => $costMicros,
                 'credits_charged' => $creditsCharged,
                 'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
                 'created_at' => now(),

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Cache;
+use Relaticle\SystemAdmin\Filament\Pages\Overview;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ListUsers;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\ListWorkspaces;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\CohortTable;
@@ -166,4 +167,19 @@ it('builds six weekly cohorts with a dot for weeks that have not happened', func
         ->and($week['shares'])->toBe([0, 100, null, null]);
 
     livewire(CohortTable::class)->assertSee('Sep 14');
+});
+
+it('shows changed numbers after Refresh redraws the page', function (): void {
+    livewire(ValueStats::class)->assertSee('No real signups that week');
+
+    OverviewData::owner(CarbonImmutable::parse('2026-09-16 10:00:00'));
+
+    livewire(ValueStats::class)->assertSee('No real signups that week');
+
+    livewire(Overview::class)
+        ->callAction('refresh')
+        ->assertNotified('Numbers refreshed')
+        ->assertRedirect(Overview::getUrl());
+
+    livewire(ValueStats::class)->assertDontSee('No real signups that week');
 });
