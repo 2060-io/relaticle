@@ -7,7 +7,6 @@ namespace Relaticle\Chat\Services;
 use App\Actions\Company\CreateCompany;
 use App\Actions\Company\DeleteCompany;
 use App\Actions\Company\UpdateCompany;
-use App\Actions\CustomFields\AddCustomFieldOptions;
 use App\Actions\CustomFields\CreateCustomField;
 use App\Actions\CustomFields\SetCustomFieldOptions;
 use App\Actions\CustomFields\UpdateCustomField;
@@ -87,7 +86,6 @@ final readonly class PendingActionService
         CreateCustomField::class,
         UpdateCustomField::class,
         SetCustomFieldOptions::class,
-        AddCustomFieldOptions::class,
         CreateWorkspaceInvitation::class,
         RemoveSampleData::class,
     ];

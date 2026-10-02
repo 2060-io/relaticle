@@ -141,32 +141,6 @@ final readonly class CustomFieldDefinitionValidator
     }
 
     /**
-     * @param  array<string, mixed>  $data
-     * @return array<string, mixed>
-     *
-     * @throws ValidationException
-     */
-    public static function forNewOptions(User $user, CustomField $field, array $data): array
-    {
-        $maxOptions = self::maxOptions();
-        $existing = DB::table(self::optionsTable())
-            ->where('custom_field_id', $field->getKey())
-            ->count();
-        $remaining = max(0, $maxOptions - $existing);
-
-        return Validator::make(self::normalize($data), [
-            'options' => ['nullable', 'required', 'array', "max:{$remaining}"],
-            'options.*.name' => [
-                'required', 'string', 'max:255', 'distinct:ignore_case',
-                self::uniqueOptionIgnoringCase($user->currentWorkspace->getKey(), $field),
-            ],
-        ], [
-            'options.required' => 'At least one option must be provided.',
-            'options.max' => "Adding these options would exceed the {$maxOptions} options limit for this field (currently has {$existing}).",
-        ] + self::optionNameMessages())->validate();
-    }
-
-    /**
      * @return array<string, string>
      */
     public static function optionNameMessages(): array
@@ -220,28 +194,6 @@ final readonly class CustomFieldDefinitionValidator
 
             if ($taken) {
                 $fail(str_replace(':input', $value, $message()));
-            }
-        };
-    }
-
-    /**
-     * The option-name twin of {@see uniqueNameIgnoringCase}, scoped to one field.
-     */
-    private static function uniqueOptionIgnoringCase(int|string $tenantId, CustomField $field): Closure
-    {
-        return function (string $attribute, mixed $value, Closure $fail) use ($tenantId, $field): void {
-            if (! is_string($value) || $value === '') {
-                return;
-            }
-
-            $taken = DB::table(self::optionsTable())
-                ->where('custom_field_id', $field->getKey())
-                ->where(self::tenantKey(), $tenantId)
-                ->whereRaw('lower(name) = ?', [mb_strtolower($value)])
-                ->exists();
-
-            if ($taken) {
-                $fail("Option \"{$value}\" already exists on this field.");
             }
         };
     }
@@ -303,11 +255,6 @@ final readonly class CustomFieldDefinitionValidator
     private static function definitionsTable(): string
     {
         return (string) config('custom-fields.database.table_names.custom_fields');
-    }
-
-    private static function optionsTable(): string
-    {
-        return (string) config('custom-fields.database.table_names.custom_field_options');
     }
 
     private static function tenantKey(): string

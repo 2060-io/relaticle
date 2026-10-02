@@ -18,8 +18,8 @@ use Relaticle\Chat\Enums\EmailReach;
 use Relaticle\Chat\Tools\Company\CreateCompanyTool;
 use Relaticle\Chat\Tools\Company\DeleteCompanyTool;
 use Relaticle\Chat\Tools\Company\UpdateCompanyTool;
-use Relaticle\Chat\Tools\CustomField\AddCustomFieldOptionsTool;
 use Relaticle\Chat\Tools\CustomField\CreateCustomFieldTool;
+use Relaticle\Chat\Tools\CustomField\SetCustomFieldOptionsTool;
 use Relaticle\Chat\Tools\CustomField\UpdateCustomFieldTool;
 use Relaticle\Chat\Tools\GuideToPageTool;
 use Relaticle\Chat\Tools\Note\DeleteNoteTool;
@@ -630,7 +630,7 @@ it('drops update, delete and field definition tools in setup mode and keeps the 
         ->not->toContain(UpdateCustomFieldTool::class)
         ->toContain(CreatePersonTool::class)
         ->toContain(CreateCompanyTool::class)
-        ->toContain(AddCustomFieldOptionsTool::class)
+        ->toContain(SetCustomFieldOptionsTool::class)
         ->toContain(GuideToPageTool::class)
         ->toContain(SearchDocsTool::class)
         ->toContain(ListPeopleTool::class)
@@ -643,11 +643,21 @@ it('carries the setup mode instructions in the cached static block', function ()
     expect($instructions)
         ->toContain('## Setup mode')
         ->toContain('Do not ask a clarifying question first')
-        ->toContain('AddCustomFieldOptionsTool in the same turn, after the records')
+        ->toContain('SetCustomFieldOptionsTool in the same turn, after the records')
         ->toContain('propose the first 25 rows')
         ->toContain('edits happen on the record page or in a new conversation')
         ->toContain('Never answer that it is unsupported')
         ->toContain('Attached file');
+});
+
+it('tells the assistant that the options tool takes the complete option list', function (): void {
+    $instructions = resolve(CrmAssistant::class)->staticInstructions();
+
+    expect($instructions)
+        ->toContain('Pass the complete list the field should end with: an option you leave out is removed.')
+        ->toContain('Rename an option in place with `current`')
+        ->toContain('their options and settings can change')
+        ->not->toContain('AddCustomFieldOptionsTool');
 });
 
 it('declines general tasks the same way every time while keeping product questions in scope', function (): void {

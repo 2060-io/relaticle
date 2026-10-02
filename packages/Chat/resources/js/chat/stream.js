@@ -65,7 +65,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         invite_workspace_member: 'Preparing a workspace invitation…',
         create_custom_field: 'Drafting a custom field…',
         update_custom_field: 'Preparing custom field changes…',
-        add_custom_field_options: 'Preparing new field options…',
+        set_custom_field_options: 'Preparing field option changes…',
         ...toolLabels,
     },
     // Set as the FIRST line of destroy() in chat-interface.blade.php. unsubscribe()
