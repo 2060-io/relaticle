@@ -415,7 +415,7 @@ it('rejects an empty assignees list instead of returning nothing', function (): 
     $result = json_decode((new ListTasksTool)->handle(new Request(['filter' => ['assignees' => ['$in' => []]]])), true);
 
     expect($result)->toHaveKey('error')
-        ->and($result['error'])->toContain('$in must be a list of record IDs');
+        ->and($result['error'])->toContain('assignees $in must be a list of record IDs');
 });
 
 it('filters every list tool by creation date, including tasks and notes', function (string $toolClass, string $factory): void {
@@ -515,7 +515,7 @@ it('rejects an unknown creation source instead of returning an empty list', func
     $result = json_decode(resolve(ListCompaniesTool::class)->handle(new Request(['filter' => ['creation_source' => ['$eq' => 'system']]])), true);
 
     expect($result)->toHaveKey('error')
-        ->and($result['error'])->toContain('system is not one of');
+        ->and($result['error'])->toContain('creation_source $eq: system is not one of');
 });
 
 it('excludes options and keeps tasks without a status', function (): void {
