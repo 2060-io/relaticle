@@ -6,7 +6,7 @@ return [
     'actions' => [
         'compose' => [
             'label' => 'Compose',
-            'tooltip' => 'c',
+            'tooltip' => 'Keyboard shortcut: C',
         ],
         'undo' => [
             'label' => 'Undo',
@@ -52,7 +52,7 @@ return [
         ],
         'privacy_tier' => [
             'label' => 'Who can see this email?',
-            'helper_text' => 'Defaults to your team or personal sharing setting.',
+            'helper_text' => 'Defaults to your workspace or personal sharing setting.',
         ],
         'scheduled_for' => [
             'label' => 'Send at',

@@ -11,6 +11,7 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Filament\Concerns\ProvidesComposerToAddress;
+use Relaticle\EmailIntegration\Livewire\EmailComposer;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Services\ComposeRecordRecipientResolver;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
@@ -20,6 +21,7 @@ mutates(ComposeRecordRecipientResolver::class);
 mutates(ProvidesComposerToAddress::class);
 mutates(ComposerPageTo::class);
 mutates(ViewPeople::class);
+mutates(EmailComposer::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -101,6 +103,26 @@ it('passes the person email into the floating composer on the view page', functi
     livewire(ViewPeople::class, ['record' => $this->person->getKey()]);
 
     expect(ComposerPageTo::email())->toBe('jane@example.com');
+});
+
+it('gives the c shortcut on a record page the same recipient and record link as the compose button', function (): void {
+    $emailsField = CustomField::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $this->workspace->id)
+        ->where('entity_type', 'people')
+        ->where('code', PeopleField::EMAILS->value)
+        ->firstOrFail();
+
+    $this->person->saveCustomFieldValue($emailsField, ['jane@acme-customer.com', 'other@acme-customer.com'], $this->workspace);
+
+    livewire(ViewPeople::class, ['record' => $this->person->getKey()]);
+
+    livewire(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->assertSet('isOpen', true)
+        ->assertSet('to', ['jane@acme-customer.com'])
+        ->assertSet('linkRecordType', People::class)
+        ->assertSet('linkRecordId', (string) $this->person->getKey());
 });
 
 it('exposes no composer email on the view page when the person has none', function (): void {

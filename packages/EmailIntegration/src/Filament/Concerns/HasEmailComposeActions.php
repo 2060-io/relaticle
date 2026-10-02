@@ -121,9 +121,9 @@ trait HasEmailComposeActions
     private function replyForwardLabel(string $mode): string
     {
         return match ($mode) {
-            'reply_all' => 'Reply All',
-            'forward' => 'Forward',
-            default => 'Reply',
+            'reply_all' => __('filament/pages/email-inbox.reply_forward.modal_headings.reply_all'),
+            'forward' => __('filament/pages/email-inbox.reply_forward.modal_headings.forward'),
+            default => __('filament/pages/email-inbox.reply_forward.modal_headings.reply'),
         };
     }
 

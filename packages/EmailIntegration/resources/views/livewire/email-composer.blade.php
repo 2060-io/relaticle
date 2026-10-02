@@ -29,6 +29,9 @@
         $showMassSendToggle = $isFloatingExpanded;
         $gutter = $isFloating ? 'px-4' : 'px-4 sm:px-6';
         $chromeButton = 'rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200';
+        $minimizeLabel = $isMinimized ? __('filament/emails/composer.actions.restore') : __('filament/emails/composer.actions.minimize');
+        $expandLabel = $isExpanded ? __('filament/emails/composer.actions.shrink') : __('filament/emails/composer.actions.expand');
+        $closeLabel = __('filament/emails/composer.actions.close');
     @endphp
 
     @if ($isOpen)
@@ -70,14 +73,15 @@
                         class="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium text-gray-900 dark:text-gray-100"
                     >
                         <x-heroicon-m-envelope class="h-4 w-4 shrink-0 text-primary-500" />
-                        <span class="truncate">{{ filled($subject) ? $subject : ($isMassSend ? __('filament/concerns/email-compose.actions.compose.label') : __('filament/emails/composer.title')) }}</span>
+                        <span class="truncate">{{ filled($subject) ? $subject : ($isMassSend ? __('filament/emails/composer.title_mass_send') : __('filament/emails/composer.title')) }}</span>
                     </button>
 
                     <div class="flex shrink-0 items-center gap-0.5">
                         <button
                             type="button"
                             wire:click="{{ $isMinimized ? 'restore' : 'minimize' }}"
-                            aria-label="{{ $isMinimized ? __('filament/emails/composer.actions.restore') : __('filament/emails/composer.actions.minimize') }}"
+                            aria-label="{{ $minimizeLabel }}"
+                            x-tooltip="{ content: @js($minimizeLabel), theme: $store.theme }"
                             class="{{ $chromeButton }}"
                         >
                             <x-dynamic-component :component="$isMinimized ? 'heroicon-m-chevron-up' : 'heroicon-m-minus'" class="h-4 w-4" />
@@ -91,7 +95,8 @@
                             <button
                                 type="button"
                                 wire:click="toggleExpand"
-                                aria-label="{{ $isExpanded ? __('filament/emails/composer.actions.shrink') : __('filament/emails/composer.actions.expand') }}"
+                                aria-label="{{ $expandLabel }}"
+                                x-tooltip="{ content: @js($expandLabel), theme: $store.theme }"
                                 class="{{ $chromeButton }}"
                             >
                                 <x-dynamic-component
@@ -106,7 +111,8 @@
                         <button
                             type="button"
                             wire:click="close"
-                            aria-label="{{ __('filament/emails/composer.actions.close') }}"
+                            aria-label="{{ $closeLabel }}"
+                            x-tooltip="{ content: @js($closeLabel), theme: $store.theme }"
                             class="{{ $chromeButton }}"
                         >
                             <x-heroicon-m-x-mark class="h-4 w-4" />

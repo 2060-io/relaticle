@@ -36,7 +36,7 @@ final class EmailSignaturesPage extends Page
 
     protected static ?string $slug = 'workspace/email/signatures';
 
-    protected static ?string $title = 'Signatures';
+    protected static ?string $title = null;
 
     protected static bool $shouldRegisterNavigation = false;
 
@@ -58,6 +58,16 @@ final class EmailSignaturesPage extends Page
     public function mount(): void
     {
         $this->signatures = $this->loadSignatures();
+    }
+
+    public function getTitle(): string
+    {
+        return __('filament/pages/email-signatures.title');
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return __('filament/pages/email-signatures.title');
     }
 
     /**

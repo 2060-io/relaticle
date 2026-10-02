@@ -20,7 +20,7 @@ enum EmailBatchStatus: string implements HasColor, HasLabel
             self::Queued => 'Queued',
             self::Sending => 'Sending',
             self::Completed => 'Completed',
-            self::PartialFailure => 'Partial Failure',
+            self::PartialFailure => 'Partial failure',
         };
     }
 

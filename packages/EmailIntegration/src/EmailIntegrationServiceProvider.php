@@ -160,10 +160,13 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
                 }
 
                 $pageTo = ComposerPageTo::email();
+                $pageRecordId = ComposerPageTo::recordId();
 
-                return Blade::render('@livewire(\'email-integration.composer\', [\'pageTo\' => $pageTo], key($composerKey))', [
+                return Blade::render('@livewire(\'email-integration.composer\', [\'pageTo\' => $pageTo, \'pageRecordType\' => $pageRecordType, \'pageRecordId\' => $pageRecordId], key($composerKey))', [
                     'pageTo' => $pageTo,
-                    'composerKey' => 'email-composer-'.($pageTo ?? ''),
+                    'pageRecordType' => ComposerPageTo::recordType(),
+                    'pageRecordId' => $pageRecordId,
+                    'composerKey' => 'email-composer-'.($pageRecordId ?? '').'-'.($pageTo ?? ''),
                 ]).Blade::render('@livewire(\''.EmailAccessNotificationHandler::LIVEWIRE_ALIAS.'\')');
             },
         );

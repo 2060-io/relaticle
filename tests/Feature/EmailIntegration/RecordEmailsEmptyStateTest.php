@@ -78,7 +78,7 @@ it('hides compose from the empty state when a search has no matches', function (
         ->set('search', 'no-such-thread')
         ->assertSee(__('filament/pages/email-inbox.list_empty.no_results', ['search' => 'no-such-thread']))
         ->assertDontSee(__('filament/pages/record-emails.empty.description'))
-        ->assertDontSee(__('filament/pages/record-emails.empty.compose'));
+        ->assertDontSeeHtml('composer:open');
 });
 
 it('keeps the connect prompt instead of compose when no mailbox is linked', function (): void {
@@ -90,7 +90,7 @@ it('keeps the connect prompt instead of compose when no mailbox is linked', func
         ->assertSee(__('filament/pages/email-accounts.actions.connect_gmail'))
         ->tap(fn ($component) => assertActionHasMailboxOAuthUrl($component, 'connectMailbox', 'gmail', $this->workspace))
         ->assertDontSee(__('filament/pages/record-emails.empty.description'))
-        ->assertDontSee(__('filament/pages/record-emails.empty.compose'));
+        ->assertDontSeeHtml('composer:open');
 });
 
 it('shows the compose empty state when the record only has hidden emails', function (): void {

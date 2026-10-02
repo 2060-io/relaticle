@@ -67,7 +67,7 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
             ->columns([
                 TextColumn::make('subject')
                     ->label(__('filament/pages/email-inbox.drafts.columns.subject'))
-                    ->placeholder(__('filament/pages/email-inbox.drafts.columns.no_subject'))
+                    ->placeholder(__('filament/pages/email-inbox.subject.none'))
                     ->limit(60)
                     ->searchable(),
                 TextColumn::make('participants_to')

@@ -45,7 +45,7 @@
                 size="sm"
                 icon="heroicon-m-exclamation-triangle"
                 class="shrink-0 whitespace-nowrap"
-                :tooltip="__('filament/pages/email-accounts.history_import.failed_jobs', ['count' => number_format($summary->failedJobs)])"
+                :tooltip="trans_choice('filament/pages/email-accounts.history_import.failed_jobs', $summary->failedJobs, ['count' => number_format($summary->failedJobs)])"
             >
                 {{ __('filament/pages/email-accounts.history_import_failure.badge') }}
             </x-filament::badge>

@@ -10,7 +10,6 @@
     $wireModel = $attributes->wire('model')->value();
     $listboxId = Str::slug($wireModel ?: 'recipients').'-suggestions';
     $removeLabel = __('filament/emails/composer.actions.remove_recipient');
-    $companyTeamLabel = __('filament/emails/composer.fields.company_team_count');
     $avatarColor = static fn (string $name): string => ['primary', 'success', 'warning', 'danger', 'info'][abs(crc32(mb_strtolower($name))) % 5];
     $manualOptions = collect($suggestions)
         ->map(fn (string $suggestion): array => [
@@ -35,7 +34,6 @@
         popoverStyle: {},
         options: @js([...$options, ...$manualOptions]),
         removeLabel: @js($removeLabel),
-        companyTeamLabel: @js($companyTeamLabel),
 
         get matches() {
             const query = this.newValue.trim().toLowerCase();
@@ -320,7 +318,7 @@
                     <span
                         x-show="chip.type === 'company_team'"
                         class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300"
-                        x-text="companyTeamLabel + ' (' + chip.count + ')'"
+                        x-text="chip.countLabel"
                     ></span>
                 </button>
             </template>

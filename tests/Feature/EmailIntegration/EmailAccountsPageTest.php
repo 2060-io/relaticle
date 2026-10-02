@@ -376,7 +376,7 @@ it('warns when a connected mailbox cannot send', function (): void {
     ]);
 
     livewire(EmailAccountsPage::class)
-        ->assertSee(__('filament/pages/email-accounts.send_missing_tooltip'))
+        ->assertSee(__('filament/emails/composer.grant_send.heading', ['email' => $this->account->email_address]).' '.__('filament/emails/composer.grant_send.description'))
         ->assertSee(__('filament/pages/email-accounts.in_sync'));
 });
 

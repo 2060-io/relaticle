@@ -76,6 +76,20 @@ it('uses the payload to instead of the page email', function (): void {
         ->assertSet('to', ['other@example.com']);
 });
 
+it('keeps a mass send opened on a record page unlinked from that record', function (): void {
+    $person = People::factory()->for($this->user->currentWorkspace)->create(['creator_id' => $this->user->getKey()]);
+
+    Livewire::test(EmailComposer::class, [
+        'pageTo' => 'jane@example.com',
+        'pageRecordType' => People::class,
+        'pageRecordId' => (string) $person->getKey(),
+    ])
+        ->dispatch('composer:open', payload: ['massSend' => true, 'recipients' => [], 'linkRecordType' => null, 'linkRecordId' => null])
+        ->assertSet('isMassSend', true)
+        ->assertSet('linkRecordType', null)
+        ->assertSet('linkRecordId', null);
+});
+
 it('leaves to blank when the current page has no email', function (): void {
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')

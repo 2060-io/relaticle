@@ -167,9 +167,17 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     #[Locked]
     public ?string $pageTo = null;
 
+    #[Locked]
+    public ?string $pageRecordType = null;
+
+    #[Locked]
+    public ?string $pageRecordId = null;
+
     public function mount(): void
     {
         $this->pageTo ??= ComposerPageTo::email();
+        $this->pageRecordType ??= ComposerPageTo::recordType();
+        $this->pageRecordId ??= ComposerPageTo::recordId();
     }
 
     /**
@@ -247,8 +255,8 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         $this->to = $this->isMassSend
             ? []
             : ($payload['to'] ?? ($this->pageTo !== null && $this->pageTo !== '' ? [$this->pageTo] : []));
-        $this->linkRecordType = $payload['linkRecordType'] ?? null;
-        $this->linkRecordId = $payload['linkRecordId'] ?? null;
+        $this->linkRecordType = $payload['linkRecordType'] ?? ($this->isMassSend ? null : $this->pageRecordType);
+        $this->linkRecordId = $payload['linkRecordId'] ?? ($this->isMassSend ? null : $this->pageRecordId);
         $this->privacyTier = resolve(PrivacyService::class)
             ->defaultTierForUser($this->authUser())->value;
 
@@ -620,9 +628,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         Notification::make()
             ->success()
             ->title(__('filament/emails/composer.notifications.mass_queued.title'))
-            ->body(__('filament/emails/composer.notifications.mass_queued.body', [
-                'count' => count($recipients),
-            ]))
+            ->body(trans_choice('filament/emails/composer.notifications.mass_queued.body', count($recipients)))
             ->send();
 
         $this->closeComposer();
@@ -1094,6 +1100,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     description: string|null,
      *     email?: string,
      *     count?: int,
+     *     countLabel?: string,
      *     emails?: list<string>,
      *     avatarUrl: string|null,
      *     iconPath: string|null,
@@ -1202,6 +1209,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     label: string,
      *     description: string,
      *     count: int,
+     *     countLabel: string,
      *     emails: list<string>,
      *     avatarUrl: string|null,
      *     iconPath: string|null,
@@ -1247,7 +1255,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return [];
         }
 
-        /** @var list<array{type: 'company_team', id: string, label: string, description: string, count: int, emails: list<string>, avatarUrl: string|null, iconPath: string|null, circular: bool, avatarColor: string}> */
+        /** @var list<array{type: 'company_team', id: string, label: string, description: string, count: int, countLabel: string, emails: list<string>, avatarUrl: string|null, iconPath: string|null, circular: bool, avatarColor: string}> */
         return Company::query()
             ->where('workspace_id', $teamId)
             ->whereKey(array_keys($companyCounts))
@@ -1263,6 +1271,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
                     'label' => $company->name,
                     'description' => __('filament/emails/composer.fields.company_team'),
                     'count' => $companyCounts[$companyId],
+                    'countLabel' => trans_choice('filament/emails/composer.fields.company_team_people', $companyCounts[$companyId]),
                     'emails' => $companyEmails[$companyId],
                     ...$this->recipientChipAppearance($company),
                 ];
