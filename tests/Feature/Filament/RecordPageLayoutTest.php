@@ -104,7 +104,7 @@ it('credits a system created record to the system in the record info', function 
         ->assertSee('⊙ System');
 });
 
-it('credits a record whose creator left to a former member in the record info', function (): void {
+it('credits a record whose creator deleted their account to a former member in the record info', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $company->forceFill(['creator_id' => null])->saveQuietly();
 
