@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailBlocklistType;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\EmailBlocklist;
+use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 use Relaticle\EmailIntegration\Support\BlocklistDomainMatcher;
 
@@ -39,9 +42,12 @@ final readonly class VisibleEmailScope implements Scope
         $builder
             ->where('workspace_id', $teamId)
             ->where(function (Builder $visibilityQuery) use ($viewerId, $teamId): void {
-                $this->excludeEmailsMatchingMailboxBlocklist($visibilityQuery);
+                // Both anti-joins scan every participant row, so they run only when a rule exists.
+                if ($teamId === null || $this->workspaceHasMailboxBlocklist($teamId)) {
+                    $this->excludeEmailsMatchingMailboxBlocklist($visibilityQuery);
+                }
 
-                if ($teamId !== null) {
+                if ($teamId !== null && $this->workspaceHasBlockedEntry($teamId)) {
                     $this->excludeEmailsWithBlockedParticipant($visibilityQuery, $teamId);
                 }
 
@@ -156,6 +162,21 @@ final readonly class VisibleEmailScope implements Scope
         $protectedDomains = $visibility->workspaceDomains($team);
 
         $this->excludeEmailsWhereAllParticipantsAreProtected($builder, $teamId, $memberEmails, $protectedDomains);
+    }
+
+    private function workspaceHasMailboxBlocklist(string $teamId): bool
+    {
+        return EmailBlocklist::query()
+            ->whereIn('connected_account_id', ConnectedAccount::withTrashed()->where('workspace_id', $teamId)->select('id'))
+            ->exists();
+    }
+
+    private function workspaceHasBlockedEntry(string $teamId): bool
+    {
+        return TeamEmailBlocklist::query()
+            ->where('workspace_id', $teamId)
+            ->where('enforcement_level', EmailVisibilityEnforcement::Blocked)
+            ->exists();
     }
 
     /**

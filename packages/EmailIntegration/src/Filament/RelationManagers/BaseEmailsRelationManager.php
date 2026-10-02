@@ -44,6 +44,8 @@ abstract class BaseEmailsRelationManager extends RelationManager
 
     protected static ?string $badgeColor = 'gray';
 
+    protected static bool $isBadgeDeferred = true;
+
     protected string $view = 'email-integration::filament.relation-managers.emails-relation-manager';
 
     public ?string $selectedEmailId = null;
@@ -110,14 +112,13 @@ abstract class BaseEmailsRelationManager extends RelationManager
                 'accessRequests as viewer_has_pending_access_request' => fn (Builder $query) => $query
                     ->where('requester_id', $user->getKey())
                     ->where('status', EmailAccessRequestStatus::PENDING),
-            ])
-            ->withGlobalScope('visible', new VisibleEmailScope($user));
+            ]);
 
         if (filled($this->search)) {
             resolve(EmailSearchService::class)->applyToQuery($query, $user, $this->search);
         }
 
-        resolve(PreferredEmailCopyService::class)->restrictToPreferredCopies($query->getQuery(), $user);
+        resolve(PreferredEmailCopyService::class)->restrictToVisiblePreferredCopies($query->getQuery(), $user);
 
         $paginator = $query->latest('sent_at')->paginate(20, pageName: $this->getTablePaginationPageName());
 

@@ -549,6 +549,10 @@ it('badges the emails tab with the visible count for the record', function (): v
     expect(EmailsRelationManager::getBadge($this->person, ViewPeople::class))->toBe('2');
 });
 
+it('loads the emails tab badge after the record page renders', function (): void {
+    expect(EmailsRelationManager::getTabComponent($this->person, ViewPeople::class)->isBadgeDeferred())->toBeTrue();
+});
+
 it('caps the emails tab badge at 99+', function (): void {
     $emails = Email::factory()->count(100)->create([
         'workspace_id' => $this->workspace->id,

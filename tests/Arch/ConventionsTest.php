@@ -179,7 +179,7 @@ it('keeps reusable query predicates on their model as scopes', function (): void
 
     $allowed = [
         'Relaticle\SystemAdmin\Filament\Support\PivotSafeTableQuery::apply',
-        'Relaticle\EmailIntegration\Services\PreferredEmailCopyService::restrictToPreferredCopies',
+        'Relaticle\EmailIntegration\Services\PreferredEmailCopyService::restrictToVisiblePreferredCopies',
         'Relaticle\EmailIntegration\Services\EmailSearchService::applyToQuery',
         'Relaticle\EmailIntegration\Services\EmailSearchService::whereSubjectVisibleTo',
         'Relaticle\EmailIntegration\Support\BlocklistDomainMatcher::constrainWhereExistsDomainMatch',
