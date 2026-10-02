@@ -119,7 +119,9 @@
                                 <p class="truncate text-sm text-gray-700 dark:text-gray-300">{{ $mailbox['email'] }}</p>
                                 @if ($mailbox['importing'])
                                     <span class="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-primary-700 dark:bg-primary-400/10 dark:text-primary-300">
-                                        {{ __('filament/pages/email-accounts.importing_percent', ['percent' => $mailbox['percent']]) }}
+                                        {{ $mailbox['percent'] === null
+                                            ? __('filament/pages/email-accounts.importing')
+                                            : __('filament/pages/email-accounts.importing_percent', ['percent' => $mailbox['percent']]) }}
                                     </span>
                                 @else
                                     <span class="shrink-0 rounded-full bg-success-50 px-2 py-0.5 text-xs font-semibold text-success-700 dark:bg-success-400/10 dark:text-success-300">
@@ -138,7 +140,9 @@
                             <div
                                 class="mt-2 h-2 overflow-hidden rounded-full bg-primary-100 dark:bg-primary-400/15"
                                 role="progressbar"
-                                aria-valuenow="{{ $mailbox['percent'] }}"
+                                @if ($mailbox['percent'] !== null)
+                                    aria-valuenow="{{ $mailbox['percent'] }}"
+                                @endif
                                 aria-valuemin="0"
                                 aria-valuemax="100"
                                 aria-label="{{ $mailbox['importing']
@@ -146,7 +150,7 @@
                                     : __('filament/pages/email-accounts.sync_status.title_complete') }}"
                                 aria-busy="{{ $mailbox['importing'] ? 'true' : 'false' }}"
                             >
-                                @if ($mailbox['importing'] && $mailbox['incrementalOnly'])
+                                @if ($mailbox['importing'] && ($mailbox['incrementalOnly'] || $mailbox['percent'] === null))
                                     <div class="h-full w-full animate-pulse rounded-full bg-primary-600/70"></div>
                                 @else
                                     <div @class([

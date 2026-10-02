@@ -78,12 +78,13 @@ it('shows mailbox sync progress inside the meetings section', function (): void 
 
     livewire(MeetingsHomeWidget::class)
         ->assertSee('data-testid="meetings-mailbox-sync"', escape: false)
-        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 30]))
+        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title'))
+        ->assertDontSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 30]))
         ->assertSee(__('filament/pages/dashboard.meetings.syncing.description_initial'))
         ->assertSee(trans_choice('filament/pages/dashboard.meetings.syncing.emails_processed', 12, ['count' => 12]))
         ->assertDontSee(trans_choice('filament/pages/dashboard.meetings.syncing.meetings_processed', 0, ['count' => 0]))
         ->assertSee('role="progressbar"', false)
-        ->assertSee('aria-valuenow="30"', false)
+        ->assertDontSee('aria-valuenow', false)
         ->assertDontSee(__('filament/pages/dashboard.meetings.empty.title'));
 });
 
@@ -285,7 +286,8 @@ it('shows mailbox sync progress during email-only history import', function (): 
 
     livewire(MeetingsHomeWidget::class)
         ->assertSee('data-testid="meetings-mailbox-sync"', escape: false)
-        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 0]))
+        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title'))
+        ->assertDontSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 0]))
         ->assertDontSee(__('filament/pages/dashboard.meetings.empty.title'));
 });
 
@@ -373,7 +375,8 @@ it('shows mailbox sync progress on the dashboard inside meetings', function (): 
     ]);
 
     livewire(Dashboard::class)
-        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 4]))
+        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title'))
+        ->assertDontSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 4]))
         ->assertSee('data-testid="meetings-mailbox-sync"', escape: false)
         ->assertDontSee('data-mailbox-import="home"', false);
 });

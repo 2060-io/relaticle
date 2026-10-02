@@ -136,7 +136,7 @@ it('links the sync email step to the email accounts settings page', function ():
         ->assertSee(__('filament/pages/dashboard.activation.steps.sync_email.label'));
 });
 
-it('shows an inline syncing row while the mailbox import is in flight', function (): void {
+it('shows an inline syncing row without a percent while the mailbox is still being listed', function (): void {
     ConnectedAccount::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
         'user_id' => $this->owner->getKey(),
@@ -149,7 +149,7 @@ it('shows an inline syncing row while the mailbox import is in flight', function
         ->assertSeeHtml(stepState('sync_email', true))
         ->assertSeeHtml('data-testid="activation-email-sync-progress"')
         ->assertSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing'))
-        ->assertSee('12%');
+        ->assertDontSee('12%');
 });
 
 it('does not show import issue on the checklist when store jobs failed', function (): void {

@@ -306,6 +306,13 @@ final class ConnectedAccount extends Model
         return $this->isImportingCalendarHistory();
     }
 
+    private function isListingEmailHistory(): bool
+    {
+        return $this->isImportingHistory()
+            && $this->hasEmail()
+            && $this->sync_cursor === null;
+    }
+
     public function mailboxHistoryImportSummary(): ?MailboxHistoryImportSummary
     {
         return resolve(MailboxHistoryImportService::class)->summary($this);
@@ -530,8 +537,12 @@ final class ConnectedAccount extends Model
         return $this->initial_calendar_sync_imported;
     }
 
-    public function syncDisplayPercent(): int
+    public function syncDisplayPercent(): ?int
     {
+        if ($this->isListingEmailHistory()) {
+            return null;
+        }
+
         if ($this->isImportingHistory()) {
             if ($this->hasEmail() && filled($this->history_import_batch_id)) {
                 return resolve(MailboxHistoryImportService::class)->progressPercent($this);

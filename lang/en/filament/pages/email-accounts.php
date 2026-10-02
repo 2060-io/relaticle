@@ -109,6 +109,7 @@ return [
     'importing_email' => 'Syncing email',
     'importing_email_and_calendar' => 'Syncing email and calendar',
     'importing_percent' => ':percent%',
+    'importing_count' => '{1}:count email|[2,*]:count emails',
     'history_import' => [
         'processed' => ':processed of :total processed',
         'failed_jobs' => ':count messages could not be imported',

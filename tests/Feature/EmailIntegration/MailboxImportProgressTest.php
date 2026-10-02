@@ -12,7 +12,7 @@ use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
 
 mutates(EmailAccountsPage::class, ConnectedAccount::class, MailboxHistoryImportService::class, MailboxSyncTracker::class);
 
-it('shows import progress while the mailbox cursor has not been written', function (): void {
+it('shows the imported count instead of a percent while the mailbox is still being listed', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $this->actingAs($user);
     Filament::setTenant($user->currentWorkspace);
@@ -26,10 +26,10 @@ it('shows import progress while the mailbox cursor has not been written', functi
 
     livewire(EmailAccountsPage::class)
         ->assertSee(__('filament/pages/email-accounts.importing'))
-        ->assertSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 30]))
+        ->assertSee(trans_choice('filament/pages/email-accounts.importing_count', 12, ['count' => 12]))
+        ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 30]))
         ->assertSee('role="progressbar"', false)
-        ->assertSee('aria-valuenow="30"', false)
-        ->assertSee('aria-valuemax="100"', false)
+        ->assertDontSee('aria-valuenow', false)
         ->assertSee('motion-safe:animate-spin', false);
 });
 
@@ -58,7 +58,7 @@ it('picks up a new batch percent when the accounts list refreshes', function ():
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
         'workspace_id' => $user->currentWorkspace->getKey(),
         'user_id' => $user->getKey(),
-        'sync_cursor' => null,
+        'sync_cursor' => 'history-done',
     ]));
     $batchId = attachHistoryImportBatch($account);
     setHistoryImportBatchProgress($batchId, 387, 387);
@@ -75,7 +75,7 @@ it('picks up a new batch percent when the accounts list refreshes', function ():
         ->assertSee('aria-valuenow="6"', false);
 });
 
-it('shows 0% until store jobs exist on the history import batch', function (): void {
+it('shows no percent before store jobs exist on the history import batch', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $this->actingAs($user);
     Filament::setTenant($user->currentWorkspace);
@@ -91,10 +91,10 @@ it('shows 0% until store jobs exist on the history import batch', function (): v
 
     livewire(EmailAccountsPage::class)
         ->assertSee(__('filament/pages/email-accounts.importing'))
-        ->assertSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 0]))
+        ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 0]))
         ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 8]))
         ->assertSee('role="progressbar"', false)
-        ->assertSee('aria-valuenow="0"', false)
+        ->assertDontSee('aria-valuenow', false)
         ->assertSee('motion-safe:animate-spin', false);
 });
 
@@ -207,7 +207,7 @@ it('counts a failed store job once when reporting import progress', function ():
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
         'workspace_id' => $user->currentWorkspace->getKey(),
         'user_id' => $user->getKey(),
-        'sync_cursor' => null,
+        'sync_cursor' => 'history-done',
     ]));
     $batchId = attachHistoryImportBatch($account);
     setHistoryImportBatchProgress($batchId, 10, 4);

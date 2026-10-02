@@ -42,14 +42,16 @@ function importingAccount(array $overrides = []): ConnectedAccount
     ]));
 }
 
-it('shows processed count and a progress bar while history is importing', function (): void {
+it('shows the processed count and an open-ended progress bar while history is importing', function (): void {
     $account = importingAccount();
 
     livewire(MailboxImportStatus::class)
         ->assertSee(__('filament/pages/email-accounts.sync_status.title_syncing'))
         ->assertSee($account->email_address)
         ->assertSee(trans_choice('filament/pages/email-accounts.sync_status.emails_processed', 643, ['count' => 643]))
-        ->assertSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 57]))
+        ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 57]))
+        ->assertDontSee('aria-valuenow', false)
+        ->assertSee('animate-pulse', false)
         ->assertSee('role="progressbar"', false)
         ->assertDontSee(__('filament/pages/email-accounts.sync_status.title_complete'));
 });
@@ -188,10 +190,9 @@ it('renders each importing mailbox in the home section', function (): void {
         ->assertSee(__('filament/pages/email-accounts.sync_status.title_syncing'))
         ->assertSee(trans_choice('filament/pages/email-accounts.sync_status.emails_processed', 50, ['count' => 50]))
         ->assertSee(trans_choice('filament/pages/email-accounts.sync_status.emails_processed', 10, ['count' => 10]))
-        ->assertSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 50]))
-        ->assertSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 10]))
-        ->assertSee('role="progressbar"', false)
-        ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 30]));
+        ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 50]))
+        ->assertDontSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 10]))
+        ->assertSee('role="progressbar"', false);
 });
 
 it('renders nothing on home when nothing is importing', function (): void {
@@ -242,7 +243,8 @@ it('shows mailbox sync in the meetings section on the dashboard page', function 
 
     livewire(Dashboard::class)
         ->assertSee('data-testid="meetings-mailbox-sync"', escape: false)
-        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 57]))
+        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title'))
+        ->assertDontSee(__('filament/pages/dashboard.meetings.syncing.title_with_percent', ['percent' => 57]))
         ->assertDontSee('data-mailbox-import="home"', false);
 });
 
@@ -252,7 +254,7 @@ it('shows the syncing badge on the accounts page without the progress section', 
     livewire(EmailAccountsPage::class)
         ->assertSee($account->email_address)
         ->assertSee(__('filament/pages/email-accounts.importing'))
-        ->assertSee(__('filament/pages/email-accounts.importing_percent', ['percent' => 57]))
+        ->assertSee(trans_choice('filament/pages/email-accounts.importing_count', 57, ['count' => 57]))
         ->assertDontSee(trans_choice('filament/pages/email-accounts.sync_status.emails_processed', 57, ['count' => 57]))
         ->assertDontSee('data-mailbox-import="accounts"', false);
 });
