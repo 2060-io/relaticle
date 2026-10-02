@@ -39,7 +39,7 @@ final readonly class CustomFieldDefinitionValidator
      *
      * @throws ValidationException
      */
-    public static function forCreate(User $user, array $data): array
+    public static function forCreate(User $user, array $data, int $proposedAlongside = 0): array
     {
         $entityType = is_string($data['entity_type'] ?? null) ? $data['entity_type'] : '';
         $type = is_string($data['type'] ?? null) ? $data['type'] : '';
@@ -47,7 +47,7 @@ final readonly class CustomFieldDefinitionValidator
         $maxOptions = self::maxOptions();
 
         return Validator::make(self::normalize($data), [
-            'entity_type' => ['required', Rule::in(CrmEntity::morphAliases()), self::withinFieldCap($tenantId, $entityType)],
+            'entity_type' => ['required', Rule::in(CrmEntity::morphAliases()), self::withinFieldCap($tenantId, $entityType, $proposedAlongside)],
             'type' => ['required', Rule::in(CreateCustomField::ALLOWED_TYPES)],
             'name' => ['required', 'string', 'max:50', self::uniqueNameIgnoringCase(
                 $tenantId,
@@ -246,9 +246,9 @@ final readonly class CustomFieldDefinitionValidator
         };
     }
 
-    private static function withinFieldCap(int|string $tenantId, string $entityType): Closure
+    private static function withinFieldCap(int|string $tenantId, string $entityType, int $proposedAlongside): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail) use ($tenantId, $entityType): void {
+        return function (string $attribute, mixed $value, Closure $fail) use ($tenantId, $entityType, $proposedAlongside): void {
             $max = (int) config('chat.max_custom_fields_per_entity', 50);
 
             $existing = DB::table(self::definitionsTable())
@@ -256,7 +256,7 @@ final readonly class CustomFieldDefinitionValidator
                 ->where('entity_type', $entityType)
                 ->count();
 
-            if ($existing >= $max) {
+            if ($existing + $proposedAlongside >= $max) {
                 $fail("Cannot create more than {$max} custom fields for entity type \"{$entityType}\".");
             }
         };

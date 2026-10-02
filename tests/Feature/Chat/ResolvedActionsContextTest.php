@@ -10,11 +10,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Messages\ToolResultMessage;
+use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\PendingActionService;
+use Relaticle\Chat\Tools\CustomField\CreateCustomFieldTool;
 
 function seedResolvedConv(string $id, User $user): void
 {
@@ -366,6 +368,27 @@ it('labels a delete by its Name row when the row label is translated', function 
     $resolved = resolve(PendingActionService::class)->resolvedForConversation('conv-T', null);
 
     expect($resolved[0]['label'])->toBe('Acme');
+});
+
+it('names each field of an approved custom field batch', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    seedResolvedConv('conv-F', $user);
+
+    resolve(CreateCustomFieldTool::class)->setConversationId('conv-F')->handle(new Request(['records' => [
+        ['entity_type' => 'company', 'name' => 'Region', 'type' => 'text'],
+        ['entity_type' => 'people', 'name' => 'Tier', 'type' => 'select', 'options' => [['name' => 'Gold']]],
+    ]]));
+
+    $pending = PendingAction::query()->where('conversation_id', 'conv-F')->sole();
+    $service = resolve(PendingActionService::class);
+    $service->approveItem($pending, $user, 0);
+    $service->approveItem($pending->fresh(), $user, 1);
+
+    $resolved = $service->resolvedForConversation('conv-F', null);
+
+    expect($resolved[0]['label'])->toBe('Region, Tier')
+        ->and(array_column($resolved[0]['records'], 'label'))->toBe(['Region', 'Tier']);
 });
 
 it('leaves superseded proposals to their own block instead of listing them as decided', function (): void {
