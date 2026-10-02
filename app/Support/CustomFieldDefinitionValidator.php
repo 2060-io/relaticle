@@ -169,7 +169,7 @@ final readonly class CustomFieldDefinitionValidator
     /**
      * @return array<string, string>
      */
-    private static function optionNameMessages(): array
+    public static function optionNameMessages(): array
     {
         return [
             'options.*.name.required' => 'Option names cannot be empty.',
@@ -295,7 +295,7 @@ final readonly class CustomFieldDefinitionValidator
         return in_array($type, CreateCustomField::CHOICE_TYPES, true);
     }
 
-    private static function maxOptions(): int
+    public static function maxOptions(): int
     {
         return (int) config('chat.max_field_options', 50);
     }

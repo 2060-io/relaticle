@@ -9,6 +9,7 @@ use App\Actions\Company\DeleteCompany;
 use App\Actions\Company\UpdateCompany;
 use App\Actions\CustomFields\AddCustomFieldOptions;
 use App\Actions\CustomFields\CreateCustomField;
+use App\Actions\CustomFields\SetCustomFieldOptions;
 use App\Actions\CustomFields\UpdateCustomField;
 use App\Actions\Note\CreateNote;
 use App\Actions\Note\DeleteNote;
@@ -85,6 +86,7 @@ final readonly class PendingActionService
         DeleteNote::class,
         CreateCustomField::class,
         UpdateCustomField::class,
+        SetCustomFieldOptions::class,
         AddCustomFieldOptions::class,
         CreateWorkspaceInvitation::class,
         RemoveSampleData::class,
