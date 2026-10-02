@@ -366,10 +366,12 @@ return [
                 'queue' => ['emails-sync'],
                 'balance' => 'auto',
                 'autoScalingStrategy' => 'time',
-                'maxProcesses' => 20,
-                'minProcesses' => 3,
-                'balanceMaxShift' => 5,
-                'balanceCooldown' => 2,
+                // A mailbox import keeps this queue full for days. More workers than cores
+                // only add process churn, which slowed every web request on a 2-core host.
+                'maxProcesses' => env('HORIZON_EMAILS_SYNC_MAX', 4),
+                'minProcesses' => env('HORIZON_EMAILS_SYNC_MIN', 2),
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 30,
                 'memory' => 256,
                 'tries' => 3,
                 'timeout' => 330,
