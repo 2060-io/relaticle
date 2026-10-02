@@ -17,7 +17,7 @@
         <div
             class="space-y-3"
             @if ($this->isImportingAnyAccount())
-                wire:poll.5s="refreshAccounts"
+                wire:poll.10s.visible="refreshAccounts"
             @endif
         >
             @foreach ($this->connectedAccounts as $account)
