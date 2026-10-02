@@ -492,3 +492,16 @@ it('keeps the plans help article in step with the pricing page', function (): vo
             ->and($article)->toContain($fact);
     }
 });
+
+it('keeps the credits help article in step with each plan allowance', function (): void {
+    $article = new Crawler((string) $this->get(route('help.show', ['category' => 'ai-assistant', 'slug' => 'ai-credits-and-limits']))->assertOk()->getContent());
+
+    $rows = collect($article->filter('table tbody tr')->each(fn (Crawler $row): array => $row->filter('td')->each(fn (Crawler $cell): string => $cell->text())))
+        ->keyBy(fn (array $cells): string => $cells[0]);
+
+    expect($rows->all())->toBe([
+        'Cloud Pro and its trial' => ['Cloud Pro and its trial', number_format(Plan::Pro->credits()), (string) Plan::Pro->rateLimit()],
+        'Enterprise' => ['Enterprise', number_format(Plan::Enterprise->credits()), (string) Plan::Enterprise->rateLimit()],
+        'Self-hosted (default)' => ['Self-hosted (default)', number_format(Plan::default()->credits()), (string) Plan::default()->rateLimit()],
+    ]);
+});
