@@ -86,6 +86,11 @@ final readonly class ChatAttachment
         return is_string($id) ? $id : null;
     }
 
+    public function importUrl(ImportEntityType $type): string
+    {
+        return route('chat.attachments.import', ['attachment' => $this->id(), 'entity' => $type->value]);
+    }
+
     /**
      * @template TResult
      *

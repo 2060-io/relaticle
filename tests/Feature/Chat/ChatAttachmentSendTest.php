@@ -228,7 +228,7 @@ it('strips backticks from the filename in the lead line too', function (): void 
     Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $job): bool => substr_count($job->message, '```') === 2);
 });
 
-it('hands off a file that is wide rather than tall, instead of inlining megabytes of prompt', function (): void {
+it('hands off a wide file sent alone instead of inlining megabytes of prompt', function (): void {
     Queue::fake();
 
     $columns = 200;
@@ -242,20 +242,20 @@ it('hands off a file that is wide rather than tall, instead of inlining megabyte
     ])->assertOk()->json('id');
 
     $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
-        'document' => ChatDocument::fromText('Import these please'),
+        'document' => ['type' => 'doc', 'content' => []],
         'attachment_id' => $attachmentId,
     ])->assertOk()->assertJsonPath('status', 'stored');
 
     Queue::assertNothingPushed();
 });
 
-it('stores a handoff reply for a large file without running the model or spending a credit', function (): void {
+it('stores a handoff reply for a large file sent alone without running the model or spending a credit', function (): void {
     Queue::fake();
     $attachmentId = attachCsv(26);
     $before = AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining');
 
     $response = $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
-        'document' => ChatDocument::fromText('Import these please'),
+        'document' => ['type' => 'doc', 'content' => []],
         'attachment_id' => $attachmentId,
     ]);
 
@@ -273,7 +273,7 @@ it('stores a handoff reply for a large file without running the model or spendin
 
     expect($rows)->toHaveCount(2)
         ->and($rows[0]->role)->toBe('user')
-        ->and($rows[0]->content)->toBe('Import these please')
+        ->and($rows[0]->content)->toBe('Attached contacts.csv')
         ->and(json_decode((string) $rows[0]->meta, true)['attachment']['row_count'])->toBe(26)
         ->and($rows[1]->role)->toBe('assistant')
         ->and($rows[1]->content)->toContain("That's 26 rows.")
@@ -291,7 +291,7 @@ it('replays the handoff reply to the model on the next turn', function (): void 
     $attachmentId = attachCsv(26);
 
     $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
-        'document' => ChatDocument::fromText('Import these please'),
+        'document' => ['type' => 'doc', 'content' => []],
         'attachment_id' => $attachmentId,
     ])->assertOk();
 
@@ -319,7 +319,7 @@ it('supersedes a pending proposal on the conversation when a large file is hande
     ]);
 
     $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
-        'document' => ChatDocument::fromText('Import these please'),
+        'document' => ['type' => 'doc', 'content' => []],
         'attachment_id' => $attachmentId,
     ])->assertOk()->assertJsonPath('status', 'stored');
 
@@ -562,4 +562,90 @@ it('keeps the typed text when a text file carries its own attached file lead', f
 
     expect($userMessage['content'])->toBe('Summarise this')
         ->and($userMessage['attachment'])->toBe(['id' => $attachmentId, 'name' => 'notes.txt', 'kind' => 'text', 'row_count' => 0]);
+});
+
+it('runs the model on a preview of a large file when the user typed a request', function (): void {
+    Queue::fake();
+    $attachmentId = attachCsv(26);
+    $before = AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining');
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('Who here works at Company 3?'),
+        'attachment_id' => $attachmentId,
+    ])->assertOk()->assertJsonPath('status', 'processing');
+
+    Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $job): bool => str_starts_with($job->message, "Who here works at Company 3?\n\n")
+        && str_contains($job->message, 'Attached file "contacts.csv" (26 rows, the first 25 shown).')
+        && str_contains($job->message, "```\nName,Email,Company\nPerson 1,person1@example.test,Company 1\n")
+        && str_contains($job->message, "Person 25,person25@example.test,Company 25\n```")
+        && ! str_contains($job->message, 'Person 26,')
+        && str_contains($job->message, '[Import as people]('.route('chat.attachments.import', ['attachment' => $attachmentId, 'entity' => 'people']).')')
+        && str_contains($job->message, '[Import as companies]('.route('chat.attachments.import', ['attachment' => $attachmentId, 'entity' => 'company']).')'));
+
+    expect(AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining'))->toBe($before - 1)
+        ->and(DB::table('agent_conversation_messages')->where('conversation_id', $this->conversationId)->count())->toBe(0)
+        ->and(ChatAttachment::find($this->user, $attachmentId)?->isSent())->toBeTrue();
+});
+
+it('answers a large file with a typed request like any send when the workspace is out of credits', function (): void {
+    Queue::fake();
+    $attachmentId = attachCsv(26);
+    AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->update(['credits_remaining' => 0]);
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('Who here works at Company 3?'),
+        'attachment_id' => $attachmentId,
+    ])->assertStatus(402)->assertJsonPath('error', 'credits_exhausted');
+
+    Queue::assertNotPushed(ProcessChatMessage::class);
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ['type' => 'doc', 'content' => []],
+        'attachment_id' => $attachmentId,
+    ])->assertOk()->assertJsonPath('status', 'stored');
+
+    Queue::assertNotPushed(ProcessChatMessage::class);
+});
+
+it('previews only the rows that fit the byte limit when a wide file comes with a request', function (): void {
+    Queue::fake();
+
+    $columns = 200;
+    $header = implode(',', array_map(static fn (int $i): string => "col_{$i}", range(1, $columns)));
+    $row = implode(',', array_fill(0, $columns, str_repeat('x', AttachedRows::CELL_LIMIT)));
+    $content = implode("\n", [$header, ...array_fill(0, 5, $row)])."\n";
+
+    $attachmentId = (string) $this->postJson(route('chat.attachments.store'), [
+        'file' => UploadedFile::fake()->createWithContent('wide.csv', $content),
+        'conversation_id' => $this->conversationId,
+    ])->assertOk()->json('id');
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('Which columns matter?'),
+        'attachment_id' => $attachmentId,
+    ])->assertOk()->assertJsonPath('status', 'processing');
+
+    Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $job): bool => str_contains($job->message, 'Attached file "wide.csv" (5 rows, the first 1 shown).')
+        && strlen(Str::between($job->message, "```\n", "\n```")) <= AttachedRows::INLINE_BYTE_LIMIT);
+});
+
+it('keeps the typed text when a preview is stored on the user message', function (): void {
+    $attachmentId = attachCsv(26);
+    $attachment = ChatAttachment::find($this->user, $attachmentId);
+    CrmAssistant::fake(['Three of them do.']);
+
+    $job = new ProcessChatMessage(
+        user: $this->user,
+        workspace: $this->workspace,
+        message: AttachedRows::preview('Who here works at Company 3?', $attachment),
+        conversationId: $this->conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'auto'],
+        turnId: (string) Str::ulid(),
+        attachment: $attachment->meta(),
+    );
+    $job->handle(resolve(CreditService::class));
+
+    $userMessage = collect(resolve(ListConversationMessages::class)->execute($this->user, $this->conversationId))->firstWhere('role', 'user');
+
+    expect($userMessage['content'])->toBe('Who here works at Company 3?');
 });

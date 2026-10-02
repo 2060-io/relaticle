@@ -165,7 +165,8 @@ final readonly class ChatController
         $message = match (true) {
             ! $attachment instanceof ChatAttachment => $parsed['text'],
             $attachment->isText() => AttachedText::inline($parsed['text'], $attachment),
-            default => AttachedRows::inline($parsed['text'], $attachment),
+            default => AttachedRows::inline($parsed['text'], $attachment)
+                ?? ($parsed['text'] === '' ? null : AttachedRows::preview($parsed['text'], $attachment)),
         };
 
         if ($message === null) {
