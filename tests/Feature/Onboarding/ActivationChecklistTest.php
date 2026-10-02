@@ -110,6 +110,17 @@ it('leaves the first-record step incomplete while only seeded demo records exist
         ->assertSee('0/5 steps completed');
 });
 
+it('leaves the first-record step incomplete while only mailbox-synced records exist', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::MAILBOX,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', false))
+        ->assertSee('0/5 steps completed');
+});
+
 it('completes the import step for an imported record', function (): void {
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
