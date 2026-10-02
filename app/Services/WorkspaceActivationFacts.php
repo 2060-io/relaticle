@@ -136,7 +136,7 @@ final class WorkspaceActivationFacts
         $bindings = [];
         $columns = [];
 
-        $automated = array_map(fn (CreationSource $source): string => $source->value, CreationSource::automated());
+        $automated = array_column(CreationSource::automated(), 'value');
 
         foreach ([
             'own' => ['creation_source not in ('.implode(', ', array_fill(0, count($automated), '?')).')', $automated],
