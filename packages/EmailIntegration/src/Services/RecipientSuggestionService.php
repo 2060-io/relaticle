@@ -14,30 +14,31 @@ use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
 
 final readonly class RecipientSuggestionService
 {
+    private const int CANDIDATE_EMAIL_WINDOW = 5000;
+
     private const int RECENT_EMAIL_WINDOW = 1000;
 
     /**
-     * Addresses the viewer may reuse in compose autocomplete, most recent first.
-     *
-     * Restricted to mail VisibleEmailScope would list, excluding drafts and
-     * other people's BCC rows. Without those gates, private, protected,
-     * internal, and BCC addresses leak into teammates' To/Cc/Bcc suggestions.
-     *
      * @return list<string>
      */
     public function addressesFor(User $user, int $limit = 300): array
     {
-        $newestEmailIds = Email::query()
+        // The candidate window bounds the privacy scan for a viewer who sees little mail.
+        $candidateEmailIds = Email::query()
             ->where('workspace_id', $user->current_workspace_id)
             ->whereNotNull('sent_at')
             ->latest('sent_at')
-            ->limit(self::RECENT_EMAIL_WINDOW)
+            ->limit(self::CANDIDATE_EMAIL_WINDOW)
             ->select('id');
 
+        // Visibility, drafts and other people's BCC rows gate every address, or private
+        // and protected addresses leak into teammates' To/Cc/Bcc suggestions.
         $recentVisibleEmails = Email::query()
             ->withGlobalScope('visible', new VisibleEmailScope($user))
-            ->whereIn('id', $newestEmailIds)
+            ->whereIn('id', $candidateEmailIds)
             ->where('status', '!=', EmailStatus::DRAFT)
+            ->latest('sent_at')
+            ->limit(self::RECENT_EMAIL_WINDOW)
             ->select(['id', 'user_id', 'sent_at']);
 
         /** @var list<string> */

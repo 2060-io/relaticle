@@ -13,7 +13,10 @@ use App\Models\Workspace;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Factories\Sequence;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Relaticle\EmailIntegration\Actions\DeleteEmailDraftAction;
 use Relaticle\EmailIntegration\Actions\SaveEmailDraftAction;
@@ -880,6 +883,47 @@ it('suggests the most recent correspondents first', function (): void {
 
     expect(array_search('zoe@newer.example', $suggestions, true))
         ->toBeLessThan(array_search('aaron@older.example', $suggestions, true));
+});
+
+it('keeps suggesting the viewer\'s correspondents when a teammate\'s private mail is newer', function (): void {
+    $email = Email::factory()->create([
+        'workspace_id' => $this->user->current_workspace_id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'status' => EmailStatus::SYNCED,
+        'sent_at' => now()->subDays(2),
+    ]);
+
+    EmailParticipant::factory()->create([
+        'email_id' => $email->id,
+        'email_address' => 'old-friend@client.example',
+        'role' => EmailParticipantRole::FROM,
+    ]);
+
+    $privateEmail = teammateSentEmailReturningEmail($this->user, EmailPrivacyTier::PRIVATE, 'secret@teammate.example', EmailParticipantRole::TO);
+
+    collect(range(1, 1000))
+        ->map(fn (int $index): array => [
+            'id' => (string) Str::ulid(),
+            'workspace_id' => $privateEmail->workspace_id,
+            'user_id' => $privateEmail->user_id,
+            'connected_account_id' => $privateEmail->connected_account_id,
+            'rfc_message_id' => "<private-{$index}@teammate.example>",
+            'provider_message_id' => "private-{$index}",
+            'thread_id' => "private-thread-{$index}",
+            'subject' => 'Private',
+            'sent_at' => now()->subMinutes($index),
+            'direction' => EmailDirection::INBOUND->value,
+            'folder' => EmailFolder::Inbox->value,
+            'privacy_tier' => EmailPrivacyTier::PRIVATE->value,
+            'status' => EmailStatus::SYNCED->value,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ])
+        ->chunk(250)
+        ->each(fn (Collection $rows) => DB::table('emails')->insert($rows->values()->all()));
+
+    expect(composerRecipientSuggestions())->toContain('old-friend@client.example');
 });
 
 it('excludes a teammate\'s private mail recipients from recipient suggestions', function (): void {
