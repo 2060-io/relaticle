@@ -581,9 +581,6 @@ it('shows a password signup who linked a social account later as Password', func
         ->assertTableColumnStateSet('signup_method', 'Password', $user);
 });
 
-it('shows the signup method and last wizard step columns without toggling them on', function (): void {
-    $list = livewire(ListUsers::class)->instance();
-
-    expect($list->isTableColumnToggledHidden('signup_method'))->toBeFalse()
-        ->and($list->isTableColumnToggledHidden('onboarding_step'))->toBeFalse();
+it('shows the signup method column without toggling it on', function (): void {
+    expect(livewire(ListUsers::class)->instance()->isTableColumnToggledHidden('signup_method'))->toBeFalse();
 });

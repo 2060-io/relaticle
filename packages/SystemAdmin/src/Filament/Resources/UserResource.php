@@ -182,11 +182,6 @@ final class UserResource extends Resource
                     ->state(fn (User $record): string => SignupMethod::for($record))
                     ->badge()
                     ->toggleable(),
-                TextColumn::make('onboarding_step')
-                    ->label('Last wizard step')
-                    ->badge()
-                    ->toggleable()
-                    ->placeholder("\u{2014}"),
                 TextColumn::make('currentWorkspace.name')
                     ->label('Current Workspace')
                     ->sortable()

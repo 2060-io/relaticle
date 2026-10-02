@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Actions\Jetstream\CreateWorkspace as CreateWorkspaceAction;
-use App\Actions\Onboarding\RecordOnboardingStep;
 use App\Actions\User\UpdateUserName;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
-use App\Enums\SetupWizardStep;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Rules\ValidWorkspaceSlug;
@@ -145,7 +143,6 @@ final class CreateWorkspace extends RegisterTenant
     private function getWorkspaceStep(): Step
     {
         return Step::make(__('filament/pages/workspaces.create_workspace.steps.workspace'))
-            ->afterValidation(fn (): null => $this->recordWizardStep(SetupWizardStep::Workspace))
             ->schema([
                 Placeholder::make('workspace_heading')
                     ->label(__('filament/pages/workspaces.create_workspace.headings.workspace'))
@@ -159,7 +156,6 @@ final class CreateWorkspace extends RegisterTenant
     private function getAttributionStep(): Step
     {
         return Step::make(__('filament/pages/workspaces.create_workspace.steps.attribution'))
-            ->afterValidation(fn (): null => $this->recordWizardStep(SetupWizardStep::Attribution))
             ->schema([
                 Placeholder::make('attribution_heading')
                     ->label(__('filament/pages/workspaces.create_workspace.headings.attribution'))
@@ -260,22 +256,6 @@ final class CreateWorkspace extends RegisterTenant
                     ->maxLength(120)
                     ->visible(fn (Get $get): bool => $get('onboarding_use_case') === OnboardingUseCase::Other->value),
             ]);
-    }
-
-    public function skipAttribution(): void
-    {
-        $this->recordWizardStep(SetupWizardStep::Attribution);
-    }
-
-    private function recordWizardStep(SetupWizardStep $step): null
-    {
-        $user = auth()->user();
-
-        if ($user instanceof User && ! $user->ownedWorkspaces()->exists()) {
-            resolve(RecordOnboardingStep::class)->execute($user, $step);
-        }
-
-        return null;
     }
 
     private function stepHeading(string $title, string ...$paragraphs): HtmlString

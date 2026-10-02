@@ -8,7 +8,6 @@ use App\Actions\User\UpdateUserName;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
-use App\Enums\SetupWizardStep;
 use App\Enums\WorkspaceRole;
 use App\Features\Billing as BillingFeature;
 use App\Features\OnboardSeed;
@@ -959,62 +958,4 @@ it('redirects subsequent workspaces to dashboard', function (): void {
         ->call('register')
         ->assertHasNoFormErrors()
         ->assertRedirect(Dashboard::getUrl(['tenant' => $user->fresh()->currentWorkspace]));
-});
-
-it('records each setup wizard step the user finishes', function (): void {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $wizard = livewire(CreateWorkspace::class)
-        ->fillForm(['user_name' => 'Dana Reed', 'name' => 'Step Corp'])
-        ->goToNextWizardStep();
-
-    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Workspace);
-
-    $wizard->goToNextWizardStep();
-
-    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
-});
-
-it('leaves the recorded wizard step alone when a user adds another workspace', function (): void {
-    $user = User::factory()->withPersonalWorkspace()->create();
-    $this->actingAs($user);
-
-    livewire(CreateWorkspace::class)
-        ->fillForm(['name' => 'Second Corp'])
-        ->goToNextWizardStep();
-
-    expect($user->refresh()->onboarding_step)->toBeNull();
-});
-
-it('records the attribution step when the user skips it', function (): void {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    livewire(CreateWorkspace::class)
-        ->fillForm([
-            'user_name' => 'Dana Reed',
-            'name' => 'Skip Corp',
-            'onboarding_referral_source' => 'not-a-listed-source',
-        ])
-        ->goToNextWizardStep()
-        ->call('skipAttribution')
-        ->assertHasNoFormErrors();
-
-    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
-});
-
-it('keeps the furthest wizard step when the user goes back and continues again', function (): void {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    livewire(CreateWorkspace::class)
-        ->fillForm(['user_name' => 'Dana Reed', 'name' => 'Back Corp'])
-        ->goToNextWizardStep()
-        ->goToNextWizardStep()
-        ->goToPreviousWizardStep()
-        ->goToPreviousWizardStep()
-        ->goToNextWizardStep();
-
-    expect($user->refresh()->onboarding_step)->toBe(SetupWizardStep::Attribution);
 });
