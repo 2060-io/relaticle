@@ -42,8 +42,13 @@ it('opens a requested email in the reader from the access requests table', funct
         ->assertMissing('.fi-email-reader-panel')
         ->click('button[wire\\:click*="openEmail"]')
         ->assertVisible('.fi-email-reader-panel')
-        ->assertPathIs("/app/{$workspace->slug}/workspace/email/access-requests")
-        ->assertNoJavaScriptErrors();
+        ->assertPathIs("/app/{$workspace->slug}/workspace/email/access-requests");
 
     $page->screenshot(filename: "access-request-open-email-{$theme}");
+
+    $page->click('.fi-email-reader-panel button[x-on\\:click="closeReader()"]')
+        ->assertMissing('.fi-email-reader-panel')
+        ->click('button[wire\\:click*="openEmail"]')
+        ->assertVisible('.fi-email-reader-panel')
+        ->assertNoJavaScriptErrors();
 })->with(['inLightMode', 'inDarkMode']);

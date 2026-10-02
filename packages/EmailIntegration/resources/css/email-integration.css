@@ -162,9 +162,21 @@
     animation: fi-email-reader-panel-in 200ms ease-out;
 }
 
+/* The composer window opens over this frame, so the frame carries the entrance
+   and the window takes its place without animating a second time. */
+.ei-composer-opening-backdrop {
+    animation: fi-email-reader-backdrop-in 200ms ease-out;
+}
+
+.ei-composer-opening-panel {
+    animation: fi-email-reader-panel-in 200ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .fi-email-reader-backdrop,
-    .fi-email-reader-panel {
+    .fi-email-reader-panel,
+    .ei-composer-opening-backdrop,
+    .ei-composer-opening-panel {
         animation: none;
     }
 }

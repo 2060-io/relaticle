@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
     'title' => 'New email',
     'title_mass_send' => 'New mass email',
+    'opening' => 'Opening the composer…',
     'draft' => 'Draft',
     'quoted' => [
         'hidden' => 'The original message is not shared with you.',
