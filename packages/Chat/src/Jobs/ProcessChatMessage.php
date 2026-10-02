@@ -42,6 +42,7 @@ use Relaticle\Chat\Events\ChatStreamFailed;
 use Relaticle\Chat\Events\ChatStreamRetrying;
 use Relaticle\Chat\Events\ConversationResolved;
 use Relaticle\Chat\Events\PendingActionsSuperseded;
+use Relaticle\Chat\Exceptions\ProviderStreamRejectedException;
 use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\AiModelResolver;
@@ -392,6 +393,16 @@ final class ProcessChatMessage implements ShouldQueue
                 return;
             }
 
+            $rejection = $e instanceof RequestException ? $e : $e->getPrevious();
+
+            if ($rejection instanceof RequestException) {
+                ChatTelemetry::providerRejected($rejection, $this->resolved['model'] ?? 'unknown');
+            }
+
+            if ($e instanceof ProviderStreamRejectedException) {
+                ChatTelemetry::streamRejected($e->error, $this->resolved['model'] ?? 'unknown');
+            }
+
             // The user's model choice was 'auto' and nothing has streamed yet: fail
             // over to the next plan-allowed chain entry instead of failing the turn.
             // An explicit pick never lands here (source stays 'explicit'), so a user
@@ -604,7 +615,8 @@ final class ProcessChatMessage implements ShouldQueue
     {
         return $exception instanceof RequestException
             || $exception instanceof FailoverableException
-            || $exception instanceof StreamErrorException;
+            || $exception instanceof StreamErrorException
+            || $exception instanceof ProviderStreamRejectedException;
     }
 
     /**

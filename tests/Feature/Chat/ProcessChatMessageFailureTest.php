@@ -14,11 +14,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use Laravel\Ai\Exceptions\RateLimitedException;
+use Laravel\Ai\Streaming\Events\Error;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Actions\ListConversationMessages;
 use Relaticle\Chat\Agents\CrmAssistant;
@@ -26,6 +28,7 @@ use Relaticle\Chat\Enums\MessageOrigin;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Events\ChatStreamFailed;
 use Relaticle\Chat\Events\ChatStreamRetrying;
+use Relaticle\Chat\Exceptions\ProviderStreamRejectedException;
 use Relaticle\Chat\Jobs\ProcessChatMessage;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
@@ -483,6 +486,20 @@ it('names the picked model and offers Retry on Auto when an explicit pick fails'
     'a model the catalog no longer offers' => ['claude-sonnet-4-6', 'claude-sonnet-4-6 is unavailable right now. Retry on Auto to get an answer from another model.'],
 ]);
 
+it('offers Retry on Auto when the provider rejects an explicit pick mid-stream', function (): void {
+    Event::fake([ChatStreamFailed::class]);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    makeFailedTurnJob($user, $conversationId, ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'])
+        ->failed(new ProviderStreamRejectedException(new Error('evt-1', 'invalid_request_error', 'bad request', false, 0)));
+
+    Event::assertDispatched(ChatStreamFailed::class, fn (ChatStreamFailed $event): bool => $event->broadcastWith()['retryOnAuto'] === true
+        && $event->broadcastWith()['message'] === 'Sonnet 5 is unavailable right now. Retry on Auto to get an answer from another model.');
+});
+
 it('offers no Retry on Auto for a greeting turn, which has no retry button', function (): void {
     Event::fake([ChatStreamFailed::class]);
 
@@ -787,4 +804,110 @@ it('reports a pre-model failure to the exception handler instead of only a bread
     $job->handle(resolve(CreditService::class));
 
     Exceptions::assertReported(RuntimeException::class);
+});
+
+it('logs the provider error type and message when the provider rejects an explicit pick', function (string $errorMessage): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'type' => 'error',
+            'error' => ['type' => 'invalid_request_error', 'message' => $errorMessage],
+        ], 400),
+    ]);
+    Queue::fake();
+    Log::spy();
+
+    $job = new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'],
+        turnId: (string) Str::ulid(),
+    );
+
+    expect(fn (): mixed => $job->handle(resolve(CreditService::class)))->toThrow(Exception::class);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context = []): bool => $message === 'Chat provider rejected the turn'
+            && $context['model'] === 'claude-sonnet-5'
+            && $context['status'] === 400
+            && $context['error_type'] === 'invalid_request_error'
+            && $context['error_message'] === $errorMessage);
+})->with([
+    'an invalid request' => ['model: claude-sonnet-5 is not available'],
+    'a credit balance too low' => ['Your credit balance is too low to access the Anthropic API.'],
+]);
+
+it('logs the provider rejection before an auto pick fails over', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'type' => 'error',
+            'error' => ['type' => 'invalid_request_error', 'message' => 'model: claude-sonnet-5 is not available'],
+        ], 400),
+    ]);
+    Queue::fake();
+    Log::spy();
+
+    $job = new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'auto'],
+        turnId: (string) Str::ulid(),
+    );
+
+    $job->handle(resolve(CreditService::class));
+
+    Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $pushed): bool => $pushed->failoverDepth === 1);
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context = []): bool => $message === 'Chat provider rejected the turn'
+            && $context['error_type'] === 'invalid_request_error');
+});
+
+it('logs the provider error type and message when the provider reports a rejection in the stream', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    AnthropicSse::fake(AnthropicSse::STREAM_STARTED_THEN_ERROR);
+    Queue::fake();
+    Log::spy();
+
+    $job = new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'],
+        turnId: (string) Str::ulid(),
+    );
+
+    expect(fn (): mixed => $job->handle(resolve(CreditService::class)))->toThrow(RuntimeException::class);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context = []): bool => $message === 'Chat provider rejected the turn'
+            && $context['model'] === 'claude-sonnet-5'
+            && $context['error_type'] === 'invalid_request_error'
+            && $context['error_message'] === 'bad request');
 });
