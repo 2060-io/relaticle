@@ -18,6 +18,17 @@ months two copies of the same field vocabulary drifted apart.
 
 - This project uses **PostgreSQL exclusively**. Do not add SQLite/MySQL compatibility layers, driver checks, or conditional SQL
 - Migrations must only have `up()` methods. Never write a `down()` method
+- Prove a migration by rehearsing it on anonymized production data, never with a test. A test
+  seeds the rows its author imagined. Production holds the rest: `creation_source = 'system'`
+  meant both seeded samples and mailbox-synced contacts, which no fixture mixed. The rehearsal:
+  1. Export read-only from production: `pg_dump -s` for the schema, `pg_dump -a -t migrations`
+     so only the new migration is pending, and `\copy` of every table the migration reads.
+     Replace personal columns in the export query (names, emails, bodies, free-text JSON values)
+  2. Load the export into a scratch database. Tables loaded without their parents need
+     `set session_replication_role = replica`. Save a before-state query of the rows in scope
+  3. Run `DB_DATABASE=<scratch> php artisan migrate --force` and confirm only the new migration
+     ran. Diff the after-state against the before-state, row counts and the rows it must leave alone
+  4. Run `migrate` again to prove it is a no-op, then drop the scratch database and delete the export
 - A data backfill the query builder can express belongs in the migration, chunked with
   `eachById`: no models, no file access, no app code. This is the only shape that reaches a
   self-hosted install unaided. `2026_09_10_000000_convert_markdown_editor_custom_fields_to_rich_editor`

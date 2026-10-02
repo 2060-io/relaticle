@@ -217,6 +217,17 @@ months two copies of the same field vocabulary drifted apart.
 
 - This project uses **PostgreSQL exclusively**. Do not add SQLite/MySQL compatibility layers, driver checks, or conditional SQL
 - Migrations must only have `up()` methods. Never write a `down()` method
+- Prove a migration by rehearsing it on anonymized production data, never with a test. A test
+  seeds the rows its author imagined. Production holds the rest: `creation_source = 'system'`
+  meant both seeded samples and mailbox-synced contacts, which no fixture mixed. The rehearsal:
+  1. Export read-only from production: `pg_dump -s` for the schema, `pg_dump -a -t migrations`
+     so only the new migration is pending, and `\copy` of every table the migration reads.
+     Replace personal columns in the export query (names, emails, bodies, free-text JSON values)
+  2. Load the export into a scratch database. Tables loaded without their parents need
+     `set session_replication_role = replica`. Save a before-state query of the rows in scope
+  3. Run `DB_DATABASE=<scratch> php artisan migrate --force` and confirm only the new migration
+     ran. Diff the after-state against the before-state, row counts and the rows it must leave alone
+  4. Run `migrate` again to prove it is a no-op, then drop the scratch database and delete the export
 - A data backfill the query builder can express belongs in the migration, chunked with
   `eachById`: no models, no file access, no app code. This is the only shape that reaches a
   self-hosted install unaided. `2026_09_10_000000_convert_markdown_editor_custom_fields_to_rich_editor`
@@ -379,6 +390,9 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
 - Never write tests that assert on source code as text (reading a Blade/PHP file
   and checking it contains a string). They break on refactors and pass on broken
   behavior. Test the rendered/runtime behavior instead.
+- Do not write tests for migrations, schema changes and backfills included. Rehearse them on
+  anonymized production data instead, as the Database section of `core.md` describes.
+  `tests/Arch/ConventionsTest.php` fails when a test outside `tests/Arch/` loads a migration file.
 - `tests/Pest.php` binds `TestCase` + `LazilyRefreshDatabase` for the Feature,
   Smoke, and Browser suites. Don't repeat `uses(...)` per file there.
 - Use `mutates(ClassName::class)` in test files to declare which source classes
@@ -534,11 +548,9 @@ every help and docs page, not just that file. Use a period or a comma there.
 
 # Laravel Boost Guidelines
 
-The Laravel Boost guidelines are specifically curated by Laravel maintainers for this application. These guidelines should be followed closely to ensure the best experience when building Laravel applications.
-
 ## Foundational Context
 
-This application is a Laravel application running on PHP 8.5. You are an expert with the Laravel ecosystem. Always use the APIs that match the installed major version of each package — do not assume a version.
+This application is a Laravel application running on PHP 8.5. Always use the APIs that match the installed major version of each package — do not assume a version.
 
 Before relying on a package's API, confirm its installed version:
 - PHP packages: run `composer show --direct` to list direct dependencies with versions, or `composer show <vendor/package>` for a single package.
@@ -565,15 +577,11 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Frontend Bundling
 
-- If the user doesn't see a frontend change reflected in the UI, it could mean they need to run `pnpm run build`, `pnpm run dev`, or `composer run dev`. Ask them.
+- If a frontend change doesn't show in the UI or you get a "Unable to locate file in Vite manifest" error, run `pnpm run build` or ask the user to run `pnpm run dev` or `composer run dev`.
 
 ## Documentation Files
 
 - You must only create documentation files if explicitly requested by the user.
-
-## Replies
-
-- Be concise in your explanations - focus on what's important rather than explaining obvious details.
 
 === boost rules ===
 
@@ -603,8 +611,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Project Rules
 
-- This project contains committed, area-grouped rules in `.ai/rules` when that directory exists (settled decisions, non-obvious traps, standing constraints). Framework and package guidelines that only apply to specific paths (testing, frontend, components) also live there, under `.ai/rules/boost` — this is not just recorded decisions, it is load-bearing guidance you have not seen inline. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
-- Record a rule with `record-rule` only when the user explicitly asks for one. Instructions for the work at hand are not rules, no matter how emphatic: "remove this typo", "use X here" are work to do, not rules to record. Never record a rule on your own initiative, as a byproduct of a change, or to summarize what you just did. When the user does ask, pass a `glob` (e.g. `app/Http/Controllers/**`), a short `title`, and a few-line `note`. Use `record-rule` rather than your native memory or notes tool, because native memory is personal and session-scoped, while only `.ai/rules` is shared with the team and persists in the repo.
+- This project contains committed, area-grouped rules in `.ai/rules` when that directory exists, including path-scoped framework guidelines under `.ai/rules/boost`. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
 
 ## Artisan
 
@@ -634,7 +641,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
-- Activate the `deploying-to-cloud` skill whenever deploying to Laravel Cloud, configuring Cloud environments or resources, using the Cloud CLI, or troubleshooting Cloud deployments.
 
 === herd rules ===
 
@@ -664,10 +670,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 ## URL Generation
 
 - When generating links to other pages, prefer named routes and the `route()` function.
-
-## Vite Error
-
-- If you receive an "Illuminate\Foundation\ViteException: Unable to locate file in Vite manifest" error, you can run `pnpm run build` or ask the user to run `pnpm run dev` or `composer run dev`.
 
 === pint/core rules ===
 
