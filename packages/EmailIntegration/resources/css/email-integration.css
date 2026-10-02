@@ -110,6 +110,24 @@
     }
 }
 
+/* The window already frames the draft, so the editor drops Filament's input box:
+   its toolbar sits on the same gutter and divider as the To and Subject rows. */
+.email-composer-body.fi-input-wrp {
+    @apply rounded-none bg-transparent shadow-none ring-0 dark:bg-transparent;
+
+    &:not(.fi-disabled):not(:has(.fi-ac-action:focus)) {
+        @apply focus-within:ring-0;
+    }
+
+    & .fi-fo-rich-editor-toolbar {
+        @apply border-gray-100 px-0 dark:border-white/5;
+    }
+
+    & .fi-fo-rich-editor-content {
+        @apply px-0;
+    }
+}
+
 .email-composer-body {
     @apply flex h-full flex-col;
 

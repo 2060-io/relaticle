@@ -1076,6 +1076,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     {
         return $schema->components([
             RichEditor::make('bodyHtml')
+                ->label(__('filament/emails/composer.fields.message'))
                 ->hiddenLabel()
                 ->resizableImages()
                 ->fileAttachmentsDisk(EmailAttachment::DISK)
