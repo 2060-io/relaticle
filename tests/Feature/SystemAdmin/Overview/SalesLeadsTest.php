@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 use App\Enums\CreationSource;
 use App\Enums\Plan;
+use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Livewire\Features\SupportTesting\Testable;
+use Relaticle\Chat\Models\AiCreditBalance;
+use Relaticle\SystemAdmin\Enums\LeadStage;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\SalesLeads;
 use Relaticle\SystemAdmin\Metrics\SalesLeadsQuery;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Tests\Helpers\OverviewData;
 
-mutates(SalesLeads::class, SalesLeadsQuery::class);
+mutates(SalesLeads::class, SalesLeadsQuery::class, LeadStage::class);
 
 beforeEach(function (): void {
     $this->actingAs(SystemAdministrator::factory()->create(), 'sysadmin');
@@ -23,7 +27,19 @@ beforeEach(function (): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-15 12:00:00'));
 });
 
-it('lists non-paying customers with real use, most active first, and says why', function (): void {
+function leadsOn(LeadStage $stage): Testable
+{
+    return livewire(SalesLeads::class)->callAction(TestAction::make("stage_{$stage->value}")->table());
+}
+
+function endedTrial(Workspace $workspace, CarbonImmutable $startedAt): Workspace
+{
+    $workspace->forceFill(['plan' => Plan::Free, 'trial_ends_at' => null, 'pro_trial_used_at' => $startedAt])->save();
+
+    return $workspace->refresh();
+}
+
+it('lists free customers with real use, most active first, and says why', function (): void {
     $light = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
     OverviewData::ownRecord(OverviewData::workspaceOf($light), $light, now()->subDay());
 
@@ -49,7 +65,7 @@ it('lists non-paying customers with real use, most active first, and says why', 
     $internal = OverviewData::internalOwner();
     OverviewData::ownRecord(OverviewData::workspaceOf($internal), $internal, now()->subDay());
 
-    livewire(SalesLeads::class)
+    leadsOn(LeadStage::Free)
         ->assertCanSeeTableRecords([
             OverviewData::workspaceOf($busy),
             OverviewData::workspaceOf($steady),
@@ -76,7 +92,7 @@ it('leaves out workspaces that already pay or are on a negotiated plan', functio
     $free = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
     OverviewData::ownRecord(OverviewData::workspaceOf($free), $free, now()->subDay());
 
-    livewire(SalesLeads::class)
+    leadsOn(LeadStage::Free)
         ->assertCanSeeTableRecords([OverviewData::workspaceOf($free)])
         ->assertCanNotSeeTableRecords([$subscribed, OverviewData::workspaceOf($negotiated)]);
 });
@@ -87,13 +103,13 @@ it('renders an empty list when nobody qualifies', function (): void {
         ->assertCountTableRecords(0);
 });
 
-it('shows at most ten workspaces', function (): void {
+it('shows ten workspaces a page', function (): void {
     for ($workspace = 0; $workspace < 11; $workspace++) {
         $owner = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
         OverviewData::ownRecord(OverviewData::workspaceOf($owner), $owner, now()->subDay());
     }
 
-    expect(livewire(SalesLeads::class)->instance()->getTableRecords())->toHaveCount(10);
+    expect(leadsOn(LeadStage::Free)->instance()->getTableRecords())->toHaveCount(10);
 });
 
 it('counts the last 30 calendar days, today included, as active days', function (): void {
@@ -103,7 +119,7 @@ it('counts the last 30 calendar days, today included, as active days', function 
     OverviewData::ownRecord($workspace, $owner, CarbonImmutable::parse('2026-09-16 12:00:00'));
     OverviewData::ownRecord($workspace, $owner, now());
 
-    livewire(SalesLeads::class)->assertSee('3 records, 2 active days');
+    leadsOn(LeadStage::Free)->assertSee('3 records, 2 active days');
 });
 
 it('lists a workspace whose owner no longer exists, without an email action', function (): void {
@@ -115,7 +131,7 @@ it('lists a workspace whose owner no longer exists, without an email action', fu
     $present = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
     OverviewData::ownRecord(OverviewData::workspaceOf($present), $present, now()->subDay());
 
-    livewire(SalesLeads::class)
+    leadsOn(LeadStage::Free)
         ->assertCanSeeTableRecords([$orphaned, OverviewData::workspaceOf($present)])
         ->assertActionHidden(TestAction::make('emailOwner')->table($orphaned))
         ->assertActionVisible(TestAction::make('emailOwner')->table(OverviewData::workspaceOf($present)));
@@ -123,4 +139,54 @@ it('lists a workspace whose owner no longer exists, without an email action', fu
 
 it('explains who makes the list in a tooltip', function (): void {
     livewire(SalesLeads::class)->assertSee('Log outreach in the Relaticle HQ workspace');
+});
+
+it('opens on trials with their own data, the one ending soonest first', function (): void {
+    $later = OverviewData::owner(CarbonImmutable::parse('2026-10-10'));
+    $laterTrial = OverviewData::trial(OverviewData::workspaceOf($later));
+    OverviewData::ownRecord($laterTrial, $later, now()->subDay());
+
+    $sooner = OverviewData::owner(CarbonImmutable::parse('2026-10-03'));
+    $soonerTrial = OverviewData::trial(OverviewData::workspaceOf($sooner));
+    $soonerTrial->forceFill(['trial_ends_at' => now()->addDays(2)->subHour()])->save();
+    OverviewData::ownRecord($soonerTrial, $sooner, now()->subDays(3), CreationSource::IMPORT);
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $soonerTrial->getKey()], [
+        'credits_remaining' => 960, 'credits_used' => 40, 'period_starts_at' => now()->startOfMonth(), 'period_ends_at' => now()->endOfMonth(),
+    ]);
+
+    $empty = OverviewData::owner(CarbonImmutable::parse('2026-10-10'));
+    OverviewData::trial(OverviewData::workspaceOf($empty));
+
+    $free = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    OverviewData::ownRecord(OverviewData::workspaceOf($free), $free, now()->subDay());
+
+    livewire(SalesLeads::class)
+        ->assertCanSeeTableRecords([$soonerTrial, $laterTrial], inOrder: true)
+        ->assertCanNotSeeTableRecords([OverviewData::workspaceOf($empty), OverviewData::workspaceOf($free)])
+        ->assertTableColumnStateSet('stage', '2 days left', $soonerTrial)
+        ->assertTableColumnStateSet('stage', '14 days left', $laterTrial)
+        ->assertSee('1 record (imported), 1 active day, 40 chat credits used')
+        ->assertSee('Trialing (2)')
+        ->assertSee('Free (1)');
+});
+
+it('lists ended trials with their own data, the most recent first', function (): void {
+    $recent = OverviewData::owner(CarbonImmutable::parse('2026-09-28'));
+    $recentEnded = endedTrial(OverviewData::workspaceOf($recent), CarbonImmutable::parse('2026-09-28 12:00:00'));
+    OverviewData::ownRecord($recentEnded, $recent, CarbonImmutable::parse('2026-09-29 12:00:00'));
+
+    $older = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    $olderEnded = endedTrial(OverviewData::workspaceOf($older), CarbonImmutable::parse('2026-09-01 12:00:00'));
+    OverviewData::ownRecord($olderEnded, $older, CarbonImmutable::parse('2026-09-02 12:00:00'));
+
+    $empty = OverviewData::owner(CarbonImmutable::parse('2026-09-28'));
+    endedTrial(OverviewData::workspaceOf($empty), CarbonImmutable::parse('2026-09-28 12:00:00'));
+
+    leadsOn(LeadStage::TrialEnded)
+        ->assertCanSeeTableRecords([$recentEnded, $olderEnded], inOrder: true)
+        ->assertCanNotSeeTableRecords([OverviewData::workspaceOf($empty)])
+        ->assertTableColumnStateSet('stage', 'Ended 3 days ago', $recentEnded)
+        ->assertTableColumnStateSet('stage', 'Ended 30 days ago', $olderEnded)
+        ->assertSee(LeadStage::TrialEnded->getHelp())
+        ->assertDontSee(LeadStage::Trialing->getHelp());
 });

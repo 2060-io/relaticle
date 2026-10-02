@@ -134,15 +134,23 @@ shows a dot, never 0%.
 
 ### Row 3: Who should I talk to next? (`SalesLeads`)
 
-A `TableWidget` of up to ten external, non-paying, non-suspect workspaces with own data,
-ordered by active days in the last 30 days, then own records. Outreach is tracked in the
-Relaticle HQ workspace, so the panel stores no contact state.
+A `TableWidget` of external workspaces with own data and no paid or Enterprise plan, ten a page,
+split by stage (`Relaticle\SystemAdmin\Enums\LeadStage`). Stage buttons above the table show
+each count; the list opens on Trialing. A trial ends inside 14 days, so ranking trials by active
+days in 30 buried the ones about to end. Ended trials with no own data are left out. Outreach is
+tracked in the Relaticle HQ workspace, so the panel stores no contact state.
+
+| Stage | Billing statuses | Order | Stage column |
+|---|---|---|---|
+| Trialing | Trialing | Trial end, soonest first | "N days left" |
+| Trial ended | Trial ended | Trial end, most recent first (`trial_ends_at`, or `pro_trial_used_at` plus 14 days once the nightly downgrade clears it) | "Ended N days ago" |
+| Free | Free, grandfathered, granted, subscription ended | Active days in 30, then own records | Billing status label |
 
 | Column | Content |
 |---|---|
 | Workspace | Name, linking to the SysAdmin workspace view |
-| Why | Own records, active days (30d), teammates, and "uses API", "uses MCP" or "imported" when present |
-| Plan | `BillingStatus` label |
+| Stage | See above |
+| Why | Own records (marked imported when any were), active days (30d), chat credits used, teammates, and "uses API" or "uses MCP" when present |
 | Last active | Latest active day |
 | Actions | **Open as user** (`Impersonate::workspaceOwner()`), **Email owner** (`mailto:`) |
 
