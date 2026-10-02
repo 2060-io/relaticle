@@ -21,7 +21,8 @@ final class RelatedRecordColumns
     public static function people(): array
     {
         return [
-            RecordChipColumn::make('name'),
+            RecordChipColumn::make('name')
+                ->searchable(),
             ...self::customFields(People::class, [PeopleField::JOB_TITLE, PeopleField::EMAILS]),
         ];
     }
@@ -32,10 +33,12 @@ final class RelatedRecordColumns
     public static function tasks(): array
     {
         return [
-            TextColumn::make('title'),
+            TextColumn::make('title')
+                ->searchable(),
             ...self::customFields(Task::class, [TaskField::STATUS, TaskField::DUE_DATE]),
             RecordChipColumn::make('assignees.name')
-                ->label(__('filament/resources/task.fields.assignees.label')),
+                ->label(__('filament/resources/task.fields.assignees.label'))
+                ->searchable(),
         ];
     }
 
@@ -45,7 +48,8 @@ final class RelatedRecordColumns
     public static function notes(): array
     {
         return [
-            TextColumn::make('title'),
+            TextColumn::make('title')
+                ->searchable(),
             TextColumn::make('created_at')
                 ->label(__('filament/resources/note.fields.created_at.label'))
                 ->dateTime()

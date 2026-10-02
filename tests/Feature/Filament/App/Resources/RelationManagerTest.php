@@ -119,3 +119,64 @@ it('links the company people view action to the person view page', function (): 
         'pageClass' => ViewCompany::class,
     ])->assertActionHasUrl(TestAction::make('view')->table($person), PeopleResource::getUrl('view', ['record' => $person]));
 });
+
+it('searches the company tabs by name, title and assignee', function (string $relationManager, Closure $setUp, string $search): void {
+    [$company, $match, $other] = $setUp($this->user, $this->workspace);
+
+    livewire($relationManager, [
+        'ownerRecord' => $company,
+        'pageClass' => ViewCompany::class,
+    ])
+        ->searchTable($search)
+        ->assertCanSeeTableRecords([$match])
+        ->assertCanNotSeeTableRecords([$other]);
+})->with([
+    'people by name' => [
+        PeopleRelationManager::class,
+        function (User $user, $workspace): array {
+            $company = Company::factory()->recycle([$user, $workspace])->create();
+            $match = People::factory()->recycle([$user, $workspace])->create(['company_id' => $company->getKey(), 'name' => 'Brian Chesky']);
+            $other = People::factory()->recycle([$user, $workspace])->create(['company_id' => $company->getKey(), 'name' => 'Nathan Blecharczyk']);
+
+            return [$company, $match, $other];
+        },
+        'chesky',
+    ],
+    'tasks by title' => [
+        CompanyTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $company = Company::factory()->recycle([$user, $workspace])->create();
+            [$match, $other] = $company->tasks()->saveMany([
+                Task::factory()->recycle([$user, $workspace])->make(['title' => 'Renewal call']),
+                Task::factory()->recycle([$user, $workspace])->make(['title' => 'Send contract']),
+            ]);
+
+            return [$company, $match, $other];
+        },
+        'renewal',
+    ],
+    'tasks by assignee' => [
+        CompanyTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $company = Company::factory()->recycle([$user, $workspace])->create();
+            [$match, $other] = $company->tasks()->saveMany(Task::factory(2)->recycle([$user, $workspace])->make());
+            $match->assignees()->attach(User::factory()->create(['name' => 'Priya Raman']));
+
+            return [$company, $match, $other];
+        },
+        'priya',
+    ],
+    'notes by title' => [
+        CompanyNotesRelationManager::class,
+        function (User $user, $workspace): array {
+            $company = Company::factory()->recycle([$user, $workspace])->create();
+            [$match, $other] = $company->notes()->saveMany([
+                Note::factory()->recycle([$user, $workspace])->make(['title' => 'Pricing objections']),
+                Note::factory()->recycle([$user, $workspace])->make(['title' => 'Kickoff agenda']),
+            ]);
+
+            return [$company, $match, $other];
+        },
+        'pricing',
+    ],
+]);
