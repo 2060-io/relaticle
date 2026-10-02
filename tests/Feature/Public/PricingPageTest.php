@@ -471,3 +471,24 @@ it('keeps the shipped seed catalog free of copy holes on both public pages', fun
     assertNoCopyHoles((string) $this->get('/pricing')->assertOk()->getContent());
     assertNoCopyHoles((string) $this->get('/ai')->assertOk()->getContent());
 });
+
+it('keeps the plans help article in step with the pricing page', function (): void {
+    Feature::define(BillingFeature::class, true);
+
+    $pricing = $this->get('/pricing')->assertOk()->getContent();
+    $article = $this->get(route('help.show', ['category' => 'workspace', 'slug' => 'billing-and-plans']))->assertOk()->getContent();
+
+    $facts = [
+        '$19/mo',
+        '$24/mo',
+        '$228',
+        Workspace::PRO_TRIAL_DAYS.'-day',
+        number_format(Plan::Pro->credits()),
+        '$'.number_format(config('relaticle.enterprise.starting_price_yearly')),
+    ];
+
+    foreach ($facts as $fact) {
+        expect($pricing)->toContain($fact)
+            ->and($article)->toContain($fact);
+    }
+});
