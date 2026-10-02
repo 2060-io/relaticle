@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use App\Actions\Billing\StartProTrial;
 use App\Enums\Plan;
 use App\Features\Billing as BillingFeature;
+use App\Models\Workspace;
 use App\Support\CompetitorFacts;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Services\ModelRegistry;
@@ -240,7 +240,7 @@ it('discloses that self-hosted installs are not exempt from the free-tier credit
     expect($windows)->not->toBeEmpty()
         ->and($windows->contains(fn (string $answer): bool => str_contains($answer, (string) Plan::Free->credits())
             && str_contains($answer, number_format(Plan::Pro->credits()))
-            && str_contains($answer, StartProTrial::TRIAL_DAYS.'-day')))->toBeTrue('the FAQ answer must state the Free credits, the Pro credits and the trial length')
+            && str_contains($answer, Workspace::PRO_TRIAL_DAYS.'-day')))->toBeTrue('the FAQ answer must state the Free credits, the Pro credits and the trial length')
         ->and($html)->not->toContain('brand-new Cloud signup gets exactly the same one')
         ->and($html)->not->toContain("\u{2014}");
 });

@@ -178,6 +178,8 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
      */
     public const int INVITE_LINK_TTL_DAYS = 7;
 
+    public const int PRO_TRIAL_DAYS = 14;
+
     /**
      * The event map for the model.
      *
