@@ -274,14 +274,33 @@ it('shows timeout-specific copy when the turn times out', function (): void {
         'updated_at' => now(),
     ]);
 
-    makeFailedTurnJob($user, $conversationId)->failed(new TimeoutExceededException('timed out'));
+    $turnId = (string) Str::ulid();
+    resolve(CreditService::class)->reserveCredit(
+        $workspace,
+        reservationKey: "reserve-{$turnId}",
+        conversationId: $conversationId,
+        userId: (string) $user->getKey(),
+    );
+
+    new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'Write the whole chapter',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'ollama', 'model' => 'qwen3:8b', 'id' => 'ollama', 'source' => 'auto'],
+        turnId: $turnId,
+    )->failed(new TimeoutExceededException('timed out'));
 
     $note = DB::table('agent_conversation_messages')
         ->where('conversation_id', $conversationId)
         ->where('role', 'assistant')
         ->value('content');
 
-    expect($note)->toContain('respond within the time limit');
+    $balance = AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->first();
+
+    expect($note)->toBe('This reply hit the 120-second limit before it finished. Ask for a shorter answer, or for it in parts.')
+        ->and($balance->credits_remaining)->toBe(100)
+        ->and($balance->credits_used)->toBe(0);
 });
 
 it('orders the backfilled failed turn before a later retried turn when sorted by id', function (): void {
@@ -323,7 +342,7 @@ it('orders the backfilled failed turn before a later retried turn when sorted by
     expect($messages[0]->role)->toBe('user')
         ->and($messages[0]->content)->toBe('Create a task titled BR-Foo')
         ->and($messages[1]->role)->toBe('assistant')
-        ->and($messages[1]->content)->toContain('respond within the time limit')
+        ->and($messages[1]->content)->toContain('hit the 120-second limit')
         ->and($messages[2]->role)->toBe('user')
         ->and($messages[2]->content)->toBe('Retry: create a task titled BR-Foo')
         ->and($messages[3]->role)->toBe('assistant')

@@ -572,7 +572,7 @@ final class ProcessChatMessage implements ShouldQueue
     private function failureMessage(?Throwable $exception): string
     {
         if ($exception instanceof TimeoutExceededException) {
-            return __("This model didn't respond within the time limit (:seconds s). Try a shorter prompt, or switch to a faster model.", [
+            return __('This reply hit the :seconds-second limit before it finished. Ask for a shorter answer, or for it in parts.', [
                 'seconds' => self::TIMEOUT_SECONDS,
             ]);
         }
