@@ -42,7 +42,7 @@ return [
         'outgoing_description' => "You haven't asked for access to any emails yet.",
     ],
     'actions' => [
-        'open_email' => 'Open in inbox',
+        'open_email' => 'Open email',
         'approve' => [
             'label' => 'Approve',
             'modal_heading' => 'Approve access request',
