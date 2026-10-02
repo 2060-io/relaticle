@@ -759,16 +759,25 @@ body:has(.fi-record-page) {
         @apply isolate rounded-none bg-transparent shadow-none ring-0 dark:bg-transparent;
     }
 
+    /* One row: heading, then search and filters, then the header actions at the end. */
     .fi-ta-header-ctn {
-        @apply flex flex-wrap items-center;
+        @apply flex flex-wrap items-center gap-x-3 gap-y-2 px-6 py-2.5;
     }
 
     .fi-ta-header {
-        @apply min-w-0 flex-1 border-b-0;
+        @apply contents;
+
+        & > :not(.fi-ta-actions) {
+            @apply min-w-0 flex-1;
+        }
+
+        & > .fi-ta-actions {
+            @apply order-2;
+        }
     }
 
     .fi-ta-header-toolbar {
-        @apply border-b-0 py-0 ps-0;
+        @apply order-1 border-b-0 p-0;
     }
 
     .fi-section:not(.fi-section-not-contained) {
