@@ -1,3 +1,5 @@
+@use('Illuminate\Support\Number')
+
 @props([
     'account',
     'icon',
@@ -8,7 +10,7 @@
     $showsPercent = $percent !== null
         && ($account->showsMailboxHistoryImportPercent() || $account->showsCalendarSyncProgress() || $account->isEmailSyncing());
     $imported = $percent === null ? $account->syncEmailsProcessedCount() : 0;
-    $importedLabel = trans_choice('filament/pages/email-accounts.importing_count', $imported, ['count' => \Illuminate\Support\Number::format($imported)]);
+    $importedLabel = trans_choice('filament/pages/email-accounts.importing_count', $imported, ['count' => Number::format($imported)]);
 @endphp
 
 <x-filament::badge

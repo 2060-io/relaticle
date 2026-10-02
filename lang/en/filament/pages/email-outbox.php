@@ -13,6 +13,12 @@ return [
         'priority' => 'Single email',
         'bulk' => 'Mass send',
     ],
+    'batch_statuses' => [
+        'queued' => 'Queued',
+        'sending' => 'Sending',
+        'completed' => 'Completed',
+        'partial_failure' => 'Partial failure',
+    ],
     'tabs' => [
         'queued' => 'Queued',
         'scheduled' => 'Scheduled',

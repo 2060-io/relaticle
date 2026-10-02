@@ -36,8 +36,6 @@ final class EmailSignaturesPage extends Page
 
     protected static ?string $slug = 'workspace/email/signatures';
 
-    protected static ?string $title = null;
-
     protected static bool $shouldRegisterNavigation = false;
 
     protected static ?int $navigationSort = 2;
