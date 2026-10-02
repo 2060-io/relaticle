@@ -709,6 +709,25 @@ it('notifies when an inline reply draft is saved on dismiss', function (): void 
         ->assertSet('isOpen', false);
 });
 
+it('opens a saved draft that has no body', function (): void {
+    $draft = Email::query()->create([
+        'workspace_id' => $this->user->current_workspace_id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'subject' => 'Subject only',
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::DRAFT,
+        'privacy_tier' => EmailPrivacyTier::PRIVATE,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]);
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open', draftId: (string) $draft->getKey())
+        ->assertSet('isOpen', true)
+        ->assertSet('draftId', (string) $draft->getKey())
+        ->assertSet('subject', 'Subject only');
+});
+
 it('deletes the draft after a successful send', function (): void {
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')

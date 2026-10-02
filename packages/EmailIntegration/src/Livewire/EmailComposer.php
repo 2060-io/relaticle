@@ -2081,7 +2081,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         }
 
         $this->subject = $draft->subject;
-        $this->setBodyHtml((string) $draft->body?->body_html);
+        $this->setBodyHtml($draft->body?->body_html ?: '<p></p>');
 
         $this->to = $this->participantAddresses($draft, EmailParticipantRole::TO);
         $this->cc = $this->participantAddresses($draft, EmailParticipantRole::CC);
