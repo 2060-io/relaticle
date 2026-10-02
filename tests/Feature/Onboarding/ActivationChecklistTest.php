@@ -149,7 +149,8 @@ it('shows an inline syncing row without a percent while the mailbox is still bei
         ->assertSeeHtml(stepState('sync_email', true))
         ->assertSeeHtml('data-testid="activation-email-sync-progress"')
         ->assertSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing'))
-        ->assertDontSee('12%');
+        ->assertDontSee('12%')
+        ->assertDontSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing_percent', ['percent' => 0]));
 });
 
 it('shows the highest import percent when another mailbox is still at zero', function (): void {
