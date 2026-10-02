@@ -32,6 +32,7 @@ use App\Models\People;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Support\Str;
 use Relaticle\CustomFields\Services\TenantContextService;
 
 mutates(HasRecordPageLayout::class, CountsRelatedRecords::class);
@@ -94,6 +95,16 @@ it('offers edit, copy and delete from the details rail on the :dataset page', fu
         ->assertActionExists(railAction('copyRecordId'))
         ->assertActionExists(railAction('delete'));
 })->with('record pages');
+
+it('marks custom field labels with the same outline icon set as the native details', function (): void {
+    $opportunity = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    $iconPath = fn (string $icon): string => Str::match('/ d="([^"]+)"/', svg($icon)->contents());
+
+    livewire(ViewOpportunity::class, ['record' => $opportunity->getKey()])
+        ->assertSeeHtml($iconPath('heroicon-o-chevron-up-down'))
+        ->assertDontSeeHtml($iconPath('mdi-form-select'))
+        ->assertDontSeeHtml($iconPath('mdi-calendar'));
+});
 
 it('credits a system created record to the system in the record info', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create([

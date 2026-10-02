@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Concerns;
 
+use App\Enums\CustomFieldType;
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Models\Company;
 use App\Models\CustomField;
@@ -183,11 +184,11 @@ trait HasRecordPageLayout
         $customFields = CustomFields::infolist()->withoutSections()->forSchema($schema);
 
         $customFieldIcons = $customFields->getFields()
-            ->mapWithKeys(fn (CustomField $field): array => [$field->getFieldName() => $field->typeData->icon]);
+            ->mapWithKeys(fn (CustomField $field): array => [$field->getFieldName() => CustomFieldType::tryFrom($field->type)?->icon()]);
 
         $entries = collect($this->nativeDetailEntries())
             ->concat($customFields->values()->map(fn (Entry $entry): Entry => $entry
-                ->beforeLabel(Icon::make($customFieldIcons->get($entry->getName(), Heroicon::OutlinedSquares2x2)))))
+                ->beforeLabel(Icon::make($customFieldIcons->get($entry->getName()) ?? Heroicon::OutlinedSquares2x2))))
             ->map(fn (Entry $entry): Entry => $entry
                 ->inlineLabel()
                 ->columnSpan(['default' => 'full', 'lg' => 'full'])
