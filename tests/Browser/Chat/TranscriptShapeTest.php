@@ -953,7 +953,7 @@ it('anchors a sent message near the top and holds it there while the reply and i
     $settled = transcriptShapeAnchorPosition($page);
 
     expect($sent['anchorKey'])->toBe($sentMessageKey)
-        ->and($sent['top'])->toBe(48)
+        ->and($sent['top'])->toBe(128)
         ->and([$streaming['top'], $streaming['scrollTop']])->toBe([$sent['top'], $sent['scrollTop']])
         ->and([$settled['top'], $settled['scrollTop']])->toBe([$sent['top'], $sent['scrollTop']])
         ->and($settled['replyHeight'])->toBeGreaterThan($streaming['replyHeight'] + 150)
@@ -1002,6 +1002,40 @@ it('lands the next steps of a short anchored turn directly under the reply', fun
     expect($gap)->toBeLessThan(80);
 });
 
+it('keeps the last lines of the previous reply in view above an anchored message', function (): void {
+    $page = transcriptShapeOpenTwentyMessageConversation('previous reply peek');
+
+    transcriptShapeRun($page, <<<'JS'
+        const paragraph = (i) => 'Line of reasoning ' + i + ' about the pipeline, long enough to wrap across the transcript column.';
+        data.messages.push(data.ensureClientKey({
+            role: 'assistant',
+            content: Array.from({ length: 8 }, (_, i) => paragraph(i + 1)).join(String.fromCharCode(10, 10)),
+            rendered: true,
+            prerendered: false,
+            pending_actions: [],
+            display_blocks: [],
+        }));
+        window.fetch = () => new Promise(() => {});
+        data.localEditor().setText('And the next question.');
+        data.sendMessage();
+
+        return true;
+    JS);
+
+    $sent = transcriptShapeAnchorPosition($page);
+
+    $previousTextBottom = transcriptShapeRun($page, <<<'JS'
+        const scroller = document.querySelector('[data-chat-context="conversation"] [role="log"]');
+        const lastParagraph = [...scroller.querySelectorAll('[data-assistant-bubble] p')]
+            .find((p) => p.textContent.startsWith('Line of reasoning 8 '));
+
+        return Math.round(lastParagraph.getBoundingClientRect().bottom - scroller.getBoundingClientRect().top);
+    JS);
+
+    expect($sent['top'])->toBe(128)
+        ->and($previousTextBottom)->toBeGreaterThanOrEqual(48);
+});
+
 it('anchors a message sent from a next-step suggestion', function (): void {
     $page = transcriptShapeOpenTwentyMessageConversation('next step anchor');
 
@@ -1024,7 +1058,7 @@ it('anchors a message sent from a next-step suggestion', function (): void {
     JS);
 
     expect($sent['anchorKey'])->toBe($sentMessageKey)
-        ->and($sent['top'])->toBe(48);
+        ->and($sent['top'])->toBe(128);
 });
 
 it('keeps the anchored message in place when content above it grows during and after the scroll', function (): void {
@@ -1056,8 +1090,8 @@ it('keeps the anchored message in place when content above it grows during and a
 
     $afterScroll = transcriptShapeAnchorPosition($page);
 
-    expect($duringScroll['top'])->toBe(48)
-        ->and($afterScroll['top'])->toBe(48);
+    expect($duringScroll['top'])->toBe(128)
+        ->and($afterScroll['top'])->toBe(128);
 });
 
 it('lets a reply taller than the viewport run below the fold instead of dragging the transcript after it', function (): void {
@@ -1167,7 +1201,7 @@ it('anchors a resumed turn on its own reply while the reader rests on an anchore
     JS);
 
     expect($resumed['anchorKey'])->toBe($resumedReplyKey)
-        ->and($resumed['top'])->toBe(48);
+        ->and($resumed['top'])->toBe(128);
 });
 
 it('follows the rest of a long reply once the reader jumps to the latest message', function (): void {
@@ -1271,7 +1305,7 @@ it('keeps the transcript still while a resent turn replaces the anchored one', f
 
     expect(array_values(array_unique($paintedScrollTops)))->toBe([$settled['scrollTop']])
         ->and($resent['anchorKey'])->toBe($resentMessageKey)
-        ->and($resent['top'])->toBe(48);
+        ->and($resent['top'])->toBe(128);
 })->with([
     'regenerate' => ['', 'data.regenerateMessage(data.messages.length - 1);'],
     'regenerate with the clamp scroll event first' => [
@@ -1319,7 +1353,7 @@ it('anchors a turn this tab did not send on its own reply', function (): void {
     JS);
 
     expect($resumed['anchorKey'])->toBe($resumedReplyKey)
-        ->and($resumed['top'])->toBe(48);
+        ->and($resumed['top'])->toBe(128);
 });
 
 /**

@@ -28,9 +28,9 @@ const CONVERSATION_ID_PLACEHOLDER = '__CONVERSATION_ID__';
 // visual group (no repeated timestamp/avatar chrome, tighter spacing).
 const GROUPING_GAP_MINUTES = 3;
 
-// Send anchor: an anchored row stops this far below the transcript's top edge,
-// clearing the sticky date pill and leaving the end of the previous turn in view.
-const ANCHOR_GAP_PX = 48;
+// Send anchor: an anchored row stops this far below the transcript's top edge. The
+// previous turn's action row and spacing take 56px, leaving three 24px lines of its text.
+const ANCHOR_GAP_PX = 128;
 // A row taller than this anchors on its tail instead (assistant-ui's 10em/6em).
 const ANCHOR_TALL_ROW_PX = 160;
 const ANCHOR_TALL_ROW_TAIL_PX = 96;
