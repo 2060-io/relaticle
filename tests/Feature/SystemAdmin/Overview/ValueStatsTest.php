@@ -183,3 +183,12 @@ it('shows changed numbers after Refresh redraws the page', function (): void {
 
     livewire(ValueStats::class)->assertDontSee('No real signups that week');
 });
+
+it('explains every number and the cohort table in a tooltip', function (): void {
+    livewire(ValueStats::class)
+        ->assertSee('Only verified people who signed up on their own count')
+        ->assertSee('within 7 days. Sample data does not count')
+        ->assertSee('active in at least 3 of the last 4 full weeks');
+
+    livewire(CohortTable::class)->assertSee('Each row is one week of real signups');
+});

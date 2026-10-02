@@ -17,6 +17,7 @@ use Relaticle\Chat\Models\ChatMessageFeedback;
 use Relaticle\SystemAdmin\Filament\Resources\ChatMessageFeedbackResource;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
+use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
 use Relaticle\SystemAdmin\Filament\Support\ViewerTime;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
 use Relaticle\SystemAdmin\Metrics\Scopes\AbuseSuspect;
@@ -70,10 +71,9 @@ final class ProblemsStats extends StatsOverviewWidget
             ->whereIn('workspace_id', Workspace::query()->withGlobalScope(AbuseSuspect::class, new AbuseSuspect)->select('id'))
             ->exists());
 
-        return Stat::make('Trial abuse suspects', number_format($suspects))
+        return Stat::make(HelpLabel::make('Trial abuse suspects', 'Workspaces still on the Pro trial with no records of their own that either spent at least half their chat credits on premium models or belong to an owner in a region our AI providers do not serve. Red when any of them spent credits in the last 7 days. Open the list to end their trials.'), number_format($suspects))
             ->description($spending ? 'Some are still spending credits' : 'None spent credits this week')
             ->color($suspects === 0 ? 'success' : ($spending ? 'danger' : 'warning'))
-            ->extraAttributes(['title' => 'Trialing workspaces with no own data that mostly used premium models or sit in a region our AI providers do not serve.'])
             ->url(WorkspaceResource::getUrl('index', ['filters' => ['abuse_suspect' => ['isActive' => true]]]));
     }
 
@@ -87,7 +87,7 @@ final class ProblemsStats extends StatsOverviewWidget
             ->count());
         $share = $recent === 0 ? null : (int) round($stuck / $recent * 100);
 
-        return Stat::make('Stuck after setup', $share === null ? "\u{2014}" : "{$share}%")
+        return Stat::make(HelpLabel::make('Stuck after setup', 'Share of new owners, with a workspace 3 to 30 days old, who added no records of their own and typed no chat message in their first 3 days. Red from 60%, amber from 40%.'), $share === null ? "\u{2014}" : "{$share}%")
             ->description($share === null ? 'No owners 3 to 30 days old yet' : "{$stuck} of {$recent} new owners did nothing in their first 3 days")
             ->color(match (true) {
                 $share === null => 'gray',
@@ -95,7 +95,6 @@ final class ProblemsStats extends StatsOverviewWidget
                 $share >= 40 => 'warning',
                 default => 'success',
             })
-            ->extraAttributes(['title' => 'Genuine owners whose workspace is 3 to 30 days old, with no own data and no typed chat message in its first 3 days.'])
             ->url(WorkspaceResource::getUrl('index', ['filters' => ['stuck_after_setup' => ['isActive' => true]]]));
     }
 
@@ -122,14 +121,13 @@ final class ProblemsStats extends StatsOverviewWidget
         });
         $share = $counts['all'] === 0 ? null : (int) round($counts['left'] / $counts['all'] * 100);
 
-        return Stat::make('Left the setup wizard', $share === null ? "\u{2014}" : "{$share}%")
+        return Stat::make(HelpLabel::make('Left the setup wizard', 'Share of real signups from the last 30 days who never created or joined a workspace, split by how they signed up. Amber from 10%.'), $share === null ? "\u{2014}" : "{$share}%")
             ->description($share === null ? 'No signups in the last 30 days' : "{$counts['left']} of {$counts['all']} signups in 30 days".$this->methodSplit($counts['methods']))
             ->color(match (true) {
                 $share === null => 'gray',
                 $share >= 10 => 'warning',
                 default => 'success',
             })
-            ->extraAttributes(['title' => 'Genuine verified signups of the last 30 days who never made a workspace.'])
             ->url(UserResource::getUrl('index', ['filters' => [
                 'genuine_signup' => ['isActive' => true],
                 'no_workspace' => ['isActive' => true],
@@ -158,7 +156,7 @@ final class ProblemsStats extends StatsOverviewWidget
         $week = now()->startOfWeek(CarbonInterface::MONDAY)->toDateString();
         $count = (int) $cache->remember("problems.thumbs.{$week}", fn (): int => self::thumbsDownThisWeek());
 
-        return Stat::make('Thumbs down this week', number_format($count))
+        return Stat::make(HelpLabel::make('Thumbs down this week', 'Assistant answers that people rated thumbs down since Monday. Green at 0, amber at 1 or 2, red from 3. Open the list to read them.'), number_format($count))
             ->description('Answers people rated down since Monday')
             ->color(match (true) {
                 $count === 0 => 'success',

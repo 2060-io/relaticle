@@ -8,6 +8,7 @@ use App\Enums\BillingStatus;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Relaticle\SystemAdmin\Filament\Resources\SubscriptionResource;
+use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
 use Relaticle\SystemAdmin\Metrics\Money;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
 use Relaticle\SystemAdmin\Metrics\Revenue;
@@ -43,10 +44,9 @@ final class MoneyStats extends StatsOverviewWidget
         };
 
         return [
-            Stat::make('MRR', Money::format($mrr))
+            Stat::make(HelpLabel::make('MRR', 'What paying customers pay per month, before tax. Each subscription counts its latest invoice, split into months, so a yearly plan adds a twelfth of its price. Your own workspaces are left out. The change compares with the subscriptions that were active a week ago.'), Money::format($mrr))
                 ->description($description)
                 ->color($mrr === null ? 'gray' : 'primary')
-                ->extraAttributes(['title' => 'What each paying customer paid on their last invoice, before tax, per month. Your own workspaces are excluded.'])
                 ->url(SubscriptionResource::getUrl('index', ['filters' => ['counts_toward_mrr' => ['isActive' => true]]])),
         ];
     }

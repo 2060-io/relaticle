@@ -89,3 +89,9 @@ it('shows MRR gray when Stripe is unavailable', function (): void {
 
     expect($html)->not->toContain('fi-color-primary');
 });
+
+it('explains how MRR is counted in a tooltip', function (): void {
+    livewire(MoneyStats::class)
+        ->assertSeeHtml('x-tooltip')
+        ->assertSee('Each subscription counts its latest invoice, split into months');
+});

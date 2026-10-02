@@ -7,6 +7,8 @@ namespace Relaticle\SystemAdmin\Filament\Widgets\Overview;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Filament\Widgets\Widget;
+use Illuminate\Support\HtmlString;
+use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
 use Relaticle\SystemAdmin\Metrics\Cohorts;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
 
@@ -19,7 +21,7 @@ final class CohortTable extends Widget
     protected string $view = 'system-admin::filament.widgets.cohort-table';
 
     /**
-     * @return array{rows: list<array{week: CarbonImmutable, size: int, shares: list<int|null>}>}
+     * @return array{heading: HtmlString, rows: list<array{week: CarbonImmutable, size: int, shares: list<int|null>}>}
      */
     protected function getViewData(): array
     {
@@ -27,6 +29,9 @@ final class CohortTable extends Widget
         $week = now()->startOfWeek(CarbonInterface::MONDAY)->toDateString();
         $rows = (new OverviewCache)->remember("value.cohorts.{$week}", fn (): array => Cohorts::rows());
 
-        return ['rows' => $rows];
+        return [
+            'heading' => HelpLabel::make('Who comes back', 'Each row is one week of real signups. Each column is the share of them who were active that week: they added a record of their own or typed a chat message. A dot means that week has not happened yet.'),
+            'rows' => $rows,
+        ];
     }
 }

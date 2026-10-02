@@ -1,5 +1,5 @@
 <x-filament-widgets::widget>
-    <x-filament::section heading="Who comes back" description="Share of each week's real signups active (own data or typed chat) in their signup week and each of the next three weeks. A curve that stops falling is the goal.">
+    <x-filament::section :heading="$heading" description="Share of each week's real signups active (own data or typed chat) in their signup week and each of the next three weeks. A curve that stops falling is the goal.">
         <table class="w-full text-sm">
             <thead>
                 <tr class="text-left text-gray-500 dark:text-gray-400">

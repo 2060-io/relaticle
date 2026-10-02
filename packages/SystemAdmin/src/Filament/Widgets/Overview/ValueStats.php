@@ -12,6 +12,7 @@ use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
+use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
 use Relaticle\SystemAdmin\Filament\Support\ViewerTime;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
@@ -46,7 +47,7 @@ final class ValueStats extends StatsOverviewWidget
         ];
 
         return [
-            Stat::make('Real signups', number_format($signups))
+            Stat::make(HelpLabel::make('Real signups', 'New accounts from the latest full week that has had 7 days to act. Only verified people who signed up on their own count: invited teammates, suspected trial abuse and your own accounts are left out. The arrow compares with the week before.'), number_format($signups))
                 ->description('Week of '.$week->format('M j').', '.($change >= 0 ? '+' : '').$change.' vs the week before')
                 ->descriptionIcon(match (true) {
                     $change > 0 => 'heroicon-m-arrow-trending-up',
@@ -54,9 +55,8 @@ final class ValueStats extends StatsOverviewWidget
                     default => 'heroicon-m-minus',
                 })
                 ->color('gray')
-                ->extraAttributes(['title' => 'Verified, not invited, not abuse-flagged, not yours. The latest week that has had 7 days to act.'])
                 ->url(UserResource::getUrl('index', ['filters' => $filters])),
-            Stat::make('Reached first value', $share === null ? "\u{2014}" : "{$share}%")
+            Stat::make(HelpLabel::make('Reached first value', 'Share of that week\'s real signups who added their own record (a company, person, deal, task or note) within 7 days. Sample data does not count. Red under 20%, amber under 30%, green from 30%.'), $share === null ? "\u{2014}" : "{$share}%")
                 ->description($signups === 0 ? 'No real signups that week' : "{$firstValue} of {$signups} added their own data within 7 days")
                 ->color(match (true) {
                     $share === null => 'gray',
@@ -65,14 +65,13 @@ final class ValueStats extends StatsOverviewWidget
                     default => 'success',
                 })
                 ->url(UserResource::getUrl('index', ['filters' => [...$filters, 'reached_first_value' => ['isActive' => true]]])),
-            Stat::make('Formed a habit', number_format($habits))
+            Stat::make(HelpLabel::make('Formed a habit', 'Customer workspaces that were active in at least 3 of the last 4 full weeks. Active means someone added their own record or typed a chat message. Green when up on last week, amber when flat, red when down.'), number_format($habits))
                 ->description(($habits - $habitsBefore >= 0 ? '+' : '').($habits - $habitsBefore).' vs a week earlier')
                 ->color(match (true) {
                     $habits > $habitsBefore => 'success',
                     $habits === $habitsBefore => 'warning',
                     default => 'danger',
                 })
-                ->extraAttributes(['title' => 'Customer workspaces with own data or typed chat in at least 3 of the last 4 complete weeks.'])
                 ->url(WorkspaceResource::getUrl('index', ['filters' => ['formed_habit' => ['isActive' => true]]])),
         ];
     }

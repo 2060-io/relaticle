@@ -13,13 +13,12 @@ use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
+use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
 use Relaticle\SystemAdmin\Filament\Support\Impersonate;
 use Relaticle\SystemAdmin\Metrics\SalesLeadsQuery;
 
 final class SalesLeads extends TableWidget
 {
-    protected static ?string $heading = 'Who should I talk to next?';
-
     protected static ?int $sort = 4;
 
     protected int|string|array $columnSpan = 'full';
@@ -28,6 +27,7 @@ final class SalesLeads extends TableWidget
     {
         return $table
             ->query(fn (): Builder => SalesLeadsQuery::make())
+            ->heading(HelpLabel::make('Who should I talk to next?', 'Up to 10 workspaces that use the product but do not pay: they have records of their own, no active subscription and no Enterprise plan. Your own workspaces are left out. Ranked by active days in the last 30 days, then by record count. Log outreach in the Relaticle HQ workspace.'))
             ->description('Customers using the product for real who do not pay yet.')
             ->paginated(false)
             ->columns([

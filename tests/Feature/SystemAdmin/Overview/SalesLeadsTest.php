@@ -120,3 +120,7 @@ it('lists a workspace whose owner no longer exists, without an email action', fu
         ->assertActionHidden(TestAction::make('emailOwner')->table($orphaned))
         ->assertActionVisible(TestAction::make('emailOwner')->table(OverviewData::workspaceOf($present)));
 });
+
+it('explains who makes the list in a tooltip', function (): void {
+    livewire(SalesLeads::class)->assertSee('Log outreach in the Relaticle HQ workspace');
+});

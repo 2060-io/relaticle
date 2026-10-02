@@ -277,3 +277,11 @@ it('starts the thumbs down count again when a new week begins', function (): voi
     expect($sunday[1])->toBe('1')
         ->and($monday[1])->toBe('0');
 });
+
+it('explains every number in a tooltip', function (): void {
+    livewire(ProblemsStats::class)
+        ->assertSee('spent at least half their chat credits on premium models')
+        ->assertSee('typed no chat message in their first 3 days')
+        ->assertSee('never created or joined a workspace')
+        ->assertSee('rated thumbs down since Monday');
+});
