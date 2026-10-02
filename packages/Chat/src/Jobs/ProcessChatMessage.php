@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Ai\Exceptions\FailoverableException;
 use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
 use Laravel\Ai\Exceptions\RateLimitedException;
@@ -555,6 +556,7 @@ final class ProcessChatMessage implements ShouldQueue
         $this->broadcastSafely(new ChatStreamFailed(
             conversationId: $this->conversationId,
             message: $this->failureMessage($exception),
+            retryOnAuto: $this->offersAutoRetry($exception),
         ));
 
         // Last, after persistFailedTurn: a reload landing mid-failed() must
@@ -581,7 +583,28 @@ final class ProcessChatMessage implements ShouldQueue
             return __('The assistant is being rate-limited. Please try again in a moment. Anything you already approved was saved.');
         }
 
+        if ($this->offersAutoRetry($exception)) {
+            return __(':model is unavailable right now. Retry on Auto to get an answer from another model.', [
+                'model' => $this->modelLabel() ?? (string) $this->resolved['model'],
+            ]);
+        }
+
         return __('The assistant encountered an error. Please try again.');
+    }
+
+    private function offersAutoRetry(?Throwable $exception): bool
+    {
+        return $this->resolved['source'] === 'explicit'
+            && $this->isProviderFailure($exception)
+            && ! $this->isRateLimited($exception)
+            && ! $this->opensTheThread();
+    }
+
+    private function isProviderFailure(?Throwable $exception): bool
+    {
+        return $exception instanceof RequestException
+            || $exception instanceof FailoverableException
+            || $exception instanceof StreamErrorException;
     }
 
     /**

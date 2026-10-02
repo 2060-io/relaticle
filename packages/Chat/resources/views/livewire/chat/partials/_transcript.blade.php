@@ -398,6 +398,15 @@
                                 >
                                     {{ __('Retry') }}
                                 </button>
+                                <button
+                                    type="button"
+                                    data-retry-on-auto-button
+                                    x-show="msg.retryOnAuto && msg.retryable && !isStreaming && !rateLimit && canRetryTurn(index)"
+                                    x-on:click="selectModel('auto'); retryTurn(msg)"
+                                    class="shrink-0 whitespace-nowrap rounded-md border border-amber-600 px-2 py-1 text-xs font-medium text-amber-800 transition hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 dark:border-amber-400 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                                >
+                                    {{ __('Retry on Auto') }}
+                                </button>
                             </div>
                         </template>
 

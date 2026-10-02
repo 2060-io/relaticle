@@ -108,6 +108,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             invocationId: null,
             streamError: null,
             retryable: false,
+            retryOnAuto: false,
             _needsSeparator: false,
             feedback: null,
             feedbackPanelOpen: false,
@@ -346,6 +347,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
                 if (!assistantMsg.content) {
                     assistantMsg.streamError = this.streamTexts.timeout;
                     assistantMsg.retryable = true;
+                    assistantMsg.retryOnAuto = false;
                 }
                 assistantMsg.rendered = true;
                 assistantMsg.prerendered = false;
@@ -584,6 +586,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             b.invocationId = null;
             b.streamError = event?.message || this.streamTexts.streamError;
             b.retryable = true;
+            b.retryOnAuto = event?.retryOnAuto === true;
             b.rendered = true;
             b.prerendered = false;
         }
