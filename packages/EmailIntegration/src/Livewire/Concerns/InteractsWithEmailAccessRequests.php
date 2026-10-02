@@ -19,7 +19,6 @@ use Relaticle\EmailIntegration\Actions\CancelEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
-use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Services\EmailSearchService;
@@ -174,9 +173,10 @@ trait InteractsWithEmailAccessRequests
             ->icon('heroicon-m-arrow-top-right-on-square')
             ->iconButton()
             ->color('gray')
-            ->url(fn (EmailAccessRequest $request): ?string => $request->email_id === null
-                ? null
-                : EmailInboxPage::getUrl(parameters: ['email' => $request->email_id], tenant: filament()->getTenant()));
+            ->visible(fn (EmailAccessRequest $request): bool => $request->email_id !== null)
+            ->action(function (EmailAccessRequest $request): void {
+                $this->dispatch('open-email-from-access-request', emailId: $request->email_id);
+            });
     }
 
     private function approveAccessRequestAction(): Action

@@ -38,6 +38,20 @@ beforeEach(function (): void {
 });
 
 describe('Tab switching', function (): void {
+    it('opens the requested email in the reader instead of linking to the inbox', function (): void {
+        $requester = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
+
+        $request = EmailAccessRequest::factory()->pending()->create([
+            'owner_id' => $this->user->id,
+            'requester_id' => $requester->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        livewire(AccessRequestsTable::class)
+            ->callTableAction('openEmail', $request)
+            ->assertDispatched('open-email-from-access-request', emailId: $this->email->getKey());
+    });
+
     it('shows incoming requests in a table with the available review actions', function (): void {
         $requester = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
