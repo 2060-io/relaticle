@@ -158,9 +158,9 @@ shows a dot, never 0%.
 
 ### Row 3: Who should I talk to next? (`SalesLeads`)
 
-A `TableWidget` of up to ten external, non-paying, non-suspect workspaces with own data, not
-marked contacted in the last 14 days, ordered by active days in the last 30 days, then own
-records.
+A `TableWidget` of up to ten external, non-paying, non-suspect workspaces with own data,
+ordered by active days in the last 30 days, then own records. Outreach is tracked in the
+Relaticle HQ workspace, so the panel stores no contact state.
 
 | Column | Content |
 |---|---|
@@ -168,7 +168,7 @@ records.
 | Why | Own records, active days (30d), teammates, and "uses API", "uses MCP" or "imported" when present |
 | Plan | `BillingStatus` label |
 | Last active | Latest active day |
-| Actions | **Open as user** (`Impersonate::workspaceOwner()`), **Email owner** (`mailto:`), **Contacted** (sets `workspaces.sales_contacted_at`) |
+| Actions | **Open as user** (`Impersonate::workspaceOwner()`), **Email owner** (`mailto:`) |
 
 The workspace view gains a **Journey** section: signup date and method (password or the Socialite
 provider), wizard answers, last wizard step reached, first own record date, active days (30d),
@@ -191,7 +191,7 @@ With the Billing feature off, the abuse tile is hidden.
 | Resource | Adds |
 |---|---|
 | Users | Filters: Genuine signup, Signed up in week (date range), Reached first value, No workspace. Columns: Signup method, Last wizard step |
-| Workspaces | Filters: Internal, Abuse suspect, Formed a habit, Stuck after setup. Columns: AI cost this month (sortable subquery), Setup exit reason, Contacted at. Actions: End trial now (row, bulk, view page), Contacted (view page) |
+| Workspaces | Filters: Internal, Abuse suspect, Formed a habit, Stuck after setup. Columns: AI cost this month (sortable subquery), Setup exit reason. Actions: End trial now (row, bulk, view page) |
 | AI credit balances | Filter: Trialing |
 | Subscriptions | Filter: Counts toward MRR (active, external workspace) |
 | AI settings page | Budgets per provider; a read-only "This month" section |
@@ -243,7 +243,7 @@ All additive, `up()` only. No column a queued job reads is dropped, so no Horizo
 |---|---|
 | `ai_credit_transactions` | `cache_read_tokens`, `cache_write_tokens`, `cost_micros` (built) |
 | `ai_provider_costs` (new) | `id`, `provider` string(32), `date` date, `amount_micros` bigint, `fetched_at` timestamp; unique (`provider`, `date`) |
-| `workspaces` | `sales_contacted_at` timestamp null, `setup_exit_reason` string(32) null, `setup_exit_note` string(500) null, `setup_exit_reason_at` timestamp null |
+| `workspaces` | `setup_exit_reason` string(32) null, `setup_exit_note` string(500) null, `setup_exit_reason_at` timestamp null |
 | `users` | `onboarding_step` string(32) null |
 
 Settings: `ChatSettings` gains `provider_monthly_budgets` (map of provider to whole dollars,
@@ -290,7 +290,7 @@ tile's footnote names the last fetch date.
    settings "This month" section, `MoneyStats`, the Overview page as home.
 4. Problems row: abuse filter, End trial now, the wizard-step and exit-reason hooks,
    `ProblemsStats`.
-5. Sales row: `SalesLeads`, Contacted, the Journey section.
+5. Sales row: `SalesLeads`, the Journey section.
 6. Value row: `ValueStats`, `CohortTable`, the Users filters.
 7. Delete the old dashboards, their ten widgets and tests; full gates; browser walk.
 

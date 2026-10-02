@@ -69,7 +69,6 @@ use Spatie\Sluggable\SlugOptions;
  * @property CarbonImmutable|null $trial_ends_at
  * @property CarbonImmutable|null $pro_trial_used_at
  * @property CarbonImmutable|null $hosted_free_grandfathered_at
- * @property CarbonImmutable|null $sales_contacted_at
  * @property SetupExitReason|null $setup_exit_reason
  * @property string|null $setup_exit_note
  * @property CarbonImmutable|null $setup_exit_reason_at
@@ -226,7 +225,6 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
             'trial_ends_at' => 'datetime',
             'pro_trial_used_at' => 'datetime',
             'hosted_free_grandfathered_at' => 'datetime',
-            'sales_contacted_at' => 'datetime',
             'setup_exit_reason' => SetupExitReason::class,
             'setup_exit_reason_at' => 'datetime',
         ];

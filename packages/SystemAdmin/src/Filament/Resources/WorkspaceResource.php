@@ -260,12 +260,6 @@ final class WorkspaceResource extends Resource
                     ->tooltip(fn (Workspace $record): ?string => $record->setup_exit_note)
                     ->toggleable()
                     ->placeholder("\u{2014}"),
-                TextColumn::make('sales_contacted_at')
-                    ->label('Contacted at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable()
-                    ->placeholder("\u{2014}"),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),

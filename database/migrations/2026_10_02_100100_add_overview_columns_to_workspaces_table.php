@@ -14,7 +14,6 @@ return new class extends Migration
         DB::statement("SET LOCAL lock_timeout = '5s'");
 
         Schema::table('workspaces', function (Blueprint $table): void {
-            $table->timestamp('sales_contacted_at')->nullable();
             $table->string('setup_exit_reason', 32)->nullable();
             $table->string('setup_exit_note', 500)->nullable();
             $table->timestamp('setup_exit_reason_at')->nullable();

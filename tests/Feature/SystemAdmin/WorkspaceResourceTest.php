@@ -872,16 +872,3 @@ it('shows the journey of a workspace whose owner no longer exists', function ():
         ->assertSee('1 active day')
         ->assertSeeInOrder(['Signed up', "\u{2014}", 'Signup method', "\u{2014}", 'First own record']);
 });
-
-it('marks a workspace contacted from its page', function (): void {
-    $workspace = OverviewData::workspaceOf(OverviewData::owner());
-
-    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
-        ->callAction('contacted')
-        ->assertNotified('Marked as contacted');
-
-    expect($workspace->refresh()->sales_contacted_at)->not->toBeNull();
-
-    livewire(ListWorkspaces::class)
-        ->assertTableColumnStateSet('sales_contacted_at', $workspace->sales_contacted_at, $workspace);
-});

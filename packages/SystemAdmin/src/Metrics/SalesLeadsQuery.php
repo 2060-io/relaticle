@@ -26,9 +26,6 @@ final readonly class SalesLeadsQuery
             ->whereIn('workspaces.id', ActivityDays::workspacesWithOwnData())
             ->whereDoesntHave('subscriptions', fn (Builder $subscription): Builder => $subscription->active())
             ->where('workspaces.plan', '!=', Plan::Enterprise)
-            ->where(fn (Builder $notRecent): Builder => $notRecent
-                ->whereNull('workspaces.sales_contacted_at')
-                ->orWhere('workspaces.sales_contacted_at', '<', now()->subDays(14)))
             ->select('workspaces.*')
             ->selectSub(self::activity()->selectRaw('count(distinct activity.day)')->where('activity.day', '>=', $since), 'active_days_30')
             ->selectSub(self::activity()->selectRaw('count(*)')->where('activity.kind', 'record'), 'own_records')

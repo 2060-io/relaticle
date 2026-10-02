@@ -9,13 +9,12 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Relaticle\SystemAdmin\Actions\MarkWorkspaceContacted;
 use Relaticle\SystemAdmin\Filament\Widgets\Overview\SalesLeads;
 use Relaticle\SystemAdmin\Metrics\SalesLeadsQuery;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Tests\Helpers\OverviewData;
 
-mutates(SalesLeads::class, SalesLeadsQuery::class, MarkWorkspaceContacted::class);
+mutates(SalesLeads::class, SalesLeadsQuery::class);
 
 beforeEach(function (): void {
     $this->actingAs(SystemAdministrator::factory()->create(), 'sysadmin');
@@ -86,28 +85,6 @@ it('renders an empty list when nobody qualifies', function (): void {
     livewire(SalesLeads::class)
         ->assertSuccessful()
         ->assertCountTableRecords(0);
-});
-
-it('hides a workspace for 14 days once marked contacted', function (): void {
-    $owner = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
-    $workspace = OverviewData::workspaceOf($owner);
-    OverviewData::ownRecord($workspace, $owner, now()->subDay());
-
-    livewire(SalesLeads::class)
-        ->callAction(TestAction::make('contacted')->table($workspace))
-        ->assertCanNotSeeTableRecords([$workspace]);
-
-    expect($workspace->refresh()->sales_contacted_at)->not->toBeNull();
-
-    $this->travelTo(now()->addDays(13)->addHour());
-    Cache::flush();
-
-    livewire(SalesLeads::class)->assertCanNotSeeTableRecords([$workspace]);
-
-    $this->travelTo(now()->addDays(2));
-    Cache::flush();
-
-    livewire(SalesLeads::class)->assertCanSeeTableRecords([$workspace]);
 });
 
 it('shows at most ten workspaces', function (): void {

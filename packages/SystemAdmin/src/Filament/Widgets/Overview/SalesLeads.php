@@ -7,13 +7,11 @@ namespace Relaticle\SystemAdmin\Filament\Widgets\Overview;
 use App\Enums\BillingStatus;
 use App\Models\Workspace;
 use Filament\Actions\Action;
-use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
-use Relaticle\SystemAdmin\Actions\MarkWorkspaceContacted;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
 use Relaticle\SystemAdmin\Filament\Support\Impersonate;
 use Relaticle\SystemAdmin\Metrics\SalesLeadsQuery;
@@ -30,7 +28,7 @@ final class SalesLeads extends TableWidget
     {
         return $table
             ->query(fn (): Builder => SalesLeadsQuery::make())
-            ->description('Customers using the product for real who do not pay yet. Contacted hides a row for 14 days.')
+            ->description('Customers using the product for real who do not pay yet.')
             ->paginated(false)
             ->columns([
                 TextColumn::make('name')
@@ -57,15 +55,6 @@ final class SalesLeads extends TableWidget
                     ->color('gray')
                     ->visible(fn (Workspace $record): bool => $record->owner !== null)
                     ->url(fn (Workspace $record): string => "mailto:{$record->owner?->email}"),
-                Action::make('contacted')
-                    ->label('Contacted')
-                    ->icon('heroicon-o-check')
-                    ->color('gray')
-                    ->authorize('markContacted')
-                    ->action(function (Workspace $record): void {
-                        resolve(MarkWorkspaceContacted::class)->execute($record);
-                        Notification::make()->title('Marked as contacted')->success()->send();
-                    }),
             ]);
     }
 
