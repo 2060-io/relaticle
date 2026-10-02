@@ -233,7 +233,18 @@ it('inline composer prefills the original subject only when the viewer may see i
         ->call('openReply', $this->inboundEmail->id, 'reply')
         ->assertSet('isOpen', true)
         ->assertSet('subject', $expectedSubject)
-        ->assertSet('quotedBodyHtml', null);
+        ->set('bodyHtml', '<p>Thanks</p>')
+        ->call('send')
+        ->assertHasNoErrors();
+
+    $reply = Email::query()
+        ->where('direction', EmailDirection::OUTBOUND)
+        ->where('user_id', $viewer->id)
+        ->sole();
+
+    expect($reply->body->body_html)
+        ->toContain('Thanks')
+        ->not->toContain('Original body');
 })->with([
     'metadata only' => [EmailPrivacyTier::METADATA_ONLY, 'Re: '],
     'subject line' => [EmailPrivacyTier::SUBJECT, 'Re: Original Subject'],
@@ -279,7 +290,17 @@ it('inline composer prefills reply-all and forward from their modes', function (
         // A forward has no recipient yet, and does not thread against the original.
         ->assertSet('to', [])
         ->assertSet('inReplyToEmailId', null)
-        ->assertSet('quotedBodyHtml', '<p>Original body</p>');
+        ->set('to', ['forward-to@example.com'])
+        ->set('bodyHtml', '<p>See below</p>')
+        ->call('send')
+        ->assertHasNoErrors();
+
+    $forward = Email::query()
+        ->where('direction', EmailDirection::OUTBOUND)
+        ->where('creation_source', EmailCreationSource::FORWARD)
+        ->sole();
+
+    expect($forward->body->body_html)->toContain('<p>Original body</p>');
 });
 
 it('a reply saved as a draft still threads when it is sent later', function (): void {
@@ -381,10 +402,16 @@ it('restores the plain-text original when a saved forward is reopened', function
     $composer = livewire(EmailComposer::class)
         ->call('open', [], $draftId);
 
-    expect($composer->get('quotedBodyHtml'))
-        ->toContain('Please review the invoice by Friday.');
+    $composer->assertSee('Please review the invoice by Friday.')
+        ->call('send')
+        ->assertHasNoErrors();
 
-    $composer->assertSee('Please review the invoice by Friday.');
+    $forward = Email::query()
+        ->where('direction', EmailDirection::OUTBOUND)
+        ->where('status', '!=', EmailStatus::DRAFT)
+        ->sole();
+
+    expect($forward->body->body_html)->toContain('Please review the invoice by Friday.');
 });
 
 it('includes the original plain-text body when forwarding from the relation manager', function (): void {

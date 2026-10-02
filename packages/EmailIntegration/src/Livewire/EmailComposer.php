@@ -110,13 +110,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
     public ?string $replyMode = null;
 
-    /**
-     * The message being replied to, quoted into the body at send time. It is
-     * never rendered in the composer: on the inline dock the original is on
-     * screen directly above it.
-     */
-    public ?string $quotedBodyHtml = null;
-
     public ?string $draftId = null;
 
     public ?string $accountId = null;
@@ -329,8 +322,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         $originalSubject = $user->can('viewSubject', $email) ? ($email->subject ?? '') : '';
         $this->subject = ($this->replyMode === 'forward' ? 'Fwd: ' : 'Re: ').$originalSubject;
 
-        // Only quote the original body when the viewer is entitled to read it.
-        $this->quotedBodyHtml = $user->can('viewBody', $email) ? $email->quotedBodyHtml() : null;
         $this->sourceEmailId = (string) $email->getKey();
         // A forward carries its source for display, but must not thread against it.
         $this->inReplyToEmailId = $this->replyMode === 'forward' ? null : $this->sourceEmailId;
@@ -690,13 +681,32 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      */
     private function withQuotedBody(string $bodyHtml): string
     {
-        if (blank($this->quotedBodyHtml)) {
+        $quotedBodyHtml = $this->quotedBodyHtml();
+
+        if (blank($quotedBodyHtml)) {
             return $bodyHtml;
         }
 
         return $bodyHtml.($this->replyMode === 'forward'
-            ? '<br><p><strong>---------- Forwarded message ----------</strong></p>'.$this->quotedBodyHtml
-            : '<br><blockquote style="border-left:3px solid #ccc;margin-left:0;padding-left:1rem">'.$this->quotedBodyHtml.'</blockquote>');
+            ? '<br><p><strong>---------- Forwarded message ----------</strong></p>'.$quotedBodyHtml
+            : '<br><blockquote style="border-left:3px solid #ccc;margin-left:0;padding-left:1rem">'.$quotedBodyHtml.'</blockquote>');
+    }
+
+    // Read at send time: the original can be hundreds of KB, and a public property
+    // would ship it to the browser and back on every composer request.
+    private function quotedBodyHtml(): ?string
+    {
+        if ($this->sourceEmailId === null || $this->replyMode === null) {
+            return null;
+        }
+
+        $source = $this->replyableEmail($this->sourceEmailId);
+
+        if (! $source instanceof Email || ! $this->authUser()->can('viewBody', $source)) {
+            return null;
+        }
+
+        return $source->quotedBodyHtml();
     }
 
     public function minimize(): void
@@ -2127,7 +2137,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             default => 'reply',
         };
         $this->inReplyToEmailId = $this->replyMode === 'forward' ? null : $this->sourceEmailId;
-        $this->quotedBodyHtml = $user->can('viewBody', $original) ? $original->quotedBodyHtml() : null;
     }
 
     /**
@@ -2169,7 +2178,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             'replyMode',
             'sourceEmailId',
             'inReplyToEmailId',
-            'quotedBodyHtml',
             'linkRecordType',
             'linkRecordId',
         ]);
