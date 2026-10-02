@@ -130,3 +130,9 @@ it('answers a trial or price question from the plans article', function (string 
     'how many credits does the trial include',
     'how much does Relaticle cost',
 ]);
+
+it('sends a ChatGPT user to the published Relaticle plugin', function (): void {
+    $content = implode("\n", array_column(searchDocs('how do I connect ChatGPT to Relaticle')['results'], 'content'));
+
+    expect($content)->toContain('https://chatgpt.com/plugins/plugin_asdk_app_6a92c3af04a0819180ed6652ebe09961');
+});
