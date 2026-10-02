@@ -77,6 +77,13 @@ it('lists free customers with real use, most active first, and says why', functi
         ->assertSee('uses API');
 });
 
+it('leaves out a workspace whose only records a mailbox sync created', function (): void {
+    $synced = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
+    OverviewData::ownRecord(OverviewData::workspaceOf($synced), $synced, now()->subDay(), CreationSource::MAILBOX);
+
+    leadsOn(LeadStage::Free)->assertCanNotSeeTableRecords([OverviewData::workspaceOf($synced)]);
+});
+
 it('leaves out workspaces that already pay or are on a negotiated plan', function (): void {
     $subscriber = OverviewData::owner(CarbonImmutable::parse('2026-09-01'));
     $subscribed = OverviewData::workspaceOf($subscriber);

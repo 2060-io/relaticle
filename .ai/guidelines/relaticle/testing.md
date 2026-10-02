@@ -30,6 +30,9 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
 - Never write tests that assert on source code as text (reading a Blade/PHP file
   and checking it contains a string). They break on refactors and pass on broken
   behavior. Test the rendered/runtime behavior instead.
+- Do not write tests for migrations, schema changes and backfills included. Rehearse them on
+  anonymized production data instead, as the Database section of `core.md` describes.
+  `tests/Arch/ConventionsTest.php` fails when a test outside `tests/Arch/` loads a migration file.
 - `tests/Pest.php` binds `TestCase` + `LazilyRefreshDatabase` for the Feature,
   Smoke, and Browser suites. Don't repeat `uses(...)` per file there.
 - Use `mutates(ClassName::class)` in test files to declare which source classes
