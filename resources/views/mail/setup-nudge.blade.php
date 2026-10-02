@@ -7,9 +7,4 @@
 <x-mail::button :url="$conversationUrl">
 {{ __('mail.setup_nudge.cta', ['assistant' => config('chat.assistant_name')]) }}
 </x-mail::button>
-
-{{ __('mail.setup_nudge.reasons_intro') }}
-@foreach ($reasonLinks as $link)
-[{{ $link['label'] }}]({{ $link['url'] }}){{ $loop->last ? '' : ' · ' }}
-@endforeach
 </x-mail::message>

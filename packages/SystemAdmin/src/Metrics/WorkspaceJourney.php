@@ -41,7 +41,6 @@ final readonly class WorkspaceJourney
             'Typed chat messages' => number_format($messages),
             'Credits used this period' => number_format($creditsUsed),
             'AI cost this month' => Money::format(AiCost::workspaceMonthMicros($workspace)),
-            'Setup exit reason' => $workspace->setup_exit_reason?->getLabel() ?? Money::EMPTY,
             'Internal' => Workspace::query()->whereKey($workspace->getKey())->withGlobalScope(InternalWorkspace::class, new InternalWorkspace)->exists() ? 'Yes' : 'No',
         ];
     }

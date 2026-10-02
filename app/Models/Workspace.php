@@ -9,7 +9,6 @@ use App\Enums\MediaCollection;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
-use App\Enums\SetupExitReason;
 use App\Enums\WorkspaceRole;
 use App\Events\WorkspaceCreated;
 use App\Events\WorkspaceDeleted;
@@ -69,9 +68,6 @@ use Spatie\Sluggable\SlugOptions;
  * @property CarbonImmutable|null $trial_ends_at
  * @property CarbonImmutable|null $pro_trial_used_at
  * @property CarbonImmutable|null $hosted_free_grandfathered_at
- * @property SetupExitReason|null $setup_exit_reason
- * @property string|null $setup_exit_note
- * @property CarbonImmutable|null $setup_exit_reason_at
  * @property string $invite_link_default_role
  * @property-read Membership|null $membership the `workspace_user` row, populated only when the workspace was
  *     loaded through `User::workspaces()`; null on a workspace reached any other way
@@ -157,7 +153,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'press', 'compare', 'alternatives', 'ai', 'ai-native-crm', 'self-hosted',
 
         // Communication
-        'mail', 'email', 'contact', 'feedback', 'onboarding', 'abuse', 'report',
+        'mail', 'email', 'contact', 'feedback', 'abuse', 'report',
 
         // Infrastructure & framework
         'filament', 'livewire', 'storage', 'imports', 'horizon', 'scalar', 'engagement',
@@ -225,8 +221,6 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
             'trial_ends_at' => 'datetime',
             'pro_trial_used_at' => 'datetime',
             'hosted_free_grandfathered_at' => 'datetime',
-            'setup_exit_reason' => SetupExitReason::class,
-            'setup_exit_reason_at' => 'datetime',
         ];
     }
 

@@ -68,23 +68,6 @@ return [
         'heading' => ':name, :workspace is still empty',
         'step' => 'Next step: :step.',
         'cta' => 'Continue in :assistant',
-        'reasons_intro' => 'Not the right time? Tell us why:',
-    ],
-
-    'setup_feedback' => [
-        'title' => 'Tell us why',
-        'heading' => 'Why are you stepping away from :workspace?',
-        'hint' => 'Press Send answer to record it.',
-        'note' => 'Anything else we should know? (optional)',
-        'send' => 'Send answer',
-        'done_heading' => 'Thank you',
-        'done_body' => 'This helps us build the right thing.',
-        'reasons' => [
-            'just_looking' => 'Just looking around',
-            'missing_something' => 'Missing something I need',
-            'too_hard' => 'Too hard to get started',
-            'chose_another' => 'Chose another tool',
-        ],
     ],
 
     'task_assigned' => [

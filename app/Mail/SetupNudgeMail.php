@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
-use App\Enums\SetupExitReason;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Bus\Queueable;
@@ -13,7 +12,6 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\URL;
 
 final class SetupNudgeMail extends Mailable implements ShouldQueue
 {
@@ -41,13 +39,6 @@ final class SetupNudgeMail extends Mailable implements ShouldQueue
                 'stepLabel' => __("filament/pages/dashboard.activation.steps.{$this->stepKey}.label"),
                 'stepDescription' => __("filament/pages/dashboard.activation.steps.{$this->stepKey}.description"),
                 'conversationUrl' => $this->conversationUrl,
-                'reasonLinks' => array_map(
-                    fn (SetupExitReason $reason): array => [
-                        'label' => $reason->getLabel(),
-                        'url' => URL::signedRoute('onboarding.feedback', ['workspace' => $this->workspace->getKey(), 'reason' => $reason->value]),
-                    ],
-                    SetupExitReason::cases(),
-                ),
             ],
         );
     }

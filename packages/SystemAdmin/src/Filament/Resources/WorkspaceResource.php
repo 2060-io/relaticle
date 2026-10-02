@@ -182,7 +182,7 @@ final class WorkspaceResource extends Resource
                         fn (string $label): TextEntry => TextEntry::make('journey_'.str($label)->slug('_'))
                             ->label($label)
                             ->state(fn (Workspace $record): string => WorkspaceJourney::facts($record)[$label]),
-                        ['Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'AI cost this month', 'Setup exit reason', 'Internal'],
+                        ['Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'AI cost this month', 'Internal'],
                     )),
             ]);
     }
@@ -254,12 +254,6 @@ final class WorkspaceResource extends Resource
                     ->state(fn (Workspace $record): string => Money::format(AiCost::workspaceMonthMicros($record)))
                     ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy(AiCost::workspaceMonthSubquery(), $direction))
                     ->toggleable(),
-                TextColumn::make('setup_exit_reason')
-                    ->label('Exit reason')
-                    ->badge()
-                    ->tooltip(fn (Workspace $record): ?string => $record->setup_exit_note)
-                    ->toggleable()
-                    ->placeholder("\u{2014}"),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),

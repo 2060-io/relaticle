@@ -6,7 +6,6 @@ use App\Enums\BillingStatus;
 use App\Enums\CreationSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
-use App\Enums\SetupExitReason;
 use App\Features\Billing;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
@@ -822,16 +821,6 @@ it('sorts workspaces by AI cost this month', function (): void {
         ->assertCanSeeTableRecords([$expensive, $cheap], inOrder: true)
         ->assertTableColumnStateSet('ai_cost_this_month', '$2.50', $expensive)
         ->assertTableColumnStateSet('ai_cost_this_month', '$0.10', $cheap);
-});
-
-it('shows the reason a stuck owner gave for stepping away', function (): void {
-    $stepped = OverviewData::workspaceOf(OverviewData::owner());
-    $stepped->forceFill(['setup_exit_reason' => SetupExitReason::TooHard, 'setup_exit_note' => 'Could not find the import', 'setup_exit_reason_at' => now()])->save();
-    $silent = OverviewData::workspaceOf(OverviewData::owner());
-
-    livewire(ListWorkspaces::class)
-        ->assertTableColumnStateSet('setup_exit_reason', SetupExitReason::TooHard, $stepped)
-        ->assertTableColumnStateSet('setup_exit_reason', null, $silent);
 });
 
 it('shows the journey of a workspace on its page', function (): void {
