@@ -822,7 +822,7 @@ it('retries a mailbox import from the notification action', function (): void {
     expect(resolve(MailboxHistoryImportService::class)->hasAwaitingRetrySuccessNotice($batchId))->toBeTrue();
 });
 
-it('resolves failed store job uuids from the failed jobs table when batch ids are empty', function (): void {
+it('resolves failed store job uuids from the failed jobs table when batch ids are empty', function (string $queue): void {
     $user = User::factory()->withWorkspace()->create();
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
         'user_id' => $user->id,
@@ -844,12 +844,12 @@ it('resolves failed store job uuids from the failed jobs table when batch ids ar
         'finished_at' => now()->getTimestamp(),
     ]);
 
-    insertHistoryImportFailedJob($account, 'batch-from-failed-jobs', 'failed-uuid-from-table', 'msg-failed');
+    insertHistoryImportFailedJob($account, 'batch-from-failed-jobs', 'failed-uuid-from-table', 'msg-failed', $queue);
     fakeHistoryImportQueueRetry('failed-uuid-from-table');
 
     expect(resolve(RetryMailboxHistoryImportFailuresAction::class)
         ->execute($user, $account, 'batch-from-failed-jobs'))->toBeTrue();
-});
+})->with(['emails-import', 'emails-sync']);
 
 it('recovers the failed email through the notification retry using the real queue retry command', function (): void {
     config()->set('queue.default', 'database');
@@ -879,7 +879,7 @@ it('recovers the failed email through the notification retry using the real queu
     $job = new StoreEmailJob($account, 'retry-message');
     $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-import', '--once' => true]);
 
     expect($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeTrue()
         ->and(DB::table('failed_jobs')->count())->toBe(1)
@@ -895,7 +895,7 @@ it('recovers the failed email through the notification retry using the real queu
     expect($import->hasAwaitingRetrySuccessNotice($batchId))->toBeTrue();
     expect($user->notifications()->count())->toBe(1);
 
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-import', '--once' => true]);
 
     expect(DB::table('failed_jobs')->count())->toBe(0);
     expect($account->emails()->sole()->provider_message_id)->toBe('retry-message');
@@ -944,14 +944,14 @@ it('does not send a retry-success notice until every failed import job succeeds'
     $job = new StoreEmailJob($account, 'retry-twice-message');
     $job->maxExceptions = 1;
     Bus::findBatch($batchId)->add([$job]);
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-import', '--once' => true]);
 
     expect($user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->count())->toBe(1)
         ->and($user->notifications()->sole()->data['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'));
 
     expect(resolve(RetryMailboxHistoryImportFailuresAction::class)->execute($user, $account->fresh(), $batchId))->toBeTrue();
 
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-import', '--once' => true]);
 
     expect($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeTrue()
         ->and($account->emails()->count())->toBe(0)
@@ -959,7 +959,7 @@ it('does not send a retry-success notice until every failed import job succeeds'
 
     expect(resolve(RetryMailboxHistoryImportFailuresAction::class)->execute($user, $account->fresh(), $batchId))->toBeTrue();
 
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-sync', '--once' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'emails-import', '--once' => true]);
 
     expect($account->emails()->sole()->provider_message_id)->toBe('retry-twice-message');
     expect($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeFalse();

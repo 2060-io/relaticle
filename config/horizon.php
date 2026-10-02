@@ -89,6 +89,7 @@ return [
         'redis:default' => 60,
         'redis:imports' => 120,
         'redis:emails-sync' => 300,
+        'redis:emails-import' => 3600,
         'redis-chat:chat' => 30,
     ],
 
@@ -280,6 +281,20 @@ return [
             'timeout' => 330,
             'nice' => 5,
         ],
+        'supervisor-emails-import' => [
+            'connection' => 'redis',
+            'queue' => ['emails-import'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 4,
+            'minProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 3,
+            'timeout' => 330,
+            'nice' => 10,
+        ],
     ],
 
     'environments' => [
@@ -377,6 +392,22 @@ return [
                 'timeout' => 330,
                 'nice' => 5,
             ],
+            // Mailbox history imports run here so a multi-day import never queues
+            // ahead of another mailbox's new mail on emails-sync.
+            'supervisor-emails-import' => [
+                'connection' => 'redis',
+                'queue' => ['emails-import'],
+                'balance' => 'auto',
+                'autoScalingStrategy' => 'time',
+                'maxProcesses' => env('HORIZON_EMAILS_IMPORT_MAX', 2),
+                'minProcesses' => env('HORIZON_EMAILS_IMPORT_MIN', 1),
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 30,
+                'memory' => 256,
+                'tries' => 3,
+                'timeout' => 330,
+                'nice' => 10,
+            ],
             'chat-supervisor' => [
                 'connection' => 'redis-chat',
                 'queue' => ['chat'],
@@ -409,6 +440,9 @@ return [
             ],
             'supervisor-emails-sync' => [
                 'maxProcesses' => 5,
+            ],
+            'supervisor-emails-import' => [
+                'maxProcesses' => 2,
             ],
             'supervisor-emails-priority' => [
                 'maxProcesses' => 1,

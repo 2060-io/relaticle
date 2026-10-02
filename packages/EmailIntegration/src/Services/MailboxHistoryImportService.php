@@ -509,7 +509,7 @@ final readonly class MailboxHistoryImportService
 
         return Bus::batch([])
             ->name("Mailbox history import: {$account->email_address}")
-            ->onQueue('emails-sync')
+            ->onQueue('emails-import')
             ->allowFailures()
             ->progress($complete)
             ->finally($complete)
