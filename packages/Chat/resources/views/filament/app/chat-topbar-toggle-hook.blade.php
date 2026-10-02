@@ -18,6 +18,11 @@
             // Hide on the dashboard (its composer is the same entry point) and
             // on any /chats route (the conversation IS the chat).
             this.onChatPage = path === dashboard || /\/chats(\/|$)/.test(path);
+
+            // The side panel persists across navigation; these pages show the chat themselves.
+            if (this.onChatPage) {
+                window.dispatchEvent(new CustomEvent('chat:close-side-panel'));
+            }
         },
         init() {
             this.check();

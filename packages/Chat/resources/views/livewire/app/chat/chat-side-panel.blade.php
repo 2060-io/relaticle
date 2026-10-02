@@ -17,16 +17,13 @@
             historyItems: [],
             menuOpen: false,
             copied: false,
+            contextStale: false,
 
             init() {
-                {{-- Open at init only when Livewire restored this page from its
-                     back/forward cache; forward navigation always lands closed. --}}
-                if (this.open) {
-                    this.open = false;
-                }
-
                 this.$watch('open', (newValue) => {
                     if (newValue === true) {
+                        this.syncContextIfStale();
+
                         this.$nextTick(() => {
                             window.dispatchEvent(new CustomEvent('chat:focus-editor', { detail: { context: 'side-panel' } }));
                         });
@@ -65,6 +62,20 @@
                 this.resizeHandler = () => { this.viewportWidth = window.innerWidth; };
                 window.addEventListener('resize', this.resizeHandler);
 
+                {{-- Navigation swaps the page but keeps this panel, and resets the classes on <html>. --}}
+                this.navigatedHandler = () => {
+                    this.dock(this.docked);
+                    this.contextStale = true;
+
+                    if (this.open) {
+                        this.syncContextIfStale();
+                    }
+                };
+                document.addEventListener('livewire:navigated', this.navigatedHandler);
+
+                this.closeHandler = () => { this.open = false; };
+                window.addEventListener('chat:close-side-panel', this.closeHandler);
+
                 this.$watch('docked', (docked) => this.dock(docked));
                 this.dock(this.docked);
             },
@@ -73,7 +84,18 @@
                 window.removeEventListener('keydown', this.keydownHandler);
                 window.removeEventListener('chat:conversation-created', this.conversationCreatedHandler);
                 window.removeEventListener('resize', this.resizeHandler);
+                document.removeEventListener('livewire:navigated', this.navigatedHandler);
+                window.removeEventListener('chat:close-side-panel', this.closeHandler);
                 this.dock(false);
+            },
+
+            syncContextIfStale() {
+                if (!this.contextStale) {
+                    return;
+                }
+
+                this.contextStale = false;
+                $wire.refreshContext(window.location.href);
             },
 
             get docked() {

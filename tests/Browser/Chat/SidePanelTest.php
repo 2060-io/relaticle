@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Relaticle\Chat\Livewire\App\Chat\ChatSidePanel;
@@ -40,7 +41,7 @@ it('stays closed when the browser goes back to a page where it was closed', func
     $page->assertMissing('[data-chat-side-panel]');
 });
 
-it('does not restore an open panel when the browser goes back', function (): void {
+it('keeps an open panel open when the browser goes back', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
     $assistantName = config('chat.assistant_name');
@@ -55,11 +56,40 @@ it('does not restore an open panel when the browser goes back', function (): voi
     $page->script("window.Livewire.navigate('/app/{$workspace->slug}/companies')");
 
     $page->waitForText('No companies')
+        ->assertVisible('[data-chat-side-panel]')
         ->back()
         ->waitForText('No people')
-        ->wait(0.5);
+        ->assertVisible('[data-chat-side-panel]');
+});
 
-    $page->assertMissing('[data-chat-side-panel]');
+it('keeps the open panel docked and on the current record across navigation, and closes it on the dashboard', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $company = Company::factory()->recycle([$user, $workspace])->create(['name' => 'Northwind Traders']);
+    $assistantName = config('chat.assistant_name');
+
+    $pageContextLabel = 'Alpine.$data(document.querySelector("[data-chat-side-panel] [data-chat-context=side-panel]")).pageContextLabel';
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize(1440, 900)
+        ->navigate("/app/{$workspace->slug}/people")
+        ->click("button[aria-label=\"Ask {$assistantName}\"]")
+        ->assertVisible('[data-chat-side-panel]');
+
+    $page->script("window.Livewire.navigate('/app/{$workspace->slug}/companies/{$company->getKey()}')");
+
+    $page->waitForText('Record info')
+        ->assertVisible('[data-chat-side-panel]')
+        ->assertScript('document.documentElement.classList.contains("fi-chat-docked")', true)
+        ->assertScript($pageContextLabel, 'Northwind Traders');
+
+    $page->script("window.Livewire.navigate('/app/{$workspace->slug}')");
+
+    $page->waitForText($assistantName)
+        ->assertMissing('[data-chat-side-panel]')
+        ->assertScript('document.documentElement.classList.contains("fi-chat-docked")', false)
+        ->assertNoJavaScriptErrors();
 });
 
 it('stays open, docked beside the page, when a chat is picked from its history', function (): void {
