@@ -7,6 +7,8 @@ namespace App\Models\Concerns;
 use App\Enums\CreationSource;
 use App\Models\User;
 use App\Support\CurrentSource;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -38,6 +40,15 @@ trait HasCreator
     public function isSystemCreated(): bool
     {
         return $this->creation_source === CreationSource::SYSTEM;
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     */
+    #[Scope]
+    protected function ownData(Builder $query): void
+    {
+        $query->whereNot($query->qualifyColumn('creation_source'), CreationSource::SYSTEM);
     }
 
     /**

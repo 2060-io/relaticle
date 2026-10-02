@@ -38,7 +38,7 @@ use Relaticle\Ink\Models\Category;
 use Relaticle\Ink\Models\Post;
 use Relaticle\SystemAdmin\Auth\RequiredAppAuthentication;
 use Relaticle\SystemAdmin\Filament\Pages\Auth\EditProfile;
-use Relaticle\SystemAdmin\Filament\Pages\Dashboard;
+use Relaticle\SystemAdmin\Filament\Pages\Overview;
 use Relaticle\SystemAdmin\Http\Controllers\PasskeyLoginController;
 use Relaticle\SystemAdmin\Http\Controllers\PasskeyRegistrationController;
 use Relaticle\SystemAdmin\Http\Middleware\DenySearchIndexing;
@@ -79,6 +79,8 @@ final class SystemAdminPanelProvider extends PanelProvider
     public function register(): void
     {
         parent::register();
+
+        $this->mergeConfigFrom(__DIR__.'/../config/system-admin.php', 'system-admin');
 
         // Lazy mount-parameter snapshots bypass component lifecycle hooks.
         Livewire::listen('dehydrate', function (Component $component, ComponentContext $context): void {
@@ -205,7 +207,7 @@ final class SystemAdminPanelProvider extends PanelProvider
             ->maxContentWidth('full')
             ->sidebarCollapsibleOnDesktop()
             ->pages([
-                Dashboard::class,
+                Overview::class,
             ])
             ->widgets([])
             /**
