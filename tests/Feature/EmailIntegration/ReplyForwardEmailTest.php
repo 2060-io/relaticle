@@ -85,6 +85,29 @@ beforeEach(function (): void {
     ]);
 });
 
+it('rejects a malformed recipient in the reply modal', function (): void {
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $this->person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->callAction(
+            'replyForwardEmail',
+            data: [
+                'connected_account_id' => $this->account->id,
+                'to' => ['sender@contact.com'],
+                'cc' => ['john'],
+                'bcc' => [],
+                'subject' => 'Re: Original Subject',
+                'body_html' => '<p>Reply body</p>',
+                'in_reply_to_email_id' => $this->inboundEmail->id,
+            ],
+            arguments: ['emailId' => $this->inboundEmail->id, 'mode' => 'reply'],
+        )
+        ->assertHasFormErrors(['cc.0']);
+
+    expect(Email::query()->where('direction', EmailDirection::OUTBOUND)->exists())->toBeFalse();
+});
+
 it('reply persists a queued Email with REPLY creation_source', function (): void {
     livewire(EmailsRelationManager::class, [
         'ownerRecord' => $this->person,

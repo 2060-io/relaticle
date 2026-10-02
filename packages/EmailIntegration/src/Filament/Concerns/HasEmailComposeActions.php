@@ -241,6 +241,7 @@ trait HasEmailComposeActions
                 ->placeholder(__('filament/concerns/email-compose.fields.to.placeholder'))
                 ->required()
                 ->splitKeys(['Tab', ',', ' '])
+                ->nestedRecursiveRules(['email'])
                 ->suggestions(fn (): array => $this->contactEmailSuggestions()),
 
             Grid::make(2)
@@ -249,12 +250,14 @@ trait HasEmailComposeActions
                         ->label(__('filament/concerns/email-compose.fields.cc.label'))
                         ->placeholder(__('filament/concerns/email-compose.fields.cc.placeholder'))
                         ->splitKeys(['Tab', ',', ' '])
+                        ->nestedRecursiveRules(['email'])
                         ->suggestions(fn (): array => $this->contactEmailSuggestions()),
 
                     TagsInput::make('bcc')
                         ->label(__('filament/concerns/email-compose.fields.bcc.label'))
                         ->placeholder(__('filament/concerns/email-compose.fields.bcc.placeholder'))
                         ->splitKeys(['Tab', ',', ' '])
+                        ->nestedRecursiveRules(['email'])
                         ->suggestions(fn (): array => $this->contactEmailSuggestions()),
                 ]),
 

@@ -569,6 +569,7 @@ final class EmailInboxPage extends Page
                 ->placeholder(__('filament/pages/email-inbox.reply_form.to.placeholder'))
                 ->required()
                 ->splitKeys(['Tab', ',', ' '])
+                ->nestedRecursiveRules(['email'])
                 ->suggestions(fn (): array => $this->contactEmailSuggestions()),
 
             Grid::make(2)
@@ -577,12 +578,14 @@ final class EmailInboxPage extends Page
                         ->label(__('filament/pages/email-inbox.reply_form.cc.label'))
                         ->placeholder(__('filament/pages/email-inbox.reply_form.cc.placeholder'))
                         ->splitKeys(['Tab', ',', ' '])
+                        ->nestedRecursiveRules(['email'])
                         ->suggestions(fn (): array => $this->contactEmailSuggestions()),
 
                     TagsInput::make('bcc')
                         ->label(__('filament/pages/email-inbox.reply_form.bcc.label'))
                         ->placeholder(__('filament/pages/email-inbox.reply_form.bcc.placeholder'))
                         ->splitKeys(['Tab', ',', ' '])
+                        ->nestedRecursiveRules(['email'])
                         ->suggestions(fn (): array => $this->contactEmailSuggestions()),
                 ]),
 
