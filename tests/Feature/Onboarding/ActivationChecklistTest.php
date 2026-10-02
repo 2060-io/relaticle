@@ -152,6 +152,22 @@ it('shows an inline syncing row without a percent while the mailbox is still bei
         ->assertDontSee('12%');
 });
 
+it('shows the highest import percent when another mailbox is still at zero', function (): void {
+    foreach (['starting@acme.example' => 10, 'halfway@acme.example' => 11] as $address => $pendingJobs) {
+        $account = ConnectedAccount::factory()->create([
+            'workspace_id' => $this->workspace->getKey(),
+            'user_id' => $this->owner->getKey(),
+            'email_address' => $address,
+            'sync_cursor' => 'history-done',
+        ]);
+        setHistoryImportBatchProgress(attachHistoryImportBatch($account), $address === 'starting@acme.example' ? 10 : 20, $pendingJobs);
+    }
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml('data-testid="activation-email-sync-progress"')
+        ->assertSee('45%');
+});
+
 it('does not show import issue on the checklist when store jobs failed', function (): void {
     $account = ConnectedAccount::factory()->create([
         'workspace_id' => $this->workspace->getKey(),

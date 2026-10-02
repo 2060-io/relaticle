@@ -286,7 +286,7 @@ final class ActivationChecklist extends Component
         $percents = $syncingAccounts->map(fn (ConnectedAccount $account): ?int => $account->syncDisplayPercent());
         $percent = (int) $percents->max();
 
-        if ($percents->contains(null)) {
+        if ($percents->containsStrict(null)) {
             return ['percent' => $percent, 'showsPercent' => false];
         }
 
