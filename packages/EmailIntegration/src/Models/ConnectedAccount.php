@@ -306,6 +306,13 @@ final class ConnectedAccount extends Model
         return $this->isImportingCalendarHistory();
     }
 
+    private function isListingEmailHistory(): bool
+    {
+        return $this->isImportingHistory()
+            && $this->hasEmail()
+            && $this->sync_cursor === null;
+    }
+
     public function mailboxHistoryImportSummary(): ?MailboxHistoryImportSummary
     {
         return resolve(MailboxHistoryImportService::class)->summary($this);
@@ -426,48 +433,6 @@ final class ConnectedAccount extends Model
         return $this->showsMailboxHistoryImportProgressOnAccountsPage();
     }
 
-    public function mailboxHistoryImportFailureDismissToken(): ?string
-    {
-        $batchId = $this->history_import_batch_id;
-
-        if (blank($batchId) || ! $this->showsMailboxHistoryImportFailureSummary()) {
-            return null;
-        }
-
-        $generation = resolve(MailboxHistoryImportService::class)->failureGeneration((string) $batchId);
-
-        return $batchId.':'.$generation;
-    }
-
-    public function isIncrementalSyncing(): bool
-    {
-        return ! $this->isImportingHistory() && ($this->isCalendarSyncing() || $this->isEmailSyncing());
-    }
-
-    public function incrementalSyncStatusLabel(): ?string
-    {
-        if ($this->isImportingHistory()) {
-            return null;
-        }
-
-        $emailSyncing = $this->isEmailSyncing();
-        $calendarSyncing = $this->isCalendarSyncing();
-
-        if ($emailSyncing && $calendarSyncing) {
-            return __('filament/pages/email-accounts.importing_email_and_calendar');
-        }
-
-        if ($calendarSyncing) {
-            return __('filament/pages/email-accounts.importing_calendar');
-        }
-
-        if ($emailSyncing) {
-            return __('filament/pages/email-accounts.importing_email');
-        }
-
-        return null;
-    }
-
     /**
      * Percent of the first mailbox import. Starts at 0 until the provider
      * gives a size estimate and imported rows start landing.
@@ -530,8 +495,12 @@ final class ConnectedAccount extends Model
         return $this->initial_calendar_sync_imported;
     }
 
-    public function syncDisplayPercent(): int
+    public function syncDisplayPercent(): ?int
     {
+        if ($this->isListingEmailHistory()) {
+            return null;
+        }
+
         if ($this->isImportingHistory()) {
             if ($this->hasEmail() && filled($this->history_import_batch_id)) {
                 return resolve(MailboxHistoryImportService::class)->progressPercent($this);
