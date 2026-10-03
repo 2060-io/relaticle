@@ -444,6 +444,22 @@ it('sends a text file to the model whole, commas and line breaks included', func
         && $job->attachment === ['id' => $attachmentId, 'name' => 'call.txt', 'kind' => 'text', 'row_count' => 0]);
 });
 
+it('writes the row count of a handed-off file with a thousands separator', function (): void {
+    Queue::fake();
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText(''),
+        'attachment_id' => attachCsv(1200),
+    ])->assertOk()->assertJsonPath('status', 'stored');
+
+    $reply = DB::table('agent_conversation_messages')
+        ->where('conversation_id', $this->conversationId)
+        ->where('role', 'assistant')
+        ->value('content');
+
+    expect($reply)->toContain("That's 1,200 rows.");
+});
+
 it('refuses a text file once the conversation holds its budget of attached text', function (): void {
     Queue::fake();
     config(['chat.max_attached_text_bytes' => 100]);
