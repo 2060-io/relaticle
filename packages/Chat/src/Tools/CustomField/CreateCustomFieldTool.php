@@ -111,11 +111,8 @@ final class CreateCustomFieldTool implements Tool
         /** @var array<string, true> $proposedNames */
         $proposedNames = [];
 
-        /** @var array<string, true> $proposedCodes */
-        $proposedCodes = [];
-
-        /** @var array<string, true> $generatedCodes */
-        $generatedCodes = [];
+        /** @var array<string, bool> $explicitByCode */
+        $explicitByCode = [];
 
         foreach (array_values($records) as $index => $record) {
             if (! is_array($record)) {
@@ -150,21 +147,14 @@ final class CreateCustomFieldTool implements Tool
             $explicitCode = (string) ($validated['code'] ?? '');
             $code = $explicitCode !== '' ? $explicitCode : CodeGenerator::generateFromName($name);
             $codeKey = $entityType.':'.$code;
-            $codeClaimed = isset($proposedCodes[$codeKey]) || ($explicitCode !== '' && isset($generatedCodes[$codeKey]));
-
-            if ($codeClaimed) {
+            if (isset($explicitByCode[$codeKey]) && ($explicitByCode[$codeKey] || $explicitCode !== '')) {
                 $skipped[] = $this->skippedRecord($record, $index, "A field with code \"{$code}\" is already in this batch on {$entityType}.");
 
                 continue;
             }
 
             $proposedNames[$nameKey] = true;
-
-            if ($explicitCode !== '') {
-                $proposedCodes[$codeKey] = true;
-            } else {
-                $generatedCodes[$codeKey] = true;
-            }
+            $explicitByCode[$codeKey] = $explicitCode !== '';
 
             $proposedPerEntity[$entityType] = ($proposedPerEntity[$entityType] ?? 0) + 1;
             $actionRecords[] = $this->actionData($validated);
