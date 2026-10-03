@@ -16,8 +16,6 @@ return [
     'drafts' => [
         'columns' => [
             'subject' => 'Draft',
-            'recipients' => 'To',
-            'no_recipients' => 'No recipients',
             'last_edited' => 'Last edited',
         ],
         'actions' => [

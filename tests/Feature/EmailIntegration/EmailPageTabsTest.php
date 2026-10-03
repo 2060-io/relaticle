@@ -275,6 +275,14 @@ it('opens a draft in the composer', function (): void {
         ->toContain((string) $draft->getKey());
 });
 
+it('opens a draft in the composer from a click on its row', function (): void {
+    $draft = makeDraft($this->user, $this->account);
+
+    Livewire::test(DraftsTable::class)
+        ->call('mountTableAction', 'openDraft', (string) $draft->getKey())
+        ->assertDispatched('composer:open', draftId: (string) $draft->getKey());
+});
+
 it('deletes a draft from the drafts table, attachment rows and files included', function (): void {
     Storage::fake(EmailAttachment::DISK);
 
