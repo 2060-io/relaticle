@@ -463,6 +463,7 @@ it('names the picked model and offers Retry on Auto when an explicit pick fails'
     Event::fake([ChatStreamFailed::class]);
 
     $user = User::factory()->withPersonalWorkspace()->create();
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
     $conversationId = (string) Str::uuid7();
     seedFailoverConversation($user, $conversationId);
 
@@ -490,6 +491,7 @@ it('offers Retry on Auto when the provider rejects an explicit pick mid-stream',
     Event::fake([ChatStreamFailed::class]);
 
     $user = User::factory()->withPersonalWorkspace()->create();
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
     $conversationId = (string) Str::uuid7();
     seedFailoverConversation($user, $conversationId);
 
@@ -498,6 +500,44 @@ it('offers Retry on Auto when the provider rejects an explicit pick mid-stream',
 
     Event::assertDispatched(ChatStreamFailed::class, fn (ChatStreamFailed $event): bool => $event->broadcastWith()['retryOnAuto'] === true
         && $event->broadcastWith()['message'] === 'Sonnet 5 is unavailable right now. Retry on Auto to get an answer from another model.');
+});
+
+it('offers no Retry on Auto when Auto has no other model to answer with', function (): void {
+    Event::fake([ChatStreamFailed::class]);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    makeFailedTurnJob($user, $conversationId, ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'])
+        ->failed(new InsufficientCreditsException('Your credit balance is too low to access the Anthropic API.'));
+
+    Event::assertDispatched(ChatStreamFailed::class, fn (ChatStreamFailed $event): bool => $event->retryOnAuto === false
+        && ! str_contains($event->message, 'Retry on Auto'));
+});
+
+it('offers no Retry on Auto for a turn sent with an attachment, which has no retry button', function (): void {
+    Event::fake([ChatStreamFailed::class]);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    $job = new ProcessChatMessage(
+        user: $user,
+        workspace: $user->currentWorkspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'],
+        turnId: (string) Str::ulid(),
+        attachment: ['id' => (string) Str::uuid(), 'name' => 'brief.md', 'kind' => 'text', 'row_count' => 0],
+    );
+
+    $job->failed(new InsufficientCreditsException('Your credit balance is too low to access the Anthropic API.'));
+
+    Event::assertDispatched(ChatStreamFailed::class, fn (ChatStreamFailed $event): bool => $event->retryOnAuto === false
+        && ! str_contains($event->message, 'Retry on Auto'));
 });
 
 it('offers no Retry on Auto for a greeting turn, which has no retry button', function (): void {

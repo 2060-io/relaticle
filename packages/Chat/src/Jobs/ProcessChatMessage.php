@@ -614,7 +614,9 @@ final class ProcessChatMessage implements ShouldQueue
         return $this->resolved['source'] === 'explicit'
             && $this->isProviderFailure($exception)
             && ! $this->isRateLimited($exception)
-            && ! $this->opensTheThread();
+            && ! $this->opensTheThread()
+            && $this->attachment === null
+            && resolve(AiModelResolver::class)->autoOffersAnotherModel($this->user, (string) ($this->resolved['id'] ?? ''));
     }
 
     private function isProviderFailure(?Throwable $exception): bool

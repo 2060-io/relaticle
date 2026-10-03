@@ -73,6 +73,18 @@ final readonly class AiModelResolver
         return null;
     }
 
+    public function autoOffersAnotherModel(User $user, string $failedId): bool
+    {
+        $plan = $this->access->planFor($user->currentWorkspace);
+
+        return array_any(
+            $this->registry->autoChain(),
+            static fn (ModelDescriptor $descriptor): bool => $descriptor->id !== $failedId
+                && $descriptor->isAvailable()
+                && $descriptor->allowedForPlan($plan),
+        );
+    }
+
     private function autoPick(Plan $plan): ModelDescriptor
     {
         $chain = $this->registry->autoChain();
