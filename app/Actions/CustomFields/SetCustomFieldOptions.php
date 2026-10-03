@@ -93,12 +93,14 @@ final readonly class SetCustomFieldOptions
             $option = $target['option'];
 
             if (! $option instanceof CustomFieldOption) {
-                $options[] = CustomFieldOption::query()->create([
+                $option = new CustomFieldOption([
                     (string) config('custom-fields.database.column_names.tenant_foreign_key') => $field->tenant_id,
                     'custom_field_id' => $field->getKey(),
                     'name' => $target['name'],
                     'sort_order' => $sortOrder,
                 ]);
+                $option->setRelation('customField', $field)->save();
+                $options[] = $option;
 
                 continue;
             }

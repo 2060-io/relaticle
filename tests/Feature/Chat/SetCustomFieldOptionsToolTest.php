@@ -584,3 +584,21 @@ it('moves a value whose record no longer exists', function (): void {
     expect(setOptionsStoredValue($orphaned, $this->lifecycle))->toBe(setOptionsId($this->lifecycle, 'Lost'))
         ->and(setOptionsNames($this->lifecycle))->toBe(['Lead', 'Customer', 'Lost']);
 });
+
+it('stores a renamed option of a deactivated encrypted field as ciphertext', function (): void {
+    $tier = setOptionsChoiceField($this->workspace, 'tier', 'Tier', 'select', ['Gold', 'Silver'], encrypted: true);
+    setOptionsPropose($this->convId, [[
+        'entity_type' => 'company',
+        'code' => 'tier',
+        'options' => [['name' => 'Platinum', 'current' => 'Gold'], ['name' => 'Silver'], ['name' => 'Bronze']],
+    ]]);
+
+    CustomField::query()->withoutGlobalScopes()->whereKey($tier->getKey())->update(['active' => false]);
+
+    resolve(PendingActionService::class)->approve(setOptionsPending($this->convId), $this->owner);
+
+    $stored = DB::table('custom_field_options')->where('custom_field_id', $tier->getKey())->orderBy('sort_order')->pluck('name');
+
+    expect($stored->all())->not->toContain('Platinum', 'Bronze')
+        ->and($stored->map(fn (string $name): string => decrypt($name, false))->all())->toBe(['Platinum', 'Silver', 'Bronze']);
+});

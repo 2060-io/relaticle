@@ -307,10 +307,11 @@ final readonly class CustomFieldOptionPlan
      */
     private static function currentOptions(CustomField $field): Collection
     {
+        // The relation hides a deactivated field, and the option model encrypts by reading its field.
         return CustomFieldOption::query()
-            ->with('customField')
             ->where('custom_field_id', $field->getKey())
             ->get()
+            ->each(fn (CustomFieldOption $option): CustomFieldOption => $option->setRelation('customField', $field))
             ->toBase()
             ->keyBy(fn (CustomFieldOption $option): string => (string) $option->getKey());
     }
