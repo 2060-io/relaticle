@@ -29,6 +29,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Laravel\Jetstream\Contracts\DeletesTeams;
 use Override;
+use Relaticle\EmailIntegration\EmailIntegrationServiceProvider;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\CreateWorkspace;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\EditWorkspace;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\ListWorkspaces;
@@ -37,6 +38,7 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\CompaniesRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\ConversationsRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\ImportsRelationManager;
+use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\MailboxesRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\MembersRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\NotesRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\OpportunitiesRelationManager;
@@ -180,7 +182,10 @@ final class WorkspaceResource extends Resource
                         fn (string $label): TextEntry => TextEntry::make('journey_'.str($label)->slug('_'))
                             ->label($label)
                             ->state(fn (Workspace $record): string => WorkspaceJourney::facts($record)[$label]),
-                        ['Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'Internal'],
+                        [
+                            'Signed up', 'Signup method', 'First own record', 'Active days (30d)', 'Typed chat messages', 'Credits used this period', 'Internal',
+                            ...(EmailIntegrationServiceProvider::enabled() ? ['Connected mailboxes'] : []),
+                        ],
                     )),
             ]);
     }
@@ -302,6 +307,11 @@ final class WorkspaceResource extends Resource
 
                         return $query;
                     }),
+                Filter::make('connected_mailbox')
+                    ->label('Connected a mailbox')
+                    ->toggle()
+                    ->visible(fn (): bool => EmailIntegrationServiceProvider::enabled())
+                    ->query(fn (Builder $query): Builder => $query->withConnectedMailbox()),
                 Filter::make('stuck_after_setup')
                     ->label('Stuck after setup')
                     ->toggle()
@@ -364,6 +374,7 @@ final class WorkspaceResource extends Resource
             NotesRelationManager::class,
             ConversationsRelationManager::class,
             ImportsRelationManager::class,
+            MailboxesRelationManager::class,
             SubscriptionsRelationManager::class,
             ActivityRelationManager::class,
         ];

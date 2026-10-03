@@ -64,6 +64,9 @@ final class ConnectedAccount extends Model
      */
     use HasFactory, HasUlids, HasWorkspace, SoftDeletes;
 
+    // The scheduler dispatches an incremental sync every 5 minutes.
+    private const int STALE_AFTER_MINUTES = 60;
+
     protected static function newFactory(): ConnectedAccountFactory
     {
         return ConnectedAccountFactory::new();
@@ -152,6 +155,43 @@ final class ConnectedAccount extends Model
     protected function connected(Builder $query): Builder
     {
         return $query->whereNot('status', EmailAccountStatus::DISCONNECTED);
+    }
+
+    /**
+     * @param  Builder<ConnectedAccount>  $query
+     * @return Builder<ConnectedAccount>
+     */
+    #[Scope]
+    protected function failing(Builder $query): Builder
+    {
+        return $query->whereIn('status', [EmailAccountStatus::ERROR, EmailAccountStatus::REAUTH_REQUIRED]);
+    }
+
+    /**
+     * @param  Builder<ConnectedAccount>  $query
+     * @return Builder<ConnectedAccount>
+     */
+    #[Scope]
+    protected function stale(Builder $query): Builder
+    {
+        return $query
+            ->active()
+            ->whereNotNull('sync_cursor')
+            ->where(fn (Builder $overdue): Builder => $overdue
+                ->whereNull('last_synced_at')
+                ->orWhere('last_synced_at', '<', now()->subMinutes(self::STALE_AFTER_MINUTES)));
+    }
+
+    /**
+     * @param  Builder<ConnectedAccount>  $query
+     * @return Builder<ConnectedAccount>
+     */
+    #[Scope]
+    protected function needingAttention(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $unhealthy): Builder => $unhealthy
+            ->where(fn (Builder $failing): Builder => $failing->failing())
+            ->orWhere(fn (Builder $stale): Builder => $stale->stale()));
     }
 
     /**
@@ -278,6 +318,16 @@ final class ConnectedAccount extends Model
     public function isActive(): bool
     {
         return $this->status === EmailAccountStatus::ACTIVE;
+    }
+
+    public function isStale(): bool
+    {
+        if (! $this->isActive() || $this->sync_cursor === null) {
+            return false;
+        }
+
+        return $this->last_synced_at === null
+            || $this->last_synced_at->lt(now()->subMinutes(self::STALE_AFTER_MINUTES));
     }
 
     /**

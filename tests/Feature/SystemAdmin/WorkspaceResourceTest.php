@@ -21,6 +21,7 @@ use Laravel\Cashier\Subscription;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Enums\AiCreditType;
 use Relaticle\Chat\Models\AiCreditTransaction;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\SystemAdmin\Actions\UpdateCustomerRecord;
 use Relaticle\SystemAdmin\Enums\SystemAdministratorRole;
 use Relaticle\SystemAdmin\Filament\Pages\EditCustomerRecord;
@@ -804,6 +805,20 @@ it('shows the journey of a workspace on its page', function (): void {
         ->assertSee('Oct 2, 2026')
         ->assertSee('2 active days')
         ->assertDontSee('Last wizard step');
+});
+
+it('shows how many mailboxes a workspace connected and how many need attention on its journey', function (): void {
+    $workspace = OverviewData::workspaceOf(OverviewData::owner());
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
+        ->assertSeeInOrder(['Connected mailboxes', 'None']);
+
+    ConnectedAccount::factory()->create(['workspace_id' => $workspace]);
+    ConnectedAccount::factory()->error()->create(['workspace_id' => $workspace]);
+    ConnectedAccount::factory()->disconnected()->create(['workspace_id' => $workspace]);
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getRouteKey()])
+        ->assertSee('2 connected, 1 needs attention');
 });
 
 it('counts the last 30 calendar days, today included, as the journey active days', function (): void {
