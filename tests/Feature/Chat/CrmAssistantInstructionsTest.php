@@ -19,6 +19,7 @@ use Relaticle\Chat\Tools\Company\CreateCompanyTool;
 use Relaticle\Chat\Tools\Company\DeleteCompanyTool;
 use Relaticle\Chat\Tools\Company\UpdateCompanyTool;
 use Relaticle\Chat\Tools\CustomField\CreateCustomFieldTool;
+use Relaticle\Chat\Tools\CustomField\DeleteCustomFieldTool;
 use Relaticle\Chat\Tools\CustomField\SetCustomFieldOptionsTool;
 use Relaticle\Chat\Tools\CustomField\UpdateCustomFieldTool;
 use Relaticle\Chat\Tools\GuideToPageTool;
@@ -628,13 +629,14 @@ it('drops update, delete and field definition tools in setup mode and keeps the 
         ->not->toContain(DeleteNoteTool::class)
         ->not->toContain(CreateCustomFieldTool::class)
         ->not->toContain(UpdateCustomFieldTool::class)
+        ->not->toContain(DeleteCustomFieldTool::class)
         ->toContain(CreatePersonTool::class)
         ->toContain(CreateCompanyTool::class)
         ->toContain(SetCustomFieldOptionsTool::class)
         ->toContain(GuideToPageTool::class)
         ->toContain(SearchDocsTool::class)
         ->toContain(ListPeopleTool::class)
-        ->and($setup)->toHaveCount(count($normal) - 12);
+        ->and($setup)->toHaveCount(count($normal) - 13);
 });
 
 it('carries the setup mode instructions in the cached static block', function (): void {
@@ -739,4 +741,13 @@ it('limits the citations exception to the two import links after the fence of an
         ->and($instructions)->toContain('When they bring a file, propose the fields first, then give the matching "import_*" destination so its columns map onto them.')
         ->toContain('When an attached CSV preview carries an import link for that record type, give that link instead (see Citations).')
         ->not->toContain('The import links inside an "Attached file" block');
+});
+
+it('routes a field deletion through its tool and deactivates an in-use field first', function (): void {
+    $instructions = resolve(CrmAssistant::class)->staticInstructions();
+
+    expect($instructions)
+        ->toContain('propose it through DeleteCustomFieldTool')
+        ->toContain('the field is deactivated first and the delete follows')
+        ->not->toContain('you CANNOT delete field definitions from chat');
 });

@@ -154,6 +154,7 @@
         "Tests\\Feature\\Chat\\CustomFieldsBridge\\SchemaDescriberTest": 3.6775,
         "Tests\\Feature\\Chat\\DashboardMyTasksRenderTest": 5.5057,
         "Tests\\Feature\\Chat\\DashboardSubmitsToCreateTest": 1.2754,
+        "Tests\\Feature\\Chat\\DeleteCustomFieldToolTest": 10.5,
         "Tests\\Feature\\Chat\\DestinationResolverTest": 4.0565,
         "Tests\\Feature\\Chat\\DisplayBlockTest": 22.9886,
         "Tests\\Feature\\Chat\\DuplicatePersonEmailGuardTest": 3.271,

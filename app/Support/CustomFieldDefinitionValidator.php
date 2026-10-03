@@ -141,6 +141,24 @@ final readonly class CustomFieldDefinitionValidator
     }
 
     /**
+     * @throws ValidationException
+     */
+    public static function forDelete(CustomField $field): void
+    {
+        if ($field->isSystemDefined()) {
+            throw ValidationException::withMessages([
+                'code' => "\"{$field->name}\" is a system-defined field and cannot be deleted.",
+            ]);
+        }
+
+        if ($field->isActive() && $field->hasValues()) {
+            throw ValidationException::withMessages([
+                'code' => "\"{$field->name}\" is active and records still hold values for it. Deactivate the field first, then delete it.",
+            ]);
+        }
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function optionNameMessages(): array
