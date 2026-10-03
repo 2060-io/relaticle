@@ -69,11 +69,19 @@ return new class extends Migration
         }
 
         $remaining = array_filter(['attributes' => $new, 'old' => $old], fn (array $side): bool => $side !== []);
+
+        if ($relationChanges === []) {
+            DB::table('activity_log')->where('id', $row->id)->update([
+                'attribute_changes' => json_encode($remaining),
+            ]);
+
+            return;
+        }
+
         $properties = json_decode((string) $row->properties, true);
         $properties = is_array($properties) ? $properties : [];
-        $batchUuid = $row->batch_uuid ?? (string) Str::uuid();
 
-        if ($relationChanges !== [] && $remaining === []) {
+        if ($remaining === []) {
             DB::table('activity_log')->where('id', $row->id)->update([
                 'event' => self::EVENT,
                 'description' => self::EVENT,
@@ -84,14 +92,12 @@ return new class extends Migration
             return;
         }
 
+        $batchUuid = $row->batch_uuid ?? (string) Str::uuid();
+
         DB::table('activity_log')->where('id', $row->id)->update([
             'attribute_changes' => json_encode($remaining),
             'batch_uuid' => $batchUuid,
         ]);
-
-        if ($relationChanges === []) {
-            return;
-        }
 
         DB::table('activity_log')->insert([
             'workspace_id' => $row->workspace_id,
