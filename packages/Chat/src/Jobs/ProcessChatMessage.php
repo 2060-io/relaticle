@@ -409,6 +409,10 @@ final class ProcessChatMessage implements ShouldQueue
                 ChatTelemetry::streamRejected($e->error, $this->resolved['model'] ?? 'unknown');
             }
 
+            if (! $rejection instanceof RequestException && ! $e instanceof ProviderStreamRejectedException && ($this->isProviderFailure($e) || $this->isTransient($e))) {
+                ChatTelemetry::providerFailed($e, $this->resolved['model'] ?? 'unknown');
+            }
+
             // The user's model choice was 'auto' and nothing has streamed yet: fail
             // over to the next plan-allowed chain entry instead of failing the turn.
             // An explicit pick never lands here (source stays 'explicit'), so a user

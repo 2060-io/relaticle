@@ -921,6 +921,38 @@ it('logs the provider rejection before an auto pick fails over', function (): vo
             && $context['error_type'] === 'invalid_request_error');
 });
 
+it('logs an overloaded provider once its retries are spent', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    AnthropicSse::fake("data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n");
+    Queue::fake();
+    Log::spy();
+
+    $job = (new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'],
+        turnId: (string) Str::ulid(),
+    ))->withFakeQueueInteractions();
+    $job->job->attempts = 5;
+
+    expect(fn (): mixed => $job->handle(resolve(CreditService::class)))->toThrow(Exception::class);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context = []): bool => $message === 'Chat provider rejected the turn'
+            && $context['model'] === 'claude-sonnet-5'
+            && $context['error_type'] === 'ProviderOverloadedException'
+            && str_contains((string) $context['error_message'], 'overloaded_error'));
+});
+
 it('still fails over and logs when the provider error type is not a string', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
