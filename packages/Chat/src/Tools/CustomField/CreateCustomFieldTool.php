@@ -238,24 +238,26 @@ final class CreateCustomFieldTool implements Tool
         $optionNames = array_column(is_array($validated['options'] ?? null) ? $validated['options'] : [], 'name');
 
         $fields = [
-            ['label' => 'Entity', 'value' => $entityType],
-            ['label' => 'Name', 'value' => $name],
-            ['label' => 'Type', 'value' => $type],
+            ['label' => __('Entity'), 'value' => $entityType],
+            ['label' => __('Name'), 'value' => $name],
+            ['label' => __('Type'), 'value' => $type],
         ];
 
         if ($code !== '') {
-            $fields[] = ['label' => 'Code', 'value' => $code];
+            $fields[] = ['label' => __('Code'), 'value' => $code];
         }
 
         if ($optionNames !== []) {
-            $fields[] = ['label' => 'Options', 'value' => implode(', ', $optionNames)];
+            $fields[] = ['label' => __('Options'), 'value' => implode(', ', $optionNames)];
         }
 
-        $optionsSummary = $optionNames !== [] ? ' with options: '.implode(', ', $optionNames) : '';
+        $replace = ['name' => $name, 'type' => $type, 'entity' => $entityType, 'options' => implode(', ', $optionNames)];
 
         return [
-            'title' => 'Create Custom Field',
-            'summary' => "Create \"{$name}\" ({$type}) on {$entityType}{$optionsSummary}",
+            'title' => __('Create Custom Field'),
+            'summary' => $optionNames === []
+                ? __('Create ":name" (:type) on :entity', $replace)
+                : __('Create ":name" (:type) on :entity with options: :options', $replace),
             'fields' => $fields,
         ];
     }
