@@ -79,15 +79,16 @@ return new class extends Migration
         }
 
         $properties = json_decode((string) $row->properties, true);
-        $properties = is_array($properties) ? $properties : [];
+
+        $relationRow = [
+            'event' => self::EVENT,
+            'description' => self::EVENT,
+            'attribute_changes' => json_encode([]),
+            'properties' => json_encode([...(is_array($properties) ? $properties : []), self::EVENT => $relationChanges]),
+        ];
 
         if ($remaining === []) {
-            DB::table('activity_log')->where('id', $row->id)->update([
-                'event' => self::EVENT,
-                'description' => self::EVENT,
-                'attribute_changes' => json_encode([]),
-                'properties' => json_encode([...$properties, self::EVENT => $relationChanges]),
-            ]);
+            DB::table('activity_log')->where('id', $row->id)->update($relationRow);
 
             return;
         }
@@ -100,16 +101,13 @@ return new class extends Migration
         ]);
 
         DB::table('activity_log')->insert([
+            ...$relationRow,
             'workspace_id' => $row->workspace_id,
             'log_name' => $row->log_name,
-            'description' => self::EVENT,
             'subject_type' => $row->subject_type,
             'subject_id' => $row->subject_id,
-            'event' => self::EVENT,
             'causer_type' => $row->causer_type,
             'causer_id' => $row->causer_id,
-            'attribute_changes' => json_encode([]),
-            'properties' => json_encode([...$properties, self::EVENT => $relationChanges]),
             'created_at' => $row->created_at,
             'updated_at' => $row->updated_at,
             'batch_uuid' => $batchUuid,

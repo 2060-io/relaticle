@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models\Concerns;
 
-use App\Enums\CrmEntity;
 use App\Support\ActivityLog\RelationChangeLog;
 use Illuminate\Database\Eloquent\Model;
 
@@ -45,9 +44,8 @@ trait LogsLinkChanges
     {
         $owner = $this->linkOwner();
         $record = $this->linkedRecord();
-        $entity = $owner instanceof Model ? CrmEntity::tryFromModel($owner) : null;
 
-        if (! $owner instanceof Model || ! $record instanceof Model || ! $entity instanceof CrmEntity) {
+        if (! $owner instanceof Model || ! $record instanceof Model) {
             return;
         }
 
@@ -56,7 +54,7 @@ trait LogsLinkChanges
         resolve(RelationChangeLog::class)->link(
             $owner,
             $relation,
-            __("filament/resources/{$entity->value}.fields.{$relation}.label"),
+            __("filament/resources/{$owner->getMorphClass()}.fields.{$relation}.label"),
             removed: $attached ? null : $record,
             added: $attached ? $record : null,
         );

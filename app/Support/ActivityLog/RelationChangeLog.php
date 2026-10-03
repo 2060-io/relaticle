@@ -26,12 +26,12 @@ final readonly class RelationChangeLog
                 continue;
             }
 
-            $relation = Str::camel(Str::beforeLast($foreignKey, '_id'));
-            $names = $this->names($record->{$relation}()->getRelated(), [$old, $new]);
+            $code = Str::beforeLast($foreignKey, '_id');
+            $names = $this->names($record->{Str::camel($code)}()->getRelated(), [$old, $new]);
 
             LabelledChangeLog::write(
                 $record,
-                Str::snake($relation),
+                $code,
                 $label,
                 self::TYPE,
                 $this->side($old, $names),
