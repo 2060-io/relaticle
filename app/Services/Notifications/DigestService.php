@@ -8,6 +8,7 @@ use App\Data\DigestPayload;
 use App\Data\DigestTaskItem;
 use App\Data\DigestWorkspaceSection;
 use App\Enums\CreationSource;
+use App\Enums\CustomFields\TaskField;
 use App\Filament\Resources\TaskResource;
 use App\Models\User;
 use App\Models\Workspace;
@@ -108,7 +109,7 @@ final readonly class DigestService
         $row = DB::table('custom_fields as cf')
             ->leftJoin('custom_field_options as opt', function (JoinClause $join): void {
                 $join->on('opt.custom_field_id', '=', 'cf.id')
-                    ->where('opt.name', '=', 'Done');
+                    ->where('opt.name', '=', TaskField::DONE_STATUS);
             })
             ->where('cf.tenant_id', $workspace->getKey())
             ->where('cf.entity_type', 'task')
