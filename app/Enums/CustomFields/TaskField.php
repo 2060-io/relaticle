@@ -9,6 +9,8 @@ use Relaticle\CustomFields\Enums\CustomFieldWidth;
 
 enum TaskField: string
 {
+    public const string DONE_STATUS = 'Done';
+
     use CustomFieldTrait;
 
     /**
@@ -110,7 +112,7 @@ enum TaskField: string
             self::STATUS => [
                 'To do',
                 'In progress',
-                'Done',
+                self::DONE_STATUS,
             ],
             self::PRIORITY => [
                 'Low',

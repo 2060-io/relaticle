@@ -16,9 +16,6 @@ use Illuminate\Validation\ValidationException;
 
 final readonly class CustomFieldOptionPlan
 {
-    // CompleteTask, GetCrmSummary, DigestService and MyTasksService find the completed status by this name.
-    private const string DONE_STATUS = 'Done';
-
     /**
      * @param  list<array{option: ?CustomFieldOption, name: string}>  $targets
      * @param  list<array{option: CustomFieldOption, replacement: ?int}>  $removals
@@ -402,7 +399,7 @@ final readonly class CustomFieldOptionPlan
      */
     private static function keepsDone(Collection $current, array $targets): bool
     {
-        $done = $current->first(fn (CustomFieldOption $option): bool => $option->name === self::DONE_STATUS);
+        $done = $current->first(fn (CustomFieldOption $option): bool => $option->name === TaskField::DONE_STATUS);
 
         if (! $done instanceof CustomFieldOption) {
             return true;
@@ -410,7 +407,7 @@ final readonly class CustomFieldOptionPlan
 
         foreach ($targets as $target) {
             if ($target['option'] instanceof CustomFieldOption && $target['option']->is($done)) {
-                return $target['name'] === self::DONE_STATUS;
+                return $target['name'] === TaskField::DONE_STATUS;
             }
         }
 
