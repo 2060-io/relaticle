@@ -177,7 +177,7 @@ final class DeleteCustomFieldTool implements Tool
     private function displayItem(CustomField $field): array
     {
         $holders = $field->values()->count();
-        $options = $field->options()->pluck('name')->all();
+        $options = $field->options()->get()->each->setRelation('customField', $field)->pluck('name')->all();
 
         $rows = [
             ['label' => __('Name'), 'value' => (string) $field->name],

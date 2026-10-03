@@ -19,6 +19,7 @@ use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\PendingActionService;
 use Relaticle\Chat\Tools\CustomField\DeleteCustomFieldTool;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -257,4 +258,24 @@ it('batches several fields into one per-item proposal and deletes each on its ow
 
     expect(fieldExists($this->field))->toBeFalse()
         ->and(fieldExists($legacy))->toBeFalse();
+});
+
+it('names the options of an encrypted field in plain text on the card', function (): void {
+    $select = deletableField($this->workspace, 'tier', 'Tier', [
+        'type' => 'select',
+        'settings' => new CustomFieldSettingsData(encrypted: true),
+    ]);
+
+    foreach (['Gold', 'Silver'] as $index => $name) {
+        CustomFieldOption::query()->create([
+            'tenant_id' => $this->workspace->getKey(),
+            'custom_field_id' => $select->getKey(),
+            'name' => $name,
+            'sort_order' => $index + 1,
+        ]);
+    }
+
+    $result = proposeFieldDelete($this->convId, [['entity_type' => 'company', 'code' => 'tier']]);
+
+    expect($result['display']['fields'])->toContain(['label' => 'Options deleted', 'value' => 'Gold, Silver']);
 });
