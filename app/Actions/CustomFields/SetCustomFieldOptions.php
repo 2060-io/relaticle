@@ -11,6 +11,7 @@ use App\Models\CustomFieldValue;
 use App\Models\User;
 use App\Support\CustomFieldOptionPlan;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
@@ -158,7 +159,9 @@ final readonly class SetCustomFieldOptions
                         ->unique()
                         ->values()
                     : $toId);
-                $value->save();
+
+                // The change log needs the record: a value orphaned by a purged record moves without one.
+                $value->getRelationValue('entity') instanceof Model ? $value->save() : $value->saveQuietly();
             });
     }
 }

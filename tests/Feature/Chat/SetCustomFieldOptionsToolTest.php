@@ -566,3 +566,21 @@ it('refuses at approval to move more records than the cap allows', function (): 
     expect(setOptionsStoredValue($late, $this->lifecycle))->toBe($churnedId)
         ->and(setOptionsNames($this->lifecycle))->toBe(['Lead', 'Customer', 'Churned']);
 });
+
+it('moves a value whose record no longer exists', function (): void {
+    $churnedId = setOptionsId($this->lifecycle, 'Churned');
+    $orphaned = setOptionsCompany($this->workspace, $this->lifecycle, $churnedId);
+    DB::table('companies')->where('id', $orphaned->getKey())->delete();
+
+    setOptionsPropose($this->convId, [[
+        'entity_type' => 'company',
+        'code' => 'lifecycle',
+        'options' => [['name' => 'Lead'], ['name' => 'Customer'], ['name' => 'Lost']],
+        'replacements' => ['Churned' => 'Lost'],
+    ]]);
+
+    resolve(PendingActionService::class)->approve(setOptionsPending($this->convId), $this->owner);
+
+    expect(setOptionsStoredValue($orphaned, $this->lifecycle))->toBe(setOptionsId($this->lifecycle, 'Lost'))
+        ->and(setOptionsNames($this->lifecycle))->toBe(['Lead', 'Customer', 'Lost']);
+});
