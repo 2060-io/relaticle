@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Support;
 
 use App\Enums\CrmEntity;
+use App\Filament\Pages\Workspace\CustomFields;
+use App\Support\IconPath;
+use Filament\Support\Enums\IconSize;
 use League\CommonMark\Extension\CommonMark\Node\Inline\Link;
 use League\CommonMark\Node\Node;
 use League\CommonMark\Renderer\ChildNodeRendererInterface;
@@ -39,7 +42,21 @@ final readonly class RecordChipRenderer implements NodeRendererInterface
      */
     public static function iconPath(string $type): ?string
     {
-        return CrmEntity::tryFrom($type)?->iconPath();
+        return self::icons()[$type] ?? null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function icons(): array
+    {
+        $icons = ['custom_field' => IconPath::for(CustomFields::NAVIGATION_ICON->getIconForSize(IconSize::Medium))];
+
+        foreach (CrmEntity::cases() as $case) {
+            $icons[$case->value] = $case->iconPath();
+        }
+
+        return $icons;
     }
 
     /**
@@ -57,7 +74,7 @@ final readonly class RecordChipRenderer implements NodeRendererInterface
         }
 
         $type = $matches[1];
-        $icon = self::iconPath($type);
+        $icon = CrmEntity::tryFrom($type)?->iconPath();
 
         if ($icon === null) {
             return null;

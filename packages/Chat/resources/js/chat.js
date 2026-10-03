@@ -17,6 +17,10 @@ const RECORD_CHIP_URL = /^\/r\/([a-z_]+)\/[\w-]+$/
 // server-side reaches this half with no second copy to keep in step.
 const RECORD_CHIP_ICONS = window.RECORD_CHIP_ICONS ?? {}
 
+// A proposal card also leads with an icon for what it changes, and that can be
+// more than a record: a custom field has an icon and no `/r/` page to chip.
+const PROPOSAL_ICONS = window.PROPOSAL_ICONS ?? RECORD_CHIP_ICONS
+
 // A chip is a single-line pill, so a line break inside the label would split it
 // in two. The pipelines also spell a break differently (`<br />` plus a newline
 // server-side, `<br>` from marked here), so both collapse to one space. Mirrors
@@ -30,7 +34,7 @@ const flattenChipLabel = (label) => label
 // escaped data (`x-text`), never by interpolating a label into an HTML string
 // the way the markdown sweep below has to. Only the path data crosses over.
 const recordChipIcon = (type) =>
-    (Object.hasOwn(RECORD_CHIP_ICONS, type) ? RECORD_CHIP_ICONS[type] : '')
+    (Object.hasOwn(PROPOSAL_ICONS, type) ? PROPOSAL_ICONS[type] : '')
 
 const recordChipHtml = (type, href, label) =>
     `<a class="chat-chip" data-record-type="${type}" href="${href}">`

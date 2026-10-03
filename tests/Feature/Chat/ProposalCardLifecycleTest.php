@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Actions\CustomFields\CreateCustomField;
 use App\Features\OnboardSeed;
 use App\Models\Company;
 use App\Models\User;
@@ -13,6 +14,7 @@ use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Livewire\Chat\ProposalCard;
 use Relaticle\Chat\Models\PendingAction;
+use Relaticle\Chat\Support\RecordChipRenderer;
 use Tests\Helpers\ProposalCardFixture;
 
 mutates(ProposalCard::class);
@@ -43,6 +45,20 @@ it('loads and renders the active pending action summary', function (): void {
         ->assertSeeHtml('data-proposal-record-chip')
         ->assertSeeHtml('data-record-type="company"')
         ->assertSee('Acme Corp');
+});
+
+it('leads a custom field proposal with the custom field icon and the field name', function (): void {
+    $action = ProposalCardFixture::proposal($this->user,
+        ['entity_type' => 'company', 'name' => 'Tier', 'type' => 'text'],
+        ['title' => 'Create Custom Field', 'summary' => 'Create "Tier" (text) on company', 'fields' => [['label' => 'Name', 'value' => 'Tier']]],
+    );
+    $action->update(['entity_type' => 'custom_field', 'action_class' => CreateCustomField::class]);
+
+    Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+        ->dispatch('proposal:set-active', id: $action->getKey(), context: 'conversation')
+        ->assertSeeHtml('data-proposal-record-chip')
+        ->assertSeeHtml('data-record-type="custom_field"')
+        ->assertSeeHtml(RecordChipRenderer::iconPath('custom_field'));
 });
 
 it('refuses a pending action from another tenant', function (): void {
