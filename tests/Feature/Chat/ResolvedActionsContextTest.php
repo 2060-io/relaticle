@@ -348,6 +348,30 @@ it('labels an update by its summary when a custom field is named like a title ro
     expect($resolved[0]['label'])->toBe('Update person "Ada Lovelace"');
 });
 
+it('labels an update by its summary when a custom field shares the title key', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    seedResolvedConv('conv-K', $user);
+
+    PendingAction::query()->create([
+        'workspace_id' => $user->currentWorkspace->getKey(), 'user_id' => $user->getKey(),
+        'conversation_id' => 'conv-K', 'action_class' => CreateTask::class,
+        'operation' => PendingActionOperation::Update, 'entity_type' => 'company',
+        'action_data' => ['_record_id' => 'c-1', '_model_class' => 'App\\Models\\Company', 'custom_fields' => ['name' => 'Legal name']],
+        'display_data' => [
+            'title' => 'Update Company',
+            'summary' => 'Update company "Acme"',
+            'fields' => [['label' => 'Name', 'code' => 'name', 'type' => 'text', 'old' => 'Old legal name', 'new' => 'Legal name']],
+        ],
+        'status' => PendingActionStatus::Approved, 'expires_at' => now(),
+        'resolved_at' => now(), 'result_data' => ['id' => 'c-1'],
+    ]);
+
+    $resolved = resolve(PendingActionService::class)->resolvedForConversation('conv-K', null);
+
+    expect($resolved[0]['label'])->toBe('Update company "Acme"');
+});
+
 it('labels a delete by its Name row when the row label is translated', function (): void {
     app('translator')->addLines(['*.Name' => 'Nom'], app()->getLocale());
 

@@ -31,8 +31,8 @@ final readonly class ProposalLabel
         $labels = [...self::TITLE_ROWS, ...array_map(self::translated(...), self::TITLE_ROWS)];
 
         foreach ($rows as $row) {
-            // A custom-field row carries its field code: a workspace field named "Email" is not the record's title.
-            if (! is_array($row) || ($row['code'] ?? $titleKey) !== $titleKey || ! in_array($row['label'] ?? null, $labels, true)) {
+            // Only a custom-field row carries a type: a workspace field named "Name" or "Email" is not the record's title.
+            if (! is_array($row) || array_key_exists('type', $row) || ($row['code'] ?? $titleKey) !== $titleKey || ! in_array($row['label'] ?? null, $labels, true)) {
                 continue;
             }
 
