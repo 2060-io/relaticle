@@ -265,6 +265,14 @@ it('lists only the signed-in user\'s own drafts', function (): void {
         ->assertCanNotSeeTableRecords([$theirs]);
 });
 
+it('previews the draft body on one line under its subject', function (): void {
+    $draft = makeDraft($this->user, $this->account, ['snippet' => "Hi Dana,\n\n  thanks &amp; talk soon"]);
+
+    Livewire::test(DraftsTable::class)
+        ->assertTableColumnHasDescription('subject', 'Hi Dana, thanks & talk soon', $draft)
+        ->assertTableColumnDoesNotExist('participants_to');
+});
+
 it('opens a draft in the composer', function (): void {
     $draft = makeDraft($this->user, $this->account);
 
