@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Relaticle\Chat\Models\AgentConversation;
+use Relaticle\Chat\Support\AttachedRows;
 use Relaticle\Chat\Support\AttachedText;
 use Relaticle\Chat\Support\ChatAttachment;
 use Relaticle\ImportWizard\Exceptions\ImportFileException;
@@ -45,15 +46,14 @@ final readonly class StoreChatAttachment
         }
 
         $path = (string) $file->getRealPath();
-        $contents = (string) file_get_contents($path);
         $originalName = self::originalName($file);
         $isText = AttachedText::accepts($originalName);
 
-        if ($isText && trim(AttachedText::normalize($contents)) === '') {
+        if ($isText && $this->isBlank($path)) {
             throw ValidationException::withMessages(['file' => __('The file is empty.')]);
         }
 
-        if (! $isText && ! mb_check_encoding($contents, 'UTF-8')) {
+        if (! $isText && ! mb_check_encoding((string) file_get_contents($path), 'UTF-8')) {
             throw ValidationException::withMessages(['file' => __('The file must be UTF-8 text.')]);
         }
 
@@ -76,6 +76,17 @@ final readonly class StoreChatAttachment
         }
 
         return new ChatAttachment($media);
+    }
+
+    private function isBlank(string $path): bool
+    {
+        $head = (string) file_get_contents($path, length: AttachedRows::INLINE_BYTE_LIMIT);
+
+        if (trim(AttachedText::normalize($head)) !== '') {
+            return false;
+        }
+
+        return trim(AttachedText::normalize((string) file_get_contents($path))) === '';
     }
 
     /** @return array{row_count: int, header: list<string>} */
