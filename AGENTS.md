@@ -172,9 +172,8 @@ production: message ordering, approval races, duplicate proposals.
 - Every tool registered on `CrmAssistant` needs a label in the `toolLabels` map
   (`packages/Chat/resources/views/livewire/chat/chat-interface.blade.php`), or the
   streaming shimmer falls back to "Running <tool name>…" and leaks the identifier.
-  `tests/Browser/Chat/LoadingShimmerTest.php` is the gate, and it lives in the
-  Browser suite, which `composer test:pest` EXCLUDES: run `php artisan test tests/Browser`
-  after registering a tool, or CI is the first thing that tells you.
+  `tests/Browser/Chat/LoadingShimmerTest.php` is the gate. Run that one file after
+  registering a tool: `php artisan test tests/Browser/Chat/LoadingShimmerTest.php`.
 - A tool whose action works on the workspace rather than on records (`RemoveSampleDataTool`
   is the precedent) does not fit the per-record proposal pipeline: `executeDelete()` resolves
   models from `_record_ids`/`_model_class`. Such a tool carries neither marker, is branched
@@ -275,20 +274,36 @@ months two copies of the same field vocabulary drifted apart.
 - Steer the clock in tests with `$this->travelTo()`. `Carbon::setTestNow()` names the
   mutable class, so `CarbonSetTestNowToTravelToRector` rewrites it
 
-## Pre-Commit Quality Checks
+## Quality Checks
 
-Before committing any changes, always run these checks in order:
+The local loop is scoped to the change. GitHub CI (`.github/workflows/ci.yml`) is the
+only full run: it executes lint, rector, type coverage, PHPStan, all five test shards
+and the Browser suite on every push to a pull request, in about 7 minutes.
+
+After each change, while iterating:
 
 1. `vendor/bin/pint --dirty --format agent`: fix code style
-2. `vendor/bin/rector --dry-run`: if rector suggests changes, apply them with `vendor/bin/rector`
-3. `vendor/bin/phpstan analyse`: ensure no new static analysis errors
-4. `composer test:type-coverage`: type coverage must stay at 100%
-5. `php artisan test --compact`: run relevant tests (use `--filter` for targeted runs)
+2. `php artisan test --compact <paths>`: the test files you touched, plus the tests
+   that exercise the classes you changed (`grep -rl 'ClassName' tests`)
 
-`--dirty` only covers files with uncommitted changes, so a file you committed
-earlier in the branch stops being checked and its style break surfaces only in
-CI. Before pushing, run what CI runs: `composer test:lint` (`pint --test
---parallel`, whole repo).
+Once, before pushing:
+
+3. `vendor/bin/rector --dry-run`: if rector suggests changes, apply them with `vendor/bin/rector`
+4. `vendor/bin/phpstan analyse`: ensure no new static analysis errors
+5. `composer test:lint`: `--dirty` only covers uncommitted files, so a file committed
+   earlier in the branch is checked here (`pint --test --parallel`, whole repo)
+
+After a push, open the pull request if the branch has none, and watch the `Tests`
+workflow as a background task:
+`gh run watch --exit-status $(gh run list --branch <branch> --workflow Tests --limit 1
+--json databaseId --jq '.[0].databaseId')`. Never a `sleep` loop. Fix what it reports
+and push again.
+
+Never run `composer test:pest`, `composer test:pest:full`, `composer test:type-coverage`
+or `composer test:browser` locally to confirm a commit or a push. CI runs all four on the
+pushed commit, and a local run slows every other workspace on the machine: the full suite
+takes 116s alone and 514s beside three other heavy jobs. Run one locally only to reproduce
+a CI failure, scoped to the failing file.
 
 Do not add new PHPStan ignores without approval. All parameters and return types must be explicitly typed. Untyped closures and parameters fail type coverage in CI.
 
@@ -406,14 +421,17 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
 
 ## Running the suite
 
-- `composer test:pest` is the normal local run (parallel, TIA enabled, excludes
-  Browser). Pest records a coverage-backed dependency graph once, then replays
-  unaffected tests instead of executing them.
-- `composer test:pest:full` is the complete non-TIA merge gate.
-- TIA is a local accelerator only. It replays a cached pass whenever a test's
-  edges are unchanged, so it cannot see time-dependent failures (`travelTo`,
-  expiring tokens), `.env` edits, or dynamic dispatch it did not trace while
-  recording. Always confirm with `composer test:pest:full` before pushing.
+- The normal local run is scoped: `php artisan test --compact <paths>` over the test
+  files you touched and the tests that exercise the classes you changed. The Quality
+  Checks section of `core.md` lists the whole loop.
+- The merge gate is the `Tests` workflow on GitHub, which runs the complete suite on
+  every push to a pull request. After a push, watch it as a background task. Do not run
+  the complete suite locally to confirm a push.
+- `composer test:pest` (parallel, TIA enabled, excludes Browser) and
+  `composer test:pest:full` (non-TIA) stay available for reproducing a CI failure that
+  a scoped run cannot, and for recording a TIA graph. TIA replays a cached pass whenever
+  a test's edges are unchanged, so it cannot see time-dependent failures (`travelTo`,
+  expiring tokens), `.env` edits, or dynamic dispatch it did not trace while recording.
 - After changing test timings materially, refresh the CI shard balance with
   `composer test:update-shards` and commit `tests/.pest/shards.json`; a stale
   file silently drops new test classes out of time-balancing.
