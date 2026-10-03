@@ -98,7 +98,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
                 ->forceDelete();
         });
 
-        if (! Feature::for(null)->active(EmailIntegration::class)) {
+        if (! self::enabled()) {
             return;
         }
 
@@ -178,5 +178,10 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
                 RenewCalendarPushChannelsCommand::class,
             ]);
         }
+    }
+
+    public static function enabled(): bool
+    {
+        return Feature::for(null)->active(EmailIntegration::class);
     }
 }
