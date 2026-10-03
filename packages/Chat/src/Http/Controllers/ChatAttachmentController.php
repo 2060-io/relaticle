@@ -32,7 +32,7 @@ final readonly class ChatAttachmentController
         $isText = $upload instanceof UploadedFile && AttachedText::accepts(StoreChatAttachment::originalName($upload));
 
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:'.StoreChatAttachment::MAX_KILOBYTES, Rule::unless($isText, 'mimes:csv,txt,md')],
+            'file' => ['required', 'file', 'max:'.StoreChatAttachment::MAX_KILOBYTES, Rule::unless($isText, 'mimes:csv,txt')],
             'conversation_id' => ['nullable', 'string', 'uuid'],
         ]);
 

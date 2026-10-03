@@ -36,7 +36,7 @@ final readonly class ImportAttachment
 
         $attachment = ChatAttachment::find($user, $attachmentId);
 
-        abort_if(! $attachment instanceof ChatAttachment, 404);
+        abort_if(! $attachment instanceof ChatAttachment || $attachment->isText(), 404);
 
         abort_unless($attachment->fileExists(), 410);
 

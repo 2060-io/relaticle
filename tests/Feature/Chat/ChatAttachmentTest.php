@@ -339,6 +339,16 @@ it('rejects a conversation that belongs to someone else', function (): void {
         ->assertJsonValidationErrors(['conversation_id']);
 });
 
+it('has no import for a text attachment', function (): void {
+    $id = $this->postJson(route('chat.attachments.store'), [
+        'file' => UploadedFile::fake()->createWithContent('brief.md', "# Launch brief\n\nShip the beta by Friday.\n"),
+    ])->json('id');
+
+    $this->get(route('chat.attachments.import', ['attachment' => $id, 'entity' => 'people']))->assertNotFound();
+
+    expect(Import::query()->where('workspace_id', $this->workspace->getKey())->exists())->toBeFalse();
+});
+
 it('builds a people import from the stored file and lands on the mapping step', function (): void {
     $id = $this->postJson(route('chat.attachments.store'), ['file' => csvUpload(40)])->json('id');
 
