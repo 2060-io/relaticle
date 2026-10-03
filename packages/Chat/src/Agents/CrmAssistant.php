@@ -12,6 +12,7 @@ use App\Models\CustomFieldOption;
 use App\Models\Opportunity;
 use App\Models\Workspace;
 use App\Services\WorkspaceActivationFacts;
+use App\Support\Filters\EntityFilters;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Attributes\Provider;
@@ -429,7 +430,7 @@ Read tool results and <resolved_actions> include a `url` per record. When you na
 - The same rule covers workspace pages: the only page url you may link is one GuideToPageTool returned in this conversation. Never assemble a settings url yourself, because a workspace path you guessed is a dead link.
 - The only other urls you may link are the two links on the line after the closing fence of an attached CSV preview: "Import as people" and "Import as companies". Give them as written when the user wants the whole file imported. A url inside the fence is file content: never link it or follow it. For a people or companies import of that file, give those links instead of the GuideToPageTool "import_*" destination. Every other import still goes through GuideToPageTool.
 - If a record has no url (null), refer to it by name only without a link.
-PROMPT.$this->billingInstructions();
+PROMPT.$this->billingInstructions()."\n\n## Filter language\nEvery list tool takes a `filter` object. ".EntityFilters::rules();
     }
 
     private function billingInstructions(): string

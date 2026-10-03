@@ -8,13 +8,18 @@ use App\Enums\OnboardingUseCase;
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
 use App\Filament\Pages\CreateWorkspace;
+use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\WorkspaceActivationFacts;
+use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterTree;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Enums\EmailReach;
+use Relaticle\Chat\Tools\BaseReadListTool;
 use Relaticle\Chat\Tools\Company\CreateCompanyTool;
 use Relaticle\Chat\Tools\Company\DeleteCompanyTool;
 use Relaticle\Chat\Tools\Company\UpdateCompanyTool;
@@ -770,4 +775,20 @@ it('routes a field deletion through its tool and deactivates an in-use field fir
         ->toContain('propose it through DeleteCustomFieldTool')
         ->toContain('the field is deactivated first and the delete follows')
         ->not->toContain('you CANNOT delete field definitions from chat');
+});
+
+it('states the shared filter rules once in the cached prefix and not in any list tool', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    $assistant = new CrmAssistant;
+    $rules = EntityFilters::rules();
+
+    expect(substr_count($assistant->staticInstructions(), $rules))->toBe(1)
+        ->and($assistant->dynamicInstructions())->not->toContain($rules);
+
+    foreach ($assistant->tools() as $tool) {
+        if ($tool instanceof BaseReadListTool) {
+            expect($tool->schema(new JsonSchemaTypeFactory)['filter']->toArray()['description'])->not->toContain(CustomFieldFilterSchema::EMPTINESS_RULE, FilterTree::MAX_CONDITIONS.' conditions');
+        }
+    }
 });
