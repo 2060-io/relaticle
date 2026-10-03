@@ -102,14 +102,14 @@ jobs:
         run: composer install --no-interaction --no-progress --ansi --prefer-dist --optimize-autoloader
 
       # The plugin keys each result on the file's content hash, so a cache saved on
-      # main is valid on every branch and only changed files are analysed again.
+      # main is valid on every branch. A new composer.lock starts it empty again.
       - name: Cache Type Coverage Results
         uses: actions/cache@v6
         with:
           path: vendor/pestphp/pest-plugin-type-coverage/.temp
-          key: ${{ runner.os }}-type-coverage-${{ github.sha }}
+          key: ${{ runner.os }}-type-coverage-${{ hashFiles('composer.lock') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-type-coverage-
+            ${{ runner.os }}-type-coverage-${{ hashFiles('composer.lock') }}-
 
       - name: Prepare Laravel Application
         run: |
