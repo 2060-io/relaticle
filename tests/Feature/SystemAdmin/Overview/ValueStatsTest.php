@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Livewire;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\SystemAdmin\Filament\Pages\Overview;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ListUsers;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\ListWorkspaces;
@@ -191,4 +193,32 @@ it('explains every number and the cohort table in a tooltip', function (): void 
         ->assertSee('active in at least 3 of the last 4 full weeks');
 
     livewire(CohortTable::class)->assertSee('Each row is one week of real signups');
+});
+
+it('counts customer workspaces with a connected mailbox exactly as the workspace list shows them', function (): void {
+    $connected = OverviewData::workspaceOf(OverviewData::owner());
+    ConnectedAccount::factory()->count(2)->create(['workspace_id' => $connected]);
+    $needsSignIn = OverviewData::workspaceOf(OverviewData::owner());
+    ConnectedAccount::factory()->error()->create(['workspace_id' => $needsSignIn]);
+    $disconnected = OverviewData::workspaceOf(OverviewData::owner());
+    ConnectedAccount::factory()->disconnected()->create(['workspace_id' => $disconnected]);
+    $without = OverviewData::workspaceOf(OverviewData::owner());
+    $internal = OverviewData::workspaceOf(OverviewData::internalOwner());
+    ConnectedAccount::factory()->create(['workspace_id' => $internal]);
+
+    livewire(ValueStats::class)
+        ->assertSee('Connected a mailbox')
+        ->assertSee('50% of 4 customer workspaces')
+        ->assertSee('filters%5Bconnected_mailbox%5D%5BisActive%5D=1', escape: false);
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('internal', false)
+        ->filterTable('connected_mailbox')
+        ->assertCanSeeTableRecords([$connected, $needsSignIn])
+        ->assertCanNotSeeTableRecords([$disconnected, $without, $internal]);
+
+    Livewire::withQueryParams(['filters' => ['internal' => ['value' => '0'], 'connected_mailbox' => ['isActive' => '1']]])
+        ->test(ListWorkspaces::class)
+        ->assertCanSeeTableRecords([$connected, $needsSignIn])
+        ->assertCanNotSeeTableRecords([$disconnected, $without, $internal]);
 });

@@ -10,11 +10,13 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Relaticle\EmailIntegration\EmailIntegrationServiceProvider;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
 use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
 use Relaticle\SystemAdmin\Filament\Support\ViewerTime;
 use Relaticle\SystemAdmin\Metrics\OverviewCache;
+use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
 use Relaticle\SystemAdmin\Metrics\Scopes\GenuineSignup;
 use Relaticle\SystemAdmin\Metrics\Scopes\ReachedFirstValue;
@@ -73,7 +75,28 @@ final class ValueStats extends StatsOverviewWidget
                     default => 'danger',
                 })
                 ->url(WorkspaceResource::getUrl('index', ['filters' => ['formed_habit' => ['isActive' => true]]])),
+            ...(EmailIntegrationServiceProvider::enabled() ? [$this->mailboxes($cache)] : []),
         ];
+    }
+
+    private function mailboxes(OverviewCache $cache): Stat
+    {
+        $customers = (int) $cache->remember('value.mailboxes.customers', fn (): int => Workspace::query()
+            ->withGlobalScope(ExternalWorkspace::class, new ExternalWorkspace)
+            ->count());
+        $connected = (int) $cache->remember('value.mailboxes.connected', fn (): int => Workspace::query()
+            ->withGlobalScope(ExternalWorkspace::class, new ExternalWorkspace)
+            ->withConnectedMailbox()
+            ->count());
+        $share = $customers === 0 ? 0 : (int) round($connected / $customers * 100);
+
+        return Stat::make(HelpLabel::make('Connected a mailbox', 'Customer workspaces with at least one connected Gmail or Microsoft mailbox. A mailbox that needs sign-in or has a sync error still counts. A disconnected one does not.'), number_format($connected))
+            ->description($customers === 0 ? 'No customer workspaces yet' : "{$share}% of {$customers} customer workspaces")
+            ->color('gray')
+            ->url(WorkspaceResource::getUrl('index', ['filters' => [
+                'internal' => ['value' => '0'],
+                'connected_mailbox' => ['isActive' => true],
+            ]]));
     }
 
     private function signups(OverviewCache $cache, CarbonImmutable $week, bool $firstValue = false): int
