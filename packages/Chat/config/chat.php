@@ -188,6 +188,18 @@ return [
 
     'max_field_options' => (int) env('CHAT_MAX_FIELD_OPTIONS', 50),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Attached Text Budget
+    |--------------------------------------------------------------------------
+    |
+    | Bytes of attached text one conversation may carry. Every later turn
+    | replays each text file it holds, so the budget bounds what a turn costs.
+    | The default is four files at the 64 KB inline limit.
+    */
+
+    'max_attached_text_bytes' => (int) env('CHAT_MAX_ATTACHED_TEXT_BYTES', 262144),
+
     'max_option_value_moves' => (int) env('CHAT_MAX_OPTION_VALUE_MOVES', 250),
 
     /*

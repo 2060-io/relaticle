@@ -444,6 +444,28 @@ it('sends a text file to the model whole, commas and line breaks included', func
         && $job->attachment === ['id' => $attachmentId, 'name' => 'call.txt', 'kind' => 'text', 'row_count' => 0]);
 });
 
+it('refuses a text file once the conversation holds its budget of attached text', function (): void {
+    Queue::fake();
+    config(['chat.max_attached_text_bytes' => 100]);
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('Summarise this call'),
+        'attachment_id' => attachText('call.txt', str_repeat('a', 60)),
+    ])->assertOk();
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('And this one'),
+        'attachment_id' => attachText('notes.txt', str_repeat('b', 60)),
+    ])->assertStatus(422)->assertJsonPath('message', 'This chat already holds as much attached text as it can take. Start a new chat to attach this file.');
+
+    $this->postJson(route('chat.send', ['conversation' => $this->conversationId]), [
+        'document' => ChatDocument::fromText('A short one'),
+        'attachment_id' => attachText('short.txt', str_repeat('c', 30)),
+    ])->assertOk();
+
+    Queue::assertPushed(ProcessChatMessage::class, 2);
+});
+
 it('cuts a long text file at the inline byte limit on a whole character and says so', function (): void {
     Queue::fake();
     $attachmentId = attachText('transcript.txt', 'a'.str_repeat('é', AttachedRows::INLINE_BYTE_LIMIT));

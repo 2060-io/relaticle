@@ -63,6 +63,26 @@ final readonly class ChatAttachment
         return (int) $this->media->size;
     }
 
+    public function fitsConversationTextBudget(): bool
+    {
+        $sent = Media::query()
+            ->where('model_type', $this->media->model_type)
+            ->where('model_id', $this->media->model_id)
+            ->where('collection_name', AgentConversation::ATTACHMENTS_MEDIA_COLLECTION)
+            ->whereNotNull('custom_properties->sent_at')
+            ->get()
+            ->map(fn (Media $media): self => new self($media))
+            ->filter(fn (self $attachment): bool => $attachment->isText())
+            ->sum(fn (self $attachment): int => $attachment->inlinedByteCount());
+
+        return $sent + $this->inlinedByteCount() <= (int) config('chat.max_attached_text_bytes');
+    }
+
+    private function inlinedByteCount(): int
+    {
+        return min($this->byteCount(), AttachedRows::INLINE_BYTE_LIMIT);
+    }
+
     public function conversationId(): string
     {
         return (string) $this->media->model_id;

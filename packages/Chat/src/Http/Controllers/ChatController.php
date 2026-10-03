@@ -162,6 +162,12 @@ final readonly class ChatController
             }
         }
 
+        if ($attachment instanceof ChatAttachment && $attachment->isText() && ! $attachment->fitsConversationTextBudget()) {
+            throw ValidationException::withMessages([
+                'attachment_id' => __('This chat already holds as much attached text as it can take. Start a new chat to attach this file.'),
+            ]);
+        }
+
         $message = match (true) {
             ! $attachment instanceof ChatAttachment => $parsed['text'],
             $attachment->isText() => AttachedText::inline($parsed['text'], $attachment),
