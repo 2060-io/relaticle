@@ -39,7 +39,7 @@ trait HasCreator
      */
     public function isSystemCreated(): bool
     {
-        return $this->creation_source === CreationSource::SYSTEM;
+        return in_array($this->creation_source, CreationSource::automated(), true);
     }
 
     /**
@@ -48,7 +48,7 @@ trait HasCreator
     #[Scope]
     protected function ownData(Builder $query): void
     {
-        $query->whereNot($query->qualifyColumn('creation_source'), CreationSource::SYSTEM);
+        $query->whereNotIn($query->qualifyColumn('creation_source'), CreationSource::automated());
     }
 
     /**
@@ -57,7 +57,7 @@ trait HasCreator
     protected function createdBy(): Attribute
     {
         return Attribute::make(
-            get: fn (): string => $this->creation_source === CreationSource::SYSTEM ?
+            get: fn (): string => $this->isSystemCreated() ?
                 '⊙ System' :
                 $this->creator?->name ?? 'Former Member', // @phpstan-ignore nullsafe.neverNull (creator_id can reference a deleted user)
         );

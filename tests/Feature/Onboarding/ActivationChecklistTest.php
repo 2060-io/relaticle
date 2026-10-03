@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Enums\MessageOrigin;
+use Relaticle\EmailIntegration\Actions\AutoCreatePersonAction;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
@@ -102,6 +103,17 @@ it('leaves the first-record step incomplete while only seeded demo records exist
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
         'creation_source' => CreationSource::SYSTEM,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', false))
+        ->assertSee('0/5 steps completed');
+});
+
+it('leaves the first-record step incomplete while only mailbox-synced records exist', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::MAILBOX,
     ]);
 
     livewire(ActivationChecklist::class)
@@ -550,6 +562,23 @@ it('removes every system record and keeps the workspace\'s own', function (): vo
 
     expect(People::query()->whereKey($own->getKey())->exists())->toBeTrue()
         ->and(resolve(WorkspaceActivationFacts::class)->hasSampleData($this->workspace->fresh()))->toBeFalse();
+});
+
+it('keeps the contacts a mailbox sync created when removing sample data', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+    $synced = resolve(AutoCreatePersonAction::class)->execute('Dana Reyes', 'dana@northwind.io', $this->workspace->getKey(), $this->workspace);
+    resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
+
+    expect(resolve(WorkspaceActivationFacts::class)->sampleRecordCount($this->workspace))->toBe(5);
+
+    livewire(ActivationChecklist::class)->call('removeSampleData');
+
+    expect(People::query()->whereKey($synced->getKey())->exists())->toBeTrue();
 });
 
 it('refuses removal while the workspace has no own record', function (): void {
