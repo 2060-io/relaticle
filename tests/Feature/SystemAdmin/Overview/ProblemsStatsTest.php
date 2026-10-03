@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Features\Billing;
+use App\Features\EmailIntegration;
 use App\Models\User;
 use App\Models\UserSocialAccount;
 use App\Models\Workspace;
@@ -15,7 +16,10 @@ use Laravel\Pennant\Feature;
 use Relaticle\Chat\Enums\AiCreditType;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Models\ChatMessageFeedback;
+use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\SystemAdmin\Filament\Resources\ChatMessageFeedbackResource\Pages\ListChatMessageFeedback;
+use Relaticle\SystemAdmin\Filament\Resources\ConnectedAccountResource\Pages\ListConnectedAccounts;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ListUsers;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\ListWorkspaces;
 use Relaticle\SystemAdmin\Filament\Support\ViewerTime;
@@ -84,7 +88,9 @@ it('renders on an empty database', function (): void {
         ->assertSee('Left the setup wizard')
         ->assertSee('Thumbs down this week')
         ->assertSee('No owners 3 to 30 days old yet')
-        ->assertSee('No signups in the last 30 days');
+        ->assertSee('No signups in the last 30 days')
+        ->assertSee('Mailboxes needing attention')
+        ->assertSee('No mailboxes connected yet');
 });
 
 it('shows the empty states in gray', function (): void {
@@ -92,9 +98,11 @@ it('shows the empty states in gray', function (): void {
 
     preg_match('/Stuck after setup(.*?)No owners 3 to 30 days old yet/s', $html, $stuck);
     preg_match('/Left the setup wizard(.*?)No signups in the last 30 days/s', $html, $wizard);
+    preg_match('/Mailboxes needing attention(.*?)No mailboxes connected yet/s', $html, $mailboxes);
 
     expect($stuck[1])->not->toContain('fi-color-')
-        ->and($wizard[1])->not->toContain('fi-color-');
+        ->and($wizard[1])->not->toContain('fi-color-')
+        ->and($mailboxes[1])->not->toContain('fi-color-');
 });
 
 it('counts stuck owners exactly as the stuck list shows them', function (): void {
@@ -284,4 +292,45 @@ it('explains every number in a tooltip', function (): void {
         ->assertSee('typed no chat message in their first 3 days')
         ->assertSee('never created or joined a workspace')
         ->assertSee('rated thumbs down since Monday');
+});
+
+it('counts mailboxes needing attention exactly as the mailbox list shows them', function (): void {
+    $healthy = ConnectedAccount::factory()->create(['sync_cursor' => 'cursor', 'last_synced_at' => now()->subMinutes(5)]);
+    $failed = ConnectedAccount::factory()->error()->create();
+    $needsSignIn = ConnectedAccount::factory()->create(['status' => EmailAccountStatus::REAUTH_REQUIRED]);
+    $late = ConnectedAccount::factory()->create(['sync_cursor' => 'cursor', 'last_synced_at' => now()->subHours(2)]);
+
+    livewire(ProblemsStats::class)
+        ->assertSee('Mailboxes needing attention')
+        ->assertSee('2 failing, 1 late to sync')
+        ->assertSee('filters%5Bneeds_attention%5D%5BisActive%5D=1', escape: false);
+
+    livewire(ListConnectedAccounts::class)
+        ->filterTable('needs_attention')
+        ->assertCanSeeTableRecords([$failed, $needsSignIn, $late])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+it('reports healthy mailboxes in green and a late sync alone in amber', function (): void {
+    ConnectedAccount::factory()->create(['sync_cursor' => 'cursor', 'last_synced_at' => now()->subMinutes(5)]);
+
+    $html = livewire(ProblemsStats::class)->assertSee('Every connected mailbox is syncing')->html();
+    preg_match('/Mailboxes needing attention(.*?)Every connected mailbox is syncing/s', $html, $healthy);
+
+    ConnectedAccount::factory()->create(['sync_cursor' => 'cursor', 'last_synced_at' => now()->subHours(2)]);
+    Cache::flush();
+
+    $html = livewire(ProblemsStats::class)->assertSee('0 failing, 1 late to sync')->html();
+    preg_match('/Mailboxes needing attention(.*?)0 failing, 1 late to sync/s', $html, $late);
+
+    expect($healthy[1])->toContain('fi-color-success')
+        ->and($late[1])->toContain('fi-color-warning');
+});
+
+it('leaves the mailbox tile out while the email integration is off', function (): void {
+    config()->set('relaticle.features.email_integration', false);
+    Feature::flushCache();
+    Feature::for(null)->deactivate(EmailIntegration::class);
+
+    livewire(ProblemsStats::class)->assertDontSee('Mailboxes needing attention');
 });

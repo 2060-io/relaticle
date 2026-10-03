@@ -14,7 +14,10 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 use Relaticle\Chat\Enums\AiCreditType;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Models\ChatMessageFeedback;
+use Relaticle\EmailIntegration\EmailIntegrationServiceProvider;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\SystemAdmin\Filament\Resources\ChatMessageFeedbackResource;
+use Relaticle\SystemAdmin\Filament\Resources\ConnectedAccountResource;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
 use Relaticle\SystemAdmin\Filament\Support\HelpLabel;
@@ -48,6 +51,10 @@ final class ProblemsStats extends StatsOverviewWidget
         $stats[] = $this->stuck($cache);
         $stats[] = $this->leftWizard($cache);
         $stats[] = $this->thumbsDown($cache);
+
+        if (EmailIntegrationServiceProvider::enabled()) {
+            $stats[] = $this->mailboxes($cache);
+        }
 
         return $stats;
     }
@@ -149,6 +156,28 @@ final class ProblemsStats extends StatsOverviewWidget
             array_keys($methods),
             $methods,
         ));
+    }
+
+    private function mailboxes(OverviewCache $cache): Stat
+    {
+        $failing = (int) $cache->remember('problems.mailboxes.failing', fn (): int => ConnectedAccount::query()->failing()->count());
+        $stale = (int) $cache->remember('problems.mailboxes.stale', fn (): int => ConnectedAccount::query()->stale()->count());
+        $connected = (int) $cache->remember('problems.mailboxes.connected', fn (): int => ConnectedAccount::query()->connected()->count());
+        $count = $failing + $stale;
+
+        return Stat::make(HelpLabel::make('Mailboxes needing attention', 'Connected mailboxes that stopped syncing: the provider returned an error, the owner has to sign in again, or an active mailbox has not synced for over an hour. Red when any has an error or needs sign-in, amber when the only problem is a late sync.'), number_format($count))
+            ->description(match (true) {
+                $connected === 0 => 'No mailboxes connected yet',
+                $count === 0 => 'Every connected mailbox is syncing',
+                default => "{$failing} failing, {$stale} late to sync",
+            })
+            ->color(match (true) {
+                $connected === 0 => 'gray',
+                $count === 0 => 'success',
+                $failing > 0 => 'danger',
+                default => 'warning',
+            })
+            ->url(ConnectedAccountResource::getUrl('index', ['filters' => ['needs_attention' => ['isActive' => true]]]));
     }
 
     private function thumbsDown(OverviewCache $cache): Stat
