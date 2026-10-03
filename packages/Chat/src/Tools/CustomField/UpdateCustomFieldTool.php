@@ -17,6 +17,7 @@ use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Services\PendingActionService;
 use Relaticle\Chat\Support\ProposalPayload;
+use Relaticle\Chat\Tools\Concerns\LimitsPlanSteps;
 use Relaticle\Chat\Tools\Concerns\ReportsValidationFailures;
 use Relaticle\Chat\Tools\Concerns\RequiresWorkspaceCapability;
 use Relaticle\Chat\Tools\Concerns\WithConversationContext;
@@ -24,6 +25,7 @@ use Relaticle\Chat\Tools\CustomField\Concerns\ResolvesOwnedCustomField;
 
 final class UpdateCustomFieldTool implements Tool
 {
+    use LimitsPlanSteps;
     use ReportsValidationFailures;
     use RequiresWorkspaceCapability;
     use ResolvesOwnedCustomField;
@@ -74,6 +76,12 @@ final class UpdateCustomFieldTool implements Tool
 
         if ($capabilityError !== null) {
             return $capabilityError;
+        }
+
+        $planLimitError = $this->planStepLimitError();
+
+        if ($planLimitError !== null) {
+            return (string) json_encode(['error' => $planLimitError], JSON_UNESCAPED_SLASHES);
         }
 
         $records = $request['records'] ?? null;

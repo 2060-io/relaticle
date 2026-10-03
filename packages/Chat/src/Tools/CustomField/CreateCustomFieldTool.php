@@ -15,6 +15,7 @@ use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Services\PendingActionService;
+use Relaticle\Chat\Tools\Concerns\LimitsPlanSteps;
 use Relaticle\Chat\Tools\Concerns\ReportsSkippedRecords;
 use Relaticle\Chat\Tools\Concerns\RequiresWorkspaceCapability;
 use Relaticle\Chat\Tools\Concerns\WithConversationContext;
@@ -22,6 +23,7 @@ use Relaticle\CustomFields\Support\CodeGenerator;
 
 final class CreateCustomFieldTool implements Tool
 {
+    use LimitsPlanSteps;
     use ReportsSkippedRecords;
     use RequiresWorkspaceCapability;
     use WithConversationContext;
@@ -77,6 +79,12 @@ final class CreateCustomFieldTool implements Tool
 
         if ($capabilityError !== null) {
             return $capabilityError;
+        }
+
+        $planLimitError = $this->planStepLimitError();
+
+        if ($planLimitError !== null) {
+            return (string) json_encode(['error' => $planLimitError], JSON_UNESCAPED_SLASHES);
         }
 
         $records = $request['records'] ?? null;
