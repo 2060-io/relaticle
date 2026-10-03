@@ -3,40 +3,38 @@
 declare(strict_types=1);
 
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
+use Relaticle\EmailIntegration\Livewire\MeetingsHomeWidget;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
-use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 
-mutates(EmailAccountsPage::class, MailboxHistoryImportService::class);
+mutates(EmailAccountsPage::class, MeetingsHomeWidget::class, ConnectedAccount::class);
 
-it('stays in sync on the accounts page after history import store failures', function (string $theme): void {
+it('shows the synced count without a percent while a mailbox is still being listed', function (string $theme): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
         'user_id' => $user->id,
         'workspace_id' => $workspace->id,
         'email_address' => 'olivia@acme.example',
-        'sync_cursor' => 'history-done',
+        'sync_cursor' => null,
     ]));
-    $batchId = attachHistoryImportBatch($account);
-    DB::table('job_batches')->where('id', $batchId)->update([
-        'total_jobs' => 1,
-        'pending_jobs' => 0,
-        'failed_jobs' => 1,
-        'failed_job_ids' => json_encode(['failed-job']),
-        'finished_at' => now()->getTimestamp(),
-    ]);
+    setHistoryImportBatchProgress(attachHistoryImportBatch($account), 1250, 40);
 
-    visit('/app/login')->{$theme}()
+    $page = visit('/app/login')->{$theme}()
         ->type('[id="form.email"]', $user->email)
         ->click('button[type="submit"]')
         ->type('[id="form.password"]', 'password')
         ->click('button[type="submit"]')
         ->assertPathIs("/app/{$workspace->slug}")
+        ->assertSee(__('filament/pages/dashboard.meetings.syncing.title'))
+        ->assertSee(trans_choice('filament/pages/dashboard.meetings.syncing.emails_processed', 1210, ['count' => 1210]))
+        ->assertDontSee('%')
         ->navigate("/app/{$workspace->slug}/workspace/email")
         ->waitForText($account->email_address)
-        ->assertSee(__('filament/pages/email-accounts.in_sync'))
-        ->assertDontSee(__('filament/pages/email-accounts.actions.retry_failed_import.label'))
+        ->assertSee(__('filament/pages/email-accounts.importing'))
+        ->assertSee(trans_choice('filament/pages/email-accounts.importing_count', 1210, ['count' => '1,210']))
+        ->assertDontSee('%')
         ->assertNoJavaScriptErrors();
+
+    $page->screenshot(filename: "mailbox-import-progress-{$theme}");
 })->with(['inLightMode', 'inDarkMode']);
