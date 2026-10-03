@@ -11,6 +11,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\ActivityLog\ActivityValue;
 use App\Support\ActivityLog\MergedActivityRenderer;
 use App\Support\ActivityLog\RelationChangeLog;
 use App\Support\ActivityLog\RequestActivityBatch;
@@ -36,6 +37,16 @@ beforeEach(function (): void {
 function latestTimelineEntryHtml(Model $record): string
 {
     return (new MergedActivityRenderer)->render($record->timeline()->get()->first())->render();
+}
+
+function latestRelationChange(Model $record): array
+{
+    return Activity::query()
+        ->where('subject_id', $record->getKey())
+        ->latest('id')
+        ->firstOrFail()
+        ->properties
+        ->get('custom_field_changes')[0];
 }
 
 function startNextRequest(): void
@@ -155,4 +166,53 @@ it('writes a single activity row for a person created with a company', function 
     $person = People::query()->where('name', 'Pat Contact')->sole();
 
     expect(Activity::query()->where('subject_id', $person->getKey())->pluck('event')->all())->toBe(['created']);
+});
+
+it('shows a company account owner change by user name on the timeline', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['account_owner_id' => null]);
+    startNextRequest();
+
+    $this->putJson("/api/v1/companies/{$company->getKey()}", ['account_owner_id' => $this->user->getKey()])->assertOk();
+
+    expect(latestTimelineEntryHtml($company))
+        ->toContain(__('filament/resources/company.fields.account_owner_id.label'))
+        ->toContain('John')
+        ->not->toContain((string) $this->user->getKey());
+
+    expect(latestRelationChange($company))->toMatchArray([
+        'code' => 'account_owner',
+        'old' => ['value' => null, 'label' => ActivityValue::EMPTY],
+        'new' => ['value' => $this->user->getKey(), 'label' => 'John'],
+    ]);
+});
+
+it('records an assignee removed from a task as a change to empty', function (): void {
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $task->assignees()->attach($this->user);
+    startNextRequest();
+
+    $this->putJson("/api/v1/tasks/{$task->getKey()}", ['assignee_ids' => []])->assertOk();
+
+    expect(latestRelationChange($task))->toMatchArray([
+        'code' => 'assignees',
+        'label' => __('filament/resources/task.fields.assignees.label'),
+        'old' => ['value' => $this->user->getKey(), 'label' => 'John'],
+        'new' => ['value' => null, 'label' => ActivityValue::EMPTY],
+    ]);
+});
+
+it('records a person unlinked from a note as a change to empty', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Pat Contact']);
+    $note = Note::factory()->recycle([$this->user, $this->workspace])->create();
+    $note->people()->attach($person);
+    startNextRequest();
+
+    $this->putJson("/api/v1/notes/{$note->getKey()}", ['people_ids' => []])->assertOk();
+
+    expect(latestRelationChange($note))->toMatchArray([
+        'code' => 'people',
+        'label' => __('filament/resources/note.fields.people.label'),
+        'old' => ['value' => $person->getKey(), 'label' => 'Pat Contact'],
+        'new' => ['value' => null, 'label' => ActivityValue::EMPTY],
+    ]);
 });
