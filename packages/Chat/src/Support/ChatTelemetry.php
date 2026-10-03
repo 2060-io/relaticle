@@ -28,7 +28,10 @@ final class ChatTelemetry
 
     public static function providerRejected(RequestException $e, string $model): void
     {
-        self::logRejection($model, $e->response->status(), $e->response->json('error.type'), $e->response->json('error.message'));
+        $type = $e->response->json('error.type');
+        $message = $e->response->json('error.message');
+
+        self::logRejection($model, $e->response->status(), is_string($type) ? $type : null, is_string($message) ? $message : null);
     }
 
     public static function streamRejected(Error $error, string $model): void

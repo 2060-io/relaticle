@@ -881,6 +881,40 @@ it('logs the provider rejection before an auto pick fails over', function (): vo
             && $context['error_type'] === 'invalid_request_error');
 });
 
+it('still fails over and logs when the provider error type is not a string', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['type' => 400, 'message' => 'bad request']], 400),
+    ]);
+    Queue::fake();
+    Log::spy();
+
+    $job = new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'auto'],
+        turnId: (string) Str::ulid(),
+    );
+
+    $job->handle(resolve(CreditService::class));
+
+    Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $pushed): bool => $pushed->failoverDepth === 1);
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context = []): bool => $message === 'Chat provider rejected the turn'
+            && $context['status'] === 400
+            && $context['error_type'] === null
+            && $context['error_message'] === 'bad request');
+});
+
 it('logs the provider error type and message when the provider reports a rejection in the stream', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
