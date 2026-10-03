@@ -18,6 +18,9 @@ return [
         'people' => [
             'label' => 'People',
         ],
+        'opportunities' => [
+            'label' => 'Opportunities',
+        ],
         'creator' => [
             'label' => 'Created By',
         ],

@@ -28,20 +28,14 @@ final readonly class CustomFieldChangeLog
 
         $dataType = CustomFieldsType::getFieldType($field->type)->dataType;
 
-        activity((string) config('activitylog.default_log_name'))
-            ->performedOn($entity)
-            ->causedBy(auth()->user())
-            ->withProperties([
-                'custom_field_changes' => [[
-                    'code' => $field->code,
-                    'label' => $field->name,
-                    'type' => $field->type,
-                    'old' => $this->describe($field, $dataType, $old),
-                    'new' => $this->describe($field, $dataType, $new),
-                ]],
-            ])
-            ->event('custom_field_changes')
-            ->log('custom_field_changes');
+        LabelledChangeLog::write(
+            $entity,
+            $field->code,
+            $field->name,
+            $field->type,
+            $this->describe($field, $dataType, $old),
+            $this->describe($field, $dataType, $new),
+        );
     }
 
     /**

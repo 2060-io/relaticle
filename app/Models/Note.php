@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\CreationSource;
+use App\Enums\CrmEntity;
 use App\Enums\MediaCollection;
 use App\Models\Concerns\BelongsToWorkspaceCreator;
 use App\Models\Concerns\HasCreator;
 use App\Models\Concerns\HasWorkspace;
+use App\Models\Pivots\Noteable;
 use App\Models\Scopes\WorkspaceScope;
 use App\Support\Media\UploadAllowlist;
 use Carbon\CarbonImmutable;
@@ -69,43 +71,37 @@ final class Note extends Model implements HasCustomFields, HasMedia, HasTimeline
     }
 
     /**
-     * @return MorphToMany<Company, $this>
+     * @return MorphToMany<Company, $this, Noteable>
      */
     public function companies(): MorphToMany
     {
-        return $this->morphedByMany(Company::class, 'noteable');
+        return $this->morphedByMany(Company::class, 'noteable')->using(Noteable::class);
     }
 
     /**
-     * @return MorphToMany<People, $this>
+     * @return MorphToMany<People, $this, Noteable>
      */
     public function people(): MorphToMany
     {
-        return $this->morphedByMany(People::class, 'noteable');
+        return $this->morphedByMany(People::class, 'noteable')->using(Noteable::class);
     }
 
     /**
-     * @return MorphToMany<Opportunity, $this>
+     * @return MorphToMany<Opportunity, $this, Noteable>
      */
     public function opportunities(): MorphToMany
     {
-        return $this->morphedByMany(Opportunity::class, 'noteable');
+        return $this->morphedByMany(Opportunity::class, 'noteable')->using(Noteable::class);
     }
 
     /** @param Builder<self> $query */
     #[Scope]
     protected function forNotableType(Builder $query, string $type): void
     {
-        $relationMap = [
-            'company' => 'companies',
-            'people' => 'people',
-            'opportunity' => 'opportunities',
-        ];
+        $entity = CrmEntity::tryFrom($type);
 
-        $relation = $relationMap[$type] ?? null;
-
-        if ($relation) {
-            $query->whereHas($relation);
+        if (in_array($entity, [CrmEntity::Company, CrmEntity::People, CrmEntity::Opportunity], true)) {
+            $query->whereHas($entity->relationName());
         }
     }
 

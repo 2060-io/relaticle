@@ -9,6 +9,8 @@ use App\Enums\MediaCollection;
 use App\Models\Concerns\BelongsToWorkspaceCreator;
 use App\Models\Concerns\HasCreator;
 use App\Models\Concerns\HasWorkspace;
+use App\Models\Pivots\Taskable;
+use App\Models\Pivots\TaskAssignee;
 use App\Models\Scopes\WorkspaceScope;
 use App\Support\Media\UploadAllowlist;
 use Carbon\CarbonImmutable;
@@ -84,35 +86,35 @@ final class Task extends Model implements HasCustomFields, HasMedia, HasTimeline
     ];
 
     /**
-     * @return BelongsToMany<User, $this>
+     * @return BelongsToMany<User, $this, TaskAssignee>
      */
     public function assignees(): BelongsToMany
     {
-        return $this->belongsToMany(User::class);
+        return $this->belongsToMany(User::class)->using(TaskAssignee::class);
     }
 
     /**
-     * @return MorphToMany<Company, $this>
+     * @return MorphToMany<Company, $this, Taskable>
      */
     public function companies(): MorphToMany
     {
-        return $this->morphedByMany(Company::class, 'taskable');
+        return $this->morphedByMany(Company::class, 'taskable')->using(Taskable::class);
     }
 
     /**
-     * @return MorphToMany<Opportunity, $this>
+     * @return MorphToMany<Opportunity, $this, Taskable>
      */
     public function opportunities(): MorphToMany
     {
-        return $this->morphedByMany(Opportunity::class, 'taskable');
+        return $this->morphedByMany(Opportunity::class, 'taskable')->using(Taskable::class);
     }
 
     /**
-     * @return MorphToMany<People, $this>
+     * @return MorphToMany<People, $this, Taskable>
      */
     public function people(): MorphToMany
     {
-        return $this->morphedByMany(People::class, 'taskable');
+        return $this->morphedByMany(People::class, 'taskable')->using(Taskable::class);
     }
 
     /** @param Builder<self> $query */

@@ -59,6 +59,18 @@ enum CrmEntity: string
         };
     }
 
+    /** The many-to-many relation a task or a note reaches this record type through. */
+    public function relationName(): string
+    {
+        return match ($this) {
+            self::Company => 'companies',
+            self::People => 'people',
+            self::Opportunity => 'opportunities',
+            self::Task => 'tasks',
+            self::Note => 'notes',
+        };
+    }
+
     /** The singular English noun that tool errors and proposal cards use for the record. */
     public function singularName(): string
     {
