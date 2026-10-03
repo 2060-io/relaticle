@@ -216,3 +216,20 @@ it('records a person unlinked from a note as a change to empty', function (): vo
         'new' => ['value' => null, 'label' => ActivityValue::EMPTY],
     ]);
 });
+
+it('labels opportunities linked to a task or a note', function (string $model, string $endpoint): void {
+    $opportunity = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Big Deal']);
+    $record = $model::factory()->recycle([$this->user, $this->workspace])->create();
+    startNextRequest();
+
+    $this->putJson("/api/v1/{$endpoint}/{$record->getKey()}", ['opportunity_ids' => [$opportunity->getKey()]])->assertOk();
+
+    expect(latestRelationChange($record))->toMatchArray([
+        'code' => 'opportunities',
+        'label' => 'Opportunities',
+        'new' => ['value' => $opportunity->getKey(), 'label' => 'Big Deal'],
+    ]);
+})->with([
+    'task' => [Task::class, 'tasks'],
+    'note' => [Note::class, 'notes'],
+]);
