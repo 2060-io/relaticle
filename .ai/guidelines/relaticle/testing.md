@@ -46,14 +46,17 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
 
 ## Running the suite
 
-- `composer test:pest` is the normal local run (parallel, TIA enabled, excludes
-  Browser). Pest records a coverage-backed dependency graph once, then replays
-  unaffected tests instead of executing them.
-- `composer test:pest:full` is the complete non-TIA merge gate.
-- TIA is a local accelerator only. It replays a cached pass whenever a test's
-  edges are unchanged, so it cannot see time-dependent failures (`travelTo`,
-  expiring tokens), `.env` edits, or dynamic dispatch it did not trace while
-  recording. Always confirm with `composer test:pest:full` before pushing.
+- The normal local run is scoped: `php artisan test --compact <paths>` over the test
+  files you touched and the tests that exercise the classes you changed. The Quality
+  Checks section of `core.md` lists the whole loop.
+- The merge gate is the `Tests` workflow on GitHub, which runs the complete suite on
+  every push to a pull request. After a push, watch it as a background task. Do not run
+  the complete suite locally to confirm a push.
+- `composer test:pest` (parallel, TIA enabled, excludes Browser) and
+  `composer test:pest:full` (non-TIA) stay available for reproducing a CI failure that
+  a scoped run cannot, and for recording a TIA graph. TIA replays a cached pass whenever
+  a test's edges are unchanged, so it cannot see time-dependent failures (`travelTo`,
+  expiring tokens), `.env` edits, or dynamic dispatch it did not trace while recording.
 - After changing test timings materially, refresh the CI shard balance with
   `composer test:update-shards` and commit `tests/.pest/shards.json`; a stale
   file silently drops new test classes out of time-balancing.
