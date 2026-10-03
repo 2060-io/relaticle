@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Support;
 
+use App\Exceptions\UploadException;
 use App\Models\User;
 use App\Support\Media\LocalCopy;
 use Closure;
@@ -103,6 +104,19 @@ final readonly class ChatAttachment
             Storage::disk($this->media->disk)->readStream($this->media->getPathRelativeToRoot()),
             $callback,
         );
+    }
+
+    public function head(int $bytes): string
+    {
+        $stream = Storage::disk($this->media->disk)->readStream($this->media->getPathRelativeToRoot());
+
+        throw_unless(is_resource($stream), UploadException::notFound());
+
+        try {
+            return (string) stream_get_contents($stream, $bytes);
+        } finally {
+            fclose($stream);
+        }
     }
 
     public function fileExists(): bool

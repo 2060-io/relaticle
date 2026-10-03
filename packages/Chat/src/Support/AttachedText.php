@@ -29,7 +29,7 @@ final readonly class AttachedText
 
     public static function inline(string $text, ChatAttachment $attachment): string
     {
-        $bytes = $attachment->withLocalFile(fn (string $path): string => (string) file_get_contents($path, length: AttachedRows::INLINE_BYTE_LIMIT + 3));
+        $bytes = $attachment->head(AttachedRows::INLINE_BYTE_LIMIT + 3);
         $body = self::normalize($bytes, AttachedRows::INLINE_BYTE_LIMIT);
         // Converting to UTF-8 can grow a file that fit the limit on disk.
         $truncated = $attachment->byteCount() > strlen($bytes) || strlen(self::normalize($bytes)) > strlen($body);
