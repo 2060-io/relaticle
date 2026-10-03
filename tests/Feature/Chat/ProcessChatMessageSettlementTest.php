@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Ai\Contracts\ConversationStore;
 use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Enums\MessageOrigin;
 use Relaticle\Chat\Jobs\ProcessChatMessage;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
@@ -292,6 +293,55 @@ it('records a turn that died from a provider error as incomplete', function (): 
 
     expect($settlement->model)->toBe('incomplete');
 });
+
+it('refunds a blank reply to a turn nobody typed without acknowledging it', function (MessageOrigin $origin): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())
+        ->update(['credits_remaining' => 100, 'credits_used' => 0]);
+
+    DB::table('agent_conversations')->insert([
+        'id' => 'c-11',
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $workspace->getKey(),
+        'title' => 'Test conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $turnId = '01TURNBLANKUNTYPEDAAAAAAAA';
+    resolve(CreditService::class)->reserveCredit(
+        $workspace,
+        reservationKey: "reserve-{$turnId}",
+        conversationId: 'c-11',
+        userId: (string) $user->getKey(),
+    );
+
+    AnthropicSse::fake(AnthropicSse::reply('', 'claude-sonnet-5'));
+    Queue::fake();
+
+    (new ProcessChatMessage(
+        user: $user, workspace: $workspace, message: 'The proposal was approved.', conversationId: 'c-11',
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'auto'],
+        turnId: $turnId,
+        origin: $origin,
+    ))->handle(resolve(CreditService::class));
+
+    $resolution = AiCreditTransaction::query()
+        ->where('workspace_id', $workspace->getKey())
+        ->where('idempotency_key', "resolve-{$turnId}")
+        ->sole();
+
+    $assistant = DB::table('agent_conversation_messages')
+        ->where('conversation_id', 'c-11')
+        ->where('role', 'assistant')
+        ->sole();
+
+    expect($resolution->type)->toBe(AiCreditType::Refund)
+        ->and($assistant->content)->toBe('');
+})->with([MessageOrigin::Resume, MessageOrigin::Greeting]);
 
 it('refunds a turn that ends with no text and no tool call and stores an acknowledgement', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();

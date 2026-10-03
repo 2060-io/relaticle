@@ -937,22 +937,34 @@ final class ProcessChatMessage implements ShouldQueue
             conversationId: $this->conversationId,
         );
 
-        $this->acknowledgeBlankTurn($streamedResponse->assistantMessageId, $this->blankTurnMessage($streamedResponse));
+        $note = $this->blankTurnMessage($streamedResponse);
+
+        if ($note !== null) {
+            $this->acknowledgeBlankTurn($streamedResponse->assistantMessageId, $note);
+        }
 
         ChatTelemetry::breadcrumb('stream.blank_reply', ['model' => $this->resolved['model'] ?? null]);
 
         return true;
     }
 
-    private function blankTurnMessage(StreamedAgentResponse $streamedResponse): string
+    private function blankTurnMessage(StreamedAgentResponse $streamedResponse): ?string
     {
         $reason = $streamedResponse->events->whereInstanceOf(StreamEnd::class)->last()?->reason;
 
-        return match ($reason) {
-            FinishReason::Length->value => __('This reply ran out of room before it said anything. Ask again, or ask for a shorter answer.'),
-            FinishReason::ContentFilter->value => __('The model declined to answer this. Try rephrasing your request.'),
-            default => __('Noted. Go on, or ask me a question.'),
-        };
+        if ($reason === FinishReason::Length->value) {
+            return __('This reply ran out of room before it said anything. Ask again, or ask for a shorter answer.');
+        }
+
+        if ($reason === FinishReason::ContentFilter->value) {
+            return __('The model declined to answer this. Try rephrasing your request.');
+        }
+
+        if (! $this->origin->isTyped()) {
+            return null;
+        }
+
+        return __('Noted. Go on, or ask me a question.');
     }
 
     private function acknowledgeBlankTurn(?string $assistantMessageId, string $acknowledgement): void
