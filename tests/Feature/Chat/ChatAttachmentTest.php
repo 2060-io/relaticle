@@ -339,6 +339,28 @@ it('rejects a conversation that belongs to someone else', function (): void {
         ->assertJsonValidationErrors(['conversation_id']);
 });
 
+it('accepts a text file whose content sniffs as another text format', function (string $content): void {
+    $this->postJson(route('chat.attachments.store'), [
+        'file' => UploadedFile::fake()->createWithContent('notes.txt', $content),
+    ])->assertOk()->assertJsonPath('kind', 'text');
+})->with([
+    'an email' => "From: Ada <ada@acme.test>\nSubject: Call notes\n\nWe agreed on the plan.\n",
+    'json' => "{\"deal\": \"Acme\", \"stage\": \"won\"}\n",
+    'a script' => "#!/bin/sh\necho deploy\n",
+]);
+
+it('rejects a binary file named as text', function (): void {
+    $this->postJson(route('chat.attachments.store'), [
+        'file' => UploadedFile::fake()->createWithContent('notes.md', "MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF\x00\x00".str_repeat("\x00", 64)),
+    ])->assertStatus(422)->assertJsonValidationErrors(['file']);
+});
+
+it('rejects a script behind a csv name', function (): void {
+    $this->postJson(route('chat.attachments.store'), [
+        'file' => UploadedFile::fake()->createWithContent('contacts.csv', "#!/bin/sh\necho deploy\n"),
+    ])->assertStatus(422)->assertJsonValidationErrors(['file']);
+});
+
 it('has no import for a text attachment', function (): void {
     $id = $this->postJson(route('chat.attachments.store'), [
         'file' => UploadedFile::fake()->createWithContent('brief.md', "# Launch brief\n\nShip the beta by Friday.\n"),

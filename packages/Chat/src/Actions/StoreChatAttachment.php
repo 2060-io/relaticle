@@ -7,6 +7,7 @@ namespace Relaticle\Chat\Actions;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Relaticle\Chat\Models\AgentConversation;
@@ -58,6 +59,10 @@ final readonly class StoreChatAttachment
         }
 
         $rows = $isText ? [] : $this->inspect($path);
+
+        if (! AgentConversation::acceptsAttachmentMime((string) File::mimeType($path), $isText)) {
+            throw ValidationException::withMessages(['file' => __('The file must be a CSV, TXT or MD file.')]);
+        }
 
         try {
             $media = DB::transaction(function () use ($user, $workspace, $file, $conversation, $originalName, $rows) {
