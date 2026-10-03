@@ -1,18 +1,17 @@
 name: TIA Baseline
 
 # Pest looks for this workflow filename and for an artifact named
-# pest-tia-baseline. Recording the test dependency graph on main lets
-# `composer test:affected` in any local checkout run only the tests a diff
-# can reach, instead of paying a full recording run per branch.
+# pest-tia-baseline. It runs nightly rather than on push: one recording holds a
+# runner for 23 minutes, and on a busy day the test jobs already queue for runners.
+# Nothing consumes the artifact yet: Pest cannot fetch it from a git worktree
+# (pestphp/pest#1820).
 
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
-# One baseline per ref is enough: a newer push makes the in-flight recording stale.
+# A manual run replaces a nightly one still in flight.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,7 +23,7 @@ jobs:
   baseline:
     runs-on: ubuntu-latest
     name: Record TIA Baseline
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     services:
       postgres:
