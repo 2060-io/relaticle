@@ -16,6 +16,9 @@ final class ChatTurnFailureRateCheck extends Check
 
     private const int MAX_FAILED_PERCENT = 20;
 
+    // One person retrying a slow prompt is not an outage.
+    private const int MIN_FAILED_CONVERSATIONS = 2;
+
     public function run(): Result
     {
         $recent = AgentConversationMessage::query()
@@ -34,6 +37,10 @@ final class ChatTurnFailureRateCheck extends Check
         }
 
         if ($failed * 100 <= $total * self::MAX_FAILED_PERCENT) {
+            return $result->ok();
+        }
+
+        if ($recent->clone()->errored()->distinct()->count('conversation_id') < self::MIN_FAILED_CONVERSATIONS) {
             return $result->ok();
         }
 

@@ -50,13 +50,25 @@ function seedFailureRateTurns(string $conversationId, int $count, bool $errored,
 it('fails when more than a fifth of recent assistant turns failed', function (): void {
     $conversationId = failureRateConversation();
     seedFailureRateTurns($conversationId, 4, errored: false, createdAt: now());
-    seedFailureRateTurns($conversationId, 2, errored: true, createdAt: now());
+    seedFailureRateTurns($conversationId, 1, errored: true, createdAt: now());
+    seedFailureRateTurns(failureRateConversation(), 1, errored: true, createdAt: now());
 
     $result = ChatTurnFailureRateCheck::new()->run();
 
     expect($result->status)->toBe(Status::failed())
         ->and($result->meta)->toBe(['total' => 6, 'failed' => 2])
         ->and($result->notificationMessage)->toBe('2 of 6 chat turns failed in the last 10 minutes');
+});
+
+it('passes when every recent failure is in one conversation', function (): void {
+    $conversationId = failureRateConversation();
+    seedFailureRateTurns($conversationId, 2, errored: false, createdAt: now());
+    seedFailureRateTurns($conversationId, 4, errored: true, createdAt: now());
+
+    $result = ChatTurnFailureRateCheck::new()->run();
+
+    expect($result->status)->toBe(Status::ok())
+        ->and($result->meta)->toBe(['total' => 6, 'failed' => 4]);
 });
 
 it('passes when exactly a fifth of recent assistant turns failed', function (): void {
