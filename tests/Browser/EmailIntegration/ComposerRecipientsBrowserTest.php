@@ -134,7 +134,7 @@ it('opens the composer from a record emails tab addressed to the person and clos
         ->assertNoJavaScriptErrors();
 });
 
-it('opens a saved draft from the drafts table', function (): void {
+it('opens a saved draft from a click on its drafts table row', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
@@ -161,7 +161,7 @@ it('opens a saved draft from the drafts table', function (): void {
         ->click('button[type="submit"]')
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/email")
-        ->click('button[wire\\:click*="draftId"]')
+        ->click('Half-written pitch')
         ->assertVisible('#email-composer-subject')
         ->assertValue('#email-composer-subject', 'Half-written pitch')
         ->assertNoJavaScriptErrors();
