@@ -82,6 +82,7 @@
             x-on:keydown.arrow-down.prevent="activeIndex = Math.min(activeIndex + 1, matches.length - 1)"
             x-on:keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, 0)"
             x-on:keydown.enter.prevent="matches[activeIndex] && choose(matches[activeIndex])"
+            x-on:keydown.escape="if (query !== '') { $event.preventDefault(); query = '' }"
         />
     </div>
 

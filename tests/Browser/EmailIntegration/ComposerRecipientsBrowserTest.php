@@ -166,3 +166,35 @@ it('opens a saved draft from the drafts table', function (): void {
         ->assertValue('#email-composer-subject', 'Half-written pitch')
         ->assertNoJavaScriptErrors();
 });
+
+it('closes the composer with escape and keeps the draft', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'user_id' => $user->id,
+        'workspace_id' => $workspace->id,
+        'sync_cursor' => 'history-done',
+        'last_synced_at' => now(),
+    ]));
+
+    visit('/app/login')
+        ->type('[id="form.email"]', $user->email)
+        ->click('button[type="submit"]')
+        ->type('[id="form.password"]', 'password')
+        ->click('button[type="submit"]')
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/email")
+        ->click(__('filament/concerns/email-compose.actions.compose.label'))
+        ->waitForText(__('filament/emails/composer.title'))
+        ->type('[role="combobox"]', 'half-typed')
+        ->keys('[role="combobox"]', ['Escape'])
+        ->assertValue('[role="combobox"]', '')
+        ->assertVisible('#email-composer-subject')
+        ->type('#email-composer-subject', 'Escape keeps this draft')
+        ->keys('#email-composer-subject', ['Escape'])
+        ->assertMissing('#email-composer-subject')
+        ->waitForText('Escape keeps this draft')
+        ->assertNoJavaScriptErrors();
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->where('subject', 'Escape keeps this draft')->exists())->toBeTrue();
+});

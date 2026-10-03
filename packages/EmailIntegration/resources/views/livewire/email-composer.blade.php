@@ -78,7 +78,28 @@
     @endif
 
     @if ($isOpen)
-        <div x-data="{ closing: false }" x-show="! closing">
+        {{-- Esc puts the draft away like the window's ×. Anything open inside it (a
+             suggestion list, a menu, a modal) takes the key first. --}}
+        <div
+            x-data="{
+                closing: false,
+                closeOnEscape(event) {
+                    if (event.defaultPrevented || document.querySelector('.fi-modal-open, .fi-dropdown-panel[style*=\'display: block\']')) {
+                        return
+                    }
+
+                    event.preventDefault()
+                    this.closing = true
+                    this.$wire.close()
+                },
+            }"
+            x-show="! closing"
+            @if ($isModal)
+                x-on:keydown.escape.document="closeOnEscape($event)"
+            @elseif ($dock === 'floating')
+                x-on:keydown.escape="closeOnEscape($event)"
+            @endif
+        >
             @if ($isModal)
                 {{-- Backdrop click minimises rather than closes: the corner window keeps the
                      compose session in progress and in sight, where closing would file a draft. --}}

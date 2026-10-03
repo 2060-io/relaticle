@@ -37,7 +37,7 @@
         }"
         wire:key="email-reader-{{ $email->getKey() }}"
         x-bind:style="closing ? { display: 'none' } : {}"
-        x-on:keydown.escape.window="closeReader()"
+        x-on:keydown.escape.window="$event.defaultPrevented || document.querySelector('.fi-modal-open, .fi-dropdown-panel[style*=\'display: block\']') || closeReader()"
         {{ $attributes->class(['fixed inset-0 flex items-center justify-center p-4 sm:p-6', $layer]) }}
     >
         <div

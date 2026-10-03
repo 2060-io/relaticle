@@ -227,6 +227,10 @@
             }
 
             if (event.key === 'Escape') {
+                if (this.newValue !== '') {
+                    event.preventDefault();
+                }
+
                 this.activeIndex = 0;
                 this.newValue = '';
 
