@@ -216,6 +216,11 @@
     z-index: 70;
 }
 
+/* Toasts keep Filament's place above every modal, so they clear the lifted ones too. */
+.fi-no {
+    z-index: 80;
+}
+
 /* ── Docked draft: the writing area runs to the footer ─────────────────────
    The dock has no height of its own (it grows with the draft), so the editor
    cannot flex into it. Giving the container a min-height would just open a gap
