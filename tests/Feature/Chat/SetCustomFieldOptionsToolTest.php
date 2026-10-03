@@ -161,7 +161,7 @@ it('renames an option in place, keeping its id and the records on it', function 
 
     expect($decoded['type'])->toBe('pending_action')
         ->and($decoded['operation'])->toBe('update')
-        ->and($decoded['data']['options'][0])->toBe(['id' => $leadId, 'name' => 'Prospect'])
+        ->and($decoded['data']['options'][0])->toBe(['id' => $leadId, 'name' => 'Prospect', 'was' => 'Lead'])
         ->and($decoded['display']['fields'])->toContain(['label' => 'Renamed', 'old' => 'Lead', 'new' => 'Prospect']);
 
     $pending = setOptionsPending($this->convId);
@@ -601,4 +601,21 @@ it('stores a renamed option of a deactivated encrypted field as ciphertext', fun
 
     expect($stored->all())->not->toContain('Platinum', 'Bronze')
         ->and($stored->map(fn (string $name): string => decrypt($name, false))->all())->toBe(['Platinum', 'Silver', 'Bronze']);
+});
+
+it('refuses approval when an option it keeps was renamed after the proposal', function (): void {
+    $leadId = setOptionsId($this->lifecycle, 'Lead');
+
+    setOptionsPropose($this->convId, [[
+        'entity_type' => 'company',
+        'code' => 'lifecycle',
+        'options' => [['name' => 'Customer'], ['name' => 'Lead'], ['name' => 'Churned']],
+    ]]);
+
+    CustomFieldOption::query()->withoutGlobalScopes()->whereKey($leadId)->update(['name' => 'Prospect']);
+
+    expect(fn (): PendingAction => resolve(PendingActionService::class)->approve(setOptionsPending($this->convId), $this->owner))
+        ->toThrow(ValidationException::class, 'changed after this proposal');
+
+    expect(setOptionsNames($this->lifecycle))->toBe(['Prospect', 'Customer', 'Churned']);
 });

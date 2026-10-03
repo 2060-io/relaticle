@@ -27,7 +27,7 @@ final readonly class CustomFieldOptionPlan
 
     /**
      * @param  array<string, mixed>  $input
-     * @return array{options: list<array{id?: string, name: string}>, replacements: array<string, string|int>, removed: list<string>}
+     * @return array{options: list<array{id?: string, name: string, was?: string}>, replacements: array<string, string|int>, removed: list<string>}
      *
      * @throws ValidationException
      */
@@ -77,7 +77,7 @@ final readonly class CustomFieldOptionPlan
             }
 
             $claimedIds[] = $id;
-            $options[] = ['id' => $id, 'name' => $item['name']];
+            $options[] = ['id' => $id, 'name' => $item['name'], 'was' => (string) $existing->name];
         }
 
         $replacements = [];
@@ -118,11 +118,12 @@ final readonly class CustomFieldOptionPlan
     {
         self::assertChoiceField($field);
 
-        /** @var list<array{id?: string, name: string}> $options */
+        /** @var list<array{id?: string, name: string, was?: string}> $options */
         $options = Validator::make($data, [
             'options' => ['required', 'array', 'list', 'max:'.CustomFieldDefinitionValidator::maxOptions()],
-            'options.*' => ['array:id,name'],
+            'options.*' => ['array:id,name,was'],
             'options.*.id' => ['sometimes', 'string', 'distinct'],
+            'options.*.was' => ['required_with:options.*.id', 'string'],
             'options.*.name' => ['required', 'string', 'max:255', 'distinct:ignore_case'],
             'replacements' => ['sometimes', 'array'],
             'removed' => ['present', 'array'],
@@ -146,6 +147,10 @@ final readonly class CustomFieldOptionPlan
                 continue;
             }
 
+            if ($existing instanceof CustomFieldOption && $existing->name !== ($option['was'] ?? null)) {
+                throw ValidationException::withMessages(['options' => self::changedSinceProposal($field)]);
+            }
+
             $targets[] = ['option' => $existing, 'name' => $option['name']];
         }
 
@@ -161,9 +166,7 @@ final readonly class CustomFieldOptionPlan
         sort($currentRemoved);
 
         if ($storedRemoved !== $currentRemoved) {
-            throw ValidationException::withMessages([
-                'options' => __('The options of ":field" changed after this proposal. Ask for a fresh one.', ['field' => $field->name]),
-            ]);
+            throw ValidationException::withMessages(['options' => self::changedSinceProposal($field)]);
         }
 
         if ($removed->isNotEmpty() && $field->settings->encrypted) {
@@ -361,6 +364,11 @@ final readonly class CustomFieldOptionPlan
     private static function isTaskStatus(CustomField $field): bool
     {
         return $field->entity_type === CrmEntity::Task->value && $field->code === TaskField::STATUS->value;
+    }
+
+    private static function changedSinceProposal(CustomField $field): string
+    {
+        return (string) __('The options of ":field" changed after this proposal. Ask for a fresh one.', ['field' => $field->name]);
     }
 
     /**

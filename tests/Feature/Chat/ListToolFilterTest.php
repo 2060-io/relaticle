@@ -331,7 +331,7 @@ it('can filter by an option added to an existing custom field', function (): voi
         ->value('id');
 
     app(SetCustomFieldOptions::class)->execute($user, $field, [
-        'options' => [['id' => $enterpriseId, 'name' => 'Enterprise'], ['name' => 'Mid-Market']],
+        'options' => [['id' => $enterpriseId, 'name' => 'Enterprise', 'was' => 'Enterprise'], ['name' => 'Mid-Market']],
         'replacements' => [],
         'removed' => [],
     ]);
