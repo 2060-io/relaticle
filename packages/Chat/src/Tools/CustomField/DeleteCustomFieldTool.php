@@ -8,6 +8,7 @@ use App\Actions\CustomFields\DeleteCustomField;
 use App\Enums\CrmEntity;
 use App\Enums\WorkspaceCapability;
 use App\Models\CustomField;
+use App\Models\CustomFieldValue;
 use App\Models\User;
 use App\Support\CustomFieldDefinitionValidator;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -176,7 +177,7 @@ final class DeleteCustomFieldTool implements Tool
      */
     private function displayItem(CustomField $field): array
     {
-        $holders = $field->values()->count();
+        $holders = CustomFieldValue::query()->holdingAValue($field)->count();
         $options = $field->options()->get()->each->setRelation('customField', $field)->pluck('name')->all();
 
         $rows = [

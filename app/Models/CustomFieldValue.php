@@ -41,6 +41,23 @@ final class CustomFieldValue extends BaseCustomFieldValue
 
     /** @param Builder<self> $query */
     #[Scope]
+    protected function holdingAValue(Builder $query, CustomField $field): void
+    {
+        $column = $field->getValueColumn();
+
+        $query->where('custom_field_id', $field->getKey())->whereNotNull($column);
+
+        if ($column === 'json_value') {
+            $query->whereRaw("json_value::text not in ('[]', 'null')");
+        }
+
+        if (in_array($column, ['string_value', 'text_value'], true)) {
+            $query->where($column, '!=', '');
+        }
+    }
+
+    /** @param Builder<self> $query */
+    #[Scope]
     protected function holdingOption(Builder $query, CustomField $field, string $optionId): void
     {
         $query->where('custom_field_id', $field->getKey());

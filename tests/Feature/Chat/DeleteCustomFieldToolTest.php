@@ -12,6 +12,7 @@ use App\Support\CustomFieldDefinitionValidator;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Enums\PendingActionOperation;
@@ -278,4 +279,46 @@ it('names the options of an encrypted field in plain text on the card', function
     $result = proposeFieldDelete($this->convId, [['entity_type' => 'company', 'code' => 'tier']]);
 
     expect($result['display']['fields'])->toContain(['label' => 'Options deleted', 'value' => 'Gold, Silver']);
+});
+
+it('proposes deleting an active field whose only value rows are empty', function (): void {
+    $company = Company::factory()->for($this->workspace)->create();
+
+    DB::table('custom_field_values')->insert([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'company',
+        'entity_id' => $company->getKey(),
+        'custom_field_id' => $this->field->getKey(),
+    ]);
+
+    $result = proposeFieldDelete($this->convId, [['entity_type' => 'company', 'code' => 'industry']]);
+
+    expect($result['type'])->toBe('pending_action')
+        ->and($result['display']['fields'])->toContain(['label' => 'Values deleted', 'value' => 'None. No record holds a value for it.']);
+
+    resolve(PendingActionService::class)->approve(PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail(), $this->owner);
+
+    expect(fieldExists($this->field))->toBeFalse()
+        ->and(storedValueCount($this->field))->toBe(0);
+});
+
+it('treats a multi-select field holding only empty lists as unused', function (): void {
+    $segments = deletableField($this->workspace, 'segments', 'Segments', ['type' => 'multi-select']);
+    $company = Company::factory()->for($this->workspace)->create();
+
+    DB::table('custom_field_values')->insert([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'company',
+        'entity_id' => $company->getKey(),
+        'custom_field_id' => $segments->getKey(),
+        'json_value' => '[]',
+    ]);
+
+    expect($segments->hasValues())->toBeFalse();
+
+    DB::table('custom_field_values')->where('custom_field_id', $segments->getKey())->update(['json_value' => '["a"]']);
+
+    expect($segments->hasValues())->toBeTrue();
 });
