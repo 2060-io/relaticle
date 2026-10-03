@@ -138,7 +138,7 @@ enum TaskField: string
             self::STATUS => [
                 'To do' => '#c4b5fd',       // Soft Periwinkle - Digital Lavender inspired calm potential
                 'In progress' => '#0A80EA', // Professional Blue - Clear active progress state
-                'Done' => '#2A9764',        // Success Green - Confident completion achievement
+                self::DONE_STATUS => '#2A9764',        // Success Green - Confident completion achievement
             ],
             self::PRIORITY => [
                 'Low' => '#94a3b8',         // Sage Whisper - Natural earth tone, subtle presence

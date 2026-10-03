@@ -21,8 +21,8 @@ final readonly class CustomFieldOptionPlan
      * @param  list<array{option: CustomFieldOption, replacement: ?int}>  $removals
      */
     private function __construct(
-        private array $targets,
-        private array $removals,
+        public array $targets,
+        public array $removals,
     ) {}
 
     /**
@@ -153,15 +153,7 @@ final readonly class CustomFieldOptionPlan
             throw ValidationException::withMessages(['options' => $vanished]);
         }
 
-        $keptIds = [];
-
-        foreach ($targets as $target) {
-            if ($target['option'] instanceof CustomFieldOption) {
-                $keptIds[] = (string) $target['option']->getKey();
-            }
-        }
-
-        $removed = $current->except($keptIds);
+        $removed = $current->except(array_column($options, 'id'));
 
         $storedRemoved = array_map(strval(...), is_array($data['removed'] ?? null) ? $data['removed'] : []);
         $currentRemoved = $removed->keys()->all();
@@ -210,7 +202,7 @@ final readonly class CustomFieldOptionPlan
             $removals[] = ['option' => $option, 'replacement' => $replacement];
         }
 
-        $moveCap = self::maxValueMoves();
+        $moveCap = (int) config('chat.max_option_value_moves', 1000);
         $moveTotal = array_sum($moves);
 
         if ($moveTotal > $moveCap) {
@@ -232,22 +224,6 @@ final readonly class CustomFieldOptionPlan
         }
 
         return new self($targets, $removals);
-    }
-
-    /**
-     * @return list<array{option: ?CustomFieldOption, name: string}>
-     */
-    public function targets(): array
-    {
-        return $this->targets;
-    }
-
-    /**
-     * @return list<array{option: CustomFieldOption, replacement: ?int}>
-     */
-    public function removals(): array
-    {
-        return $this->removals;
     }
 
     /**
@@ -286,11 +262,6 @@ final readonly class CustomFieldOptionPlan
         return $rows;
     }
 
-    private static function maxValueMoves(): int
-    {
-        return (int) config('chat.max_option_value_moves', 1000);
-    }
-
     private static function assertChoiceField(CustomField $field): void
     {
         if (in_array($field->type, CreateCustomField::CHOICE_TYPES, true)) {
@@ -307,11 +278,9 @@ final readonly class CustomFieldOptionPlan
      */
     private static function currentOptions(CustomField $field): Collection
     {
-        // The relation hides a deactivated field, and the option model encrypts by reading its field.
         return CustomFieldOption::query()
             ->where('custom_field_id', $field->getKey())
             ->get()
-            ->each(fn (CustomFieldOption $option): CustomFieldOption => $option->setRelation('customField', $field))
             ->toBase()
             ->keyBy(fn (CustomFieldOption $option): string => (string) $option->getKey());
     }

@@ -11,7 +11,6 @@ use App\Models\CustomFieldValue;
 use App\Models\User;
 use App\Support\CustomFieldOptionPlan;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
@@ -43,12 +42,12 @@ final readonly class SetCustomFieldOptions
                 $field = CustomField::query()->withoutGlobalScopes()->whereKey($field->getKey())->lockForUpdate()->sole();
                 $plan = CustomFieldOptionPlan::validated($field, $data);
                 $options = $this->writeOptions($field, $plan);
-                $removed = array_column($plan->removals(), 'option');
+                $removed = array_column($plan->removals, 'option');
 
                 // The change log labels moved values from this relation; a reload would read the temporary names.
                 $field->setRelation('options', new EloquentCollection([...$options, ...$removed]));
 
-                foreach ($plan->removals() as $removal) {
+                foreach ($plan->removals as $removal) {
                     if ($removal['replacement'] !== null) {
                         $this->moveValues($field, $removal['option'], $options[$removal['replacement']]);
                     }
@@ -88,19 +87,17 @@ final readonly class SetCustomFieldOptions
 
         $options = [];
 
-        foreach ($plan->targets() as $index => $target) {
+        foreach ($plan->targets as $index => $target) {
             $sortOrder = $index + 1;
             $option = $target['option'];
 
             if (! $option instanceof CustomFieldOption) {
-                $option = new CustomFieldOption([
+                $options[] = CustomFieldOption::query()->create([
                     (string) config('custom-fields.database.column_names.tenant_foreign_key') => $field->tenant_id,
                     'custom_field_id' => $field->getKey(),
                     'name' => $target['name'],
                     'sort_order' => $sortOrder,
                 ]);
-                $option->setRelation('customField', $field)->save();
-                $options[] = $option;
 
                 continue;
             }
@@ -121,10 +118,10 @@ final readonly class SetCustomFieldOptions
 
     private function freeTargetNames(CustomFieldOptionPlan $plan): void
     {
-        $targetNames = array_column($plan->targets(), 'name');
-        $holders = array_column($plan->removals(), 'option');
+        $targetNames = array_column($plan->targets, 'name');
+        $holders = array_column($plan->removals, 'option');
 
-        foreach ($plan->targets() as $target) {
+        foreach ($plan->targets as $target) {
             if ($target['option'] instanceof CustomFieldOption && $target['option']->name !== $target['name']) {
                 $holders[] = $target['option'];
             }
@@ -162,8 +159,7 @@ final readonly class SetCustomFieldOptions
                         ->values()
                     : $toId);
 
-                // The change log needs the record: a value orphaned by a purged record moves without one.
-                $value->getRelationValue('entity') instanceof Model ? $value->save() : $value->saveQuietly();
+                $value->save();
             });
     }
 }
