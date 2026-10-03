@@ -205,7 +205,7 @@ final readonly class CustomFieldOptionPlan
             $removals[] = ['option' => $option, 'replacement' => $replacement];
         }
 
-        $moveCap = (int) config('chat.max_option_value_moves', 1000);
+        $moveCap = (int) config('chat.max_option_value_moves', 250);
         $moveTotal = array_sum($moves);
 
         if ($moveTotal > $moveCap) {

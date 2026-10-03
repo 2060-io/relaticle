@@ -188,7 +188,7 @@ return [
 
     'max_field_options' => (int) env('CHAT_MAX_FIELD_OPTIONS', 50),
 
-    'max_option_value_moves' => (int) env('CHAT_MAX_OPTION_VALUE_MOVES', 1000),
+    'max_option_value_moves' => (int) env('CHAT_MAX_OPTION_VALUE_MOVES', 250),
 
     /*
     |--------------------------------------------------------------------------
