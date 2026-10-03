@@ -13,12 +13,8 @@
              trigger fires composer:open and stays until this component answers. --}}
         x-data="{
             opening: false,
-            stopWatchingRequests: null,
             init() {
-                this.stopWatchingRequests = $wire.$interceptMessage(({ onFinish }) => onFinish(() => this.opening = false))
-            },
-            destroy() {
-                this.stopWatchingRequests?.()
+                $wire.$interceptMessage(({ onFinish }) => onFinish(() => this.opening = false))
             },
         }"
         x-on:composer:open.window="opening = ! $wire.isOpen"
