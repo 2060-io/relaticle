@@ -5,47 +5,21 @@ declare(strict_types=1);
 namespace App\Filament\Resources\NoteResource\Pages;
 
 use App\Filament\Concerns\HasCustomFieldColumns;
-use App\Filament\Exports\NoteExporter;
+use App\Filament\Concerns\HasNoteHeaderActions;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\NoteResource;
-use App\Models\Note;
 use Asmit\ResizedColumn\HasResizableColumn;
-use Filament\Actions\Action;
-use Filament\Actions\ActionGroup;
-use Filament\Actions\CreateAction;
-use Filament\Actions\ExportAction;
 use Filament\Resources\Pages\ManageRecords;
-use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
-use Override;
-use Relaticle\ImportWizard\Filament\Pages\ImportNotes;
 
 final class ManageNotes extends ManageRecords
 {
     use HasCustomFieldColumns;
+    use HasNoteHeaderActions;
     use HasResizableColumn;
+    use HasViewSwitcher;
 
     protected static string $resource = NoteResource::class;
-
-    #[Override]
-    protected function getHeaderActions(): array
-    {
-        return [
-            ActionGroup::make([
-                Action::make('import')
-                    ->label(__('filament/resources/note.pages.list.actions.import.label'))
-                    ->icon('heroicon-o-arrow-up-tray')
-                    ->url(ImportNotes::getUrl())
-                    ->visible(ImportNotes::canAccess(...)),
-                ExportAction::make()->exporter(NoteExporter::class)->authorize('exportAny', Note::class),
-            ])
-                ->icon('heroicon-o-arrows-up-down')
-                ->color('gray')
-                ->button()
-                ->label(__('filament/resources/note.pages.list.actions.import_export.label'))
-                ->size(Size::Small),
-            CreateAction::make()->icon('heroicon-o-plus')->size(Size::Small),
-        ];
-    }
 
     #[On('ai-write-completed')]
     public function refreshOnAiWrite(): void

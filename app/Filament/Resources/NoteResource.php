@@ -10,6 +10,7 @@ use App\Filament\Components\Tables\RecordChipColumn;
 use App\Filament\Exports\NoteExporter;
 use App\Filament\Resources\NoteResource\Forms\NoteForm;
 use App\Filament\Resources\NoteResource\Pages\ManageNotes;
+use App\Filament\Resources\NoteResource\Pages\NotesCards;
 use App\Models\Note;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
@@ -133,7 +134,8 @@ final class NoteResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => ManageNotes::route('/'),
+            'index' => NotesCards::route('/'),
+            'list' => ManageNotes::route('/list'),
         ];
     }
 

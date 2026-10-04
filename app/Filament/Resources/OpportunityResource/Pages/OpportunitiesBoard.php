@@ -8,7 +8,7 @@ use App\Enums\CustomFields\OpportunityField as OpportunityCustomField;
 use App\Filament\Components\Forms\RecordSelect;
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Filament\Components\Tables\Filters\RecordSelectFilter;
-use App\Filament\Concerns\HasBoardViewSwitcher;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\OpportunityResource;
 use App\Filament\Resources\OpportunityResource\Forms\OpportunityForm;
 use App\Models\CustomField;
@@ -41,7 +41,7 @@ use Throwable;
 
 final class OpportunitiesBoard extends BoardResourcePage
 {
-    use HasBoardViewSwitcher;
+    use HasViewSwitcher;
 
     protected static string $resource = OpportunityResource::class;
 

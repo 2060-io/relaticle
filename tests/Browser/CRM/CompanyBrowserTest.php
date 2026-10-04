@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use App\Filament\Concerns\HasBoardViewSwitcher;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\CompanyResource;
 use App\Models\Company;
 use App\Models\User;
 
-mutates(CompanyResource::class, HasBoardViewSwitcher::class);
+mutates(CompanyResource::class, HasViewSwitcher::class);
 
 it('can create a company through the browser', function (): void {
     $user = User::factory()->withWorkspace()->create();
