@@ -133,6 +133,54 @@ it('deduplicates company Create rows by domain', function (): void {
         ->and($companies->first()->name)->toBe('Acme Corp');
 });
 
+it('treats two spellings of one matchable value in a file as one record', function (ImportEntityType $entityType, string $source, string $fieldCode, string $first, string $second): void {
+    $modelClass = $entityType->importer((string) $this->workspace->id)->modelClass();
+
+    ImportExecutionFixture::readyStore($this, ['Name', $source], [
+        ImportExecutionFixture::row(2, ['Name' => 'First', $source => $first], ['match_action' => RowMatchAction::Create->value]),
+        ImportExecutionFixture::row(3, ['Name' => 'Second', $source => $second], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toField(source: $source, target: "custom_fields_{$fieldCode}"),
+    ], $entityType);
+
+    ImportExecutionFixture::run($this);
+
+    expect($this->import->fresh())
+        ->created_rows->toBe(1)
+        ->updated_rows->toBe(1)
+        ->failed_rows->toBe(0)
+        ->and($modelClass::query()->where('workspace_id', $this->workspace->id)->whereIn('name', ['First', 'Second'])->count())->toBe(1);
+})->with([
+    'company url then bare host' => [ImportEntityType::Company, 'Domain', 'domains', 'https://acme.com', 'acme.com'],
+    'company bare host then url with path' => [ImportEntityType::Company, 'Domain', 'domains', 'acme.com', 'https://www.Acme.com/pricing'],
+    'contact formatted phone then canonical phone' => [ImportEntityType::People, 'Phone', 'phone_number', '+1 415 555 0100', '+14155550100'],
+]);
+
+it('creates one linked company for two spellings of a domain in a file', function (string $first, string $second): void {
+    $relationship = fn (string $name): string => json_encode([
+        ['relationship' => 'company', 'action' => 'create', 'id' => null, 'name' => $name, 'behavior' => MatchBehavior::MatchOrCreate->value, 'matchField' => 'custom_fields_domains'],
+    ]);
+
+    ImportExecutionFixture::readyStore($this, ['Name', 'Company'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Ana', 'Company' => $first], ['match_action' => RowMatchAction::Create->value, 'relationships' => $relationship($first)]),
+        ImportExecutionFixture::row(3, ['Name' => 'Ben', 'Company' => $second], ['match_action' => RowMatchAction::Create->value, 'relationships' => $relationship($second)]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toEntityLink(source: 'Company', matcherKey: 'custom_fields_domains', entityLinkKey: 'company'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+
+    $companyIds = People::query()->where('workspace_id', $this->workspace->id)->whereIn('name', ['Ana', 'Ben'])->pluck('company_id')->unique();
+
+    expect(Company::query()->where('workspace_id', $this->workspace->id)->count())->toBe(1)
+        ->and($companyIds)->toHaveCount(1);
+})->with([
+    'url then bare host' => ['https://acme.com', 'acme.com'],
+    'bare host then url with path' => ['acme.com', 'https://www.Acme.com/pricing'],
+]);
+
 it('updates the live record when a deleted record shares its import identity', function (ImportEntityType $entityType, string $fieldCode, string $value, bool $deletedFirst): void {
     $modelClass = $entityType->importer((string) $this->workspace->id)->modelClass();
     $field = CustomField::query()->withoutGlobalScopes()
