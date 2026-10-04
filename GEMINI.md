@@ -341,6 +341,28 @@ Do not add new PHPStan ignores without approval. All parameters and return types
   Never put it behind an `app()->environment()` branch inside `app/Actions/` or
   other production code.
 
+## Code shape
+
+The reference is the framework's own code and Spatie's packages. Measured on the installed
+versions, nine of their methods in ten are under about 20 lines, and ninety-nine in a hundred
+are under about 50. Each rule below names what fails when it is broken.
+
+- A method stays within 60 lines. `MethodLengthRule` (PHPStan, `app/PHPStan/Rules/`) fails a
+  longer one. Extract a step and name it for what it returns. `packages/SystemAdmin` is outside
+  PHPStan, so the cap does not reach it.
+- The methods that were already longer are listed in `phpstan-method-length.php`, and that list
+  only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
+  that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
+- A class is named for its role where its directory carries one: `Command`, `Controller`,
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
+  fails a class there without the suffix.
+- Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
+  can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
+  direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.
+- Before writing a helper, look for it in PHP, then in the framework, then in a package from
+  `composer.json`, then in this codebase. Rector's Laravel sets rewrite the hand-rolled forms
+  they know, and `composer test:refactor` fails until the rewrite is taken.
+
 ## Comments
 
 Write code that needs no comment. In a finished diff, 90%+ of the code carries zero
@@ -355,7 +377,6 @@ is the exception that admits the code could not.
   the PR; the next reader reads the code.
 - No comments in tests. The test name carries the intent.
 - Docblocks carry types, generics, and array shapes PHPStan cannot infer. Never prose.
-  This overrides the composed Boost PHP rule that prefers docblocks over inline comments.
 - Draft with comments if it helps you think. Before handing over the diff, re-read every
   `//` you added and delete any the code already says.
 
@@ -490,6 +511,12 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
   sources in `.ai/guidelines/relaticle/`, then run `php artisan boost:update`
   and copy `AGENTS.md` to `GEMINI.md` (boost does not write it). Never edit the
   compiled files directly; `tests/Arch/ConventionsTest.php` fails when they drift.
+- A bundled Boost line that contradicts a rule here is deleted, never argued with.
+  Copy the bundled file to the same path under `.ai/guidelines/` and delete only that
+  line: `.ai/guidelines/php/core.blade.php` replaces Boost's `php/core`.
+  `tests/Arch/ConventionsTest.php` pins each deleted line and fails when Boost changes
+  the file, so the copy is refreshed instead of going stale. An override never adds
+  text. Project rules go in `.ai/guidelines/relaticle/`.
 
 ## Releases
 
@@ -658,7 +685,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`. Do not leave empty zero-parameter `__construct()` methods unless the constructor is private.
 - Use explicit return type declarations and type hints for all method parameters: `function isAccessible(User $user, ?string $path = null): bool`
 - Follow existing application Enum naming conventions.
-- Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
 
 === deployments rules ===

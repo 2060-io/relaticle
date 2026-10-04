@@ -487,3 +487,15 @@ it('keeps Eloquent models off the client-callable surface of Livewire components
 
     expect(array_values(array_unique($offenders)))->toBe([]);
 });
+
+arch('reaches the network, the shell and the wait through wrappers a test can fake')
+    ->expect([
+        'curl_exec',
+        'curl_init',
+        'sleep',
+        'usleep',
+        'GuzzleHttp\Client',
+        'Symfony\Component\HttpClient\HttpClient',
+        'Symfony\Component\Process\Process',
+    ])
+    ->not->toBeUsed();

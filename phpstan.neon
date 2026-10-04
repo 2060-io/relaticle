@@ -1,5 +1,11 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - phpstan-method-length.php
+
+parametersSchema:
+    methodLength: structure([
+        grandfathered: arrayOf(int(), string())
+    ])
 
 parameters:
     level: 7
@@ -127,6 +133,13 @@ parameters:
         - packages/EmailIntegration/config
 
 services:
+    -
+        class: App\PHPStan\Rules\MethodLengthRule
+        arguments:
+            maxLines: 60
+            grandfathered: %methodLength.grandfathered%
+        tags:
+            - phpstan.rules.rule
     -
         class: App\PHPStan\Rules\EloquentWriteOutsideActionRule
         arguments:

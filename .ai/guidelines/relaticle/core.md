@@ -143,6 +143,28 @@ Do not add new PHPStan ignores without approval. All parameters and return types
   Never put it behind an `app()->environment()` branch inside `app/Actions/` or
   other production code.
 
+## Code shape
+
+The reference is the framework's own code and Spatie's packages. Measured on the installed
+versions, nine of their methods in ten are under about 20 lines, and ninety-nine in a hundred
+are under about 50. Each rule below names what fails when it is broken.
+
+- A method stays within 60 lines. `MethodLengthRule` (PHPStan, `app/PHPStan/Rules/`) fails a
+  longer one. Extract a step and name it for what it returns. `packages/SystemAdmin` is outside
+  PHPStan, so the cap does not reach it.
+- The methods that were already longer are listed in `phpstan-method-length.php`, and that list
+  only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
+  that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
+- A class is named for its role where its directory carries one: `Command`, `Controller`,
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
+  fails a class there without the suffix.
+- Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
+  can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
+  direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.
+- Before writing a helper, look for it in PHP, then in the framework, then in a package from
+  `composer.json`, then in this codebase. Rector's Laravel sets rewrite the hand-rolled forms
+  they know, and `composer test:refactor` fails until the rewrite is taken.
+
 ## Comments
 
 Write code that needs no comment. In a finished diff, 90%+ of the code carries zero
@@ -157,7 +179,6 @@ is the exception that admits the code could not.
   the PR; the next reader reads the code.
 - No comments in tests. The test name carries the intent.
 - Docblocks carry types, generics, and array shapes PHPStan cannot infer. Never prose.
-  This overrides the composed Boost PHP rule that prefers docblocks over inline comments.
 - Draft with comments if it helps you think. Before handing over the diff, re-read every
   `//` you added and delete any the code already says.
 
