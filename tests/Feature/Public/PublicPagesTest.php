@@ -972,6 +972,8 @@ describe('Page metadata', function () {
         ['/pricing', true],
         ['/ai', true],
         ['/ai-native-crm', true],
+        ['/crm-for-claude', true],
+        ['/crm-for-chatgpt', true],
         ['/self-hosted', true],
         ['/security', true],
         ['/press', true],

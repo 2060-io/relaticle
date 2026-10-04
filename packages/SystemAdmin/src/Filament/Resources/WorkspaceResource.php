@@ -166,6 +166,13 @@ final class WorkspaceResource extends Resource
                         ->label('Referral Source')
                         ->badge()
                         ->placeholder('—'),
+                    TextEntry::make('onboarding_referral_detail')
+                        ->label('Referral Assistant')
+                        ->formatStateUsing(self::referralDetailLabel(...))
+                        ->placeholder('—'),
+                    TextEntry::make('onboarding_referral_prompt')
+                        ->label('What They Asked')
+                        ->placeholder('—'),
                     TextEntry::make('invite_link_token_expires_at')
                         ->label('Invite Link Expires')
                         ->dateTime()
@@ -193,6 +200,11 @@ final class WorkspaceResource extends Resource
     public static function contextLabel(Workspace $record, string $state): string
     {
         return $record->onboarding_use_case?->getSubOptions()[$state] ?? $state;
+    }
+
+    public static function referralDetailLabel(Workspace $record, string $state): string
+    {
+        return $record->onboarding_referral_source?->getSubOptions()[$state] ?? $state;
     }
 
     #[Override]
@@ -252,6 +264,18 @@ final class WorkspaceResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->placeholder('—'),
+                TextColumn::make('onboarding_referral_detail')
+                    ->label('Referral Assistant')
+                    ->formatStateUsing(self::referralDetailLabel(...))
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->placeholder('—'),
+                TextColumn::make('onboarding_referral_prompt')
+                    ->label('What They Asked')
+                    ->searchable()
+                    ->wrap()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->placeholder('—'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
@@ -273,6 +297,9 @@ final class WorkspaceResource extends Resource
                 SelectFilter::make('onboarding_referral_source')
                     ->label('Referral Source')
                     ->options(OnboardingReferralSource::class),
+                SelectFilter::make('onboarding_referral_detail')
+                    ->label('Referral Assistant')
+                    ->options(OnboardingReferralSource::AI->getSubOptions()),
                 TernaryFilter::make('internal')
                     ->label('Internal')
                     ->placeholder('All workspaces')

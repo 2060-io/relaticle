@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\ConnectableAssistant;
 use App\Enums\Notifications\NotificationType;
 use App\Features\Documentation;
 use App\Features\SocialAuth;
 use App\Http\Controllers\AcceptWorkspaceInvitationController;
 use App\Http\Controllers\AlternativesController;
+use App\Http\Controllers\AssistantPagesController;
 use App\Http\Controllers\Auth\CallbackController;
 use App\Http\Controllers\Auth\EmailChallengeController;
 use App\Http\Controllers\Auth\IdentityConfirmationCallbackController;
@@ -165,6 +167,13 @@ Route::middleware([ProvideMarkdownResponse::class, AddVaryAcceptHeader::class])-
     Route::get('/ai', fn () => view('ai'))->name('ai');
     Route::get('/ai-native-crm', fn () => view('ai-native-crm'))->name('aiNativeCrm');
     Route::get('/self-hosted', fn () => view('self-hosted'))->name('selfHosted');
+
+    foreach (ConnectableAssistant::cases() as $assistant) {
+        Route::get("/crm-for-{$assistant->value}", [AssistantPagesController::class, 'show'])
+            ->defaults('assistant', $assistant->value)
+            ->name($assistant->routeName());
+    }
+
     Route::get('/security', fn () => view('security'))->name('security');
     Route::get('/compare/relaticle-vs-{competitor}', [ComparisonController::class, 'show'])->name('compare.show');
     Route::get('/alternatives/{competitor}', [AlternativesController::class, 'show'])->name('alternatives.show');

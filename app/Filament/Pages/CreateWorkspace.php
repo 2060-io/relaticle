@@ -164,6 +164,7 @@ final class CreateWorkspace extends RegisterTenant
     private function getAttributionStep(): Step
     {
         return Step::make(__('filament/pages/workspaces.create_workspace.steps.attribution'))
+            ->key('onboarding-attribution')
             ->schema([
                 Placeholder::make('attribution_heading')
                     ->label(__('filament/pages/workspaces.create_workspace.headings.attribution'))
@@ -191,8 +192,34 @@ final class CreateWorkspace extends RegisterTenant
                             ])
                             ->all()
                     )
-                    ->inline(),
+                    ->inline()
+                    ->live(),
+
+                ...$this->getReferralFollowUpComponents(),
             ]);
+    }
+
+    /**
+     * @return array<Component>
+     */
+    private function getReferralFollowUpComponents(): array
+    {
+        $subOptions = fn (Get $get): array => OnboardingReferralSource::tryFrom($get('onboarding_referral_source') ?? '')?->getSubOptions() ?? [];
+
+        return [
+            ToggleButtons::make('onboarding_referral_detail')
+                ->label(__('filament/pages/workspaces.create_workspace.form.referral_detail_label'))
+                ->options($subOptions)
+                ->inline()
+                ->visible(fn (Get $get): bool => $subOptions($get) !== []),
+
+            TextInput::make('onboarding_referral_prompt')
+                ->label(__('filament/pages/workspaces.create_workspace.form.referral_prompt_label'))
+                ->placeholder(__('filament/pages/workspaces.create_workspace.form.referral_prompt_placeholder'))
+                ->validationAttribute(__('filament/pages/workspaces.create_workspace.form.referral_prompt_validation_attribute'))
+                ->maxLength(200)
+                ->visible(fn (Get $get): bool => $subOptions($get) !== []),
+        ];
     }
 
     private function getUseCaseStep(): Step

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Enums\ConnectableAssistant;
 use App\Features\Blog;
 use App\Features\Documentation;
 use Laravel\Pennant\Feature;
@@ -80,6 +81,13 @@ final readonly class MarketingNavigation
                 new NavItem(__('Features'), url('/#features')),
                 new NavItem(__('Pricing'), route('pricing')),
                 new NavItem(__('Self-hosted'), route('selfHosted')),
+                ...array_map(
+                    fn (ConnectableAssistant $assistant): NavItem => new NavItem(
+                        __('For :name', ['name' => $assistant->label()]),
+                        route($assistant->routeName()),
+                    ),
+                    ConnectableAssistant::cases(),
+                ),
             ]),
             new NavItem(__('Resources'), children: [
                 ...$this->resourceItems(),
