@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 use App\Actions\CustomFields\CreateCustomField;
-use App\Actions\Opportunity\ListOpportunities;
-use App\Actions\People\ListPeople;
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
 use App\Mcp\Schema\CustomFieldFilterSchema;
@@ -24,8 +22,6 @@ use App\Models\Workspace;
 use App\Support\CurrentWorkspace;
 use App\Support\Filters\CustomFieldFilter;
 use App\Support\Filters\EntityFilters;
-use Illuminate\Contracts\Pagination\CursorPaginator;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -228,14 +224,9 @@ it('rejects more than 20 filter conditions', function (): void {
         $filters["field_{$i}"] = ['$eq' => 'test'];
     }
 
-    $request = new Request([
-        'filter' => ['custom_fields' => $filters],
-    ]);
-
-    expect(fn (): LengthAwarePaginator|CursorPaginator => resolve(ListOpportunities::class)->execute($this->user, request: $request))
-        ->toThrow(function (ValidationException $exception): void {
-            expect($exception->errors())->toBe(['filter' => ['A filter holds at most 20 conditions. This one has 21.']]);
-        });
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListOpportunitiesTool::class, ['filter' => ['custom_fields' => $filters]])
+        ->assertHasErrors(['A filter holds at most 20 conditions. This one has 21.']);
 });
 
 it('counts each domain condition toward the 20 condition limit', function (): void {
@@ -245,10 +236,9 @@ it('counts each domain condition toward the 20 condition limit', function (): vo
         $filters["field_{$i}"] = ['domain' => ['$in' => ['acme.com']]];
     }
 
-    expect(fn (): LengthAwarePaginator|CursorPaginator => resolve(ListPeople::class)->execute($this->user, request: new Request(['filter' => ['custom_fields' => $filters]])))
-        ->toThrow(function (ValidationException $exception): void {
-            expect($exception->errors())->toBe(['filter' => ['A filter holds at most 20 conditions. This one has 21.']]);
-        });
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => $filters]])
+        ->assertHasErrors(['A filter holds at most 20 conditions. This one has 21.']);
 });
 
 it('returns an actionable MCP error for an operator incompatible with the field type', function (): void {
@@ -690,12 +680,17 @@ it('handles empty filter object as no-op', function (): void {
  */
 function peopleNamesMatching(User $user, array $filter): array
 {
-    return QueryBuilder::for(People::query()->withCustomFieldValues(), new Request(['filter' => $filter]))
-        ->allowedFilters(...new EntityFilters($user)->for(CrmEntity::People))
-        ->pluck('name')
-        ->sort()
-        ->values()
-        ->all();
+    $names = [];
+
+    RelaticleServer::actingAs($user)
+        ->tool(ListPeopleTool::class, ['filter' => $filter])
+        ->assertOk()
+        ->assertStructuredContent(function (AssertableJson $json) use (&$names): void {
+            $names = collect($json->toArray()['items'])->pluck('attributes.name')->sort()->values()->all();
+            $json->etc();
+        });
+
+    return $names;
 }
 
 it('matches an email in any case and by domain', function (): void {
@@ -780,15 +775,17 @@ it('publishes only $ operators and the domain sub-field', function (): void {
 it('asks for a country code on a national phone operand', function (): void {
     filterTestField($this->workspace, 'people', 'mobile', 'phone', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
 
-    expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['mobile' => ['$has_any' => ['415 555 0100']]]]))
-        ->toThrow(ValidationException::class, 'mobile needs a country code');
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['mobile' => ['$has_any' => ['415 555 0100']]]]])
+        ->assertHasErrors(['mobile needs a country code']);
 });
 
 it('rejects an operand that holds a NUL or is not valid utf-8', function (string $type, array $conditions): void {
     filterTestField($this->workspace, 'people', 'contact', $type, new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
 
-    expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['contact' => $conditions]]))
-        ->toThrow(ValidationException::class);
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['contact' => $conditions]]])
+        ->assertHasErrors();
 })->with([
     'email with a NUL' => ['email', ['$has_any' => ["a\0@x.com"]]],
     'email with an invalid byte' => ['email', ['$has_none' => ["a\xFF@x.com"]]],
@@ -844,8 +841,9 @@ it('matches a domain operand that is a plausible host', function (string $host):
 it('rejects a domain operand that carries a path, user or port', function (string $operand): void {
     filterTestField($this->workspace, 'people', 'work_emails', 'email', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
 
-    expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['work_emails' => ['domain' => ['$in' => [$operand]]]]]))
-        ->toThrow(ValidationException::class, 'a list of domains');
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['work_emails' => ['domain' => ['$in' => [$operand]]]]]])
+        ->assertHasErrors(['a list of domains']);
 })->with(['path' => ['acme.com/team'], 'user' => ['ana@acme.com'], 'port' => ['acme.com:8080'], 'query' => ['acme.com?x=1'], 'fragment' => ['acme.com#top'], 'space' => ['acme .com'], 'control character' => ["a\x01b.com"]]);
 
 it('does not match a link or phone that a second record holds instead', function (): void {
@@ -896,6 +894,7 @@ it('filters a person by the domain of a field on their company', function (): vo
 });
 
 it('offers the domain sub-field only on email and link fields', function (): void {
-    expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['job_title' => ['domain' => ['$in' => ['x']]]]]))
-        ->toThrow(ValidationException::class, 'Operator "domain" is not supported for "job_title".');
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['job_title' => ['domain' => ['$in' => ['x']]]]]])
+        ->assertHasErrors(['Operator "domain" is not supported for "job_title".']);
 });
