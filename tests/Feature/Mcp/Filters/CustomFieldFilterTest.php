@@ -764,6 +764,22 @@ it('finds a stored link by a raw url operand', function (): void {
     expect(peopleNamesMatching($this->user, ['custom_fields' => ['homepage' => ['$has_any' => ['HTTPS://acme.com/team, hiring']]]]))->toBe(['Ana']);
 });
 
+it('never matches a link operand that stacks more than one scheme', function (): void {
+    $site = filterTestField($this->workspace, 'people', 'site', 'link', new CustomFieldSettingsData(allow_multiple: true, max_values: 5, additional: ['link_variant' => 'domain']));
+    $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
+    DB::table('custom_field_values')->insert([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'people',
+        'entity_id' => $ana->getKey(),
+        'custom_field_id' => $site->getKey(),
+        'json_value' => json_encode(['acme.com']),
+    ]);
+
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://http://acme.com']]]]))->toBe([])
+        ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://acme.com']]]]))->toBe(['Ana']);
+});
+
 it('finds a domain link stored as a bare host by its url operand', function (): void {
     $site = filterTestField($this->workspace, 'people', 'site', 'link', new CustomFieldSettingsData(allow_multiple: true, max_values: 5, additional: ['link_variant' => 'domain']));
     $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);

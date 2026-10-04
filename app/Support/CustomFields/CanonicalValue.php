@@ -12,6 +12,12 @@ final readonly class CanonicalValue
 {
     public static function of(CustomField $field, string $value): string
     {
+        // The link normalizer recurses once per leading scheme, which is quadratic on a stack of them.
+        // The field types validate at most one scheme, so no stored value can equal such input.
+        if (preg_match('#^(?:[a-z][a-z0-9+.-]*://){2}#i', $value) === 1) {
+            return $value;
+        }
+
         $type = CustomFieldsType::getFieldTypeInstance($field->type);
 
         return $type instanceof BaseFieldType ? $type->normalize($value, $field) : $value;
