@@ -220,8 +220,8 @@ final class EntityLinkResolver
             return [];
         }
 
-        $canonicalByOriginal = $this->canonicalByOriginal($customField, $uniqueValues);
-        $lookupValues = array_values(array_unique([...array_map(strval(...), array_keys($canonicalByOriginal)), ...array_values($canonicalByOriginal)]));
+        $spellingsByOriginal = $this->spellingsByOriginal($customField, $uniqueValues);
+        $lookupValues = array_values(array_unique(array_merge(...array_values($spellingsByOriginal))));
 
         $model = new CustomFieldValue;
         $connection = $model->getConnection();
@@ -254,11 +254,11 @@ final class EntityLinkResolver
 
         $matched = [];
 
-        foreach ($canonicalByOriginal as $original => $canonical) {
-            $id = $results[$original] ?? $results[$canonical] ?? null;
+        foreach ($spellingsByOriginal as $original => $spellings) {
+            $spelling = array_find([(string) $original, ...$spellings], static fn (string $candidate): bool => isset($results[$candidate]));
 
-            if ($id !== null) {
-                $matched[(string) $original] = $id;
+            if ($spelling !== null) {
+                $matched[(string) $original] = $results[$spelling];
             }
         }
 
@@ -306,17 +306,17 @@ final class EntityLinkResolver
 
     /**
      * @param  array<string>  $uniqueValues
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
-    private function canonicalByOriginal(CustomField $customField, array $uniqueValues): array
+    private function spellingsByOriginal(CustomField $customField, array $uniqueValues): array
     {
-        $canonicalByOriginal = [];
+        $spellingsByOriginal = [];
 
         foreach ($uniqueValues as $value) {
-            $canonicalByOriginal[mb_strtolower($value)] = mb_strtolower(CanonicalValue::of($customField, $value));
+            $spellingsByOriginal[mb_strtolower($value)] = array_map(mb_strtolower(...), CanonicalValue::spellings($customField, $value));
         }
 
-        return $canonicalByOriginal;
+        return $spellingsByOriginal;
     }
 
     /** @param  array<mixed>  $values */

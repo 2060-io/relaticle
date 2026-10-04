@@ -31,7 +31,7 @@ final class LegacyCompanyDomains
     /**
      * @param  list<string>  $domains
      */
-    private static function write(Workspace $workspace, Company $company, array $domains): void
+    public static function write(Workspace $workspace, Company $company, array $domains): void
     {
         DB::table('custom_field_values')->insert([
             'id' => (string) Str::ulid(),

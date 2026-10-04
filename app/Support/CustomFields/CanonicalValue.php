@@ -18,6 +18,18 @@ final readonly class CanonicalValue
     }
 
     /**
+     * @return list<string>
+     */
+    public static function spellings(CustomField $field, string $value): array
+    {
+        $value = trim($value);
+        $type = CustomFieldsType::getFieldTypeInstance($field->type);
+        $stored = $type instanceof BaseFieldType ? $type->setValue($value) : $value;
+
+        return array_values(array_unique([self::of($field, $value), $stored, $value]));
+    }
+
+    /**
      * @return array<int, string>
      */
     public static function each(CustomField $field, mixed $value): array

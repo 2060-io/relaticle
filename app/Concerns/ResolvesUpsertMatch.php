@@ -181,9 +181,7 @@ trait ResolvesUpsertMatch
     /** @return array<int, string> */
     private function matchValues(CustomField $field, string $value): array
     {
-        $value = trim($value);
-
-        return array_values(array_unique([CanonicalValue::of($field, $value), $value]));
+        return CanonicalValue::spellings($field, $value);
     }
 
     /** @return Collection<string, CustomField> */

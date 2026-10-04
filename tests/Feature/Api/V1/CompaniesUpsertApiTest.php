@@ -15,6 +15,7 @@ use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Tests\Helpers\LegacyCompanyDomains;
 
 mutates(
     CompaniesUpsertController::class,
@@ -174,6 +175,20 @@ it('matches one company however its domain is written', function (string $matchV
     'trailing slash' => 'acme.com/',
     'url with path' => 'https://acme.com/about',
 ]);
+
+it('matches a company whose stored domain still carries the www prefix', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme Corp']);
+    LegacyCompanyDomains::write($this->workspace, $company, ['www.acme.com']);
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'https://www.acme.com'],
+        'name' => 'Acme Corporation',
+    ])->assertOk()->assertJsonPath('data.id', $company->getKey());
+
+    expect(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+});
 
 it('stores the matched domain on the company it creates', function (): void {
     Sanctum::actingAs($this->user);

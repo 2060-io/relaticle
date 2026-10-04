@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Models\Company;
 use App\Models\User;
 use Relaticle\ImportWizard\Data\EntityLink;
 use Relaticle\ImportWizard\Data\MatchableField;
 use Relaticle\ImportWizard\Support\EntityLinkResolver;
+use Tests\Helpers\LegacyCompanyDomains;
 
 mutates(EntityLinkResolver::class);
 
@@ -86,4 +88,15 @@ it('resolves multiple workspace members in batch', function (): void {
 
     expect($result[$member1->email])->toBe($member1->id)
         ->and($result[$member2->email])->toBe($member2->id);
+});
+
+it('links a row to the company storing the legacy www spelling of its domain', function (): void {
+    $company = Company::factory()->for($this->workspace)->create();
+    LegacyCompanyDomains::write($this->workspace, $company, ['www.acme.com']);
+
+    $resolver = new EntityLinkResolver($this->workspace->id);
+
+    $result = $resolver->batchResolve(EntityLink::company(), MatchableField::domain('custom_fields_domains'), ['https://www.acme.com']);
+
+    expect($result['https://www.acme.com'])->toBe($company->id);
 });
