@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 
 mutates(NormalizeCustomFieldValuesCommand::class);
@@ -72,6 +73,37 @@ it('normalizes phones and domains with force and changes nothing on a second run
         ->expectsOutputToContain('0 value(s) changed.')
         ->doesntExpectOutputToContain('national phone')
         ->assertSuccessful();
+});
+
+it('keeps a value edited between the chunk read and the row update', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $phone = workspaceSystemField($this->workspace->getKey(), 'people', 'phone_number');
+    writeRawJsonValue($person->getKey(), $phone, ['+1 415-555-0100']);
+    $edited = false;
+
+    DB::listen(function (QueryExecuted $query) use (&$edited, $person, $phone): void {
+        $readsPhoneValues = str_starts_with($query->sql, 'select')
+            && str_contains($query->sql, '"custom_field_values"')
+            && in_array($phone->getKey(), $query->bindings, true);
+
+        if ($edited || ! $readsPhoneValues) {
+            return;
+        }
+
+        $edited = true;
+
+        DB::table('custom_field_values')
+            ->where('entity_id', $person->getKey())
+            ->where('custom_field_id', $phone->getKey())
+            ->update(['json_value' => json_encode(['+14155550199'])]);
+    });
+
+    $this->artisan('custom-fields:normalize-values', ['--force' => true])
+        ->expectsOutputToContain('0 value(s) changed.')
+        ->assertSuccessful();
+
+    expect($edited)->toBeTrue()
+        ->and(readRawJsonValue($person->getKey(), $phone))->toBe(['+14155550199']);
 });
 
 it('reports domains two companies share after normalization', function (): void {

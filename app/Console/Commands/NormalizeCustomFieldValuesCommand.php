@@ -110,14 +110,23 @@ final class NormalizeCustomFieldValuesCommand extends Command
             return;
         }
 
-        $this->changed++;
-
-        if ($write) {
-            DB::table('custom_field_values')
-                ->where('custom_field_id', $field->getKey())
-                ->where('id', $row->id)
-                ->update(['json_value' => json_encode($normalized)]);
+        if ($write && ! $this->storeIfUnchanged($field, $row, $normalized)) {
+            return;
         }
+
+        $this->changed++;
+    }
+
+    /**
+     * @param  array<int, string>  $normalized
+     */
+    private function storeIfUnchanged(CustomField $field, stdClass $row, array $normalized): bool
+    {
+        return DB::table('custom_field_values')
+            ->where('custom_field_id', $field->getKey())
+            ->where('id', $row->id)
+            ->whereRaw('json_value::text = ?', [$row->json_value])
+            ->update(['json_value' => json_encode($normalized)]) === 1;
     }
 
     /**
