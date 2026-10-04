@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Filters;
 
 use App\Enums\FilterKind;
+use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Support\LikePattern;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,8 +17,6 @@ use Spatie\QueryBuilder\Filters\Filter;
  */
 final readonly class NativeFilter implements Filter
 {
-    private const array COMPARISONS = ['$eq' => '=', '$gt' => '>', '$gte' => '>=', '$lt' => '<', '$lte' => '<='];
-
     public function __construct(private FilterDefinition $definition) {}
 
     /**
@@ -78,8 +77,8 @@ final readonly class NativeFilter implements Filter
         $date = Operand::date($operand) ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => 'a date or date-time']));
 
         is_string($operand) && Operand::isBareDate($operand)
-            ? $query->whereDate($column, self::COMPARISONS[$operator], $date->toDateString())
-            : $query->where($column, self::COMPARISONS[$operator], $date->utc()->toDateTimeString());
+            ? $query->whereDate($column, CustomFieldFilterSchema::COMPARISONS[$operator], $date->toDateString())
+            : $query->where($column, CustomFieldFilterSchema::COMPARISONS[$operator], $date->utc()->toDateTimeString());
     }
 
     /**

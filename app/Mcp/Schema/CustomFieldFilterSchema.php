@@ -30,8 +30,8 @@ final readonly class CustomFieldFilterSchema
     /** @var array<string, array<string, list<string>>> */
     public const array DOMAIN_EXAMPLE = ['domain' => ['$in' => ['acme.com']]];
 
-    /** @var array<int, string> */
-    private const array NUMERIC_OPERATORS = ['$eq', '$gt', '$gte', '$lt', '$lte'];
+    /** @var array<string, string> */
+    public const array COMPARISONS = ['$eq' => '=', '$gt' => '>', '$gte' => '>=', '$lt' => '<', '$lte' => '<='];
 
     /** @var array<int, string> */
     private const array STRING_OPERATORS = ['$eq', '$contains'];
@@ -94,10 +94,10 @@ final readonly class CustomFieldFilterSchema
             ],
             CustomFieldType::PHONE,
             CustomFieldType::MULTI_SELECT, CustomFieldType::CHECKBOX_LIST, CustomFieldType::TAGS_INPUT => self::listOperators(['$has_any', '$has_none']),
-            CustomFieldType::CURRENCY => self::buildOperators(self::NUMERIC_OPERATORS, 'number'),
-            CustomFieldType::NUMBER => self::buildOperators(self::NUMERIC_OPERATORS, 'integer'),
-            CustomFieldType::DATE => self::buildOperators(self::NUMERIC_OPERATORS, 'string', 'date'),
-            CustomFieldType::DATE_TIME => self::buildOperators(self::NUMERIC_OPERATORS, 'string', 'date-time'),
+            CustomFieldType::CURRENCY => self::buildOperators(array_keys(self::COMPARISONS), 'number'),
+            CustomFieldType::NUMBER => self::buildOperators(array_keys(self::COMPARISONS), 'integer'),
+            CustomFieldType::DATE => self::buildOperators(array_keys(self::COMPARISONS), 'string', 'date'),
+            CustomFieldType::DATE_TIME => self::buildOperators(array_keys(self::COMPARISONS), 'string', 'date-time'),
             CustomFieldType::CHECKBOX, CustomFieldType::TOGGLE => self::buildOperators(self::BOOLEAN_OPERATORS, 'boolean'),
             CustomFieldType::SELECT, CustomFieldType::RADIO, CustomFieldType::TOGGLE_BUTTONS => [
                 ...self::buildOperators(['$eq'], 'string'),

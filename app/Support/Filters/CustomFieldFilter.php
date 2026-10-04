@@ -22,14 +22,6 @@ use Spatie\QueryBuilder\Filters\Filter;
  */
 final readonly class CustomFieldFilter implements Filter
 {
-    private const array OPERATOR_MAP = [
-        '$eq' => '=',
-        '$gt' => '>',
-        '$gte' => '>=',
-        '$lt' => '<',
-        '$lte' => '<=',
-    ];
-
     private const string LIST_ELEMENTS = "jsonb_array_elements_text(case when jsonb_typeof(json_value::jsonb) = 'array' then json_value::jsonb else '[]'::jsonb end)";
 
     private const string LOWERED_OPERANDS = 'array(select lower(operand) from unnest(?::text[]) as operand)';
@@ -238,7 +230,7 @@ final readonly class CustomFieldFilter implements Filter
                 $q->where('custom_field_id', $field->getKey());
 
                 match ($operator) {
-                    '$eq', '$gt', '$gte', '$lt', '$lte' => $q->where($valueColumn, self::OPERATOR_MAP[$operator], $operand),
+                    '$eq', '$gt', '$gte', '$lt', '$lte' => $q->where($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand),
                     '$contains' => $q->where($valueColumn, 'ILIKE', '%'.LikePattern::escape((string) $operand).'%'),
                     '$in' => $q->whereIn($valueColumn, $operand),
                     '$has_any' => $this->containsAny($q, $field, $valueColumn, $operand),
