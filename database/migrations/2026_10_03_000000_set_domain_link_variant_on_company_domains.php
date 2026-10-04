@@ -13,11 +13,13 @@ return new class extends Migration
             ->where('entity_type', 'company')
             ->where('code', 'domains')
             ->where('type', 'link')
-            ->eachById(function (object $field): void {
-                $settings = json_decode($field->settings ?? '{}', true) ?: [];
-                $settings['additional'] = [...($settings['additional'] ?? []), 'link_variant' => 'domain'];
-
-                DB::table('custom_fields')->where('id', $field->id)->update(['settings' => json_encode($settings)]);
-            });
+            ->update(['settings' => DB::raw(<<<'SQL'
+                jsonb_set(
+                    case when jsonb_typeof(settings::jsonb) = 'object' then settings::jsonb else '{}'::jsonb end,
+                    '{additional}',
+                    case when jsonb_typeof(settings::jsonb -> 'additional') = 'object' then settings::jsonb -> 'additional' else '{}'::jsonb end
+                        || '{"link_variant": "domain"}'::jsonb
+                )::json
+                SQL)]);
     }
 };
