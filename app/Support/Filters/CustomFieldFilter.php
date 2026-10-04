@@ -212,9 +212,7 @@ final readonly class CustomFieldFilter implements Filter
                 $q->where('custom_field_id', $field->getKey());
                 $this->containsAny($q, $field, $valueColumn, $operand);
             }),
-            '$is_empty' => $operand === true
-                ? $query->whereDoesntHave('customFieldValues', fn (Builder $q): Builder => $this->hasValue($q, $field, $valueColumn))
-                : $query->whereHas('customFieldValues', fn (Builder $q): Builder => $this->hasValue($q, $field, $valueColumn)),
+            '$is_empty' => $this->emptiness($query, $field, $operand === true),
             default => $query->whereHas('customFieldValues', function (Builder $q) use ($field, $valueColumn, $operator, $operand): void {
                 $q->where('custom_field_id', $field->getKey());
 
@@ -231,17 +229,17 @@ final readonly class CustomFieldFilter implements Filter
 
     /**
      * @param  Builder<Model>  $query
-     * @return Builder<Model>
      */
-    private function hasValue(Builder $query, CustomField $field, string $valueColumn): Builder
+    private function emptiness(Builder $query, CustomField $field, bool $empty): void
     {
-        $query->where('custom_field_id', $field->getKey())->whereNotNull($valueColumn);
-
-        return match ($valueColumn) {
-            'json_value' => $query->whereRaw("json_value::jsonb not in ('[]'::jsonb, 'null'::jsonb)"),
-            'string_value', 'text_value' => $query->where($valueColumn, '<>', ''),
-            default => $query,
+        $holdingAValue = static function (Builder $values) use ($field): void {
+            /** @var Builder<CustomFieldValue> $values */
+            $values->holdingAValue($field);
         };
+
+        $empty
+            ? $query->whereDoesntHave('customFieldValues', $holdingAValue)
+            : $query->whereHas('customFieldValues', $holdingAValue);
     }
 
     /**
