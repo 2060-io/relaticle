@@ -15,7 +15,6 @@ use App\Support\CustomFields\WorkspaceCustomFields;
 final readonly class FilterVocabulary
 {
     public function __construct(
-        private CustomFieldFilterSchema $filterSchema,
         private WorkspaceCustomFields $customFields,
         private CustomFieldOptionMap $optionMap,
     ) {}
@@ -97,24 +96,17 @@ final readonly class FilterVocabulary
      */
     private function buildCustomFieldEntries(User $user, CrmEntity $entity): array
     {
-        $schema = $this->filterSchema->build($user, $entity->value);
-        $fields = $this->customFields->forEntity($user->currentWorkspace, $entity->value)->keyBy('code');
+        $fields = $this->customFields->forEntity($user->currentWorkspace, $entity->value)->filter(CustomFieldFilterSchema::isFilterable(...));
         $types = [];
         $entries = [];
         $fieldBound = [];
 
-        foreach ($schema as $code => $definition) {
-            $field = $fields->get($code);
-
-            if (! $field instanceof CustomField) {
-                continue;
-            }
-
+        foreach ($fields as $field) {
+            $code = $field->code;
             $options = $this->optionMap->translates($field)
                 ? array_values(array_map(strval(...), $field->options->pluck('name')->all()))
                 : [];
-            $properties = is_array($definition['properties'] ?? null) ? $definition['properties'] : [];
-            $entry = ['name' => $definition['description'] ?? $code, 'type' => $field->type];
+            $entry = ['name' => $field->name, 'type' => $field->type];
 
             if ($options !== []) {
                 $entry['options'] = $options;
@@ -125,7 +117,7 @@ final readonly class FilterVocabulary
             }
 
             $entries[$code] = ['entry' => $entry, 'field' => $field, 'options' => $options];
-            $types[$field->type] ??= $this->typeEntry($field, $properties);
+            $types[$field->type] ??= $this->typeEntry($field);
         }
 
         foreach ($entries as $code => ['entry' => $entry, 'field' => $field, 'options' => $options]) {
@@ -142,10 +134,9 @@ final readonly class FilterVocabulary
     }
 
     /**
-     * @param  array<string, mixed>  $properties
      * @return array<string, mixed>
      */
-    private function typeEntry(CustomField $field, array $properties): array
+    private function typeEntry(CustomField $field): array
     {
         $entry = ['operators' => CustomFieldFilterSchema::operatorKeys($field->type)];
         $matching = CustomFieldType::tryFrom($field->type)?->filterMatching();
@@ -154,7 +145,7 @@ final readonly class FilterVocabulary
             $entry['matching'] = $matching;
         }
 
-        if (isset($properties['domain'])) {
+        if (isset(CustomFieldFilterSchema::operatorsForType($field->type)['domain'])) {
             $entry['sub_fields'] = ['domain' => [
                 'operators' => CustomFieldFilterSchema::DOMAIN_OPERATORS,
                 'matches' => CustomFieldFilterSchema::DOMAIN_MEANING,
