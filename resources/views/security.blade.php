@@ -207,10 +207,10 @@
                 <p class="{{ $sectionLead }}">{{ __('The companies that handle data for Relaticle Cloud, and what each one receives.') }}</p>
             </div>
 
-            <div class="overflow-x-auto rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
+            <div class="overflow-hidden rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
                 <table class="w-full text-left text-sm">
                     <caption class="sr-only">{{ __('Service providers for Relaticle Cloud') }}</caption>
-                    <thead>
+                    <thead class="hidden sm:table-header-group">
                         <tr class="border-b border-gray-200/80 dark:border-white/[0.06]">
                             <th scope="col" class="px-5 py-3 font-display font-semibold text-gray-900 dark:text-white">{{ __('Provider') }}</th>
                             <th scope="col" class="px-5 py-3 font-display font-semibold text-gray-900 dark:text-white">{{ __('What it does') }}</th>
@@ -219,10 +219,13 @@
                     </thead>
                     <tbody class="divide-y divide-gray-200/80 dark:divide-white/[0.06]">
                         @foreach($providers as [$provider, $purpose, $data])
-                            <tr>
-                                <th scope="row" class="px-5 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{{ $provider }}</th>
-                                <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ $purpose }}</td>
-                                <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ $data }}</td>
+                            <tr class="block px-5 py-4 sm:table-row sm:p-0">
+                                <th scope="row" class="block font-medium text-gray-900 dark:text-white sm:table-cell sm:whitespace-nowrap sm:px-5 sm:py-3">{{ $provider }}</th>
+                                <td class="mt-1 block text-gray-600 dark:text-gray-400 sm:mt-0 sm:table-cell sm:px-5 sm:py-3">{{ $purpose }}</td>
+                                <td class="mt-3 block text-gray-600 dark:text-gray-400 sm:mt-0 sm:table-cell sm:px-5 sm:py-3">
+                                    <span class="mb-0.5 block text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500 sm:hidden">{{ __('Receives') }}</span>
+                                    {{ $data }}
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
