@@ -157,6 +157,16 @@ it('names the field in an operand error', function (): void {
         ->assertJsonValidationErrors(['filter.created_at.$gte' => 'created_at $gte must be a date or date-time.']);
 });
 
+it('rejects a native operand that holds a NUL or is not valid utf-8', function (string $query, string $key): void {
+    $this->getJson("/api/v1/companies?{$query}")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([$key]);
+})->with([
+    'text with an invalid byte' => ['filter[name][$eq]=%FF', 'filter.name.$eq'],
+    'text pattern with a NUL' => ['filter[name][$contains]=a%00b', 'filter.name.$contains'],
+    'enum with an invalid byte' => ['filter[creation_source][$eq]=%FF', 'filter.creation_source.$eq'],
+]);
+
 it('takes one creation_source value for $eq and a list for $in', function (): void {
     $api = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::API]);
     $web = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::WEB]);

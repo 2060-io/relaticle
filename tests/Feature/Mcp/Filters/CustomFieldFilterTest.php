@@ -784,6 +784,22 @@ it('asks for a country code on a national phone operand', function (): void {
         ->toThrow(ValidationException::class, 'mobile needs a country code');
 });
 
+it('rejects an operand that holds a NUL or is not valid utf-8', function (string $type, array $conditions): void {
+    filterTestField($this->workspace, 'people', 'contact', $type, new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
+
+    expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['contact' => $conditions]]))
+        ->toThrow(ValidationException::class);
+})->with([
+    'email with a NUL' => ['email', ['$has_any' => ["a\0@x.com"]]],
+    'email with an invalid byte' => ['email', ['$has_none' => ["a\xFF@x.com"]]],
+    'email domain with a NUL' => ['email', ['domain' => ['$in' => ["a\0b.com"]]]],
+    'phone with a NUL' => ['phone', ['$has_any' => ["+14155550100\0"]]],
+    'link with a NUL' => ['link', ['$has_any' => ["acme\0.com"]]],
+    'tag with a NUL' => ['tags-input', ['$has_any' => ["a\0b"]]],
+    'text pattern with a NUL' => ['text', ['$contains' => "a\0b"]],
+    'text pattern with an invalid byte' => ['text', ['$contains' => "a\xFFb"]],
+]);
+
 it('treats array literal characters in a domain operand as plain text', function (): void {
     $emails = filterTestField($this->workspace, 'people', 'work_emails', 'email', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
     People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana'])->saveCustomFieldValue($emails, ['ana@acme.com']);
@@ -830,7 +846,7 @@ it('rejects a domain operand that carries a path, user or port', function (strin
 
     expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['work_emails' => ['domain' => ['$in' => [$operand]]]]]))
         ->toThrow(ValidationException::class, 'a list of domains');
-})->with(['path' => ['acme.com/team'], 'user' => ['ana@acme.com'], 'port' => ['acme.com:8080'], 'query' => ['acme.com?x=1'], 'fragment' => ['acme.com#top'], 'space' => ['acme .com'], 'control character' => ["a\0b.com"]]);
+})->with(['path' => ['acme.com/team'], 'user' => ['ana@acme.com'], 'port' => ['acme.com:8080'], 'query' => ['acme.com?x=1'], 'fragment' => ['acme.com#top'], 'space' => ['acme .com'], 'control character' => ["a\x01b.com"]]);
 
 it('does not match a link or phone that a second record holds instead', function (): void {
     $site = filterTestField($this->workspace, 'people', 'site', 'link', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));

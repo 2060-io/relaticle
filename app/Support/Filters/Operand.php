@@ -15,6 +15,10 @@ final readonly class Operand
     public static function stringList(mixed $operand, bool $splitsStrings): ?array
     {
         if (is_string($operand)) {
+            if (! self::isCleanString($operand)) {
+                return null;
+            }
+
             $operand = $splitsStrings ? array_map(trim(...), explode(',', $operand)) : [$operand];
         }
 
@@ -24,7 +28,7 @@ final readonly class Operand
 
         $operand = array_map(static fn (mixed $item): mixed => is_bool($item) ? ($item ? 'true' : 'false') : $item, $operand);
 
-        if (! array_all($operand, static fn (mixed $item): bool => is_string($item) && $item !== '')) {
+        if (! array_all($operand, static fn (mixed $item): bool => is_string($item) && $item !== '' && self::isCleanString($item))) {
             return null;
         }
 
@@ -55,7 +59,7 @@ final readonly class Operand
             return $operand ? 'true' : 'false';
         }
 
-        return is_string($operand) ? $operand : null;
+        return is_string($operand) && self::isCleanString($operand) ? $operand : null;
     }
 
     public static function date(mixed $operand): ?CarbonImmutable
@@ -106,5 +110,10 @@ final readonly class Operand
         $number = is_string($operand) ? filter_var($operand, FILTER_VALIDATE_FLOAT) : false;
 
         return $number === false ? null : $number;
+    }
+
+    private static function isCleanString(string $value): bool
+    {
+        return ! str_contains($value, "\0") && mb_check_encoding($value, 'UTF-8');
     }
 }
