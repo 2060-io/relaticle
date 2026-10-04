@@ -567,6 +567,16 @@ it('asks which assistant and what was asked only for an AI referral', function (
         ->assertSee('Perplexity');
 });
 
+it('shows the AI follow-ups as soon as the source is picked, without waiting for Continue', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->goToWizardStep(2)
+        ->assertSeeHtml('wire:model.live="data.onboarding_referral_source"');
+});
+
 it('caps the question behind an AI referral at 200 characters', function (): void {
     $user = User::factory()->create();
 
