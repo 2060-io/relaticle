@@ -208,9 +208,9 @@ final readonly class CustomFieldFilter implements Filter
             '$not_in' => $query->whereDoesntHave('customFieldValues', fn (Builder $q): Builder => $q
                 ->where('custom_field_id', $field->getKey())
                 ->whereIn($valueColumn, $operand)),
-            '$has_none' => $query->whereDoesntHave('customFieldValues', function (Builder $q) use ($field, $valueColumn, $operand): void {
+            '$has_none' => $query->whereDoesntHave('customFieldValues', function (Builder $q) use ($field, $operand): void {
                 $q->where('custom_field_id', $field->getKey());
-                $this->containsAny($q, $field, $valueColumn, $operand);
+                $this->containsAny($q, $field, $operand);
             }),
             '$is_empty' => $this->emptiness($query, $field, $operand === true),
             default => $query->whereHas('customFieldValues', function (Builder $q) use ($field, $valueColumn, $operator, $operand): void {
@@ -220,7 +220,7 @@ final readonly class CustomFieldFilter implements Filter
                     '$eq', '$gt', '$gte', '$lt', '$lte' => $q->where($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand),
                     '$contains' => $q->where($valueColumn, 'ILIKE', '%'.LikePattern::escape((string) $operand).'%'),
                     '$in' => $q->whereIn($valueColumn, $operand),
-                    '$has_any' => $this->containsAny($q, $field, $valueColumn, $operand),
+                    '$has_any' => $this->containsAny($q, $field, $operand),
                     default => throw new \LogicException("Unsupported custom field filter operator [{$operator}]."),
                 };
             }),
@@ -246,22 +246,13 @@ final readonly class CustomFieldFilter implements Filter
      * @param  Builder<Model>  $query
      * @param  array<int, string>  $values
      */
-    private function containsAny(Builder $query, CustomField $field, string $valueColumn, array $values): void
+    private function containsAny(Builder $query, CustomField $field, array $values): void
     {
-        if (in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value], true)) {
-            $query->whereRaw(
-                'exists (select 1 from '.self::LIST_ELEMENTS.' as element where lower(element) = any('.self::LOWERED_OPERANDS.'))',
-                [$this->textArray($values)],
-            );
+        $matches = in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value], true)
+            ? 'lower(element) = any('.self::LOWERED_OPERANDS.')'
+            : 'element = any(?::text[])';
 
-            return;
-        }
-
-        $query->where(function (Builder $anyValue) use ($valueColumn, $values): void {
-            foreach ($values as $value) {
-                $anyValue->orWhereJsonContains($valueColumn, [$value]);
-            }
-        });
+        $query->whereRaw('exists (select 1 from '.self::LIST_ELEMENTS." as element where {$matches})", [$this->textArray($values)]);
     }
 
     /**
