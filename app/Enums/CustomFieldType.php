@@ -113,6 +113,7 @@ enum CustomFieldType: string
             self::EMAIL, self::LINK => 'in any letter case',
             self::PHONE => 'in any format, and the operand needs a country code such as +1 415 555 0100',
             self::TAGS_INPUT => 'the exact stored value',
+            self::DATE_TIME => 'a date without a time, such as 2026-10-01, as that whole day',
             default => null,
         };
     }
