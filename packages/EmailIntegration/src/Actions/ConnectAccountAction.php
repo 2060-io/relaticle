@@ -25,13 +25,13 @@ final readonly class ConnectAccountAction
             // Match against trashed rows too: the unique index spans soft-deleted
             // records, so a previously disconnected account must be reused and
             // restored rather than inserted again. Uniqueness is per workspace
-            // (user, team, provider, email), so the same mailbox can exist on
-            // another team without colliding.
+            // (user, workspace, provider, email), so the same mailbox can exist on
+            // another workspace without colliding.
             $lookup = [
                 'user_id' => $data->userId,
                 'provider' => $data->provider,
                 'email_address' => $data->emailAddress,
-                'workspace_id' => $data->teamId,
+                'workspace_id' => $data->workspaceId,
             ];
 
             $existing = ConnectedAccount::withTrashed()->where($lookup)->first();
@@ -95,7 +95,7 @@ final readonly class ConnectAccountAction
                 if ($account->is_default) {
                     $hasOtherDefault = ConnectedAccount::query()
                         ->where('user_id', $data->userId)
-                        ->where('workspace_id', $data->teamId)
+                        ->where('workspace_id', $data->workspaceId)
                         ->where('is_default', true)
                         ->whereKeyNot($account->getKey())
                         ->exists();
@@ -114,7 +114,7 @@ final readonly class ConnectAccountAction
             // so the user is never left without one.
             $hasDefault = ConnectedAccount::query()
                 ->where('user_id', $data->userId)
-                ->where('workspace_id', $data->teamId)
+                ->where('workspace_id', $data->workspaceId)
                 ->where('is_default', true)
                 ->whereKeyNot($account->getKey())
                 ->exists();

@@ -7,7 +7,7 @@ use Laravel\Jetstream\Contracts\DeletesUsers;
 use Relaticle\EmailIntegration\EmailIntegrationServiceProvider;
 use Relaticle\EmailIntegration\Models\EmailTemplate;
 use Relaticle\EmailIntegration\Models\ProtectedRecipient;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
 mutates(EmailIntegrationServiceProvider::class);
 
@@ -20,15 +20,15 @@ beforeEach(function (): void {
 });
 
 it('keeps a workspace blocklist entry and nulls its creator when the creator is deleted', function (): void {
-    $entry = TeamEmailBlocklist::factory()->create([
+    $entry = WorkspaceEmailBlocklist::factory()->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->leaver->id,
     ]);
 
     resolve(DeletesUsers::class)->delete($this->leaver);
 
-    expect(TeamEmailBlocklist::query()->whereKey($entry->getKey())->exists())->toBeTrue()
-        ->and(TeamEmailBlocklist::query()->whereKey($entry->getKey())->value('created_by'))->toBeNull();
+    expect(WorkspaceEmailBlocklist::query()->whereKey($entry->getKey())->exists())->toBeTrue()
+        ->and(WorkspaceEmailBlocklist::query()->whereKey($entry->getKey())->value('created_by'))->toBeNull();
 });
 
 it('keeps a protected recipient and nulls its creator when the creator is deleted', function (): void {

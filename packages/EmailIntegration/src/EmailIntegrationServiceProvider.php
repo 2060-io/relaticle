@@ -47,7 +47,7 @@ use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 use Relaticle\EmailIntegration\Services\Factories\CalendarServiceFactory;
 use Relaticle\EmailIntegration\Services\Factories\MailServiceFactory;
 use Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory;
-use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
+use Relaticle\EmailIntegration\Services\WorkspaceMemberDirectory;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
 use Relaticle\EmailIntegration\Support\PublicSuffixList;
 use Relaticle\EmailIntegration\Support\QueueRecordHistoryRelink;
@@ -66,7 +66,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
 
         // Parse the Public Suffix List once per process.
         $this->app->singleton(PublicSuffixList::class);
-        $this->app->scoped(TeamMemberDirectory::class);
+        $this->app->scoped(WorkspaceMemberDirectory::class);
         $this->app->scoped(MailboxDisplayNameDirectory::class);
         $this->app->scoped(EmailVisibilityService::class);
         $this->app->scoped(QueueRecordHistoryRelink::class);

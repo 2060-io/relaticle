@@ -34,37 +34,37 @@ final readonly class LinkMeetingAction
     {
         $countsTowardIntelligence = $this->visibility->meetingCountsTowardCommunicationIntelligence($meeting);
         $attendees = $meeting->attendees()->where('is_self', false)->get();
-        $teamId = $meeting->workspace_id;
-        $team = $meeting->workspace;
+        $workspaceId = $meeting->workspace_id;
+        $workspace = $meeting->workspace;
         $account = $meeting->connectedAccount;
-        $skippedDomains = $this->domainMatcher->skippedHosts($teamId);
+        $skippedDomains = $this->domainMatcher->skippedHosts($workspaceId);
 
         foreach ($attendees as $attendee) {
             $isAutomatedSender = $this->automatedSender->matches($attendee->email_address);
             $suppressCreate = $this->visibility->suppressesRecordCreation(
                 $attendee->email_address,
-                $teamId,
+                $workspaceId,
                 $meeting->connected_account_id,
             );
 
-            $person = $this->personEmailMatcher->firstMatching($attendee->email_address, $teamId);
+            $person = $this->personEmailMatcher->firstMatching($attendee->email_address, $workspaceId);
 
             $wouldCreatePerson = ! $person
                 && ! $isAutomatedSender
                 && ! $suppressCreate
                 && $account
-                && $team
-                && $this->shouldCreatePerson($team);
+                && $workspace
+                && $this->shouldCreatePerson($workspace);
 
             $company = null;
             $rawDomain = $this->extractDomain($attendee->email_address);
             $host = $rawDomain !== null ? $this->domainMatcher->host($rawDomain) : null;
 
             if ($host && $skippedDomains->doesntContain($host)) {
-                $company = $this->domainMatcher->firstMatching($host, $teamId);
+                $company = $this->domainMatcher->firstMatching($host, $workspaceId);
 
-                if (! $company && $wouldCreatePerson && $team->auto_create_companies) {
-                    $company = $this->autoCreateCompany->execute($host, $teamId, $team);
+                if (! $company && $wouldCreatePerson && $workspace->auto_create_companies) {
+                    $company = $this->autoCreateCompany->execute($host, $workspaceId, $workspace);
                 }
 
                 if ($company instanceof Company) {
@@ -79,8 +79,8 @@ final readonly class LinkMeetingAction
                 $person = $this->autoCreatePerson->execute(
                     $attendee->name ?? '',
                     $attendee->email_address,
-                    $teamId,
-                    $team,
+                    $workspaceId,
+                    $workspace,
                     $company?->getKey(),
                 );
             }
@@ -99,7 +99,7 @@ final readonly class LinkMeetingAction
                     $this->metrics->incrementMeetingMetrics($personCompany, $meeting);
                 }
 
-                $opportunities = Opportunity::query()->where('workspace_id', $teamId)
+                $opportunities = Opportunity::query()->where('workspace_id', $workspaceId)
                     ->where('contact_id', $person->getKey())
                     ->get();
 
@@ -112,9 +112,9 @@ final readonly class LinkMeetingAction
         }
     }
 
-    private function shouldCreatePerson(Workspace $team): bool
+    private function shouldCreatePerson(Workspace $workspace): bool
     {
-        return match ($team->contact_creation_mode) {
+        return match ($workspace->contact_creation_mode) {
             ContactCreationMode::All, ContactCreationMode::Selective => true,
             ContactCreationMode::None => false,
         };

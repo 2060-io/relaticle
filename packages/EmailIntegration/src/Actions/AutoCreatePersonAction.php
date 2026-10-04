@@ -36,16 +36,16 @@ final readonly class AutoCreatePersonAction
     public function execute(
         string $name,
         string $emailAddress,
-        string $teamId,
-        Workspace $team,
+        string $workspaceId,
+        Workspace $workspace,
         ?string $companyId = null,
     ): People {
         $canonical = EmailAddress::canonicalize($emailAddress);
         $displayName = Str::substr($this->headerParser->humanName($name, $canonical) ?? $canonical, 0, 255);
-        $emailField = $this->personEmailMatcher->emailField($teamId);
+        $emailField = $this->personEmailMatcher->emailField($workspaceId);
 
-        return CurrentSource::during(CreationSource::MAILBOX, fn (): People => $this->advisoryLock->transactional("auto-create-person:{$teamId}:{$canonical}", function () use ($displayName, $canonical, $teamId, $team, $companyId, $emailField): People {
-            $existing = $this->personEmailMatcher->firstMatching($canonical, $teamId);
+        return CurrentSource::during(CreationSource::MAILBOX, fn (): People => $this->advisoryLock->transactional("auto-create-person:{$workspaceId}:{$canonical}", function () use ($displayName, $canonical, $workspaceId, $workspace, $companyId, $emailField): People {
+            $existing = $this->personEmailMatcher->firstMatching($canonical, $workspaceId);
 
             if ($existing instanceof People) {
                 return $existing;
@@ -53,12 +53,12 @@ final readonly class AutoCreatePersonAction
 
             $person = People::query()->create([
                 'name' => $displayName,
-                'workspace_id' => $teamId,
+                'workspace_id' => $workspaceId,
                 'company_id' => $companyId,
             ]);
 
             if ($emailField instanceof BaseCustomField) {
-                $person->saveCustomFieldValue($emailField, [$canonical], $team);
+                $person->saveCustomFieldValue($emailField, [$canonical], $workspace);
             }
 
             return $person;

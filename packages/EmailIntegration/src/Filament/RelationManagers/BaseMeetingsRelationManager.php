@@ -41,7 +41,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            // `team` is read per row by MeetingPolicy; eager-load it to avoid a lazy load.
+            // `workspace` is read per row by MeetingPolicy; eager-load it to avoid a lazy load.
             ->modifyQueryUsing(function (Builder $query): Builder {
                 $user = auth()->user();
 
@@ -144,12 +144,12 @@ abstract class BaseMeetingsRelationManager extends RelationManager
 
     private function resolveRecord(string $type, string $id): Model
     {
-        $teamId = filament()->getTenant()?->getKey();
+        $workspaceId = filament()->getTenant()?->getKey();
 
         return match ($type) {
-            'People' => People::query()->where('workspace_id', $teamId)->findOrFail($id),
-            'Company' => Company::query()->where('workspace_id', $teamId)->findOrFail($id),
-            'Opportunity' => Opportunity::query()->where('workspace_id', $teamId)->findOrFail($id),
+            'People' => People::query()->where('workspace_id', $workspaceId)->findOrFail($id),
+            'Company' => Company::query()->where('workspace_id', $workspaceId)->findOrFail($id),
+            'Opportunity' => Opportunity::query()->where('workspace_id', $workspaceId)->findOrFail($id),
             default => throw new \InvalidArgumentException("Unsupported type: {$type}"),
         };
     }

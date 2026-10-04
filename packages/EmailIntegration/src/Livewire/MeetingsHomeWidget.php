@@ -123,13 +123,13 @@ final class MeetingsHomeWidget extends Component implements HasActions, HasSchem
     public function isMailboxConnected(): bool
     {
         $user = auth()->user();
-        $team = Filament::getTenant();
+        $workspace = Filament::getTenant();
 
         if (! $user instanceof User) {
             return false;
         }
 
-        return ConnectedAccount::hasActiveFor($user, $team instanceof Workspace ? $team : null);
+        return ConnectedAccount::hasActiveFor($user, $workspace instanceof Workspace ? $workspace : null);
     }
 
     public function isMailboxSyncing(): bool
@@ -425,13 +425,13 @@ final class MeetingsHomeWidget extends Component implements HasActions, HasSchem
     private function ownedAccounts(): Collection
     {
         $user = auth()->user();
-        $team = Filament::getTenant();
+        $workspace = Filament::getTenant();
 
-        if (! $user instanceof User || ! $team instanceof Workspace) {
+        if (! $user instanceof User || ! $workspace instanceof Workspace) {
             return new Collection;
         }
 
-        return ConnectedAccount::query()->ownedBy($user, $team)->get();
+        return ConnectedAccount::query()->ownedBy($user, $workspace)->get();
     }
 
     private function resolveVisibleMeeting(string $meetingId): ?Meeting

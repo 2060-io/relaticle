@@ -47,13 +47,13 @@ final readonly class RedirectController
 
     private function startOAuth(Request $request, User $user, AbstractProvider $driver): RedirectResponse
     {
-        $team = MailboxOAuthWorkspace::forUser($user, $request->query('team'));
+        $workspace = MailboxOAuthWorkspace::forUser($user, $request->query('workspace'));
 
-        if (! $team instanceof Workspace) {
-            return redirect('/')->with('error', 'Select a team before connecting an account.');
+        if (! $workspace instanceof Workspace) {
+            return redirect('/')->with('error', 'Select a workspace before connecting an account.');
         }
 
-        $request->session()->put(self::WORKSPACE_SESSION_KEY, $team->getKey());
+        $request->session()->put(self::WORKSPACE_SESSION_KEY, $workspace->getKey());
 
         $returnUrl = $request->query('return');
 

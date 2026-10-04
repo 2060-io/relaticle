@@ -31,10 +31,10 @@ trait HasEmailComposeActions
     #[Computed]
     public function hasActiveConnectedAccount(): bool
     {
-        /** @var Workspace|null $team */
-        $team = filament()->getTenant();
+        /** @var Workspace|null $workspace */
+        $workspace = filament()->getTenant();
 
-        return ConnectedAccount::hasConnectedFor($this->getAuthenticatedUser(), $team);
+        return ConnectedAccount::hasConnectedFor($this->getAuthenticatedUser(), $workspace);
     }
 
     private function getAuthenticatedUser(): User

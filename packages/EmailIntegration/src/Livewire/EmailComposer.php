@@ -794,10 +794,10 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             }
         }
 
-        $teamId = (string) $this->authUser()->current_workspace_id;
+        $workspaceId = (string) $this->authUser()->current_workspace_id;
 
         $person = People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->whereKey($personId)
             ->first(['id', 'name']);
 
@@ -805,7 +805,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return;
         }
 
-        $entries = $this->primaryEmailEntriesForPeople([(string) $person->getKey()], $teamId);
+        $entries = $this->primaryEmailEntriesForPeople([(string) $person->getKey()], $workspaceId);
         $email = $this->primaryEmailForPersonId($entries, (string) $person->getKey());
 
         if ($email === null) {
@@ -821,10 +821,10 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
     public function addMassCompanyTeamRecipients(string $companyId): void
     {
-        $teamId = (string) $this->authUser()->current_workspace_id;
+        $workspaceId = (string) $this->authUser()->current_workspace_id;
 
         $people = People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->where('company_id', $companyId)
             ->get(['id', 'name']);
 
@@ -839,7 +839,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             $peopleIds[] = (string) $person->getKey();
         }
 
-        $entries = $this->primaryEmailEntriesForPeople($peopleIds, $teamId);
+        $entries = $this->primaryEmailEntriesForPeople($peopleIds, $workspaceId);
         $existingPersonIds = array_column($this->massRecipients, 'personId');
 
         foreach ($people as $person) {
@@ -872,7 +872,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return;
         }
 
-        $teamId = (string) $this->authUser()->current_workspace_id;
+        $workspaceId = (string) $this->authUser()->current_workspace_id;
         $existingPersonIds = [];
         $nextRecipients = [];
 
@@ -883,7 +883,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
                 continue;
             }
 
-            $person = $this->personForEmail($email, $teamId);
+            $person = $this->personForEmail($email, $workspaceId);
 
             if (! $person instanceof People) {
                 continue;
@@ -906,11 +906,11 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         $this->massRecipients = $nextRecipients;
     }
 
-    private function personForEmail(string $emailAddress, string $teamId): ?People
+    private function personForEmail(string $emailAddress, string $workspaceId): ?People
     {
         $emailField = CustomField::query()
             ->withoutGlobalScopes()
-            ->where('tenant_id', $teamId)
+            ->where('tenant_id', $workspaceId)
             ->where('entity_type', 'people')
             ->where('code', 'emails')
             ->first();
@@ -920,7 +920,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         }
 
         return People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->whereHas('customFieldValues', fn (Builder $valueQuery): Builder => $valueQuery
                 ->where('custom_field_id', $emailField->getKey())
                 ->whereJsonContains('json_value', $emailAddress))
@@ -1133,9 +1133,9 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     #[Computed(persist: true, seconds: 300)]
     public function recipientOptions(): array
     {
-        $teamId = (string) $this->authUser()->current_workspace_id;
+        $workspaceId = (string) $this->authUser()->current_workspace_id;
         $people = People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->orderBy('name')
             ->limit(300)
             ->get(['id', 'name', 'company_id']);
@@ -1146,7 +1146,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             $peopleIds[] = (string) $person->getKey();
         }
 
-        $primaryEmailEntries = $this->primaryEmailEntriesForPeople($peopleIds, $teamId);
+        $primaryEmailEntries = $this->primaryEmailEntriesForPeople($peopleIds, $workspaceId);
         $options = [];
 
         foreach ($people as $person) {
@@ -1167,7 +1167,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             ];
         }
 
-        foreach ($this->companyTeamRecipientOptions($teamId) as $companyOption) {
+        foreach ($this->companyTeamRecipientOptions($workspaceId) as $companyOption) {
             $options[] = $companyOption;
         }
 
@@ -1180,9 +1180,9 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return;
         }
 
-        $teamId = (string) $this->authUser()->current_workspace_id;
+        $workspaceId = (string) $this->authUser()->current_workspace_id;
         $people = People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->where('company_id', $companyId)
             ->get(['id']);
 
@@ -1194,7 +1194,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         $emails = [];
 
-        foreach ($this->primaryEmailEntriesForPeople($peopleIds, $teamId) as $entry) {
+        foreach ($this->primaryEmailEntriesForPeople($peopleIds, $workspaceId) as $entry) {
             $emails[] = $entry['email'];
         }
         $nextRecipients = match ($field) {
@@ -1239,10 +1239,10 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     avatarColor: string,
      * }>
      */
-    private function companyTeamRecipientOptions(string $teamId): array
+    private function companyTeamRecipientOptions(string $workspaceId): array
     {
         $people = People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->whereNotNull('company_id')
             ->orderBy('name')
             ->get(['id', 'name', 'company_id']);
@@ -1253,7 +1253,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             $peopleIds[] = (string) $person->getKey();
         }
 
-        $primaryEmailEntries = $this->primaryEmailEntriesForPeople($peopleIds, $teamId);
+        $primaryEmailEntries = $this->primaryEmailEntriesForPeople($peopleIds, $workspaceId);
         $companyCounts = [];
         $companyEmails = [];
 
@@ -1279,7 +1279,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         /** @var list<array{type: 'company_team', id: string, label: string, description: string, count: int, countLabel: string, emails: list<string>, avatarUrl: string|null, iconPath: string|null, circular: bool, avatarColor: string}> */
         return Company::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->whereKey(array_keys($companyCounts))
             ->with('media')
             ->orderBy('name')
@@ -1372,7 +1372,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      * @param  list<string>  $peopleIds
      * @return list<array{person_id: string, email: string}>
      */
-    private function primaryEmailEntriesForPeople(array $peopleIds, string $teamId): array
+    private function primaryEmailEntriesForPeople(array $peopleIds, string $workspaceId): array
     {
         if ($peopleIds === []) {
             return [];
@@ -1380,7 +1380,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         $emailField = CustomField::query()
             ->withoutGlobalScopes()
-            ->where('tenant_id', $teamId)
+            ->where('tenant_id', $workspaceId)
             ->where('entity_type', 'people')
             ->where('code', 'emails')
             ->first();
@@ -1393,7 +1393,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         foreach (CustomFieldValue::query()
             ->withoutGlobalScopes()
-            ->where('tenant_id', $teamId)
+            ->where('tenant_id', $workspaceId)
             ->where('entity_type', 'people')
             ->where('custom_field_id', $emailField->getKey())
             ->whereIn('entity_id', $peopleIds)
@@ -1431,7 +1431,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     }
 
     /**
-     * Team templates the user may apply: shared ones plus their own.
+     * Workspace templates the user may apply: shared ones plus their own.
      *
      * @return array<string, string>
      */
@@ -2056,10 +2056,10 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      * `$draftId` arrives from the same client-controlled `composer:open` event
      * payload as any other `open()` argument (see {@see self::open()}), so it
      * must be re-verified here rather than trusted. Scope the lookup to this
-     * user's own DRAFT rows *within their current team* (a multi-team user has
-     * one `user_id` but no cross-team access; Email has no team global scope)
-     * so a foreign or cross-team id can never leak draft content into the
-     * composer. A miss (foreign, cross-team, deleted, or already sent) is
+     * user's own DRAFT rows *within their current workspace* (a multi-workspace user has
+     * one `user_id` but no cross-workspace access; Email has no workspace global scope)
+     * so a foreign or cross-workspace id can never leak draft content into the
+     * composer. A miss (foreign, cross-workspace, deleted, or already sent) is
      * silently ignored and the composer opens blank.
      */
     private function loadDraft(string $draftId): void

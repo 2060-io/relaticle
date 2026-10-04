@@ -28,9 +28,9 @@ use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\MeetingAttendee;
 use Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory;
 use Relaticle\EmailIntegration\Services\MeetingAttendeePresenter;
-use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
+use Relaticle\EmailIntegration\Services\WorkspaceMemberDirectory;
 
-mutates(MeetingsRelationManager::class, MeetingDetailInfolist::class, MeetingAttendeeEntry::class, MeetingHeaderEntry::class, MeetingLinkedRecordsEntry::class, MeetingTimeEntry::class, MeetingAttendeePresenter::class, TeamMemberDirectory::class, MailboxDisplayNameDirectory::class);
+mutates(MeetingsRelationManager::class, MeetingDetailInfolist::class, MeetingAttendeeEntry::class, MeetingHeaderEntry::class, MeetingLinkedRecordsEntry::class, MeetingTimeEntry::class, MeetingAttendeePresenter::class, WorkspaceMemberDirectory::class, MailboxDisplayNameDirectory::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();

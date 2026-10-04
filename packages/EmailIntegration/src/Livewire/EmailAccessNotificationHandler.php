@@ -74,7 +74,7 @@ final class EmailAccessNotificationHandler extends Component implements HasActio
     #[Computed]
     public function selectedEmail(): ?Email
     {
-        $email = $this->resolveTeamEmail($this->selectedEmailId, 'viewBody');
+        $email = $this->resolveWorkspaceEmail($this->selectedEmailId, 'viewBody');
 
         if (! $email instanceof Email) {
             return null;

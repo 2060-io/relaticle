@@ -11,7 +11,7 @@ use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\MeetingAttendee;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleMeetingScope;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
 mutates(VisibleMeetingScope::class);
 
@@ -77,7 +77,7 @@ it('shows a coworker meeting when only the connected mailbox identity is on the 
 });
 
 it('hides a coworker meeting when all attendees are protected', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -144,7 +144,7 @@ it('shows a coworker meeting on a personal calendar when only a connected mailbo
 });
 
 it('shows a coworker meeting when only some attendees are protected', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -155,7 +155,7 @@ it('shows a coworker meeting when only some attendees are protected', function (
 });
 
 it('hides a coworker meeting when any attendee is blocked', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -166,7 +166,7 @@ it('hides a coworker meeting when any attendee is blocked', function (): void {
 });
 
 it('shows a coworker meeting with a subdomain attendee when domain block has include subdomains off', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->domain('temuemail.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->domain('temuemail.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -177,7 +177,7 @@ it('shows a coworker meeting with a subdomain attendee when domain block has inc
 });
 
 it('hides a coworker meeting with a subdomain attendee when domain block has include subdomains on', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->domain('temuemail.com')->includeSubdomains()->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->domain('temuemail.com')->includeSubdomains()->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -188,7 +188,7 @@ it('hides a coworker meeting with a subdomain attendee when domain block has inc
 });
 
 it('still shows a protected meeting to its mailbox owner', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -199,7 +199,7 @@ it('still shows a protected meeting to its mailbox owner', function (): void {
 });
 
 it('hides a workspace-blocked meeting from its mailbox owner', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -222,7 +222,7 @@ it('hides a mailbox-blocklisted meeting from its mailbox owner', function (): vo
 });
 
 it('hides a meeting when the organizer is workspace-blocked', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked-organizer@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked-organizer@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);

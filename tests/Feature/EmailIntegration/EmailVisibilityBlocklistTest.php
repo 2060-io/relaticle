@@ -8,7 +8,7 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 
 mutates(EmailVisibilityService::class);
@@ -220,7 +220,7 @@ it('returns true when any one of multiple participants matches blocklist', funct
 });
 
 it('returns true when participant matches the workspace blocklist', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('spam@badactor.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('spam@badactor.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);

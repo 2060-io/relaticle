@@ -28,7 +28,7 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailSearchService;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 use Relaticle\EmailIntegration\Services\PreferredEmailCopyService;
@@ -98,7 +98,7 @@ it('shows the compose empty state when the record only has hidden emails', funct
         'user_id' => $this->user->id,
     ]));
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -258,7 +258,7 @@ it('hides the emails tab on a company whose domain is protected', function (): v
     ]);
     writeCompanyDomain($company, 'https://secret.example');
 
-    TeamEmailBlocklist::factory()->protected()->domain('secret.example')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('secret.example')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -287,7 +287,7 @@ it('omits the emails tab badge on a company whose domain is protected', function
     ]);
     writeCompanyDomain($company, 'https://secret.example');
 
-    TeamEmailBlocklist::factory()->protected()->domain('secret.example')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('secret.example')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -322,7 +322,7 @@ it('hides the emails tab from a teammate when the company domain is protected', 
     ]);
     writeCompanyDomain($company, 'https://secret.example');
 
-    TeamEmailBlocklist::factory()->protected()->domain('secret.example')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('secret.example')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -400,7 +400,7 @@ it('hides the emails tab on a custom protected person', function (): void {
         'user_id' => $this->user->id,
     ]));
 
-    TeamEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -443,7 +443,7 @@ it('hides the emails tab on a blocked person', function (): void {
         'user_id' => $this->user->id,
     ]));
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);

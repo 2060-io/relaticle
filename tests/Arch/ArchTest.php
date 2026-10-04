@@ -263,7 +263,7 @@ arch('package service layers avoid mutation')
         'Relaticle\Chat\Support\TitleSanitizer',
         'Relaticle\EmailIntegration\Services\EmailVisibilityService',
         'Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory',
-        'Relaticle\EmailIntegration\Services\TeamMemberDirectory',
+        'Relaticle\EmailIntegration\Services\WorkspaceMemberDirectory',
         'Relaticle\EmailIntegration\Services\MicrosoftGraphMailService',
         'Relaticle\EmailIntegration\Services\PrivacyService',
         'Relaticle\ImportWizard\Support\DataTypeInferencer',

@@ -30,13 +30,13 @@ use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\PublicEmailDomain;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleMeetingScope;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Support\BlocklistDomainMatcher;
 
 final class EmailVisibilityService
 {
     /**
-     * @var array<string, Collection<int, TeamEmailBlocklist>>
+     * @var array<string, Collection<int, WorkspaceEmailBlocklist>>
      */
     private array $workspaceEntryCache = [];
 
@@ -50,7 +50,7 @@ final class EmailVisibilityService
     /**
      * @var array<string, array<int, lowercase-string>>
      */
-    private array $teamMemberEmailCache = [];
+    private array $workspaceMemberEmailCache = [];
 
     /**
      * @var array<string, Collection<int, EmailBlocklist>>
@@ -230,11 +230,11 @@ final class EmailVisibilityService
 
     public function recordMailboxHiddenEnforcement(People|Company $record): ?EmailVisibilityEnforcement
     {
-        $teamId = (string) $record->workspace_id;
+        $workspaceId = (string) $record->workspace_id;
         $isProtected = false;
 
         foreach ($this->recordIdentityAddresses($record) as $address) {
-            $enforcement = $this->participantEnforcement($address, $teamId);
+            $enforcement = $this->participantEnforcement($address, $workspaceId);
 
             if ($enforcement === EmailVisibilityEnforcement::Blocked) {
                 return EmailVisibilityEnforcement::Blocked;
@@ -246,7 +246,7 @@ final class EmailVisibilityService
         }
 
         foreach ($this->recordIdentityDomains($record) as $domain) {
-            $enforcement = $this->participantEnforcement("mailbox@{$domain}", $teamId);
+            $enforcement = $this->participantEnforcement("mailbox@{$domain}", $workspaceId);
 
             if ($enforcement === EmailVisibilityEnforcement::Blocked) {
                 return EmailVisibilityEnforcement::Blocked;
@@ -332,13 +332,13 @@ final class EmailVisibilityService
      * Blocked workspace entries, workspace member addresses, and mailbox-only
      * blocklists must not spawn CRM records.
      */
-    public function suppressesRecordCreation(string $address, string $teamId, ?string $connectedAccountId): bool
+    public function suppressesRecordCreation(string $address, string $workspaceId, ?string $connectedAccountId): bool
     {
-        if ($this->isTeamMemberEmail($address, $teamId)) {
+        if ($this->isWorkspaceMemberEmail($address, $workspaceId)) {
             return true;
         }
 
-        if ($this->matchesCustomEntry($address, $teamId, EmailVisibilityEnforcement::Blocked)) {
+        if ($this->matchesCustomEntry($address, $workspaceId, EmailVisibilityEnforcement::Blocked)) {
             return true;
         }
 
@@ -346,10 +346,10 @@ final class EmailVisibilityService
     }
 
     /**
-     * @param  Collection<int, TeamEmailBlocklist>  $customEntries
+     * @param  Collection<int, WorkspaceEmailBlocklist>  $customEntries
      * @return array<int, array{key: string, address: string, enforcement: string, enforcement_value: string, source: string, is_system: bool, entry_id?: string, updated_at?: string}>
      */
-    public function visibilityTableRows(Workspace $team, Collection $customEntries): array
+    public function visibilityTableRows(Workspace $workspace, Collection $customEntries): array
     {
         $systemRows = [
             [
@@ -362,8 +362,8 @@ final class EmailVisibilityService
             ],
         ];
 
-        $workspaceDomains = $this->workspaceDomains($team);
-        $memberEmails = $this->memberEmailsForTeam($team);
+        $workspaceDomains = $this->workspaceDomains($workspace);
+        $memberEmails = $this->memberEmailsForWorkspace($workspace);
 
         foreach ($workspaceDomains as $domain) {
             $systemRows[] = [
@@ -377,7 +377,7 @@ final class EmailVisibilityService
         }
 
         $customRows = $customEntries
-            ->reject(function (TeamEmailBlocklist $entry) use ($workspaceDomains, $memberEmails): bool {
+            ->reject(function (WorkspaceEmailBlocklist $entry) use ($workspaceDomains, $memberEmails): bool {
                 $value = strtolower($entry->value);
 
                 return match ($entry->type) {
@@ -385,7 +385,7 @@ final class EmailVisibilityService
                     EmailBlocklistType::EMAIL => in_array($value, $memberEmails, true),
                 };
             })
-            ->map(function (TeamEmailBlocklist $entry): array {
+            ->map(function (WorkspaceEmailBlocklist $entry): array {
                 $enforcement = $entry->enforcement_level;
                 $creator = $entry->creator;
 
@@ -412,36 +412,36 @@ final class EmailVisibilityService
     /**
      * @return array<int, lowercase-string>
      */
-    public function workspaceDomains(Workspace $team): array
+    public function workspaceDomains(Workspace $workspace): array
     {
-        $teamId = $team->getKey();
+        $workspaceId = $workspace->getKey();
 
-        if (isset($this->workspaceDomainCache[$teamId])) {
-            return $this->workspaceDomainCache[$teamId];
+        if (isset($this->workspaceDomainCache[$workspaceId])) {
+            return $this->workspaceDomainCache[$workspaceId];
         }
 
         $domains = collect();
 
-        foreach ($team->allUsers() as $user) {
+        foreach ($workspace->allUsers() as $user) {
             $domain = $this->domainFromEmail((string) $user->email);
 
-            if ($domain !== null && ! $this->isPublicEmailDomain($domain, $team)) {
+            if ($domain !== null && ! $this->isPublicEmailDomain($domain, $workspace)) {
                 $domains->push($domain);
             }
         }
 
         ConnectedAccount::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->pluck('email_address')
-            ->each(function (mixed $emailAddress) use ($domains, $team): void {
+            ->each(function (mixed $emailAddress) use ($domains, $workspace): void {
                 $domain = $this->domainFromEmail((string) $emailAddress);
 
-                if ($domain !== null && ! $this->isPublicEmailDomain($domain, $team)) {
+                if ($domain !== null && ! $this->isPublicEmailDomain($domain, $workspace)) {
                     $domains->push($domain);
                 }
             });
 
-        return $this->workspaceDomainCache[$teamId] = $domains
+        return $this->workspaceDomainCache[$workspaceId] = $domains
             ->map(fn (string $domain): string => strtolower($domain))
             ->unique()
             ->sort()
@@ -499,14 +499,14 @@ final class EmailVisibilityService
         return $hosts;
     }
 
-    private function customFieldFor(string $teamId, string $entityType, string $code): ?CustomField
+    private function customFieldFor(string $workspaceId, string $entityType, string $code): ?CustomField
     {
-        $key = "{$teamId}:{$entityType}:{$code}";
+        $key = "{$workspaceId}:{$entityType}:{$code}";
 
         if (! array_key_exists($key, $this->customFieldCache)) {
             $field = CustomField::query()
                 ->withoutGlobalScopes()
-                ->where('tenant_id', $teamId)
+                ->where('tenant_id', $workspaceId)
                 ->where('entity_type', $entityType)
                 ->where('code', $code)
                 ->first();
@@ -559,7 +559,7 @@ final class EmailVisibilityService
     /**
      * @param  array<int, mixed>  $addresses
      */
-    private function allAddressesAreProtected(array $addresses, string $teamId): bool
+    private function allAddressesAreProtected(array $addresses, string $workspaceId): bool
     {
         if ($addresses === []) {
             return false;
@@ -567,14 +567,14 @@ final class EmailVisibilityService
 
         return array_all(
             $addresses,
-            fn (mixed $address): bool => $this->participantEnforcement((string) $address, $teamId) === EmailVisibilityEnforcement::Protected,
+            fn (mixed $address): bool => $this->participantEnforcement((string) $address, $workspaceId) === EmailVisibilityEnforcement::Protected,
         );
     }
 
     /**
      * @param  array<int, mixed>  $addresses
      */
-    private function isHiddenFromOwnerFor(string $teamId, ?string $connectedAccountId, array $addresses): bool
+    private function isHiddenFromOwnerFor(string $workspaceId, ?string $connectedAccountId, array $addresses): bool
     {
         foreach ($addresses as $address) {
             $normalized = (string) $address;
@@ -583,7 +583,7 @@ final class EmailVisibilityService
                 return true;
             }
 
-            if ($this->matchesCustomEntry($normalized, $teamId, EmailVisibilityEnforcement::Blocked)) {
+            if ($this->matchesCustomEntry($normalized, $workspaceId, EmailVisibilityEnforcement::Blocked)) {
                 return true;
             }
         }
@@ -610,43 +610,43 @@ final class EmailVisibilityService
             ->get();
     }
 
-    private function participantEnforcement(string $address, string $teamId): ?EmailVisibilityEnforcement
+    private function participantEnforcement(string $address, string $workspaceId): ?EmailVisibilityEnforcement
     {
-        if ($this->matchesCustomEntry($address, $teamId, EmailVisibilityEnforcement::Blocked)) {
+        if ($this->matchesCustomEntry($address, $workspaceId, EmailVisibilityEnforcement::Blocked)) {
             return EmailVisibilityEnforcement::Blocked;
         }
 
-        if ($this->isTeamMemberEmail($address, $teamId)) {
+        if ($this->isWorkspaceMemberEmail($address, $workspaceId)) {
             return EmailVisibilityEnforcement::Protected;
         }
 
-        $team = $this->workspace($teamId);
+        $workspace = $this->workspace($workspaceId);
 
-        if ($team instanceof Workspace) {
+        if ($workspace instanceof Workspace) {
             $domain = $this->domainFromEmail($address);
 
-            if ($domain !== null && in_array($domain, $this->workspaceDomains($team), true)) {
+            if ($domain !== null && in_array($domain, $this->workspaceDomains($workspace), true)) {
                 return EmailVisibilityEnforcement::Protected;
             }
         }
 
-        if ($this->matchesCustomEntry($address, $teamId, EmailVisibilityEnforcement::Protected)) {
+        if ($this->matchesCustomEntry($address, $workspaceId, EmailVisibilityEnforcement::Protected)) {
             return EmailVisibilityEnforcement::Protected;
         }
 
         return null;
     }
 
-    private function matchesCustomEntry(string $address, string $teamId, EmailVisibilityEnforcement $level): bool
+    private function matchesCustomEntry(string $address, string $workspaceId, EmailVisibilityEnforcement $level): bool
     {
-        $rows = $this->workspaceEntries($teamId)
+        $rows = $this->workspaceEntries($workspaceId)
             ->where('enforcement_level', $level);
 
         return $this->matchesRows($address, $rows);
     }
 
     /**
-     * @param  Collection<int, TeamEmailBlocklist>|Collection<int, EmailBlocklist>  $rows
+     * @param  Collection<int, WorkspaceEmailBlocklist>|Collection<int, EmailBlocklist>  $rows
      */
     private function matchesRows(string $address, Collection $rows): bool
     {
@@ -671,53 +671,53 @@ final class EmailVisibilityService
     }
 
     /**
-     * @return Collection<int, TeamEmailBlocklist>
+     * @return Collection<int, WorkspaceEmailBlocklist>
      */
-    private function workspaceEntries(string $teamId): Collection
+    private function workspaceEntries(string $workspaceId): Collection
     {
-        if (isset($this->workspaceEntryCache[$teamId])) {
-            return $this->workspaceEntryCache[$teamId];
+        if (isset($this->workspaceEntryCache[$workspaceId])) {
+            return $this->workspaceEntryCache[$workspaceId];
         }
 
-        return $this->workspaceEntryCache[$teamId] = TeamEmailBlocklist::query()
-            ->where('workspace_id', $teamId)
+        return $this->workspaceEntryCache[$workspaceId] = WorkspaceEmailBlocklist::query()
+            ->where('workspace_id', $workspaceId)
             ->get();
     }
 
     /**
      * @return array<int, lowercase-string>
      */
-    public function memberEmailsForTeam(Workspace $team): array
+    public function memberEmailsForWorkspace(Workspace $workspace): array
     {
-        return $this->teamMemberEmails($team->getKey());
+        return $this->workspaceMemberEmails($workspace->getKey());
     }
 
-    private function isTeamMemberEmail(string $address, string $teamId): bool
+    private function isWorkspaceMemberEmail(string $address, string $workspaceId): bool
     {
-        return in_array(strtolower(trim($address)), $this->teamMemberEmails($teamId), true);
+        return in_array(strtolower(trim($address)), $this->workspaceMemberEmails($workspaceId), true);
     }
 
     /**
      * @return array<int, lowercase-string>
      */
-    private function teamMemberEmails(string $teamId): array
+    private function workspaceMemberEmails(string $workspaceId): array
     {
-        if (isset($this->teamMemberEmailCache[$teamId])) {
-            return $this->teamMemberEmailCache[$teamId];
+        if (isset($this->workspaceMemberEmailCache[$workspaceId])) {
+            return $this->workspaceMemberEmailCache[$workspaceId];
         }
 
-        $team = $this->workspace($teamId);
+        $workspace = $this->workspace($workspaceId);
 
-        if (! $team instanceof Workspace) {
-            return $this->teamMemberEmailCache[$teamId] = [];
+        if (! $workspace instanceof Workspace) {
+            return $this->workspaceMemberEmailCache[$workspaceId] = [];
         }
 
-        $emails = $team->allUsers()
+        $emails = $workspace->allUsers()
             ->pluck('email')
             ->map(fn (string $email): string => strtolower($email));
 
         ConnectedAccount::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->pluck('email_address')
             ->each(function (mixed $emailAddress) use ($emails): void {
                 $normalized = strtolower(trim((string) $emailAddress));
@@ -728,7 +728,7 @@ final class EmailVisibilityService
             });
 
         WorkspaceInvitation::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->pluck('email')
             ->each(function (mixed $emailAddress) use ($emails): void {
                 $normalized = strtolower(trim((string) $emailAddress));
@@ -738,13 +738,13 @@ final class EmailVisibilityService
                 }
             });
 
-        return $this->teamMemberEmailCache[$teamId] = $emails
+        return $this->workspaceMemberEmailCache[$workspaceId] = $emails
             ->unique()
             ->values()
             ->all();
     }
 
-    public function isPublicEmailDomain(string $domain, Workspace $team): bool
+    public function isPublicEmailDomain(string $domain, Workspace $workspace): bool
     {
         $normalized = strtolower($domain);
 
@@ -754,22 +754,22 @@ final class EmailVisibilityService
             return true;
         }
 
-        $this->publicDomainCache[$team->getKey()] ??= PublicEmailDomain::query()
-            ->where('workspace_id', $team->getKey())
+        $this->publicDomainCache[$workspace->getKey()] ??= PublicEmailDomain::query()
+            ->where('workspace_id', $workspace->getKey())
             ->pluck('domain')
             ->map(fn (mixed $value): string => strtolower((string) $value))
             ->all();
 
-        return in_array($normalized, $this->publicDomainCache[$team->getKey()], true);
+        return in_array($normalized, $this->publicDomainCache[$workspace->getKey()], true);
     }
 
-    public function workspace(string $teamId): ?Workspace
+    public function workspace(string $workspaceId): ?Workspace
     {
-        if (! array_key_exists($teamId, $this->workspaceCache)) {
-            $this->workspaceCache[$teamId] = Workspace::query()->find($teamId);
+        if (! array_key_exists($workspaceId, $this->workspaceCache)) {
+            $this->workspaceCache[$workspaceId] = Workspace::query()->find($workspaceId);
         }
 
-        return $this->workspaceCache[$teamId];
+        return $this->workspaceCache[$workspaceId];
     }
 
     private function domainFromEmail(string $email): ?string

@@ -391,7 +391,7 @@ it('shows syncing after reconnecting a live mailbox', function (): void {
 
     resolve(ConnectAccountAction::class)->execute(new ConnectAccountData(
         userId: (string) $this->user->getKey(),
-        teamId: (string) $this->workspace->getKey(),
+        workspaceId: (string) $this->workspace->getKey(),
         provider: $this->account->provider->value,
         emailAddress: $this->account->email_address,
         displayName: $this->account->display_name,

@@ -11,31 +11,31 @@ use Illuminate\Support\Facades\URL;
 
 final class MailboxOAuthWorkspace
 {
-    public static function redirectUrl(string $provider, Workspace $team, ?string $returnUrl = null): string
+    public static function redirectUrl(string $provider, Workspace $workspace, ?string $returnUrl = null): string
     {
         return URL::temporarySignedRoute(
             'email-accounts.redirect',
             now()->addHour(),
             array_filter([
                 'provider' => $provider,
-                'team' => $team->getKey(),
+                'workspace' => $workspace->getKey(),
                 'return' => $returnUrl,
             ]),
         );
     }
 
-    public static function forUser(User $user, mixed $teamId): ?Workspace
+    public static function forUser(User $user, mixed $workspaceId): ?Workspace
     {
-        if (! is_string($teamId) || $teamId === '' || ! $user->belongsToWorkspaceId($teamId)) {
+        if (! is_string($workspaceId) || $workspaceId === '' || ! $user->belongsToWorkspaceId($workspaceId)) {
             return null;
         }
 
-        $team = Workspace::query()->find($teamId);
+        $workspace = Workspace::query()->find($workspaceId);
 
-        if (! $team instanceof Workspace || resolve(HostedWorkspaceAccess::class)->isPaused($team)) {
+        if (! $workspace instanceof Workspace || resolve(HostedWorkspaceAccess::class)->isPaused($workspace)) {
             return null;
         }
 
-        return $team;
+        return $workspace;
     }
 }

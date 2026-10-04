@@ -107,17 +107,17 @@ final class ConnectedAccount extends Model
     // Scopes
 
     /**
-     * Scope to accounts owned by the given user within the given team.
+     * Scope to accounts owned by the given user within the given workspace.
      *
      * @param  Builder<ConnectedAccount>  $query
      * @return Builder<ConnectedAccount>
      */
     #[Scope]
-    protected function ownedBy(Builder $query, User $user, Workspace $team): Builder
+    protected function ownedBy(Builder $query, User $user, Workspace $workspace): Builder
     {
         return $query
             ->where('user_id', $user->getKey())
-            ->where('workspace_id', $team->getKey());
+            ->where('workspace_id', $workspace->getKey());
     }
 
     /**
@@ -269,42 +269,42 @@ final class ConnectedAccount extends Model
     // Helpers
 
     /**
-     * Whether the user has added a mailbox in this team. Sync-error and
+     * Whether the user has added a mailbox in this workspace. Sync-error and
      * reauth-required accounts count. Disconnected accounts do not.
      */
-    public static function hasConnectedFor(User $user, ?Workspace $team): bool
+    public static function hasConnectedFor(User $user, ?Workspace $workspace): bool
     {
-        if (! $team instanceof Workspace) {
+        if (! $workspace instanceof Workspace) {
             return false;
         }
 
-        return self::query()->ownedBy($user, $team)->connected()->exists();
+        return self::query()->ownedBy($user, $workspace)->connected()->exists();
     }
 
     /**
      * Whether the user has at least one account that is safe to sync or send through.
      */
-    public static function hasActiveFor(User $user, ?Workspace $team): bool
+    public static function hasActiveFor(User $user, ?Workspace $workspace): bool
     {
-        if (! $team instanceof Workspace) {
+        if (! $workspace instanceof Workspace) {
             return false;
         }
 
-        return self::query()->ownedBy($user, $team)->active()->exists();
+        return self::query()->ownedBy($user, $workspace)->active()->exists();
     }
 
     /**
      * Whether the user has at least one active mailbox that can send from Relaticle.
      * Accounts connected before send was tracked are treated as sendable.
      */
-    public static function hasSendableFor(User $user, ?Workspace $team): bool
+    public static function hasSendableFor(User $user, ?Workspace $workspace): bool
     {
-        if (! $team instanceof Workspace) {
+        if (! $workspace instanceof Workspace) {
             return false;
         }
 
         return self::query()
-            ->ownedBy($user, $team)
+            ->ownedBy($user, $workspace)
             ->active()
             ->get()
             ->contains(fn (ConnectedAccount $account): bool => $account->isSendable());

@@ -268,30 +268,30 @@ final class MeetingDetailInfolist
     /**
      * CRM models carry no global tenant scope, so every query here must be
      * constrained to the current tenant. Otherwise the option list (and the
-     * resolveLinkTarget lookup below) would expose and link records from other teams.
+     * resolveLinkTarget lookup below) would expose and link records from other workspaces.
      *
      * @return array<int|string, string>
      */
     private static function linkTargetOptions(string $type): array
     {
-        $teamId = filament()->getTenant()?->getKey();
+        $workspaceId = filament()->getTenant()?->getKey();
 
         return match (MeetingLinkedRecordType::tryFromLinkTargetType($type)) {
-            MeetingLinkedRecordType::People => People::query()->where('workspace_id', $teamId)->pluck('name', 'id')->all(),
-            MeetingLinkedRecordType::Company => Company::query()->where('workspace_id', $teamId)->pluck('name', 'id')->all(),
-            MeetingLinkedRecordType::Opportunity => Opportunity::query()->where('workspace_id', $teamId)->pluck('name', 'id')->all(),
+            MeetingLinkedRecordType::People => People::query()->where('workspace_id', $workspaceId)->pluck('name', 'id')->all(),
+            MeetingLinkedRecordType::Company => Company::query()->where('workspace_id', $workspaceId)->pluck('name', 'id')->all(),
+            MeetingLinkedRecordType::Opportunity => Opportunity::query()->where('workspace_id', $workspaceId)->pluck('name', 'id')->all(),
             default => [],
         };
     }
 
     private static function resolveLinkTarget(string $type, string $id): Model
     {
-        $teamId = filament()->getTenant()?->getKey();
+        $workspaceId = filament()->getTenant()?->getKey();
 
         return match (MeetingLinkedRecordType::fromLinkTargetType($type)) {
-            MeetingLinkedRecordType::People => People::query()->where('workspace_id', $teamId)->findOrFail($id),
-            MeetingLinkedRecordType::Company => Company::query()->where('workspace_id', $teamId)->findOrFail($id),
-            MeetingLinkedRecordType::Opportunity => Opportunity::query()->where('workspace_id', $teamId)->findOrFail($id),
+            MeetingLinkedRecordType::People => People::query()->where('workspace_id', $workspaceId)->findOrFail($id),
+            MeetingLinkedRecordType::Company => Company::query()->where('workspace_id', $workspaceId)->findOrFail($id),
+            MeetingLinkedRecordType::Opportunity => Opportunity::query()->where('workspace_id', $workspaceId)->findOrFail($id),
         };
     }
 

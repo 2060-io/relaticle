@@ -13,13 +13,13 @@ use Relaticle\EmailIntegration\Services\PrivacyService;
 
 final readonly class ApplyDefaultSharingTierToExistingEmailsAction
 {
-    public function executeForTeam(Workspace $team, EmailPrivacyTier $tier): int
+    public function executeForWorkspace(Workspace $workspace, EmailPrivacyTier $tier): int
     {
         $userIds = User::query()
             ->whereNull('default_email_sharing_tier')
-            ->where(function (Builder $query) use ($team): void {
-                $query->whereHas('workspaces', fn (Builder $teamQuery) => $teamQuery->whereKey($team->getKey()))
-                    ->orWhereKey($team->user_id);
+            ->where(function (Builder $query) use ($workspace): void {
+                $query->whereHas('workspaces', fn (Builder $workspaceQuery) => $workspaceQuery->whereKey($workspace->getKey()))
+                    ->orWhereKey($workspace->user_id);
             })
             ->pluck('id');
 
@@ -28,7 +28,7 @@ final readonly class ApplyDefaultSharingTierToExistingEmailsAction
         }
 
         return Email::query()
-            ->where('workspace_id', $team->getKey())
+            ->where('workspace_id', $workspace->getKey())
             ->whereIn('user_id', $userIds)
             ->where('privacy_tier_customized', false)
             ->update(['privacy_tier' => $tier->value]);
@@ -46,35 +46,35 @@ final readonly class ApplyDefaultSharingTierToExistingEmailsAction
 
     public function executeForUserUsingWorkspaceDefaults(User $user): int
     {
-        $teamIds = Email::query()
+        $workspaceIds = Email::query()
             ->where('user_id', $user->getKey())
             ->where('privacy_tier_customized', false)
             ->distinct()
             ->pluck('workspace_id');
 
-        if ($teamIds->isEmpty()) {
+        if ($workspaceIds->isEmpty()) {
             return 0;
         }
 
-        $teams = Workspace::query()
-            ->whereIn('id', $teamIds)
+        $workspaces = Workspace::query()
+            ->whereIn('id', $workspaceIds)
             ->get()
             ->keyBy('id');
 
         $updated = 0;
 
-        foreach ($teamIds as $teamId) {
-            $team = $teams->get($teamId);
+        foreach ($workspaceIds as $workspaceId) {
+            $workspace = $workspaces->get($workspaceId);
 
-            if ($team === null) {
+            if ($workspace === null) {
                 continue;
             }
 
-            $tier = resolve(PrivacyService::class)->workspaceSharingTier($team);
+            $tier = resolve(PrivacyService::class)->workspaceSharingTier($workspace);
 
             $updated += Email::query()
                 ->where('user_id', $user->getKey())
-                ->where('workspace_id', $teamId)
+                ->where('workspace_id', $workspaceId)
                 ->where('privacy_tier_customized', false)
                 ->update(['privacy_tier' => $tier->value]);
         }

@@ -117,12 +117,12 @@ final readonly class StoreEmailAction
                 }
 
                 // "Internal" means every participant is a member of this workspace.
-                // Membership lives in the team_user pivot (plus the owner), NOT in
-                // users.current_workspace_id, which only reflects a user's *active* team and
-                // would misclassify members whose active team is elsewhere.
-                $team = Workspace::query()->find($connectedAccount->workspace_id);
+                // Membership lives in the workspace_user pivot (plus the owner), NOT in
+                // users.current_workspace_id, which only reflects a user's *active* workspace and
+                // would misclassify members whose active workspace is elsewhere.
+                $workspace = Workspace::query()->find($connectedAccount->workspace_id);
 
-                $teamUserEmails = ($team?->allUsers() ?? collect())
+                $workspaceUserEmails = ($workspace?->allUsers() ?? collect())
                     ->pluck('email')
                     ->map(fn (string $e): string => strtolower($e));
 
@@ -131,7 +131,7 @@ final readonly class StoreEmailAction
                     ->map(fn (string $e): string => strtolower($e));
 
                 $isInternal = $participantAddresses->isNotEmpty() && $participantAddresses->every(
-                    fn (string $address): bool => $teamUserEmails->contains($address)
+                    fn (string $address): bool => $workspaceUserEmails->contains($address)
                 );
 
                 $email->updateQuietly(['is_internal' => $isInternal]);

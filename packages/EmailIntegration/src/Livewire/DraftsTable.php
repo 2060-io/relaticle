@@ -166,7 +166,7 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
 
     /**
      * Drafts are private to their author, so this is scoped to the signed-in
-     * user within the current team, never the whole team.
+     * user within the current workspace, never the whole workspace.
      *
      * @return Builder<Email>
      */
@@ -204,8 +204,8 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
             return $tenant;
         }
 
-        $team = $this->authUser()->currentWorkspace;
+        $workspace = $this->authUser()->currentWorkspace;
 
-        return $team instanceof Workspace ? $team : null;
+        return $workspace instanceof Workspace ? $workspace : null;
     }
 }

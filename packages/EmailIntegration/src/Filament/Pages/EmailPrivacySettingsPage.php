@@ -27,14 +27,14 @@ use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Url;
-use Relaticle\EmailIntegration\Actions\SaveTeamEmailSharingDefaultAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamContactCreationSettingsAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamEmailVisibilityAction;
+use Relaticle\EmailIntegration\Actions\SaveWorkspaceEmailSharingDefaultAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceContactCreationSettingsAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceEmailVisibilityAction;
 use Relaticle\EmailIntegration\Enums\ContactCreationMode;
 use Relaticle\EmailIntegration\Enums\EmailBlocklistType;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 use Relaticle\EmailIntegration\Services\PrivacyService;
 use Relaticle\EmailIntegration\Support\SharingTierChangeConfirmation;
@@ -62,10 +62,10 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
             return false;
         }
 
-        $team = $user->currentWorkspace;
+        $workspace = $user->currentWorkspace;
 
-        return $team instanceof Workspace
-            && $user->hasWorkspaceCapability($team->getKey(), WorkspaceCapability::EmailManage);
+        return $workspace instanceof Workspace
+            && $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::EmailManage);
     }
 
     protected string $view = 'email-integration::filament.pages.workspace-email-settings';
@@ -109,12 +109,12 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
     {
         /** @var User $user */
         $user = auth()->user();
-        $team = $user->currentWorkspace;
+        $workspace = $user->currentWorkspace;
 
-        $this->default_email_sharing_tier = ($team->default_email_sharing_tier ?? EmailPrivacyTier::METADATA_ONLY)->value;
+        $this->default_email_sharing_tier = ($workspace->default_email_sharing_tier ?? EmailPrivacyTier::METADATA_ONLY)->value;
 
-        $this->contact_creation_mode = ($team->contact_creation_mode ?? ContactCreationMode::Selective)->value;
-        $this->auto_create_companies = $team->auto_create_companies;
+        $this->contact_creation_mode = ($workspace->contact_creation_mode ?? ContactCreationMode::Selective)->value;
+        $this->auto_create_companies = $workspace->auto_create_companies;
 
         if (! array_key_exists($this->tab, self::TABS)) {
             $this->tab = 'visibility';
@@ -159,10 +159,10 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
             ->action(function (): void {
                 /** @var User $user */
                 $user = auth()->user();
-                $team = $user->currentWorkspace;
+                $workspace = $user->currentWorkspace;
 
                 $saved = match ($this->tab) {
-                    'sharing' => $this->persistWorkspaceSharingSettings($team, $user),
+                    'sharing' => $this->persistWorkspaceSharingSettings($workspace, $user),
                     'record_creation' => $this->persistContactCreationSettings(),
                     default => false,
                 };
@@ -187,18 +187,18 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
     {
         /** @var User $user */
         $user = auth()->user();
-        $team = $user->currentWorkspace;
+        $workspace = $user->currentWorkspace;
 
         $newTier = EmailPrivacyTier::from($this->default_email_sharing_tier);
 
-        return $newTier !== $this->privacy()->workspaceSharingTier($team);
+        return $newTier !== $this->privacy()->workspaceSharingTier($workspace);
     }
 
-    private function persistWorkspaceSharingSettings(Workspace $team, User $user): bool
+    private function persistWorkspaceSharingSettings(Workspace $workspace, User $user): bool
     {
         $newTier = EmailPrivacyTier::from($this->default_email_sharing_tier);
 
-        resolve(SaveTeamEmailSharingDefaultAction::class)->execute($team, $user, $newTier);
+        resolve(SaveWorkspaceEmailSharingDefaultAction::class)->execute($workspace, $user, $newTier);
 
         return true;
     }
@@ -234,13 +234,13 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
             ->action(function (array $data): void {
                 /** @var User $user */
                 $user = auth()->user();
-                $team = $user->currentWorkspace;
+                $workspace = $user->currentWorkspace;
 
-                resolve(UpdateTeamEmailVisibilityAction::class)->execute(
-                    $team,
+                resolve(UpdateWorkspaceEmailVisibilityAction::class)->execute(
+                    $workspace,
                     $user,
                     $this->mergedVisibilityEntries(
-                        $team,
+                        $workspace,
                         $data['visibility_emails'] ?? [],
                         $data['visibility_domains'] ?? [],
                         (bool) ($data['visibility_include_subdomains'] ?? false),
@@ -324,7 +324,7 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
             $this->auto_create_companies = false;
         }
 
-        resolve(UpdateTeamContactCreationSettingsAction::class)->execute(
+        resolve(UpdateWorkspaceContactCreationSettingsAction::class)->execute(
             $user->currentWorkspace,
             $user,
             $mode,
@@ -345,18 +345,18 @@ final class EmailPrivacySettingsPage extends Page implements HasSchemas
      * @return array<int, array{type: string, value: string, enforcement_level: EmailVisibilityEnforcement, include_subdomains: bool}>
      */
     private function mergedVisibilityEntries(
-        Workspace $team,
+        Workspace $workspace,
         array $newEmails,
         array $newDomains,
         bool $includeSubdomainsForNewDomains,
     ): array {
         $enforcement = EmailVisibilityEnforcement::Protected;
 
-        $entries = TeamEmailBlocklist::query()
-            ->where('workspace_id', $team->getKey())
+        $entries = WorkspaceEmailBlocklist::query()
+            ->where('workspace_id', $workspace->getKey())
             ->latest()
             ->get()
-            ->map(fn (TeamEmailBlocklist $entry): array => [
+            ->map(fn (WorkspaceEmailBlocklist $entry): array => [
                 'type' => $entry->type->value,
                 'value' => $entry->value,
                 'enforcement_level' => $entry->enforcement_level,

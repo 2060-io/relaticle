@@ -123,9 +123,9 @@ final class Email extends Model
      * @return Builder<Email>
      */
     #[Scope]
-    protected function forWorkspace(Builder $query, string $teamId): Builder
+    protected function forWorkspace(Builder $query, string $workspaceId): Builder
     {
-        return $query->where('workspace_id', $teamId);
+        return $query->where('workspace_id', $workspaceId);
     }
 
     /**

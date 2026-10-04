@@ -164,13 +164,13 @@ final readonly class EmailThreadSummaryService
             model: $model,
         );
 
-        $teamId = Filament::getTenant()?->getKey();
-        throw_if($teamId === null, RuntimeException::class, 'No team context available for AI thread summary');
+        $workspaceId = Filament::getTenant()?->getKey();
+        throw_if($workspaceId === null, RuntimeException::class, 'No workspace context available for AI thread summary');
 
         $thread->aiSummary()->delete();
 
         return AiSummary::query()->create([
-            'workspace_id' => $teamId,
+            'workspace_id' => $workspaceId,
             'summarizable_type' => $thread->getMorphClass(),
             'summarizable_id' => $thread->getKey(),
             'summary' => $response->text,

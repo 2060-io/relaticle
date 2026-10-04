@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Models;
 
 use App\Models\User;
-use Database\Factories\TeamEmailBlocklistFactory;
+use Database\Factories\WorkspaceEmailBlocklistFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -33,16 +33,16 @@ use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
     'created_by',
 ])]
 #[Table(name: 'workspace_email_blocklists')]
-final class TeamEmailBlocklist extends Model
+final class WorkspaceEmailBlocklist extends Model
 {
     /**
-     * @use HasFactory<TeamEmailBlocklistFactory>
+     * @use HasFactory<WorkspaceEmailBlocklistFactory>
      */
     use HasFactory, HasUlids;
 
-    protected static function newFactory(): TeamEmailBlocklistFactory
+    protected static function newFactory(): WorkspaceEmailBlocklistFactory
     {
-        return TeamEmailBlocklistFactory::new();
+        return WorkspaceEmailBlocklistFactory::new();
     }
 
     protected function casts(): array

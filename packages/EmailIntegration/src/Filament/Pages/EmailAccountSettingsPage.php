@@ -54,7 +54,7 @@ use Relaticle\EmailIntegration\Support\SharingTierChangeConfirmation;
  * Per-account settings, reached from the "Settings" entry of an account's action
  * group on {@see EmailAccountsPage}.
  *
- * Sharing tier is stored per user + team (not per account), so the General and
+ * Sharing tier is stored per user + workspace (not per account), so the General and
  * Sharing tabs edit settings that apply to every mailbox this user has connected.
  * Blocklist and signatures are per account.
  *

@@ -24,7 +24,7 @@ final readonly class AutoCreateCompanyAction
 
     /**
      * Resolve a Company for the domain, creating one only when no existing company
-     * already owns it. Serialised per (team, domain) with a transaction-level
+     * already owns it. Serialised per (workspace, domain) with a transaction-level
      * advisory lock so two StoreEmailJob/calendar workers processing the first
      * email from a brand-new domain in parallel can't both miss the match and
      * create duplicate companies: the first holder creates, the rest re-check
@@ -32,21 +32,21 @@ final readonly class AutoCreateCompanyAction
      * stripped). Distinct hosts such as accounts.printtest.com and
      * ideas.printtest.com do not share a lock.
      */
-    public function execute(string $domain, string $teamId, Workspace $team): Company
+    public function execute(string $domain, string $workspaceId, Workspace $workspace): Company
     {
         $host = $this->domainMatcher->host($domain);
 
-        return CurrentSource::during(CreationSource::MAILBOX, fn (): Company => $this->advisoryLock->transactional("auto-create-company:{$teamId}:{$host}", function () use ($host, $teamId, $team): Company {
+        return CurrentSource::during(CreationSource::MAILBOX, fn (): Company => $this->advisoryLock->transactional("auto-create-company:{$workspaceId}:{$host}", function () use ($host, $workspaceId, $workspace): Company {
             // Only create when the domain is not already in another company. The
             // caller's unlocked match can be stale by the time we get the lock, so
             // re-check here under mutual exclusion before creating.
-            $existing = $this->domainMatcher->firstMatching($host, $teamId);
+            $existing = $this->domainMatcher->firstMatching($host, $workspaceId);
 
             if ($existing instanceof Company) {
                 return $existing;
             }
 
-            return $this->createCompany($host, $teamId, $team);
+            return $this->createCompany($host, $workspaceId, $workspace);
         }));
     }
 
@@ -60,25 +60,25 @@ final readonly class AutoCreateCompanyAction
      * sharing a first label (acme.com vs acme.org) are distinct companies, and
      * keying on name would clobber an unrelated same-named company's domains.
      */
-    private function createCompany(string $domain, string $teamId, Workspace $team): Company
+    private function createCompany(string $domain, string $workspaceId, Workspace $workspace): Company
     {
         $company = Company::query()->create([
             'name' => $this->domainToCompanyName($domain),
-            'workspace_id' => $teamId,
+            'workspace_id' => $workspaceId,
         ]);
 
-        $domainsField = $this->customFieldByCode('domains', $teamId);
+        $domainsField = $this->customFieldByCode('domains', $workspaceId);
 
         if ($domainsField instanceof BaseCustomField) {
-            $company->saveCustomFieldValue($domainsField, $this->toWwwDomain($domain), $team);
+            $company->saveCustomFieldValue($domainsField, $this->toWwwDomain($domain), $workspace);
         }
 
         // Seed the ICP toggle to false on creation so it renders as "No"
         // rather than an empty/null cell.
-        $icpField = $this->customFieldByCode('icp', $teamId);
+        $icpField = $this->customFieldByCode('icp', $workspaceId);
 
         if ($icpField instanceof BaseCustomField) {
-            $company->saveCustomFieldValue($icpField, false, $team);
+            $company->saveCustomFieldValue($icpField, false, $workspace);
         }
 
         return $company;
@@ -106,12 +106,12 @@ final readonly class AutoCreateCompanyAction
         return str_starts_with($domain, 'www.') ? $domain : "www.{$domain}";
     }
 
-    private function customFieldByCode(string $code, string $teamId): ?BaseCustomField
+    private function customFieldByCode(string $code, string $workspaceId): ?BaseCustomField
     {
         return CustomField::query()
             ->where('code', $code)
             ->where('entity_type', 'company')
-            ->where('tenant_id', $teamId)
+            ->where('tenant_id', $workspaceId)
             ->first();
     }
 }

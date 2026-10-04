@@ -15,7 +15,7 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\MeetingAttendee;
 use Relaticle\EmailIntegration\Models\PublicEmailDomain;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Support\PersonEmailMatcher;
 
 mutates(LinkMeetingAction::class);
@@ -536,7 +536,7 @@ it('does not auto-create a person for a workspace-blocked attendee', function ()
         'auto_create_companies' => true,
     ]);
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@acme.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@acme.com')->create([
         'workspace_id' => $team->id,
         'created_by' => $user->id,
     ]);

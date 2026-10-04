@@ -96,26 +96,26 @@ final class EmailInboxPage extends Page
     public function tabCounts(): array
     {
         $user = $this->authUser();
-        $teamId = $user->current_workspace_id;
+        $workspaceId = $user->current_workspace_id;
 
         return [
             EmailPageTab::DRAFTS->value => Email::query()
-                ->forWorkspace($teamId)
+                ->forWorkspace($workspaceId)
                 ->where('user_id', $user->getKey())
                 ->where('status', EmailStatus::DRAFT)
                 ->count(),
             EmailPageTab::OUTBOX->value => Email::query()
-                ->forWorkspace($teamId)
+                ->forWorkspace($workspaceId)
                 ->where('user_id', $user->getKey())
                 ->where('status', EmailStatus::QUEUED)
                 ->count(),
             EmailPageTab::FAILED->value => Email::query()
-                ->forWorkspace($teamId)
+                ->forWorkspace($workspaceId)
                 ->where('user_id', $user->getKey())
                 ->where('status', EmailStatus::FAILED)
                 ->count(),
             EmailPageTab::TEMPLATES->value => EmailTemplate::query()
-                ->where('workspace_id', $teamId)
+                ->where('workspace_id', $workspaceId)
                 ->where(fn (Builder $q): Builder => $q
                     ->where('is_shared', true)
                     ->orWhere('created_by', $user->getKey()))

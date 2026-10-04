@@ -9,14 +9,14 @@ use App\Models\Workspace;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Relaticle\EmailIntegration\Enums\EmailBlocklistType;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
 /**
- * @extends Factory<TeamEmailBlocklist>
+ * @extends Factory<WorkspaceEmailBlocklist>
  */
-final class TeamEmailBlocklistFactory extends Factory
+final class WorkspaceEmailBlocklistFactory extends Factory
 {
-    protected $model = TeamEmailBlocklist::class;
+    protected $model = WorkspaceEmailBlocklist::class;
 
     public function definition(): array
     {
