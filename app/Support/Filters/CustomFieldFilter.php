@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Filters;
 
+use App\Enums\CustomFieldType;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
@@ -27,8 +28,8 @@ final readonly class CustomFieldFilter implements Filter
     private const string LOWERED_OPERANDS = 'array(select lower(operand) from unnest(?::text[]) as operand)';
 
     private const array DOMAIN_OF = [
-        'email' => "lower(split_part(element, '@', 2))",
-        'link' => "rtrim(regexp_replace(split_part(regexp_replace(split_part(split_part(split_part(regexp_replace(regexp_replace(lower(element), '[\\s\\u00A0\\u200B\\uFEFF\\u3000]+', '', 'g'), '^[a-z][a-z0-9+.-]*://', ''), '/', 1), '?', 1), '#', 1), '^.*@', ''), ':', 1), '^(www\\.)+', ''), '.')",
+        CustomFieldType::EMAIL->value => "lower(split_part(element, '@', 2))",
+        CustomFieldType::LINK->value => "rtrim(regexp_replace(split_part(regexp_replace(split_part(split_part(split_part(regexp_replace(regexp_replace(lower(element), '[\\s\\u00A0\\u200B\\uFEFF\\u3000]+', '', 'g'), '^[a-z][a-z0-9+.-]*://', ''), '/', 1), '?', 1), '#', 1), '^.*@', ''), ':', 1), '^(www\\.)+', ''), '.')",
     ];
 
     public function __construct(
@@ -246,7 +247,7 @@ final readonly class CustomFieldFilter implements Filter
      */
     private function containsAny(Builder $query, CustomField $field, string $valueColumn, array $values): void
     {
-        if (in_array($field->type, ['email', 'link'], true)) {
+        if (in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value], true)) {
             $query->whereRaw(
                 'exists (select 1 from '.self::LIST_ELEMENTS.' as element where lower(element) = any('.self::LOWERED_OPERANDS.'))',
                 [$this->textArray($values)],
@@ -286,7 +287,7 @@ final readonly class CustomFieldFilter implements Filter
                 $this->normalizeOperand($path, $operator, $operand, $domainOperators[$operator], true),
             );
 
-            if ($field->type === 'link') {
+            if ($field->type === CustomFieldType::LINK->value) {
                 $domains = array_map(static fn (string $domain): string => rtrim((string) preg_replace('/^(www\.)+/i', '', $domain), '.'), $domains);
             }
 
@@ -330,7 +331,7 @@ final readonly class CustomFieldFilter implements Filter
 
     private function spellings(CustomField $field, string $operator, mixed $operand): mixed
     {
-        if (! is_array($operand) || ! in_array($operator, ['$has_any', '$has_none'], true) || ! in_array($field->type, ['email', 'link', 'phone'], true)) {
+        if (! is_array($operand) || ! in_array($operator, ['$has_any', '$has_none'], true) || ! in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value, CustomFieldType::PHONE->value], true)) {
             return $operand;
         }
 
@@ -339,11 +340,11 @@ final readonly class CustomFieldFilter implements Filter
         foreach ($operand as $index => $value) {
             $canonical = CanonicalValue::of($field, $value);
 
-            if ($field->type === 'phone' && ! str_starts_with($canonical, '+')) {
+            if ($field->type === CustomFieldType::PHONE->value && ! str_starts_with($canonical, '+')) {
                 throw FilterErrors::at("{$field->code}.{$operator}.{$index}", __('validation.filter.phone_country_code', ['name' => $field->code]));
             }
 
-            if ($field->type === 'phone' && preg_match('/^\+\d{1,15}(;ext=\d+)?$/', $canonical) !== 1) {
+            if ($field->type === CustomFieldType::PHONE->value && preg_match('/^\+\d{1,15}(;ext=\d+)?$/', $canonical) !== 1) {
                 throw FilterErrors::at("{$field->code}.{$operator}.{$index}", __('validation.filter.phone_invalid', ['name' => $field->code, 'value' => $value]));
             }
 

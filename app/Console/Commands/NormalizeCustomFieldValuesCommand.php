@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Support\CustomFields\CanonicalValue;
 use Illuminate\Console\Attributes\Description;
@@ -39,7 +40,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
 
         CustomField::query()
             ->withoutGlobalScopes()
-            ->whereIn('type', ['phone', 'link'])
+            ->whereIn('type', [CustomFieldType::PHONE->value, CustomFieldType::LINK->value])
             ->eachById(function (CustomField $field) use ($write): void {
                 $this->info("Normalizing {$field->entity_type}.{$field->code} in workspace {$field->tenant_id}...");
                 $this->normalizeField($field, $write);
@@ -62,7 +63,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
 
     private function normalizeField(CustomField $field, bool $write): void
     {
-        $isDomain = $field->type === 'link' && $field->setting('link_variant') === 'domain';
+        $isDomain = $field->type === CustomFieldType::LINK->value && $field->setting('link_variant') === 'domain';
         $nationalBefore = $this->national;
         $this->domainOwners = [];
 
@@ -134,7 +135,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
      */
     private function countNational(CustomField $field, array $values): void
     {
-        if ($field->type !== 'phone') {
+        if ($field->type !== CustomFieldType::PHONE->value) {
             return;
         }
 

@@ -26,9 +26,9 @@ final readonly class Operand
             return null;
         }
 
-        $operand = array_map(static fn (mixed $item): mixed => is_bool($item) ? ($item ? 'true' : 'false') : $item, $operand);
+        $operand = array_map(self::string(...), $operand);
 
-        if (! array_all($operand, static fn (mixed $item): bool => is_string($item) && $item !== '' && self::isCleanString($item))) {
+        if (! array_all($operand, static fn (?string $item): bool => $item !== null && $item !== '')) {
             return null;
         }
 
