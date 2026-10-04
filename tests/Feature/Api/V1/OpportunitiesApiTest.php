@@ -20,6 +20,7 @@ use App\Models\Workspace;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Sanctum\Sanctum;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     OpportunitiesController::class,
@@ -423,11 +424,7 @@ describe('filtering and sorting', function (): void {
     it('filters a custom field with a $-prefixed operator', function (): void {
         Sanctum::actingAs($this->user);
 
-        $stage = CustomField::query()->withoutGlobalScopes()
-            ->where('tenant_id', $this->workspace->id)
-            ->where('entity_type', 'opportunity')
-            ->where('code', 'stage')
-            ->firstOrFail();
+        $stage = WorkspaceCustomField::byCode($this->workspace->id, 'opportunity', 'stage');
         $won = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Won Deal']);
         $open = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Open Deal']);
         $won->saveCustomFieldValue($stage, (string) $stage->options->firstWhere('name', 'Closed Won')->getKey());
@@ -481,11 +478,7 @@ describe('filtering and sorting', function (): void {
     it('reads is_empty from a query string boolean', function (string $raw, bool $expectsEmpty): void {
         Sanctum::actingAs($this->user);
 
-        $stage = CustomField::query()->withoutGlobalScopes()
-            ->where('tenant_id', $this->workspace->id)
-            ->where('entity_type', 'opportunity')
-            ->where('code', 'stage')
-            ->firstOrFail();
+        $stage = WorkspaceCustomField::byCode($this->workspace->id, 'opportunity', 'stage');
         $staged = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Staged Deal']);
         $unstaged = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Unstaged Deal']);
         $staged->saveCustomFieldValue($stage, (string) $stage->options->firstWhere('name', 'Qualification')->getKey());
@@ -569,11 +562,7 @@ describe('filtering and sorting', function (): void {
     it('matches a date operand written in any absolute date format', function (): void {
         Sanctum::actingAs($this->user);
 
-        $closeDate = CustomField::query()->withoutGlobalScopes()
-            ->where('tenant_id', $this->workspace->id)
-            ->where('entity_type', 'opportunity')
-            ->where('code', 'close_date')
-            ->firstOrFail();
+        $closeDate = WorkspaceCustomField::byCode($this->workspace->id, 'opportunity', 'close_date');
         $newYear = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'New Year Deal']);
         $spring = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Spring Deal']);
         $newYear->saveCustomFieldValue($closeDate, '2026-01-01');
@@ -631,11 +620,7 @@ describe('filtering and sorting', function (): void {
     it('accepts option ids separated by a comma and a space', function (): void {
         Sanctum::actingAs($this->user);
 
-        $stage = CustomField::query()->withoutGlobalScopes()
-            ->where('tenant_id', $this->workspace->id)
-            ->where('entity_type', 'opportunity')
-            ->where('code', 'stage')
-            ->firstOrFail();
+        $stage = WorkspaceCustomField::byCode($this->workspace->id, 'opportunity', 'stage');
         $qualificationId = (string) $stage->options->firstWhere('name', 'Qualification')->getKey();
         $prospectingId = (string) $stage->options->firstWhere('name', 'Prospecting')->getKey();
 

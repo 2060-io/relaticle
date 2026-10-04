@@ -30,6 +30,7 @@ use Illuminate\Testing\Fluent\AssertableJson;
 use Illuminate\Validation\ValidationException;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Spatie\QueryBuilder\QueryBuilder;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     BaseListTool::class,
@@ -76,16 +77,6 @@ function filterTestField(Workspace $workspace, string $entityType, string $code,
 function filterTestOptionId(CustomField $field, string $label): string
 {
     return (string) $field->options()->where('name', $label)->value('id');
-}
-
-function filterTestStageField(Workspace $workspace): CustomField
-{
-    return CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $workspace->getKey())
-        ->where('entity_type', 'opportunity')
-        ->where('code', 'stage')
-        ->firstOrFail();
 }
 
 it('filters by custom field equality',
@@ -314,7 +305,7 @@ it('accepts a single value for an array operand', function (): void {
 });
 
 it('matches a choice option by its label or a differently cased label', function (string $operand): void {
-    $stage = filterTestStageField($this->workspace);
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
     $won = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Won Deal']);
     $lost = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Lost Deal']);
     $won->saveCustomFieldValue($stage, filterTestOptionId($stage, 'Closed Won'));
@@ -331,7 +322,7 @@ it('matches a choice option by its label or a differently cased label', function
 ]);
 
 it('matches a choice option by its id', function (): void {
-    $stage = filterTestStageField($this->workspace);
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
     $won = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Won Deal']);
     $lost = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Lost Deal']);
     $won->saveCustomFieldValue($stage, filterTestOptionId($stage, 'Closed Won'));
@@ -345,7 +336,7 @@ it('matches a choice option by its id', function (): void {
 });
 
 it('resolves a list mixing a label and an option id', function (): void {
-    $stage = filterTestStageField($this->workspace);
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
     $won = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Won Deal']);
     $qualified = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Qualified Deal']);
     $lost = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Lost Deal']);
@@ -377,7 +368,7 @@ it('rejects an option id that no longer exists', function (): void {
 
 it('rejects an option id that belongs to another workspace', function (): void {
     $stranger = User::factory()->withPersonalWorkspace()->create();
-    $foreignStage = filterTestStageField($stranger->personalWorkspace());
+    $foreignStage = WorkspaceCustomField::byCode($stranger->personalWorkspace()->getKey(), 'opportunity', 'stage');
     $foreignWonId = filterTestOptionId($foreignStage, 'Closed Won');
 
     RelaticleServer::actingAs($this->user)
@@ -447,12 +438,7 @@ it('keeps a free-text tag containing a comma whole', function (): void {
 });
 
 it('keeps a link containing a comma whole', function (): void {
-    $linkedin = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->getKey())
-        ->where('entity_type', 'people')
-        ->where('code', 'linkedin')
-        ->firstOrFail();
+    $linkedin = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'linkedin');
     $matching = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Matching Person']);
     $other = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Other Person']);
     $matching->saveCustomFieldValue($linkedin, ['https://example.com/?a=1,2']);
@@ -466,7 +452,7 @@ it('keeps a link containing a comma whole', function (): void {
 });
 
 it('rejects a label shared by two options and asks for the id', function (): void {
-    $stage = filterTestStageField($this->workspace);
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
 
     CustomFieldOption::query()->create([
         'tenant_id' => $this->workspace->getKey(),
@@ -516,7 +502,7 @@ it('publishes list and emptiness operators for email, phone, and link types', fu
 });
 
 it('includes records with no value when excluding single-choice options', function (): void {
-    $stage = filterTestStageField($this->workspace);
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
     $qualified = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Qualified Deal']);
     $prospect = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Prospect Deal']);
     Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Unstaged Deal']);
@@ -606,7 +592,7 @@ it('treats a missing row, a null, a blank string and an empty array as empty', f
 ]);
 
 it('does not resolve option labels for the emptiness operand', function (): void {
-    $stage = filterTestStageField($this->workspace);
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
     $staged = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Staged Deal']);
     Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Unstaged Deal']);
     $staged->saveCustomFieldValue($stage, filterTestOptionId($stage, 'Qualification'));

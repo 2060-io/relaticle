@@ -13,6 +13,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Testing\Fluent\AssertableJson;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(SearchTool::class, FetchTool::class);
 
@@ -205,12 +206,7 @@ it('returns sanitized fetch payload without internal columns', function (): void
 });
 
 it('finds a phone typed in any format', function (string $query, int $count): void {
-    $phone = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->getKey())
-        ->where('entity_type', 'people')
-        ->where('code', 'phone_number')
-        ->firstOrFail();
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana Phone'])->saveCustomFieldValue($phone, ['+1 (415) 555-0100']);
 
     RelaticleServer::actingAs($this->user)
@@ -226,12 +222,7 @@ it('finds a phone typed in any format', function (string $query, int $count): vo
 ]);
 
 it('does not match phone digits held by a field that is not a phone', function (): void {
-    $emails = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->getKey())
-        ->where('entity_type', 'people')
-        ->where('code', 'emails')
-        ->firstOrFail();
+    $emails = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'emails');
     People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Cy Email'])->saveCustomFieldValue($emails, ['cy-415-555-0100@example.com']);
 
     RelaticleServer::actingAs($this->user)

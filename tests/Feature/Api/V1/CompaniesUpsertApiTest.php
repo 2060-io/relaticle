@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     CompaniesUpsertController::class,
@@ -59,13 +60,7 @@ function writeCompanyDomains(string $workspaceId, string $companyId, mixed $doma
         'tenant_id' => $workspaceId,
         'entity_type' => 'company',
         'entity_id' => $companyId,
-        'custom_field_id' => CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $workspaceId)
-            ->where('entity_type', 'company')
-            ->where('code', 'domains')
-            ->firstOrFail()
-            ->getKey(),
+        'custom_field_id' => WorkspaceCustomField::byCode($workspaceId, 'company', 'domains')->getKey(),
         'json_value' => json_encode($domains),
     ]);
 }

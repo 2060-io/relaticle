@@ -21,6 +21,7 @@ use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Models\CustomFieldValue;
 use Relaticle\CustomFields\Services\TenantContextService;
 use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     CompaniesController::class,
@@ -718,12 +719,7 @@ describe('custom fields', function (): void {
             'custom_fields' => ['domains' => ['https://www.Acme.com/pricing']],
         ])->assertCreated()->json('data.id');
 
-        $domains = CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $this->workspace->id)
-            ->where('entity_type', 'company')
-            ->where('code', 'domains')
-            ->firstOrFail();
+        $domains = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
 
         expect(collect(Company::query()->with('customFieldValues.customField')->findOrFail($id)->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
     });
@@ -746,12 +742,7 @@ describe('custom fields', function (): void {
         $this->putJson("/api/v1/companies/{$own->id}", ['custom_fields' => ['domains' => ['https://acme.com']]])
             ->assertOk();
 
-        $domains = CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $this->workspace->id)
-            ->where('entity_type', 'company')
-            ->where('code', 'domains')
-            ->firstOrFail();
+        $domains = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
 
         expect(collect(Company::query()->with('customFieldValues.customField')->findOrFail($own->id)->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
     });

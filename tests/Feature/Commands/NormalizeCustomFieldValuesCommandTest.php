@@ -9,6 +9,7 @@ use App\Models\People;
 use App\Models\User;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(NormalizeCustomFieldValuesCommand::class);
 
@@ -35,14 +36,9 @@ function readRawJsonText(string $entityId, CustomField $field): string
     return (string) DB::table('custom_field_values')->where('entity_id', $entityId)->where('custom_field_id', $field->getKey())->value('json_value');
 }
 
-function workspaceSystemField(string $workspaceId, string $entityType, string $code): CustomField
-{
-    return CustomField::query()->withoutGlobalScopes()->where('tenant_id', $workspaceId)->where('entity_type', $entityType)->where('code', $code)->firstOrFail();
-}
-
 it('reports what it would change and writes nothing without force', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
-    $phone = workspaceSystemField($this->workspace->getKey(), 'people', 'phone_number');
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     writeRawJsonValue($person->getKey(), $phone, ['+1 415-555-0100', '555-123-4567']);
 
     $this->artisan('custom-fields:normalize-values')
@@ -57,8 +53,8 @@ it('reports what it would change and writes nothing without force', function ():
 it('normalizes phones and domains with force and changes nothing on a second run', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
-    $phone = workspaceSystemField($this->workspace->getKey(), 'people', 'phone_number');
-    $domains = workspaceSystemField($this->workspace->getKey(), 'company', 'domains');
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
+    $domains = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'domains');
     writeRawJsonValue($person->getKey(), $phone, ['+1 415-555-0100']);
     writeRawJsonValue($company->getKey(), $domains, ['https://www.Acme.com/', 'acme.com']);
 
@@ -77,7 +73,7 @@ it('normalizes phones and domains with force and changes nothing on a second run
 
 it('keeps a value edited between the chunk read and the row update', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
-    $phone = workspaceSystemField($this->workspace->getKey(), 'people', 'phone_number');
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     writeRawJsonValue($person->getKey(), $phone, ['+1 415-555-0100']);
     $edited = false;
 
@@ -109,7 +105,7 @@ it('keeps a value edited between the chunk read and the row update', function ()
 it('reports domains two companies share after normalization', function (): void {
     $first = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $second = Company::factory()->recycle([$this->user, $this->workspace])->create();
-    $domains = workspaceSystemField($this->workspace->getKey(), 'company', 'domains');
+    $domains = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'domains');
     writeRawJsonValue($first->getKey(), $domains, ['https://acme.com']);
     writeRawJsonValue($second->getKey(), $domains, ['acme.com']);
 
@@ -119,7 +115,7 @@ it('reports domains two companies share after normalization', function (): void 
 });
 
 it('leaves values that are not a list of strings untouched and reports them', function (): void {
-    $phone = workspaceSystemField($this->workspace->getKey(), 'people', 'phone_number');
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     $shapes = [
         'nested' => [['+14155550100']],
         'keyed' => ['number' => '+1 415-555-0100'],
@@ -145,7 +141,7 @@ it('leaves values that are not a list of strings untouched and reports them', fu
 
 it('keeps the host and path of a url link and strips only the scheme', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
-    $linkedin = workspaceSystemField($this->workspace->getKey(), 'people', 'linkedin');
+    $linkedin = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'linkedin');
     writeRawJsonValue($person->getKey(), $linkedin, ['https://www.linkedin.com/in/jane-doe', 'www.linkedin.com/in/jane-doe']);
 
     $this->artisan('custom-fields:normalize-values', ['--force' => true])
@@ -157,7 +153,7 @@ it('keeps the host and path of a url link and strips only the scheme', function 
 
 it('counts only phone-shaped values as national numbers', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
-    $phone = workspaceSystemField($this->workspace->getKey(), 'people', 'phone_number');
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     writeRawJsonValue($person->getKey(), $phone, ['n/a', '(555) 123-4567']);
 
     $this->artisan('custom-fields:normalize-values')

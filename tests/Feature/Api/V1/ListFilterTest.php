@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Actions\CustomFields\CreateCustomField;
 use App\Enums\CreationSource;
 use App\Models\Company;
-use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
@@ -17,6 +16,7 @@ use App\Support\Filters\NativeFilter;
 use App\Support\Filters\RelationFilter;
 use Illuminate\Support\Arr;
 use Laravel\Sanctum\Sanctum;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(EntityFilters::class, FilterTree::class, LogicFilter::class, NativeFilter::class, RelationFilter::class);
 
@@ -33,16 +33,6 @@ function listIds(mixed $test, string $entity, array $filter): array
         ->sort()
         ->values()
         ->all();
-}
-
-function workspaceField(mixed $test, string $entity, string $code): CustomField
-{
-    return CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $test->workspace->getKey())
-        ->where('entity_type', $entity)
-        ->where('code', $code)
-        ->firstOrFail();
 }
 
 it('filters a native text field by an operator object', function (): void {
@@ -171,8 +161,8 @@ it('rejects a relation id that is not a ULID', function (): void {
 });
 
 it('combines two $or groups with $and', function (): void {
-    $stage = workspaceField($this, 'opportunity', 'stage');
-    $amount = workspaceField($this, 'opportunity', 'amount');
+    $stage = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'stage');
+    $amount = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'amount');
     $big = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Big']);
     $small = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Small']);
     $big->saveCustomFieldValue($stage, (string) $stage->options->first()->id);
@@ -207,7 +197,7 @@ it('returns companies without people under $not of a to-many relation', function
 });
 
 it('applies every condition in a relation node to the same related record', function (): void {
-    $jobTitle = workspaceField($this, 'people', 'job_title');
+    $jobTitle = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'job_title');
     $match = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $split = Company::factory()->recycle([$this->user, $this->workspace])->create();
     People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $match->id, 'name' => 'Berlin CTO'])->saveCustomFieldValue($jobTitle, 'CTO');
@@ -221,7 +211,7 @@ it('applies every condition in a relation node to the same related record', func
 });
 
 it('follows two relation hops', function (): void {
-    $icp = workspaceField($this, 'company', 'icp');
+    $icp = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'icp');
     $icpCompany = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $icpCompany->saveCustomFieldValue($icp, true);
     $person = People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $icpCompany->id]);
@@ -235,7 +225,7 @@ it('follows two relation hops', function (): void {
 });
 
 it('ignores a soft-deleted related record', function (): void {
-    $icp = workspaceField($this, 'company', 'icp');
+    $icp = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'icp');
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $company->saveCustomFieldValue($icp, true);
     Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);
@@ -478,9 +468,9 @@ it('names the replacement of a removed param at every level', function (array $f
 it('matches an email domain and a phone in any format over GET', function (): void {
     $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
     $bob = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Bob']);
-    $ana->saveCustomFieldValue(workspaceField($this, 'people', 'emails'), ['Ana@Acme.com']);
-    $ana->saveCustomFieldValue(workspaceField($this, 'people', 'phone_number'), ['+1 (415) 555-0100']);
-    $bob->saveCustomFieldValue(workspaceField($this, 'people', 'emails'), ['bob@globex.com']);
+    $ana->saveCustomFieldValue(WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'emails'), ['Ana@Acme.com']);
+    $ana->saveCustomFieldValue(WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number'), ['+1 (415) 555-0100']);
+    $bob->saveCustomFieldValue(WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'emails'), ['bob@globex.com']);
 
     expect(listIds($this, 'people', ['custom_fields' => ['emails' => ['domain' => ['$in' => 'acme.com,initech.com']]]]))->toBe([$ana->getKey()])
         ->and(listIds($this, 'people', ['custom_fields' => ['emails' => ['$has_any' => ['ANA@acme.com']]]]))->toBe([$ana->getKey()])
@@ -551,7 +541,7 @@ it('sorts, includes and paginates a query body like the query string', function 
 });
 
 it('keeps a boolean true boolean and a text true text in a query body', function (): void {
-    $toggle = workspaceField($this, 'company', 'icp');
+    $toggle = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'icp');
     $motto = app(CreateCustomField::class)->execute($this->user, ['entity_type' => 'company', 'name' => 'Motto', 'code' => 'motto', 'type' => 'text']);
     $icp = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Icp']);
     $plain = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Plain']);

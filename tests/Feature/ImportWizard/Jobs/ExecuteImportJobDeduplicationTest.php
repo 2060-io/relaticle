@@ -23,6 +23,7 @@ use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\EntityLinkResolver;
 use Tests\Helpers\ImportExecutionFixture;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(ExecuteImportJob::class, EntityLinkResolver::class);
 
@@ -230,11 +231,7 @@ it('updates the live record when a deleted record shares its import identity', f
 
 it('re-imports a value written in another format as an update of the stored record', function (ImportEntityType $entityType, string $fieldCode, string $stored, string $csvValue): void {
     $modelClass = $entityType->importer((string) $this->workspace->id)->modelClass();
-    $field = CustomField::query()->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->id)
-        ->where('entity_type', $entityType->value)
-        ->where('code', $fieldCode)
-        ->firstOrFail();
+    $field = WorkspaceCustomField::byCode($this->workspace->id, $entityType->value, $fieldCode);
 
     $record = $modelClass::factory()->create(['workspace_id' => $this->workspace->id]);
 
@@ -475,12 +472,7 @@ it('stores an auto-created company domain in its canonical form and matches it o
     $firstImport->delete();
 
     $companies = Company::query()->where('workspace_id', $this->workspace->id)->get();
-    $domainField = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->id)
-        ->where('entity_type', 'company')
-        ->where('code', 'domains')
-        ->firstOrFail();
+    $domainField = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
 
     expect($companies)->toHaveCount(1)
         ->and(People::query()->where('workspace_id', $this->workspace->id)->where('company_id', $companies->first()->id)->count())->toBe(2)

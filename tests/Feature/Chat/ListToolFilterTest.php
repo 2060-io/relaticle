@@ -26,6 +26,7 @@ use Relaticle\Chat\Tools\People\ListPeopleTool;
 use Relaticle\Chat\Tools\Task\ListTasksTool;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(BaseReadListTool::class);
 
@@ -528,12 +529,7 @@ it('excludes options and keeps tasks without a status', function (): void {
 
     TenantContextService::setTenantId($workspace->getKey());
 
-    $statusField = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $workspace->getKey())
-        ->where('entity_type', 'task')
-        ->where('code', 'status')
-        ->firstOrFail();
+    $statusField = WorkspaceCustomField::byCode($workspace->getKey(), 'task', 'status');
 
     $open = Task::factory()->for($workspace)->create(['title' => 'Open one']);
     $done = Task::factory()->for($workspace)->create(['title' => 'Finished']);
@@ -605,12 +601,7 @@ it('shows the operator example when a bare value is given', function (): void {
 
 function hideLinkedinFromPeopleList(User $user): void
 {
-    $field = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $user->currentWorkspace->getKey())
-        ->where('entity_type', 'people')
-        ->where('code', 'linkedin')
-        ->firstOrFail();
+    $field = WorkspaceCustomField::byCode($user->currentWorkspace->getKey(), 'people', 'linkedin');
 
     $field->settings = CustomFieldSettingsData::from(['visible_in_list' => false, 'list_toggleable_hidden' => false, 'visible_in_view' => true]);
     $field->save();

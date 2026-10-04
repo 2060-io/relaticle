@@ -15,12 +15,12 @@ use App\Mcp\Tools\People\GetPeopleTool;
 use App\Mcp\Tools\People\ListPeopleTool;
 use App\Mcp\Tools\People\UpdatePeopleTool;
 use App\Models\Company;
-use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CurrentWorkspace;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     BaseCreateTool::class,
@@ -168,12 +168,7 @@ it('stores a phone written through mcp as e.164', function (): void {
         ->assertOk();
 
     $person = People::query()->where('name', 'Ana')->firstOrFail();
-    $field = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->getKey())
-        ->where('entity_type', 'people')
-        ->where('code', 'phone_number')
-        ->firstOrFail();
+    $field = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     $stored = CustomFieldValue::query()
         ->withoutGlobalScopes()
         ->where('entity_id', $person->getKey())

@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Models\Company;
-use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
@@ -12,6 +11,7 @@ use Relaticle\ImportWizard\Data\MatchableField;
 use Relaticle\ImportWizard\Enums\EntityLinkSource;
 use Relaticle\ImportWizard\Support\EntityLinkResolver;
 use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(EntityLinkResolver::class);
 
@@ -106,11 +106,7 @@ it('links a row to the company storing the legacy www spelling of its domain', f
 });
 
 it('matches a legacy-format value by the identical csv value and a canonical value by a formatted one', function (string $stored, string $csvValue): void {
-    $field = CustomField::query()->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->id)
-        ->where('entity_type', 'people')
-        ->where('code', 'phone_number')
-        ->firstOrFail();
+    $field = WorkspaceCustomField::byCode($this->workspace->id, 'people', 'phone_number');
     $person = People::factory()->create(['workspace_id' => $this->workspace->id]);
 
     CustomFieldValue::factory()->withJsonValue([$stored])->create([
@@ -131,11 +127,7 @@ it('matches a legacy-format value by the identical csv value and a canonical val
 ]);
 
 it('prefers the record storing the exact csv value over one storing its canonical form', function (): void {
-    $field = CustomField::query()->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->id)
-        ->where('entity_type', 'people')
-        ->where('code', 'phone_number')
-        ->firstOrFail();
+    $field = WorkspaceCustomField::byCode($this->workspace->id, 'people', 'phone_number');
     $legacy = People::factory()->create(['workspace_id' => $this->workspace->id]);
     $canonical = People::factory()->create(['workspace_id' => $this->workspace->id]);
 
