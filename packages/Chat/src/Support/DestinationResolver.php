@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Support;
 
 use App\Enums\WorkspaceCapability;
+use App\Features\Billing as BillingFeature;
 use App\Features\EmailIntegration;
 use App\Filament\Pages\AccessTokens;
+use App\Filament\Pages\Billing;
 use App\Filament\Pages\Workspace\CustomFields;
 use App\Filament\Pages\Workspace\Members;
 use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
@@ -43,6 +45,7 @@ final readonly class DestinationResolver
         'access_tokens',
         'connect_assistant',
         'email_accounts',
+        'billing',
     ];
 
     /**
@@ -93,6 +96,7 @@ final readonly class DestinationResolver
                 'access_tokens' => AccessTokens::getUrl(panel: 'app', tenant: $workspace),
                 'connect_assistant' => url()->getPublicUrl(route('help.show', ['category' => 'ai-assistant', 'slug' => 'connect-claude-or-chatgpt'], absolute: false)),
                 'email_accounts' => Feature::active(EmailIntegration::class) ? EmailAccountsPage::getUrl(panel: 'app', tenant: $workspace) : null,
+                'billing' => Feature::active(BillingFeature::class) ? Billing::getUrl(panel: 'app', tenant: $workspace) : null,
                 default => null,
             };
         } catch (Throwable) {

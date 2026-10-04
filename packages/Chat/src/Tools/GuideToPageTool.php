@@ -43,7 +43,8 @@ final readonly class GuideToPageTool implements Tool
                     .'"workspace_members" (invite or manage workspace members); '
                     .'"access_tokens" (create or revoke API access tokens and connectors); '
                     .'"connect_assistant" (the help page for connecting Claude, ChatGPT or another MCP client); '
-                    .'"email_accounts" (connect the user\'s own Gmail or Microsoft mailbox to send email).',
+                    .'"email_accounts" (connect the user\'s own Gmail or Microsoft mailbox to send email); '
+                    .'"billing" (see the plan and AI credit usage, change the plan, or buy more AI credits).',
                 ),
         ];
     }
