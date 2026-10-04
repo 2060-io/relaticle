@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Jobs\Email\SyncSubscriberJob;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Support\Facades\Queue;
 
 mutates(SyncSubscriberJob::class);
@@ -41,8 +42,9 @@ test('the subscriber sync retries on attempts alone, with nothing able to swallo
 
 test('the unique subscriber sync bounds its lock so a killed worker cannot block a user forever', function (): void {
     $job = new SyncSubscriberJob('user-1');
+    $uniqueFor = new ReflectionClass($job)->getAttributes(UniqueFor::class)[0]->newInstance()->uniqueFor;
 
     expect($job)->toBeInstanceOf(ShouldBeUnique::class)
         ->and($job->uniqueId())->toBe('user-1')
-        ->and($job->uniqueFor)->toBeGreaterThan(array_sum([60, 300, 900, 3600]));
+        ->and($uniqueFor)->toBeGreaterThan(array_sum([60, 300, 900, 3600]));
 });

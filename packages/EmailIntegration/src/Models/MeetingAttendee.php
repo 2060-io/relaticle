@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Company;
 use App\Models\People;
 use Database\Factories\MeetingAttendeeFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -27,21 +28,20 @@ use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
  * @property Company|null $company
  * @property Meeting $meeting
  */
+#[Fillable([
+    'meeting_id',
+    'email_address',
+    'name',
+    'response_status',
+    'is_organizer',
+    'is_self',
+    'contact_id',
+    'company_id',
+])]
 final class MeetingAttendee extends Model
 {
     /** @use HasFactory<MeetingAttendeeFactory> */
     use HasFactory, HasUlids;
-
-    protected $fillable = [
-        'meeting_id',
-        'email_address',
-        'name',
-        'response_status',
-        'is_organizer',
-        'is_self',
-        'contact_id',
-        'company_id',
-    ];
 
     protected static function newFactory(): MeetingAttendeeFactory
     {

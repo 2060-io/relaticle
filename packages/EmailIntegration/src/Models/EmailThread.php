@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Concerns\HasWorkspace;
 use Carbon\CarbonInterface;
 use Database\Factories\EmailThreadFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,16 @@ use Relaticle\EmailIntegration\Models\Concerns\HasAiSummary;
  * @property int $email_count
  * @property int $participant_count
  */
+#[Fillable([
+    'workspace_id',
+    'connected_account_id',
+    'thread_id',
+    'subject',
+    'email_count',
+    'participant_count',
+    'first_email_at',
+    'last_email_at',
+])]
 final class EmailThread extends Model
 {
     /**
@@ -31,17 +42,6 @@ final class EmailThread extends Model
     {
         return EmailThreadFactory::new();
     }
-
-    protected $fillable = [
-        'workspace_id',
-        'connected_account_id',
-        'thread_id',
-        'subject',
-        'email_count',
-        'participant_count',
-        'first_email_at',
-        'last_email_at',
-    ];
 
     /**
      * @return BelongsTo<ConnectedAccount, $this>

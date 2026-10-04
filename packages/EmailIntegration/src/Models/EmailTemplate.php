@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\User;
 use Database\Factories\EmailTemplateFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,6 +22,15 @@ use Relaticle\EmailIntegration\Policies\EmailTemplatePolicy;
  * @property User|null $creator
  */
 #[UsePolicy(EmailTemplatePolicy::class)]
+#[Fillable([
+    'workspace_id',
+    'created_by',
+    'name',
+    'subject',
+    'body_html',
+    'variables',
+    'is_shared',
+])]
 final class EmailTemplate extends Model
 {
     /**
@@ -32,16 +42,6 @@ final class EmailTemplate extends Model
     {
         return EmailTemplateFactory::new();
     }
-
-    protected $fillable = [
-        'workspace_id',
-        'created_by',
-        'name',
-        'subject',
-        'body_html',
-        'variables',
-        'is_shared',
-    ];
 
     /**
      * @return BelongsTo<User, $this>

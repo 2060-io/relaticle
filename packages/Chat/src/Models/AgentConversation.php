@@ -10,6 +10,7 @@ use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Attributes\Unguarded;
 use Illuminate\Database\Eloquent\Attributes\WithoutIncrementing;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -35,6 +36,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  */
 #[Table(name: 'agent_conversations', keyType: 'string')]
 #[WithoutIncrementing]
+#[Unguarded]
 final class AgentConversation extends Model implements HasMedia
 {
     /** @use HasFactory<Factory<static>> */
@@ -51,8 +53,6 @@ final class AgentConversation extends Model implements HasMedia
 
     /** @var list<string> */
     private const array TEXT_ATTACHMENT_MIME_TYPES = ['message/rfc822', 'application/json', 'application/xml'];
-
-    protected $guarded = [];
 
     public function isSetup(): bool
     {

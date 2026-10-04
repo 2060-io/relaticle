@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Models;
 
 use Database\Factories\EmailLabelFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\WithoutTimestamps;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +13,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[WithoutTimestamps]
+#[Fillable([
+    'email_id',
+    'label',
+    'source',
+    'created_at',
+])]
 final class EmailLabel extends Model
 {
     /**
@@ -23,13 +30,6 @@ final class EmailLabel extends Model
     {
         return EmailLabelFactory::new();
     }
-
-    protected $fillable = [
-        'email_id',
-        'label',
-        'source',
-        'created_at',
-    ];
 
     /**
      * @return BelongsTo<Email, $this>

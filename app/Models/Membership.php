@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Jetstream\Jetstream;
 use Laravel\Jetstream\Membership as JetstreamMembership;
 
+#[Table(name: 'workspace_user')]
 final class Membership extends JetstreamMembership
 {
     /** @use HasFactory<Factory<self>> */
     use HasFactory;
-
-    protected $table = 'workspace_user';
 
     /**
      * Indicates if the IDs are auto-incrementing.
@@ -40,9 +41,12 @@ final class Membership extends JetstreamMembership
         return $this->belongsTo(Workspace::class);
     }
 
-    protected function getRoleNameAttribute(): string
+    /**
+     * @return Attribute<string, never>
+     */
+    protected function roleName(): Attribute
     {
         // @phpstan-ignore-next-line nullCoalesce.expr
-        return Jetstream::findRole($this->role)?->name ?? 'Unknown';
+        return Attribute::get(fn (): string => Jetstream::findRole($this->role)?->name ?? 'Unknown');
     }
 }

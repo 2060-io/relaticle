@@ -12,6 +12,7 @@ use App\Models\User;
 use Carbon\CarbonInterface;
 use Database\Factories\EmailFactory;
 use Filament\Support\Facades\FilamentTimezone;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
@@ -70,6 +71,32 @@ use Relaticle\EmailIntegration\Support\EmailHtmlSanitizer;
 #[UsePolicy(EmailPolicy::class)]
 #[ObservedBy(EmailObserver::class)]
 #[ScopedBy([ActiveAccountScope::class])]
+#[Fillable([
+    'workspace_id',
+    'user_id',
+    'connected_account_id',
+    'rfc_message_id',
+    'provider_message_id',
+    'thread_id',
+    'in_reply_to',
+    'subject',
+    'snippet',
+    'sent_at',
+    'direction',
+    'folder',
+    'status',
+    'privacy_tier',
+    'privacy_tier_customized',
+    'has_attachments',
+    'is_internal',
+    'creation_source',
+    'batch_id',
+    'scheduled_for',
+    'last_error',
+    'attempts',
+    'linked_at',
+    'priority',
+])]
 final class Email extends Model
 {
     /**
@@ -81,33 +108,6 @@ final class Email extends Model
     {
         return EmailFactory::new();
     }
-
-    protected $fillable = [
-        'workspace_id',
-        'user_id',
-        'connected_account_id',
-        'rfc_message_id',
-        'provider_message_id',
-        'thread_id',
-        'in_reply_to',
-        'subject',
-        'snippet',
-        'sent_at',
-        'direction',
-        'folder',
-        'status',
-        'privacy_tier',
-        'privacy_tier_customized',
-        'has_attachments',
-        'is_internal',
-        'creation_source',
-        'batch_id',
-        'scheduled_for',
-        'last_error',
-        'attempts',
-        'linked_at',
-        'priority',
-    ];
 
     protected $attributes = [
         'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,

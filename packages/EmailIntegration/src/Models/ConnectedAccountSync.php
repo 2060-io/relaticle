@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Models;
 
 use Database\Factories\ConnectedAccountSyncFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\WithoutTimestamps;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +13,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[WithoutTimestamps]
+#[Fillable([
+    'connected_account_id',
+    'started_at',
+    'completed_at',
+    'emails_synced',
+    'errors_encountered',
+    'cursor_before',
+    'cursor_after',
+    'status',
+    'error_details',
+])]
 final class ConnectedAccountSync extends Model
 {
     /**
@@ -23,18 +35,6 @@ final class ConnectedAccountSync extends Model
     {
         return ConnectedAccountSyncFactory::new();
     }
-
-    protected $fillable = [
-        'connected_account_id',
-        'started_at',
-        'completed_at',
-        'emails_synced',
-        'errors_encountered',
-        'cursor_before',
-        'cursor_after',
-        'status',
-        'error_details',
-    ];
 
     /**
      * @return BelongsTo<ConnectedAccount, $this>

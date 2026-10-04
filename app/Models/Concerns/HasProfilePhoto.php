@@ -55,9 +55,12 @@ trait HasProfilePhoto
         return config('jetstream.profile_photo_disk', 'public');
     }
 
-    protected function getAvatarAttribute(): string
+    /**
+     * @return Attribute<string, never>
+     */
+    protected function avatar(): Attribute
     {
-        return $this->getFilamentAvatarUrl();
+        return Attribute::get(fn (): string => $this->getFilamentAvatarUrl());
     }
 
     public function getFilamentAvatarUrl(): string

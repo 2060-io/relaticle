@@ -10,21 +10,10 @@ use Rector\Php83\Rector\ClassMethod\AddOverrideAttributeToOverriddenMethodsRecto
 use Rector\Php85\Rector\Property\AddOverrideAttributeToOverriddenPropertiesRector;
 use Rector\Privatization\Rector\ClassMethod\PrivatizeFinalClassMethodRector;
 use RectorLaravel\Rector\Class_\AddHasFactoryToModelsRector;
-use RectorLaravel\Rector\Class_\AppendsPropertyToAppendsAttributeRector;
-use RectorLaravel\Rector\Class_\BackoffPropertyToBackoffAttributeRector;
-use RectorLaravel\Rector\Class_\EmptyGuardedPropertyToUnguardedAttributeRector;
-use RectorLaravel\Rector\Class_\FillablePropertyToFillableAttributeRector;
-use RectorLaravel\Rector\Class_\HiddenPropertyToHiddenAttributeRector;
-use RectorLaravel\Rector\Class_\TablePropertyToTableAttributeRector;
-use RectorLaravel\Rector\Class_\TimeoutPropertyToTimeoutAttributeRector;
-use RectorLaravel\Rector\Class_\TriesPropertyToTriesAttributeRector;
-use RectorLaravel\Rector\Class_\UniqueForPropertyToUniqueForAttributeRector;
 use RectorLaravel\Rector\Class_\UseForwardsCallsTraitRector;
 use RectorLaravel\Rector\ClassMethod\AddGenericBuilderToScopesRector;
-use RectorLaravel\Rector\ClassMethod\MigrateToSimplifiedAttributeRector;
 use RectorLaravel\Rector\Coalesce\ApplyDefaultInsteadOfNullCoalesceRector;
 use RectorLaravel\Rector\Empty_\EmptyToBlankAndFilledFuncRector;
-use RectorLaravel\Rector\MethodCall\EloquentWhereTypeHintClosureParameterRector;
 use RectorLaravel\Rector\StaticCall\CarbonToDateFacadeRector;
 use RectorLaravel\Set\LaravelSetList;
 
@@ -47,20 +36,6 @@ return RectorConfig::configure()
         // the method rule above: it would tag every Filament $navigationIcon/$slug
         // override in the codebase without adding safety we rely on.
         AddOverrideAttributeToOverriddenPropertiesRector::class,
-        // Migrating model/job properties to their PHP-attribute equivalents and
-        // tightening closure typehints in Eloquent where() calls is a codebase-wide
-        // refactor best handled in dedicated PRs, not bundled into dependency updates.
-        AppendsPropertyToAppendsAttributeRector::class,
-        BackoffPropertyToBackoffAttributeRector::class,
-        EmptyGuardedPropertyToUnguardedAttributeRector::class,
-        FillablePropertyToFillableAttributeRector::class,
-        HiddenPropertyToHiddenAttributeRector::class,
-        TablePropertyToTableAttributeRector::class,
-        TimeoutPropertyToTimeoutAttributeRector::class,
-        TriesPropertyToTriesAttributeRector::class,
-        UniqueForPropertyToUniqueForAttributeRector::class,
-        EloquentWhereTypeHintClosureParameterRector::class,
-        MigrateToSimplifiedAttributeRector::class,
         // Rewrites imported `Builder<Model>` scope docblocks to fully qualified
         // `Builder<self>`, which regresses the docblock import rule for no type gain.
         AddGenericBuilderToScopesRector::class,

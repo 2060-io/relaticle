@@ -14,21 +14,21 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
+use Illuminate\Queue\Attributes\Timeout;
+use Illuminate\Queue\Attributes\Tries;
+use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
 #[DeleteWhenMissingModels]
+#[Timeout(30)]
+#[Tries(1)]
+#[UniqueFor(600)]
 final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use Queueable;
-
-    public int $tries = 1;
-
-    public int $timeout = 30;
-
-    public int $uniqueFor = 600;
 
     public function __construct(public readonly Company $company) {}
 

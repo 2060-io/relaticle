@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Carbon\CarbonInterface;
 use Database\Factories\ConnectedAccountFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -57,6 +58,37 @@ use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
  * @property string|null $last_error
  * @property string|null $history_import_batch_id
  */
+#[Fillable([
+    'workspace_id',
+    'user_id',
+    'provider',
+    'provider_account_id',
+    'email_address',
+    'display_name',
+    'is_default',
+    'access_token',
+    'refresh_token',
+    'token_expires_at',
+    'capabilities',
+    'sync_cursor',
+    'last_synced_at',
+    'initial_sync_imported',
+    'initial_sync_estimated',
+    'initial_calendar_sync_imported',
+    'calendar_sync_cursor',
+    'last_calendar_synced_at',
+    'calendar_push_channel_id',
+    'calendar_push_resource_id',
+    'calendar_push_verification_token',
+    'calendar_push_expires_at',
+    'status',
+    'last_error',
+    'history_import_batch_id',
+    'sync_inbox',
+    'sync_sent',
+    'daily_send_limit',
+    'hourly_send_limit',
+])]
 final class ConnectedAccount extends Model
 {
     /**
@@ -71,38 +103,6 @@ final class ConnectedAccount extends Model
     {
         return ConnectedAccountFactory::new();
     }
-
-    protected $fillable = [
-        'workspace_id',
-        'user_id',
-        'provider',
-        'provider_account_id',
-        'email_address',
-        'display_name',
-        'is_default',
-        'access_token',
-        'refresh_token',
-        'token_expires_at',
-        'capabilities',
-        'sync_cursor',
-        'last_synced_at',
-        'initial_sync_imported',
-        'initial_sync_estimated',
-        'initial_calendar_sync_imported',
-        'calendar_sync_cursor',
-        'last_calendar_synced_at',
-        'calendar_push_channel_id',
-        'calendar_push_resource_id',
-        'calendar_push_verification_token',
-        'calendar_push_expires_at',
-        'status',
-        'last_error',
-        'history_import_batch_id',
-        'sync_inbox',
-        'sync_sent',
-        'daily_send_limit',
-        'hourly_send_limit',
-    ];
 
     // Scopes
 

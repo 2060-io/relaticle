@@ -23,6 +23,7 @@ use Filament\Models\Contracts\HasAvatar;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -91,9 +92,12 @@ final class People extends Model implements HasAvatar, HasCustomFields, HasMedia
         ];
     }
 
-    protected function getAvatarAttribute(): string
+    /**
+     * @return Attribute<string, never>
+     */
+    protected function avatar(): Attribute
     {
-        return resolve(AvatarService::class)->generateAuto(name: $this->name, initialCount: 1);
+        return Attribute::get(fn (): string => resolve(AvatarService::class)->generateAuto(name: $this->name, initialCount: 1));
     }
 
     public function getFilamentAvatarUrl(): string

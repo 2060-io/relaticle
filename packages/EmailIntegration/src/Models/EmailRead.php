@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\User;
 use Carbon\CarbonInterface;
 use Database\Factories\EmailReadFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $user_id
  * @property CarbonInterface $read_at
  */
+#[Fillable([
+    'email_id',
+    'user_id',
+    'read_at',
+])]
 final class EmailRead extends Model
 {
     /**
@@ -29,12 +35,6 @@ final class EmailRead extends Model
     {
         return EmailReadFactory::new();
     }
-
-    protected $fillable = [
-        'email_id',
-        'user_id',
-        'read_at',
-    ];
 
     /**
      * @return BelongsTo<Email, $this>

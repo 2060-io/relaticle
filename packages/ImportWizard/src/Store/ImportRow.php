@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Relaticle\ImportWizard\Store;
 
 use App\Support\LikePattern;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Attributes\WithoutIncrementing;
 use Illuminate\Database\Eloquent\Attributes\WithoutTimestamps;
 use Illuminate\Database\Eloquent\Builder;
@@ -48,27 +50,22 @@ use Spatie\LaravelData\DataCollection;
  */
 #[WithoutIncrementing]
 #[WithoutTimestamps]
+#[Fillable([
+    'row_number',
+    'raw_data',
+    'validation',
+    'corrections',
+    'skipped',
+    'match_action',
+    'matched_id',
+    'relationships',
+    'processed',
+])]
+#[Table(name: 'import_rows', key: 'row_number')]
 final class ImportRow extends Model
 {
     /** @use HasFactory<Factory<ImportRow>> */
     use HasFactory;
-
-    protected $table = 'import_rows';
-
-    protected $primaryKey = 'row_number';
-
-    /** @var list<string> */
-    protected $fillable = [
-        'row_number',
-        'raw_data',
-        'validation',
-        'corrections',
-        'skipped',
-        'match_action',
-        'matched_id',
-        'relationships',
-        'processed',
-    ];
 
     /**
      * @return array<string, string>

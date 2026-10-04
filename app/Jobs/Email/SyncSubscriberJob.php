@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\Backoff;
 use Illuminate\Queue\Attributes\Tries;
+use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Support\Facades\Log;
 use Spatie\MailcoachSdk\Exceptions\InvalidData;
 use Spatie\MailcoachSdk\Exceptions\RateLimited;
@@ -28,17 +29,10 @@ use Spatie\MailcoachSdk\Resources\Subscriber;
  */
 #[Tries(5)]
 #[Backoff(60, 300, 900, 3600)]
+#[UniqueFor(5400)]
 final class SyncSubscriberJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
-
-    /**
-     * Bounds the uniqueness lock. Completion and failure both release it, but a
-     * worker killed mid-retry (deploy, OOM) would otherwise hold it forever and
-     * permanently block this user from ever syncing again. Must outlast the
-     * retry span above (~81 minutes) so dedup still holds across the chain.
-     */
-    public int $uniqueFor = 5400;
 
     public function __construct(private readonly string $userId) {}
 

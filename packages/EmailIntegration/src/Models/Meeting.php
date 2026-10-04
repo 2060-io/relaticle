@@ -10,6 +10,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use Carbon\CarbonInterface;
 use Database\Factories\MeetingFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -48,30 +49,29 @@ use Relaticle\EmailIntegration\Policies\MeetingPolicy;
  */
 #[UsePolicy(MeetingPolicy::class)]
 #[ObservedBy(MeetingObserver::class)]
+#[Fillable([
+    'workspace_id',
+    'connected_account_id',
+    'provider_event_id',
+    'provider_recurring_event_id',
+    'ical_uid',
+    'title',
+    'description',
+    'location',
+    'starts_at',
+    'ends_at',
+    'all_day',
+    'organizer_email',
+    'organizer_name',
+    'status',
+    'visibility',
+    'response_status',
+    'html_link',
+])]
 final class Meeting extends Model
 {
     /** @use HasFactory<MeetingFactory> */
     use HasFactory, HasUlids, HasWorkspace, SoftDeletes;
-
-    protected $fillable = [
-        'workspace_id',
-        'connected_account_id',
-        'provider_event_id',
-        'provider_recurring_event_id',
-        'ical_uid',
-        'title',
-        'description',
-        'location',
-        'starts_at',
-        'ends_at',
-        'all_day',
-        'organizer_email',
-        'organizer_name',
-        'status',
-        'visibility',
-        'response_status',
-        'html_link',
-    ];
 
     protected static function newFactory(): MeetingFactory
     {

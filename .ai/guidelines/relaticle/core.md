@@ -164,6 +164,14 @@ are under about 50. Each rule below names what fails when it is broken.
 - Before writing a helper, look for it in PHP, then in the framework, then in a package from
   `composer.json`, then in this codebase. Rector's Laravel sets rewrite the hand-rolled forms
   they know, and `composer test:refactor` fails until the rewrite is taken.
+- A model or a job states its configuration as PHP attributes: `#[Fillable]`, `#[Table]`,
+  `#[Unguarded]`, `#[Tries]`, `#[Timeout]`, `#[Backoff]`, `#[UniqueFor]`. Rector rewrites the
+  property form, and `composer test:refactor` fails until the rewrite is taken. Code that needs
+  the number at runtime reads a class constant the attribute also uses, as `SendEmailJob` does
+  with `TIMEOUT_SECONDS`. `$this->timeout` no longer exists once the attribute replaces it.
+- An accessor is `Attribute::get()` with a typed closure and a `@return Attribute<TGet, never>`
+  docblock. Larastan reads the property type from that docblock, so PHPStan reports the
+  attribute as an undefined property without it.
 
 ## Comments
 

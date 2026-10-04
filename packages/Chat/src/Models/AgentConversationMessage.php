@@ -8,6 +8,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Attributes\Unguarded;
 use Illuminate\Database\Eloquent\Attributes\WithoutIncrementing;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -34,12 +35,11 @@ use Relaticle\Chat\Enums\MessageOrigin;
  */
 #[Table(name: 'agent_conversation_messages', keyType: 'string')]
 #[WithoutIncrementing]
+#[Unguarded]
 final class AgentConversationMessage extends Model
 {
     /** @use HasFactory<Factory<static>> */
     use HasFactory;
-
-    protected $guarded = [];
 
     /** @return array<string, string> */
     protected function casts(): array
