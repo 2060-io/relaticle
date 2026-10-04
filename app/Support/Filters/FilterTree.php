@@ -38,11 +38,24 @@ final readonly class FilterTree
             throw FilterErrors::at('filter', __('validation.filter.not_object'));
         }
 
+        if (self::hasInvalidKey($filter)) {
+            throw FilterErrors::at('filter', __('validation.filter.not_utf8'));
+        }
+
         $conditions = self::walk($filter, EntityFilters::definitions($entity), 'filter', 0, 0);
 
         if ($conditions > self::MAX_CONDITIONS) {
             throw FilterErrors::at('filter', __('validation.filter.too_many_conditions', ['max' => self::MAX_CONDITIONS, 'count' => $conditions]));
         }
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $node
+     */
+    private static function hasInvalidKey(array $node): bool
+    {
+        return array_any(array_keys($node), static fn (int|string $key): bool => ! mb_check_encoding((string) $key, 'UTF-8'))
+            || array_any($node, static fn (mixed $child): bool => is_array($child) && self::hasInvalidKey($child));
     }
 
     /**

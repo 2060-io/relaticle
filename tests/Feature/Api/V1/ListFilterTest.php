@@ -163,6 +163,17 @@ it('rejects a native operand that holds a NUL or is not valid utf-8', function (
     'enum with an invalid byte' => ['filter[creation_source][$eq]=%FF', 'filter.creation_source.$eq'],
 ]);
 
+it('rejects a filter name or operator that is not valid utf-8', function (string $query): void {
+    $this->getJson("/api/v1/companies?{$query}")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter' => 'The filter must be valid UTF-8.']);
+})->with([
+    'unknown name' => ['filter[%FF][$eq]=a'],
+    'operator' => ['filter[name][%FF]=a'],
+    'custom field code' => ['filter[custom_fields][%FF][$eq]=a'],
+    'nested relation name' => ['filter[people][%FF]=a'],
+]);
+
 it('takes a comma list of creation_source values for $in', function (): void {
     $api = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::API]);
     $web = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::WEB]);

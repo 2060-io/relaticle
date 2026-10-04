@@ -68,6 +68,7 @@ return [
         'logic_list' => ':keyword takes a non-empty list of condition objects.',
         'unknown_name' => 'Unknown filter :name. Use one of: :available.',
         'not_object' => 'The filter must be an object.',
+        'not_utf8' => 'The filter must be valid UTF-8.',
         'body_not_object' => 'The request body must be a JSON object.',
         'empty_node' => ':name needs at least one condition.',
         'replaced' => ':name was replaced. Use :replacement.',
