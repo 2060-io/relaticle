@@ -51,7 +51,7 @@ final readonly class ListTasks
             )
             ->allowedSorts(
                 'title', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'task'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'task')),
             )
             ->defaultSort('-created_at')
             ->orderBy('id');

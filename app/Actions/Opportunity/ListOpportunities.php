@@ -49,7 +49,7 @@ final readonly class ListOpportunities
             )
             ->allowedSorts(
                 'name', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'opportunity'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'opportunity')),
             )
             ->defaultSort('-created_at')
             ->orderBy('id');

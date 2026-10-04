@@ -49,7 +49,7 @@ final readonly class ListPeople
             )
             ->allowedSorts(
                 'name', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'people'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'people')),
             )
             ->defaultSort('-created_at')
             ->orderBy('id');

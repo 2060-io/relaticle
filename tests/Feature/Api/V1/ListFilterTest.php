@@ -22,6 +22,7 @@ use App\Support\Filters\RelationFilter;
 use App\Support\Filters\StaleDaysFilter;
 use App\Support\Filters\TreeAllowedFilter;
 use Illuminate\Support\Arr;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use Tests\Helpers\WorkspaceCustomField;
 
@@ -698,7 +699,7 @@ it('never returns another workspace record through a query body', function (): v
     expect($ids)->toBe([$mine->id]);
 });
 
-it('pages a query body with page and with cursor', function (): void {
+it('pages a query body with page', function (): void {
     Company::factory()->recycle([$this->user, $this->workspace])->count(5)->create();
 
     $first = $this->postJson('/api/v1/companies/query', ['per_page' => 2, 'page' => 1])->assertOk();
@@ -707,14 +708,109 @@ it('pages a query body with page and with cursor', function (): void {
     expect($first->json('data'))->toHaveCount(2)
         ->and($second->json('data'))->toHaveCount(2)
         ->and(collect($first->json('data'))->pluck('id')->intersect(collect($second->json('data'))->pluck('id')))->toBeEmpty();
+});
 
-    $cursorFirst = $this->postJson('/api/v1/companies/query', ['per_page' => 2, 'cursor' => 'true'])->assertOk();
-    parse_str((string) parse_url((string) $cursorFirst->json('links.next'), PHP_URL_QUERY), $next);
-    $cursorSecond = $this->postJson('/api/v1/companies/query', ['per_page' => 2, 'cursor' => $next['cursor']])->assertOk();
+it('expands relations sent as a list or as a comma separated string in a query body', function (string $entity, array $include, array|string $sent): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id, 'contact_id' => $person->id]);
+    $this->postJson('/api/v1/tasks', ['title' => 'Call', 'company_ids' => [$company->id]])->assertCreated();
+    $this->postJson('/api/v1/notes', ['title' => 'Notes', 'company_ids' => [$company->id]])->assertCreated();
 
-    expect($cursorFirst->json('data'))->toHaveCount(2)
-        ->and($cursorSecond->json('data'))->toHaveCount(2)
-        ->and(collect($cursorFirst->json('data'))->pluck('id')->intersect(collect($cursorSecond->json('data'))->pluck('id')))->toBeEmpty();
+    $record = $this->postJson("/api/v1/{$entity}/query", ['include' => $sent])->assertOk()->json('data.0');
+
+    expect(array_keys($record['relationships'] ?? []))->toEqualCanonicalizing($include);
+})->with([
+    'companies list' => ['companies', ['creator', 'people'], ['creator', 'people']],
+    'people list' => ['people', ['creator', 'company'], ['creator', 'company']],
+    'opportunities list' => ['opportunities', ['company', 'contact'], ['company', 'contact']],
+    'tasks list' => ['tasks', ['creator', 'companies'], ['creator', 'companies']],
+    'notes list' => ['notes', ['creator', 'companies'], ['creator', 'companies']],
+    'opportunities string' => ['opportunities', ['company', 'contact'], 'company,contact'],
+]);
+
+it('rejects an include that is neither a string nor a list of strings', function (mixed $include): void {
+    $this->postJson('/api/v1/companies/query', ['include' => $include])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['include']);
+})->with([
+    'object' => [['a' => 'creator']],
+    'nested list' => [[['creator']]],
+    'number' => [5],
+]);
+
+it('pages with a cursor from true to the last page', function (string $method, mixed $first): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->count(5)->create();
+    $page = fn (mixed $cursor): TestResponse => $method === 'POST'
+        ? $this->postJson('/api/v1/companies/query', ['per_page' => 2, 'cursor' => $cursor])->assertOk()
+        : $this->getJson('/api/v1/companies?'.http_build_query(['per_page' => 2, 'cursor' => $cursor]))->assertOk();
+
+    $one = $page($first);
+    $two = $page($one->json('meta.next_cursor'));
+    $three = $page($two->json('meta.next_cursor'));
+
+    expect(collect([$one, $two, $three])->flatMap(fn (TestResponse $response): array => array_column($response->json('data'), 'id'))->unique())->toHaveCount(5)
+        ->and($one->json('meta.prev_cursor'))->toBeNull()
+        ->and($three->json('data'))->toHaveCount(1)
+        ->and($three->json('meta.next_cursor'))->toBeNull();
+})->with([
+    'body, boolean true' => ['POST', true],
+    'body, string true' => ['POST', 'true'],
+    'query string' => ['GET', 'true'],
+]);
+
+it('rejects a cursor that is neither true nor a token from a previous page', function (string $method, mixed $cursor): void {
+    $response = $method === 'POST'
+        ? $this->postJson('/api/v1/companies/query', ['cursor' => $cursor])
+        : $this->getJson('/api/v1/companies?'.http_build_query(['cursor' => $cursor]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['cursor' => 'The cursor must be true for the first page or the meta.next_cursor value of the previous page.']);
+})->with([
+    'body, made up token' => ['POST', 'first'],
+    'body, false' => ['POST', false],
+    'body, number' => ['POST', 3],
+    'body, list' => ['POST', ['true']],
+    'query string, made up token' => ['GET', 'abc'],
+]);
+
+it('pages with a cursor under a filter and a native sort', function (): void {
+    foreach (['Delta', 'Alpha', 'Echo', 'Bravo', 'Charlie'] as $name) {
+        $this->postJson('/api/v1/opportunities', ['name' => "Deal {$name}", 'custom_fields' => ['amount' => 20000]])->assertCreated();
+    }
+    $body = ['filter' => ['name' => ['$contains' => 'Deal'], 'custom_fields' => ['amount' => ['$gte' => 20000]]], 'sort' => '-name', 'per_page' => 2];
+
+    $one = $this->postJson('/api/v1/opportunities/query', [...$body, 'cursor' => true])->assertOk();
+    $two = $this->postJson('/api/v1/opportunities/query', [...$body, 'cursor' => $one->json('meta.next_cursor')])->assertOk();
+
+    expect(collect([...$one->json('data'), ...$two->json('data')])->pluck('attributes.name')->all())->toBe(['Deal Echo', 'Deal Delta', 'Deal Charlie', 'Deal Bravo']);
+});
+
+it('names the sorts cursor paging takes when asked for a custom field sort', function (string $entity, string $sort): void {
+    $this->postJson("/api/v1/{$entity}/query", ['sort' => $sort, 'cursor' => true])
+        ->assertBadRequest()
+        ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'created_at') && str_contains($message, ltrim($sort, '-')));
+
+    $this->postJson("/api/v1/{$entity}/query", ['sort' => $sort])->assertOk();
+})->with([
+    ['companies', 'icp'],
+    ['people', 'job_title'],
+    ['opportunities', '-amount'],
+    ['tasks', 'due_date'],
+]);
+
+it('refuses a query body larger than 256 KB before reading the filter', function (string $entity): void {
+    $body = (string) json_encode(['filter' => ['name' => ['$eq' => str_repeat('a', 262144)]]]);
+
+    $this->call('POST', "/api/v1/{$entity}/query", [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'], $body)
+        ->assertStatus(413)
+        ->assertJsonPath('message', 'A query body holds at most 256 KB.');
+})->with(['companies', 'people', 'opportunities', 'tasks', 'notes']);
+
+it('accepts a query body just under 256 KB', function (): void {
+    $body = (string) json_encode(['filter' => ['name' => ['$eq' => 'Acme']], 'padding' => str_repeat('a', 262000)]);
+
+    $this->call('POST', '/api/v1/companies/query', [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'], $body)->assertOk();
 });
 
 it('treats a null or empty cursor, page and per_page as not sent', function (array $body): void {

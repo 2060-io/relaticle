@@ -69,6 +69,8 @@ return [
         'not_object' => 'The filter must be an object.',
         'not_utf8' => 'The filter must be valid UTF-8.',
         'body_not_object' => 'The request body must be a JSON object.',
+        'body_too_large' => 'A query body holds at most :max KB.',
+        'cursor' => 'The cursor must be true for the first page or the meta.next_cursor value of the previous page.',
         'empty_node' => ':name needs at least one condition.',
         'replaced' => ':name was replaced. Use :replacement.',
         'too_many_conditions' => 'A filter holds at most :max conditions. This one has :count.',

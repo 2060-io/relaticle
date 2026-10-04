@@ -51,7 +51,7 @@ final readonly class ListCompanies
             )
             ->allowedSorts(
                 'name', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'company'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'company')),
             )
             ->defaultSort('-created_at')
             ->orderBy('id');

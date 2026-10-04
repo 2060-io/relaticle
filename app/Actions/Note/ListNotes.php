@@ -50,7 +50,7 @@ final readonly class ListNotes
             )
             ->allowedSorts(
                 'title', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'note'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'note')),
             )
             ->defaultSort('-created_at')
             ->orderBy('id');

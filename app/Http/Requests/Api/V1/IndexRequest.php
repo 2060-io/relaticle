@@ -5,11 +5,17 @@ declare(strict_types=1);
 namespace App\Http\Requests\Api\V1;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Pagination\Cursor;
 use Illuminate\Validation\Validator;
+use Symfony\Component\HttpFoundation\Response;
 
 final class IndexRequest extends FormRequest
 {
-    private const array OPTIONAL_PAGINATION = ['per_page', 'cursor', 'page'];
+    public const string FIRST_CURSOR = 'true';
+
+    public const int MAX_BODY_KILOBYTES = 256;
+
+    private const array OPTIONAL = ['per_page', 'cursor', 'page', 'include'];
 
     /**
      * @return array<string, array<int, mixed>>
@@ -18,8 +24,9 @@ final class IndexRequest extends FormRequest
     {
         return [
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'cursor' => ['sometimes', 'string'],
+            'cursor' => ['sometimes'],
             'page' => ['sometimes', 'integer', 'min:1'],
+            'include' => ['sometimes', 'string'],
         ];
     }
 
@@ -34,16 +41,44 @@ final class IndexRequest extends FormRequest
                     $validator->errors()->add('body', __('validation.filter.body_not_object'));
                 }
             },
+            function (Validator $validator): void {
+                if ($this->has('cursor') && ! $this->hasReadableCursor()) {
+                    $validator->errors()->add('cursor', __('validation.filter.cursor'));
+                }
+            },
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        foreach (self::OPTIONAL_PAGINATION as $key) {
+        abort_if(
+            $this->isMethod('POST') && strlen($this->getContent()) > self::MAX_BODY_KILOBYTES * 1024,
+            Response::HTTP_REQUEST_ENTITY_TOO_LARGE,
+            __('validation.filter.body_too_large', ['max' => self::MAX_BODY_KILOBYTES]),
+        );
+
+        foreach (self::OPTIONAL as $key) {
             if ($this->input($key) === null || $this->input($key) === '') {
                 $this->getInputSource()->remove($key);
             }
         }
+
+        $include = $this->input('include');
+
+        if (is_array($include) && $include !== [] && array_is_list($include) && array_all($include, static fn (mixed $name): bool => is_string($name))) {
+            $this->merge(['include' => implode(',', $include)]);
+        }
+
+        if ($this->input('cursor') === true) {
+            $this->merge(['cursor' => self::FIRST_CURSOR]);
+        }
+    }
+
+    private function hasReadableCursor(): bool
+    {
+        $cursor = $this->input('cursor');
+
+        return is_string($cursor) && ($cursor === self::FIRST_CURSOR || Cursor::fromEncoded($cursor) instanceof Cursor);
     }
 
     private function hasJsonObjectBody(): bool
