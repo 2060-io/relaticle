@@ -268,13 +268,13 @@ Native fields and relations sit at the top level. Custom fields sit under `custo
 
 #### Native fields and relations
 
-| Entity | Native fields | Record relations | Member relations |
-|---|---|---|---|
-| Companies | `name`, `created_at`, `updated_at`, `creation_source` | `people`, `opportunities` | `creator`, `accountOwner` |
-| People | `name`, `created_at`, `updated_at`, `creation_source` | `company` | `creator` |
-| Opportunities | `name`, `created_at`, `updated_at`, `creation_source`, `stale_days` | `company`, `contact` | `creator` |
-| Tasks | `title`, `created_at`, `updated_at`, `creation_source`, `assigned_to_me` | `companies`, `people`, `opportunities` | `creator`, `assignees` |
-| Notes | `title`, `created_at`, `updated_at`, `creation_source` | `companies`, `people`, `opportunities` | `creator` |
+| Entity | Filter names |
+|---|---|
+| Companies | Native fields `name`, `created_at`, `updated_at`, `creation_source`. Record relations `people`, `opportunities`. Member relations `creator`, `accountOwner`. |
+| People | Native fields `name`, `created_at`, `updated_at`, `creation_source`. Record relation `company`. Member relation `creator`. |
+| Opportunities | Native fields `name`, `created_at`, `updated_at`, `creation_source`, `stale_days`. Record relations `company`, `contact`. Member relation `creator`. |
+| Tasks | Native fields `title`, `created_at`, `updated_at`, `creation_source`, `assigned_to_me`. Record relations `companies`, `people`, `opportunities`. Member relations `creator`, `assignees`. |
+| Notes | Native fields `title`, `created_at`, `updated_at`, `creation_source`. Record relations `companies`, `people`, `opportunities`. Member relation `creator`. |
 
 `name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators, and a bare date such as `2026-10-01` compares the UTC calendar date. `creation_source` is a single choice with the values `web`, `system`, `import`, `api`, `mcp`, `chat` and `mailbox`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
 
