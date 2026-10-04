@@ -62,6 +62,8 @@ use Spatie\Sluggable\SlugOptions;
  * @property ?string $onboarding_other_use_case
  * @property ?list<string> $onboarding_context
  * @property ?OnboardingReferralSource $onboarding_referral_source
+ * @property ?string $onboarding_referral_detail
+ * @property ?string $onboarding_referral_prompt
  * @property CarbonImmutable|null $scheduled_deletion_at
  * @property ?string $stripe_id
  * @property ?string $pm_type
@@ -84,6 +86,8 @@ use Spatie\Sluggable\SlugOptions;
     'onboarding_other_use_case',
     'onboarding_context',
     'onboarding_referral_source',
+    'onboarding_referral_detail',
+    'onboarding_referral_prompt',
     'invite_link_default_role',
 ])]
 #[Hidden([

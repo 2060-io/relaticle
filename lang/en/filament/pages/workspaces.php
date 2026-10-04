@@ -50,6 +50,10 @@ return [
             'other_use_case_label' => 'What will you track?',
             'other_use_case_placeholder' => 'Candidates, donors, wholesale buyers',
             'other_use_case_validation_attribute' => 'what you track',
+            'referral_detail_label' => 'Which assistant was it?',
+            'referral_prompt_label' => 'What did you ask it?',
+            'referral_prompt_placeholder' => 'An open source CRM for a small sales team',
+            'referral_prompt_validation_attribute' => 'what you asked',
         ],
         'notifications' => [
             'workspace_created' => [
@@ -67,6 +71,7 @@ return [
         'validation' => [
             'context_required' => 'Pick at least one option for the selected use case.',
             'context_invalid' => 'One of the picked options does not belong to the selected use case.',
+            'referral_detail_invalid' => 'The picked assistant does not belong to the selected source.',
         ],
     ],
 ];

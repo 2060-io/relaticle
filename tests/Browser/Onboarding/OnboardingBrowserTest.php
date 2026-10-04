@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Features\SetupConversation;
 use App\Filament\Pages\CreateWorkspace;
@@ -104,4 +105,34 @@ it('stores the use case and its sub-option chosen in the browser', function (): 
     expect($workspace->onboarding_use_case)->toBe(OnboardingUseCase::Recruiting)
         ->and($workspace->onboarding_context)->toBe(['sourcing'])
         ->and($workspace->name)->toBe('Hiring Desk');
+});
+
+it('stores the assistant and the question behind an AI referral picked in the browser', function (): void {
+    Queue::fake();
+
+    $user = User::factory()->create();
+
+    loginViaBrowser($user)
+        ->assertPathIs('/app/new')
+        ->navigate('/app/new')
+        ->assertSee('Create your workspace')
+        ->type('[id="form.name"]', 'Assistant Desk')
+        ->press('Continue')
+        ->waitForText('How did you hear about us?')
+        ->assertDontSee('Which assistant was it?')
+        ->click('[for$="onboarding_referral_source-ai"]')
+        ->waitForText('Which assistant was it?')
+        ->click('[for$="onboarding_referral_detail-claude"]')
+        ->type('[id$="onboarding_referral_prompt"]', 'A CRM my assistant can update')
+        ->press('Continue')
+        ->waitForText('Help us customize your workspace')
+        ->click('[for$="onboarding_use_case-other"]')
+        ->press('Get started')
+        ->assertPathContains('/assistant-desk');
+
+    $workspace = $user->refresh()->ownedWorkspaces->first();
+
+    expect($workspace->onboarding_referral_source)->toBe(OnboardingReferralSource::AI)
+        ->and($workspace->onboarding_referral_detail)->toBe('claude')
+        ->and($workspace->onboarding_referral_prompt)->toBe('A CRM my assistant can update');
 });

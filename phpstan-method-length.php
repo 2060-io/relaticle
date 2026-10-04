@@ -7,7 +7,6 @@ return [
         'methodLength' => [
             'grandfathered' => [
                 'App\Actions\CustomFields\CreateCustomField::execute' => 67,
-                'App\Actions\Jetstream\CreateWorkspace::create' => 82,
                 'App\Actions\Opportunity\AggregateOpportunities::byStage' => 63,
                 'App\Actions\Task\ListTasks::execute' => 68,
                 'App\Console\Commands\BackfillCustomFieldColorsCommand::handle' => 93,
