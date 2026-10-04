@@ -354,48 +354,64 @@ arch('MCP tools must not use DB facade directly')
         'Illuminate\Support\Facades\DB',
     ]);
 
-arch('UI surfaces must not use the DB facade directly')
-    ->expect([
-        'App\Filament',
-        'App\Livewire',
-        'Relaticle\Chat\Livewire',
-        'Relaticle\Chat\Tools',
-    ])
-    ->not
-    ->toUse([
-        'Illuminate\Support\Facades\DB',
-    ])
-    ->ignoring([
-        // Grandfathered (2026-06-12). Move these writes into actions, then unlist:
-        'App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard',
-        'App\Filament\Resources\TaskResource\Pages\TasksBoard',
-        'App\Livewire\App\AccessTokens\CreateAccessToken',
-        // Session-table infrastructure (no Eloquent model), a legitimate DB facade use:
-        'App\Livewire\App\Profile\LogoutOtherBrowserSessions',
-        // Read-only aggregate join for stream recovery:
-        'Relaticle\Chat\Livewire\Chat\ChatInterface',
-    ]);
+foreach (['App\Filament', 'App\Livewire', 'Relaticle\Chat\Livewire', 'Relaticle\Chat\Tools'] as $uiLayer) {
+    arch("{$uiLayer} must not use the DB facade directly")
+        ->expect($uiLayer)
+        ->not
+        ->toUse([
+            'Illuminate\Support\Facades\DB',
+        ])
+        ->ignoring([
+            // Grandfathered (2026-06-12). Move these writes into actions, then unlist:
+            'App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard',
+            'App\Filament\Resources\TaskResource\Pages\TasksBoard',
+            'App\Livewire\App\AccessTokens\CreateAccessToken',
+            // Session-table infrastructure (no Eloquent model), a legitimate DB facade use:
+            'App\Livewire\App\Profile\LogoutOtherBrowserSessions',
+            // Slipped past while one check spanned all four layers and could not fail
+            // (found 2026-10-04). Review each, then unlist:
+            'App\Filament\Pages\Workspace\ActivityLog',
+            'App\Livewire\App\AccessTokens\ManageOAuthConnectors',
+            'App\Livewire\App\Profile\ManageMfa',
+            'App\Livewire\App\Workspaces\WorkspaceMembers',
+        ]);
+}
 
-arch('must not use custom-fields package models directly')
-    ->expect([
-        'App',
-        'Relaticle\ImportWizard',
-        'Relaticle\OnboardSeed',
-        'Relaticle\Documentation',
-    ])
-    ->not
-    ->toUse([
-        'Relaticle\CustomFields\Models\CustomField',
-        'Relaticle\CustomFields\Models\CustomFieldOption',
-        'Relaticle\CustomFields\Models\CustomFieldSection',
-        'Relaticle\CustomFields\Models\CustomFieldValue',
-    ])
-    ->ignoring([
-        'App\Models\CustomField',
-        'App\Models\CustomFieldOption',
-        'App\Models\CustomFieldSection',
-        'App\Models\CustomFieldValue',
-    ]);
+foreach (['App', 'Relaticle\ImportWizard', 'Relaticle\OnboardSeed', 'Relaticle\Documentation'] as $layer) {
+    arch("{$layer} must not use custom-fields package models directly")
+        ->expect($layer)
+        ->not
+        ->toUse([
+            'Relaticle\CustomFields\Models\CustomField',
+            'Relaticle\CustomFields\Models\CustomFieldOption',
+            'Relaticle\CustomFields\Models\CustomFieldSection',
+            'Relaticle\CustomFields\Models\CustomFieldValue',
+        ])
+        ->ignoring([
+            'App\Models\CustomField',
+            'App\Models\CustomFieldOption',
+            'App\Models\CustomFieldSection',
+            'App\Models\CustomFieldValue',
+            // Slipped past while one check spanned all four layers and could not fail
+            // (found 2026-10-04). Review each, then unlist:
+            'App\Filament\CustomFields\DateTimeColumn',
+            'App\Filament\CustomFields\DateTimeEntry',
+            'App\Filament\CustomFields\RichContentEntry',
+            'App\Filament\CustomFields\RichEditorFieldType',
+            'App\Http\Resources\V1\Concerns\FormatsCustomFields',
+            'App\Mcp\Filters\CustomFieldSort',
+            'App\Observers\CustomFieldValueObserver',
+            'App\Rules\ValidCustomFields',
+            'App\Support\ActivityLog\CustomFieldChangeLog',
+            'App\Support\CustomFieldMerger',
+            'App\Support\Media\UploadClaims',
+            'Relaticle\ImportWizard\Data\EntityLink',
+            'Relaticle\ImportWizard\Importers\BaseImporter',
+            'Relaticle\ImportWizard\Jobs\ExecuteImportJob',
+            'Relaticle\ImportWizard\Support\DataTypeInferencer',
+            'Relaticle\OnboardSeed\Support\BulkCustomFieldValueWriter',
+        ]);
+}
 
 // Livewire hands every client-invoked method through implicit route-model binding
 // (Wrapped::__call -> ImplicitlyBoundMethod), and Eloquent's resolveRouteBinding is
