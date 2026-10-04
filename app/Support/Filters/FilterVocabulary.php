@@ -6,7 +6,6 @@ namespace App\Support\Filters;
 
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
-use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\User;
@@ -33,9 +32,6 @@ final readonly class FilterVocabulary
 
             if ($definition->related instanceof CrmEntity) {
                 $entry['entity'] = $definition->related->value;
-            }
-
-            if ($definition->kind === FilterKind::Relation && $definition->related instanceof CrmEntity) {
                 $title = $definition->related->titleColumn();
                 $entry['nested_example'] = [$title => EntityFilters::definitions($definition->related)[$title]->example()];
                 $customFieldExample = $this->firstCustomFieldExample($user, $definition->related);
