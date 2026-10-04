@@ -243,6 +243,23 @@ it('names a registered tool as the source of the filter codes on every list tool
     'notes' => ListNotesTool::class,
 ]);
 
+it('names only registered tools inside a tool definition', function (): void {
+    $tools = new ReflectionClass(RelaticleServer::class)->getDefaultProperties()['tools'];
+    $registeredNames = array_map(fn (string $tool): string => resolve($tool)->name(), $tools);
+
+    $named = collect($tools)
+        ->flatMap(function (string $tool): array {
+            preg_match_all('/\b(?:get|list|create|update|delete|attach|detach|aggregate)-[a-z]+(?:-[a-z]+)*/', (string) json_encode(resolve($tool)->toArray()), $matches);
+
+            return $matches[0];
+        })
+        ->unique()
+        ->values()
+        ->all();
+
+    expect(array_values(array_diff($named, $registeredNames)))->toBe([]);
+});
+
 it('rejects malformed list tool inputs before building the database query', function (string $toolClass, array $input, string $error): void {
     RelaticleServer::actingAs($this->user)
         ->tool($toolClass, $input)
