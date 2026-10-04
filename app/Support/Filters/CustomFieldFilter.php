@@ -23,6 +23,9 @@ use Spatie\QueryBuilder\Filters\Filter;
  */
 final readonly class CustomFieldFilter implements Filter
 {
+    // The link field type validates each item with max:2048, so a longer operand can never equal a stored value.
+    private const int MAX_OPERAND_LENGTH = 2048;
+
     private const string LIST_ELEMENTS = "jsonb_array_elements_text(case when jsonb_typeof(json_value::jsonb) = 'array' then json_value::jsonb else '[]'::jsonb end)";
 
     private const string LOWERED_OPERANDS = 'array(select lower(operand) from unnest(?::text[]) as operand)';
@@ -287,6 +290,8 @@ final readonly class CustomFieldFilter implements Filter
                 $this->normalizeOperand($path, $operator, $operand, $domainOperators[$operator], true),
             );
 
+            $this->assertWithinLength("{$path}.{$operator}", $domains);
+
             if ($field->type === CustomFieldType::LINK->value) {
                 $domains = array_map(static fn (string $domain): string => rtrim((string) preg_replace('/^(www\.)+/i', '', $domain), '.'), $domains);
             }
@@ -335,6 +340,8 @@ final readonly class CustomFieldFilter implements Filter
             return $operand;
         }
 
+        $this->assertWithinLength("{$field->code}.{$operator}", $operand);
+
         $spellings = [];
 
         foreach ($operand as $index => $value) {
@@ -353,6 +360,18 @@ final readonly class CustomFieldFilter implements Filter
         }
 
         return array_values(array_unique($spellings));
+    }
+
+    /**
+     * @param  array<int, string>  $values
+     */
+    private function assertWithinLength(string $path, array $values): void
+    {
+        $index = array_find_key($values, static fn (string $value): bool => mb_strlen($value) > self::MAX_OPERAND_LENGTH);
+
+        if ($index !== null) {
+            throw FilterErrors::at("{$path}.{$index}", __('validation.custom_field.operand_too_long', ['field' => $path, 'max' => self::MAX_OPERAND_LENGTH]));
+        }
     }
 
     /**

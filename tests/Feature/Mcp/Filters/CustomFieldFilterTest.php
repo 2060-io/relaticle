@@ -783,6 +783,32 @@ it('rejects an operand that holds a NUL or is not valid utf-8', function (string
     'text pattern with an invalid byte' => ['text', ['$contains' => "a\xFFb"], 'must be a string'],
 ]);
 
+it('rejects an email, link or phone operand longer than 2048 characters', function (string $type, array $conditions): void {
+    filterTestField($this->workspace, 'people', 'contact', $type, new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['contact' => $conditions]]])
+        ->assertHasErrors(['pass values of at most 2048 characters']);
+})->with([
+    'link $has_any' => ['link', ['$has_any' => [str_repeat('a', 2049)]]],
+    'link domain $in' => ['link', ['domain' => ['$in' => [str_repeat('a', 2049)]]]],
+    'link $has_any beside a short value' => ['link', ['$has_any' => ['acme.com', str_repeat('a', 2049)]]],
+    'email $has_none' => ['email', ['$has_none' => [str_repeat('a', 2049)]]],
+    'email domain $not_in' => ['email', ['domain' => ['$not_in' => [str_repeat('a', 2049)]]]],
+    'phone $has_any' => ['phone', ['$has_any' => ['+'.str_repeat('1', 2048)]]],
+]);
+
+it('accepts an email, link or phone operand of exactly 2048 characters', function (string $type, array $conditions): void {
+    filterTestField($this->workspace, 'people', 'contact', $type, new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
+
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['contact' => $conditions]]))->toBe([]);
+})->with([
+    'link $has_any' => ['link', ['$has_any' => [str_repeat('a', 2048)]]],
+    'link domain $in' => ['link', ['domain' => ['$in' => [str_repeat('a', 2048)]]]],
+    'email $has_any' => ['email', ['$has_any' => [str_repeat('a', 2048)]]],
+]);
+
 it('treats array literal characters in a domain operand as plain text', function (): void {
     $emails = filterTestField($this->workspace, 'people', 'work_emails', 'email', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
     People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana'])->saveCustomFieldValue($emails, ['ana@acme.com']);

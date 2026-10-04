@@ -37,6 +37,7 @@ return [
         'operator_object' => 'Custom field filter [:field] must be an operator object, e.g. {"$eq": "..."}.',
         'operand_type' => 'Custom field filter [:field.:operator] must be :expected.',
         'too_many_values' => ':field: pass at most :max values.',
+        'operand_too_long' => ':field: pass values of at most :max characters.',
         'single_option' => ':field: pass a single option label or ID.',
         'option_list' => ':field: pass an array of option labels or IDs.',
         'foreign_records' => ':field: records :ids do not belong to this workspace.',
