@@ -9,6 +9,7 @@ use App\Models\People;
 use App\Models\User;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Tests\Helpers\WorkspaceCustomField;
 
 mutates(NormalizeCustomFieldValuesCommand::class);
@@ -159,4 +160,63 @@ it('counts only phone-shaped values as national numbers', function (): void {
     $this->artisan('custom-fields:normalize-values')
         ->expectsOutputToContain('1 national phone number(s) have no country code')
         ->assertSuccessful();
+});
+
+it('logs one line per skipped row without its value and one summary line', function (): void {
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
+    $malformed = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $messy = People::factory()->recycle([$this->user, $this->workspace])->create();
+    writeRawJsonValue($malformed->getKey(), $phone, ['number' => '+1 415-555-0100']);
+    writeRawJsonValue($messy->getKey(), $phone, ['+1 415-555-0142']);
+    $malformedRowId = DB::table('custom_field_values')->where('entity_id', $malformed->getKey())->where('custom_field_id', $phone->getKey())->value('id');
+    Log::spy();
+
+    $this->artisan('custom-fields:normalize-values', ['--force' => true])->assertSuccessful();
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn (string $message, array $context): bool => $context === [
+            'value_id' => $malformedRowId,
+            'field' => 'people.phone_number',
+            'workspace_id' => $this->workspace->getKey(),
+            'reason' => 'unexpected_shape',
+        ])
+        ->once();
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message, array $context): bool => $context === ['mode' => 'write', 'changed' => 1, 'skipped' => 1, 'national_phones' => 0])
+        ->once();
+});
+
+it('logs a row edited while the backfill runs as skipped', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
+    writeRawJsonValue($person->getKey(), $phone, ['+1 415-555-0100']);
+    $edited = false;
+    Log::spy();
+
+    DB::listen(function (QueryExecuted $query) use (&$edited, $person, $phone): void {
+        if ($edited || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, '"custom_field_values"') || ! in_array($phone->getKey(), $query->bindings, true)) {
+            return;
+        }
+
+        $edited = true;
+        DB::table('custom_field_values')->where('entity_id', $person->getKey())->where('custom_field_id', $phone->getKey())->update(['json_value' => json_encode(['+14155550199'])]);
+    });
+
+    $this->artisan('custom-fields:normalize-values', ['--force' => true])->assertSuccessful();
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $context['reason'] === 'changed_during_run')->once();
+    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context): bool => $context['changed'] === 0 && $context['skipped'] === 1)->once();
+});
+
+it('logs a summary and no skipped row in report mode', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    writeRawJsonValue($person->getKey(), WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number'), ['+1 415-555-0142']);
+    Log::spy();
+
+    $this->artisan('custom-fields:normalize-values')->assertSuccessful();
+
+    Log::shouldNotHaveReceived('warning');
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message, array $context): bool => $context === ['mode' => 'report', 'changed' => 1, 'skipped' => 0, 'national_phones' => 0])
+        ->once();
 });

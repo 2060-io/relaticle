@@ -12,6 +12,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use stdClass;
 use Throwable;
 
@@ -27,6 +28,8 @@ final class NormalizeCustomFieldValuesCommand extends Command
 
     private int $malformed = 0;
 
+    private int $skipped = 0;
+
     /** @var array<string, list<string>> */
     private array $domainOwners = [];
 
@@ -36,6 +39,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
         $this->changed = 0;
         $this->national = 0;
         $this->malformed = 0;
+        $this->skipped = 0;
 
         CustomField::query()
             ->withoutGlobalScopes()
@@ -57,6 +61,13 @@ final class NormalizeCustomFieldValuesCommand extends Command
             $this->comment("{$this->malformed} value(s) have an unexpected shape and were left as they are.");
         }
 
+        Log::info('custom-fields:normalize-values finished.', [
+            'mode' => $write ? 'write' : 'report',
+            'changed' => $this->changed,
+            'skipped' => $this->skipped,
+            'national_phones' => $this->national,
+        ]);
+
         return self::SUCCESS;
     }
 
@@ -75,6 +86,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
                         $this->normalizeRow($field, $row, $isDomain, $write);
                     } catch (Throwable $exception) {
                         $this->warn("Value {$row->id}: {$exception->getMessage()}, skipped.");
+                        $this->logSkipped($field, $row, class_basename($exception));
                     }
                 }
             });
@@ -96,6 +108,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
 
         if (! is_array($stored) || ! array_is_list($stored) || ! array_all($stored, fn (mixed $item): bool => is_string($item))) {
             $this->malformed++;
+            $this->logSkipped($field, $row, 'unexpected_shape');
 
             return;
         }
@@ -110,10 +123,24 @@ final class NormalizeCustomFieldValuesCommand extends Command
         }
 
         if ($write && ! $this->storeIfUnchanged($field, $row, $normalized)) {
+            $this->logSkipped($field, $row, 'changed_during_run');
+
             return;
         }
 
         $this->changed++;
+    }
+
+    private function logSkipped(CustomField $field, stdClass $row, string $reason): void
+    {
+        $this->skipped++;
+
+        Log::warning('custom-fields:normalize-values skipped a value.', [
+            'value_id' => $row->id,
+            'field' => "{$field->entity_type}.{$field->code}",
+            'workspace_id' => $field->tenant_id,
+            'reason' => $reason,
+        ]);
     }
 
     /**
