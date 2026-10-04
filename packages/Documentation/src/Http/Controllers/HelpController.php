@@ -191,6 +191,12 @@ final readonly class HelpController
                 ),
                 ConnectableAssistant::cases(),
             ),
+            sprintf(
+                '- [%s](%s): %s',
+                __('Security'),
+                route('security'),
+                __('Account and workspace protection, what the AI sees, the service providers, and how to export or delete data.'),
+            ),
         ];
     }
 

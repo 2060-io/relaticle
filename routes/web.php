@@ -174,6 +174,7 @@ Route::middleware([ProvideMarkdownResponse::class, AddVaryAcceptHeader::class])-
             ->name($assistant->routeName());
     }
 
+    Route::get('/security', fn () => view('security'))->name('security');
     Route::get('/compare/relaticle-vs-{competitor}', [ComparisonController::class, 'show'])->name('compare.show');
     Route::get('/alternatives/{competitor}', [AlternativesController::class, 'show'])->name('alternatives.show');
     Route::get('/contact', [ContactController::class, 'show'])->name('contact');

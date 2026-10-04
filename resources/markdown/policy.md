@@ -1,4 +1,4 @@
-**Effective date:** October 1, 2026
+**Effective date:** October 5, 2026
 
 This Privacy Policy explains how Relaticle ("we", "us", "our") collects, uses, and protects your personal data when you use our services.
 
@@ -30,6 +30,7 @@ We use your data to:
 - Provide and maintain the CRM service
 - Authenticate your account and enforce workspace-level access controls
 - Send transactional emails (password resets, workspace invitations)
+- Send product updates to the email address on a verified account. You can unsubscribe from them at any time
 - Improve the service based on aggregated, anonymized usage patterns
 - Respond to support inquiries
 
@@ -46,8 +47,13 @@ The Cloud service uses the following third-party providers:
 
 - **Hosting infrastructure:** For application and database hosting
 - **Email delivery:** For transactional emails (password resets, invitations)
-- **Error monitoring:** For detecting and fixing bugs (anonymized error reports)
+- **Error monitoring:** For detecting and fixing bugs. An error report can include data from the request that failed
 - **AI providers:** For AI features you use, such as the assistant and email thread summaries. They receive only the content needed to answer that request.
+- **Payments:** For Cloud plan billing. Card details go to the payment provider directly
+- **Analytics:** For page view counts on the website and in the app, without cookies
+- **Product updates:** For the update emails described in section 2
+
+The [Security page](/security#providers) names each provider and what it receives.
 
 Relaticle does not sell CRM data. Relaticle does not use CRM data for advertising. Relaticle does not train AI models on CRM data.
 

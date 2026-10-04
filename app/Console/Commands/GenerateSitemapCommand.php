@@ -79,6 +79,7 @@ final class GenerateSitemapCommand extends Command
         $this->ensureUrl($sitemap, route('help.index'));
         $this->ensureUrl($sitemap, route('documentation.index'));
         $this->ensureUrl($sitemap, route('aiNativeCrm'));
+        $this->ensureUrl($sitemap, route('security'));
 
         foreach (ConnectableAssistant::cases() as $assistant) {
             $this->ensureUrl($sitemap, route($assistant->routeName()));
