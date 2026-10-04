@@ -23,6 +23,24 @@ it('renders the security page with its structured data', function (): void {
         ->and($html)->toContain(route('security'));
 });
 
+it('answers the first four questions at a glance and links each to a section on the page', function (): void {
+    $html = $this->get('/security')->assertOk()->getContent();
+
+    expect(securityPageText($html))->toContain('Relaticle does not train AI models on your CRM data.')
+        ->and(securityPageText($html))->toContain(config('chat.assistant_name').' asks first');
+
+    foreach (['ai', 'account', 'data'] as $anchor) {
+        expect($html)->toContain('href="#'.$anchor.'"')
+            ->and($html)->toContain('id="'.$anchor.'"');
+    }
+});
+
+it('gives the provider table the anchor the privacy policy links to', function (): void {
+    Feature::define(BillingFeature::class, true);
+
+    $this->get('/security')->assertOk()->assertSee('id="providers"', false);
+});
+
 it('names each service provider on a hosted install', function (string $provider): void {
     Feature::define(BillingFeature::class, true);
 
