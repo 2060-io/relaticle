@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Features\Billing as BillingFeature;
 use App\Support\CompetitorFacts;
+use Illuminate\Support\Js;
 use Laravel\Pennant\Feature;
 
 function assistantPageText(string $html): string
@@ -29,6 +30,29 @@ it('renders an assistant page with its structured data', function (string $assis
 
 it('gives Claude the MCP server address to paste as a custom connector', function (): void {
     $this->get('/crm-for-claude')->assertOk()->assertSee(url()->getMcpUrl());
+});
+
+it('offers a copy control for the MCP server address on the Claude page only', function (): void {
+    $claude = $this->get('/crm-for-claude')->assertOk()->getContent();
+    $chatGpt = $this->get('/crm-for-chatgpt')->assertOk()->getContent();
+
+    expect($claude)->toContain('navigator.clipboard.writeText('.Js::from(url()->getMcpUrl()).')')
+        ->and($chatGpt)->not->toContain('navigator.clipboard.writeText');
+});
+
+it('shows an example exchange built from the default pipeline stages', function (string $assistant): void {
+    $text = assistantPageText($this->get("/crm-for-{$assistant}")->assertOk()->getContent());
+
+    expect($text)->toContain('An example exchange.')
+        ->and($text)->toContain('Proposal/Price Quote')
+        ->and($text)->toContain('Negotiation/Review');
+})->with(['claude', 'chatgpt']);
+
+it('names each assistant in llms.txt with its own summary', function (): void {
+    $body = $this->get('/llms.txt')->assertOk()->getContent();
+
+    expect($body)->toContain('- [Relaticle for Claude]('.route('assistants.claude').'): Connect Claude to the CRM with OAuth')
+        ->and($body)->toContain('- [Relaticle for ChatGPT]('.route('assistants.chatgpt').'): Install the Relaticle plugin in ChatGPT');
 });
 
 it('sends ChatGPT users to the plugin and tells them to mention it', function (): void {
