@@ -44,6 +44,12 @@ final readonly class NativeFilter implements Filter
                 throw FilterErrors::at($operator, __('validation.filter.unsupported_operator', ['name' => $property, 'operator' => $operator, 'supported' => implode(', ', $operators)]));
             }
 
+            if ($operator === '$is_empty') {
+                $this->emptiness($query, $property, $column, $operand);
+
+                continue;
+            }
+
             match ($this->definition->kind) {
                 FilterKind::Text => $this->text($query, $property, $column, $operator, $operand),
                 FilterKind::DateTime => $this->dateTime($query, $property, $column, $operator, $operand),
@@ -57,12 +63,6 @@ final readonly class NativeFilter implements Filter
      */
     private function text(Builder $query, string $property, string $column, string $operator, mixed $operand): void
     {
-        if ($operator === '$is_empty') {
-            $this->emptiness($query, $property, $column, $operator, $operand, blankIsEmpty: true);
-
-            return;
-        }
-
         $text = Operand::string($operand) ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => 'a string']));
 
         $operator === '$contains'
@@ -75,12 +75,6 @@ final readonly class NativeFilter implements Filter
      */
     private function dateTime(Builder $query, string $property, string $column, string $operator, mixed $operand): void
     {
-        if ($operator === '$is_empty') {
-            $this->emptiness($query, $property, $column, $operator, $operand, blankIsEmpty: false);
-
-            return;
-        }
-
         $date = Operand::date($operand) ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => 'a date or date-time']));
 
         is_string($operand) && Operand::isBareDate($operand)
@@ -93,12 +87,6 @@ final readonly class NativeFilter implements Filter
      */
     private function enum(Builder $query, string $property, string $column, string $operator, mixed $operand): void
     {
-        if ($operator === '$is_empty') {
-            $this->emptiness($query, $property, $column, $operator, $operand, blankIsEmpty: false);
-
-            return;
-        }
-
         /** @var class-string<BackedEnum> $enumClass */
         $enumClass = $this->definition->enumClass;
         $allowed = array_map(static fn (BackedEnum $case): string => (string) $case->value, $enumClass::cases());
@@ -132,9 +120,10 @@ final readonly class NativeFilter implements Filter
     /**
      * @param  Builder<Model>  $query
      */
-    private function emptiness(Builder $query, string $property, string $column, string $operator, mixed $operand, bool $blankIsEmpty): void
+    private function emptiness(Builder $query, string $property, string $column, mixed $operand): void
     {
-        $empty = Operand::boolean($operand) ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => 'true or false']));
+        $blankIsEmpty = $this->definition->kind === FilterKind::Text;
+        $empty = Operand::boolean($operand) ?? throw FilterErrors::at('$is_empty', __('validation.filter.operand_type', ['name' => "{$property} \$is_empty", 'expected' => 'true or false']));
 
         if ($empty) {
             $query->where(fn (Builder $q): Builder => $blankIsEmpty ? $q->whereNull($column)->orWhere($column, '') : $q->whereNull($column));
