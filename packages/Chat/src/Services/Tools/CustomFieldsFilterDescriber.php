@@ -10,6 +10,7 @@ use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
 use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterVocabulary;
+use Relaticle\Chat\Support\PromptText;
 
 /**
  * The read-path twin of {@see CustomFieldsSchemaDescriber}.
@@ -103,7 +104,9 @@ final readonly class CustomFieldsFilterDescriber
         $lines[] = 'Fields:';
 
         foreach ($customFields as $code => $entry) {
-            $line = "- {$code} ({$entry['name']}, {$entry['type']}".(isset($entry['options']) ? '; one of: "'.implode('", "', $entry['options']).'"' : '');
+            $name = PromptText::sanitize($entry['name'], 120);
+            $options = isset($entry['options']) ? '; one of: "'.implode('", "', array_map(fn (string $option): string => PromptText::sanitize($option, 120), $entry['options'])).'"' : '';
+            $line = "- {$code} ({$name}, {$entry['type']}{$options}";
             $lines[] = $line.(isset($entry['example']) ? '; example '.CustomFieldFilterSchema::json($entry['example']) : '').')';
         }
 
