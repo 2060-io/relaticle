@@ -1,6 +1,7 @@
 {{-- The app panel's page title, shown in the topbar rather than in the page body.
 
-     Expects: $heading, and optionally $headingStart.
+     Expects: $heading, and optionally $headingStart. A page outside a resource
+     shows an icon by defining getHeadingIcon().
 
      The teleport target lives inside the Topbar Livewire component, which is not
      re-rendered by a page navigation and whose own morph removes any child it did
@@ -20,9 +21,12 @@
      anything, and the rule it enforces is simply that the topbar shows the
      heading the current page rendered and nothing otherwise. --}}
 @php
-    $headingIcon = blank($headingStart ?? null) && $this instanceof \Filament\Resources\Pages\Page
-        ? $this::getResource()::getNavigationIcon()
-        : null;
+    $headingIcon = match (true) {
+        filled($headingStart ?? null) => null,
+        $this instanceof \Filament\Resources\Pages\Page => $this::getResource()::getNavigationIcon(),
+        method_exists($this, 'getHeadingIcon') => $this->getHeadingIcon(),
+        default => null,
+    };
 @endphp
 
 <template x-teleport=".fi-topbar-start" data-page-heading-source>

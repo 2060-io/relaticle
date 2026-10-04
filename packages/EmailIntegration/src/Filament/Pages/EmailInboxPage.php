@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Contracts\Support\Htmlable;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Relaticle\EmailIntegration\Enums\EmailPageTab;
@@ -40,6 +41,11 @@ final class EmailInboxPage extends Page
     public function getTitle(): string
     {
         return __('filament/pages/email-inbox.navigation_label');
+    }
+
+    public function getHeadingIcon(): string|\BackedEnum|Htmlable|null
+    {
+        return self::getNavigationIcon();
     }
 
     /**

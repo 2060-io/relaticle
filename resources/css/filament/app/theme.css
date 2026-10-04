@@ -860,12 +860,14 @@ html.fi-record-stacked .fi-record-layout {
    =================================== */
 
 .fi-main:has(.fi-resource-list-records-page:not(.fi-page-has-sub-navigation)),
+.fi-main:has(.fi-edge-to-edge-page),
 .fi-main:has(.fi-board-header) {
     @apply px-0;
 }
 
 /* Toolbar fields are flat and 2rem tall, the height of a small button, so a row shares one height. */
 .fi-resource-list-records-page:not(.fi-page-has-sub-navigation),
+.fi-edge-to-edge-page,
 .fi-board-header {
     .fi-ta-grouping-settings-fields .fi-input-wrp {
         @apply h-8 shadow-none ring-gray-950/10 dark:ring-white/10;
@@ -896,7 +898,8 @@ html.fi-record-stacked .fi-record-layout {
     }
 }
 
-.fi-resource-list-records-page:not(.fi-page-has-sub-navigation) {
+.fi-resource-list-records-page:not(.fi-page-has-sub-navigation),
+.fi-edge-to-edge-page {
     .fi-page-header-main-ctn,
     .fi-page-content {
         @apply gap-y-0 py-0;
@@ -944,6 +947,25 @@ html.fi-record-stacked .fi-record-layout {
         .fi-ta-pagination {
             @apply px-4 lg:px-6;
         }
+    }
+}
+
+/* Header actions of a nested table close its toolbar row, after search and the column manager. */
+.fi-edge-to-edge-page .fi-page-content .fi-ta-ctn:not(.fi-modal *) {
+    .fi-ta-header-ctn:has(> .fi-ta-header) {
+        @apply flex items-center gap-x-3 border-b border-gray-200/60 px-4 py-2 lg:px-6 dark:border-white/10;
+    }
+
+    .fi-ta-header {
+        @apply contents;
+
+        & > .fi-ta-actions {
+            @apply order-2 shrink-0;
+        }
+    }
+
+    .fi-ta-header-ctn:has(> .fi-ta-header) .fi-ta-header-toolbar {
+        @apply order-1 min-w-0 flex-1 border-b-0! p-0!;
     }
 }
 

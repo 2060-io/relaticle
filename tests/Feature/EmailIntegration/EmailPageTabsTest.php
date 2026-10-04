@@ -67,6 +67,11 @@ it('uses an outlined key for the requests empty state', function (): void {
         ->toBe(Heroicon::OutlinedKey);
 });
 
+it('shows the emails icon beside the page title', function (): void {
+    Livewire::test(EmailInboxPage::class)
+        ->assertSeeHtml('fi-topbar-page-icon');
+});
+
 it('defaults to the first tab and switches between tabs', function (): void {
     Livewire::test(EmailInboxPage::class)
         ->assertSet('tab', EmailPageTab::DRAFTS)
