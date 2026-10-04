@@ -107,7 +107,6 @@ enum CustomFieldType: string
         };
     }
 
-    /** How a filter operand is matched against stored values, or null when it is compared as typed. */
     public function filterMatching(): ?string
     {
         return match ($this) {
@@ -118,11 +117,7 @@ enum CustomFieldType: string
         };
     }
 
-    /**
-     * A filter condition on this type, built from the same operand {@see self::example()} writes.
-     *
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function filterExample(): array
     {
         return match ($this) {

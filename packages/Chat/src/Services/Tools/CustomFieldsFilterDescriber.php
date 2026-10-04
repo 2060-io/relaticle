@@ -12,16 +12,6 @@ use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterVocabulary;
 use Relaticle\Chat\Support\PromptText;
 
-/**
- * The read-path twin of {@see CustomFieldsSchemaDescriber}.
- *
- * Most of what a CRM user filters on (stage, status, due date, priority, amount)
- * lives in custom fields, so a list tool without them can only ever answer "all of
- * them". This inlines the whole {@see FilterVocabulary} into the tool's `filter`
- * slot, so the assistant can build a correct filter without a discovery round-trip.
- *
- * The vocabulary is the source MCP publishes too, so the two surfaces cannot drift apart.
- */
 final readonly class CustomFieldsFilterDescriber
 {
     public function __construct(

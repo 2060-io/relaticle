@@ -69,7 +69,7 @@ use Relaticle\Chat\Tools\Task\ListTasksTool as ChatListTasks;
 use Spatie\QueryBuilder\AllowedFilter;
 
 /**
- * @return array<string, array{0: CrmEntity, 1: class-string, 2: class-string, 3: class-string, 4: class-string, 5: class-string, 6: class-string, 8: class-string}>
+ * @return array<string, array{0: CrmEntity, 1: class-string, 2: class-string, 3: class-string, 4: class-string, 5: class-string, 6: class-string, 7: class-string, 8: class-string}>
  */
 function crmSurfaces(): array
 {

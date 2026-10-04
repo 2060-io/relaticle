@@ -10,13 +10,6 @@ use App\Support\Filters\EntityFilters;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 
-/**
- * Extracts query parameters from Spatie QueryBuilder usage in List action classes.
- *
- * Reads filters from the entity registry, and allowedSorts() and allowedIncludes()
- * from the action class injected into the controller's index() method, then
- * documents them as query parameters automatically.
- */
 final class GetFromSpatieQueryBuilder extends Strategy
 {
     use DescribesListEndpoint;
