@@ -175,51 +175,51 @@ function setHistoryImportBatchProgress(string $batchId, int $totalJobs, int $pen
     ]);
 }
 
-function bindMailboxOAuthWorkspace(User $user, ?Workspace $team = null): void
+function bindMailboxOAuthWorkspace(User $user, ?Workspace $workspace = null): void
 {
-    $team ??= $user->currentWorkspace;
+    $workspace ??= $user->currentWorkspace;
 
-    throw_unless($team instanceof Workspace, RuntimeException::class, 'bindMailboxOAuthWorkspace requires a workspace.');
+    throw_unless($workspace instanceof Workspace, RuntimeException::class, 'bindMailboxOAuthWorkspace requires a workspace.');
 
-    session()->put(RedirectController::WORKSPACE_SESSION_KEY, $team->getKey());
+    session()->put(RedirectController::WORKSPACE_SESSION_KEY, $workspace->getKey());
 }
 
-function mailboxOAuthRedirectUrl(string $provider, Workspace $team): string
+function mailboxOAuthRedirectUrl(string $provider, Workspace $workspace): string
 {
-    return MailboxOAuthWorkspace::redirectUrl($provider, $team);
+    return MailboxOAuthWorkspace::redirectUrl($provider, $workspace);
 }
 
-function assertMailboxOAuthRedirectUrl(string $url, string $provider, Workspace $team): void
+function assertMailboxOAuthRedirectUrl(string $url, string $provider, Workspace $workspace): void
 {
     expect($url)->toContain("/email-accounts/redirect/{$provider}");
 
     parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-    expect($query['team'] ?? null)->toBe($team->getKey())
+    expect($query['workspace'] ?? null)->toBe($workspace->getKey())
         ->and(Request::create($url)->hasValidSignature())->toBeTrue();
 }
 
-function assertRedirectedToMailboxOAuth(Testable $component, string $provider, Workspace $team): void
+function assertRedirectedToMailboxOAuth(Testable $component, string $provider, Workspace $workspace): void
 {
     $component->assertRedirect();
 
     /** @var string $redirect */
     $redirect = $component->effects['redirect'];
 
-    assertMailboxOAuthRedirectUrl(url($redirect), $provider, $team);
+    assertMailboxOAuthRedirectUrl(url($redirect), $provider, $workspace);
 }
 
 function assertActionHasMailboxOAuthUrl(
     Testable $component,
     string|TestAction|array $action,
     string $provider,
-    Workspace $team,
+    Workspace $workspace,
 ): void {
     $component->assertActionExists(
         $action,
-        checkActionUsing: function (Action $resolvedAction) use ($provider, $team): bool {
+        checkActionUsing: function (Action $resolvedAction) use ($provider, $workspace): bool {
             try {
-                assertMailboxOAuthRedirectUrl((string) $resolvedAction->getUrl(), $provider, $team);
+                assertMailboxOAuthRedirectUrl((string) $resolvedAction->getUrl(), $provider, $workspace);
 
                 return true;
             } catch (Throwable) {

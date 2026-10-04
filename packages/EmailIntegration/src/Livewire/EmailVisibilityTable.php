@@ -20,11 +20,11 @@ use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Relaticle\EmailIntegration\Actions\DeleteTeamEmailVisibilityEntryAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamEmailVisibilityEntryAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamEmailVisibilityEntrySubdomainsAction;
+use Relaticle\EmailIntegration\Actions\DeleteWorkspaceEmailVisibilityEntryAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceEmailVisibilityEntryAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceEmailVisibilityEntrySubdomainsAction;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 
 final class EmailVisibilityTable extends Component implements HasActions, HasSchemas
@@ -42,12 +42,12 @@ final class EmailVisibilityTable extends Component implements HasActions, HasSch
 
     public function setVisibilityIncludeSubdomains(string $entryId, bool $include): void
     {
-        $entry = TeamEmailBlocklist::query()
+        $entry = WorkspaceEmailBlocklist::query()
             ->where('workspace_id', $this->currentWorkspace()->getKey())
             ->whereKey($entryId)
             ->firstOrFail();
 
-        resolve(UpdateTeamEmailVisibilityEntrySubdomainsAction::class)->execute(
+        resolve(UpdateWorkspaceEmailVisibilityEntrySubdomainsAction::class)->execute(
             $this->currentWorkspace(),
             $this->authUser(),
             $entry,
@@ -62,12 +62,12 @@ final class EmailVisibilityTable extends Component implements HasActions, HasSch
 
     public function updateEnforcement(string $entryId, string $enforcement): void
     {
-        $entry = TeamEmailBlocklist::query()
+        $entry = WorkspaceEmailBlocklist::query()
             ->where('workspace_id', $this->currentWorkspace()->getKey())
             ->whereKey($entryId)
             ->firstOrFail();
 
-        resolve(UpdateTeamEmailVisibilityEntryAction::class)->execute(
+        resolve(UpdateWorkspaceEmailVisibilityEntryAction::class)->execute(
             $this->currentWorkspace(),
             $this->authUser(),
             $entry,
@@ -90,12 +90,12 @@ final class EmailVisibilityTable extends Component implements HasActions, HasSch
             ->iconButton()
             ->requiresConfirmation()
             ->action(function (array $arguments): void {
-                $entry = TeamEmailBlocklist::query()
+                $entry = WorkspaceEmailBlocklist::query()
                     ->where('workspace_id', $this->currentWorkspace()->getKey())
                     ->whereKey((string) $arguments['entry_id'])
                     ->firstOrFail();
 
-                resolve(DeleteTeamEmailVisibilityEntryAction::class)->execute(
+                resolve(DeleteWorkspaceEmailVisibilityEntryAction::class)->execute(
                     $this->currentWorkspace(),
                     $this->authUser(),
                     $entry,
@@ -149,11 +149,11 @@ final class EmailVisibilityTable extends Component implements HasActions, HasSch
     }
 
     /**
-     * @return Collection<int, TeamEmailBlocklist>
+     * @return Collection<int, WorkspaceEmailBlocklist>
      */
     private function customEntries(): Collection
     {
-        return TeamEmailBlocklist::query()
+        return WorkspaceEmailBlocklist::query()
             ->where('workspace_id', $this->currentWorkspace()->getKey())
             ->with('creator')
             ->latest()

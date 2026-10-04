@@ -98,17 +98,17 @@ final readonly class CallbackController
 
         throw_unless($socialUser instanceof TwoUser, RuntimeException::class, "Socialite driver [{$provider}] returned an unexpected user type.");
 
-        $team = $this->consumeBoundWorkspace($request, $user);
+        $workspace = $this->consumeBoundWorkspace($request, $user);
 
-        if (! $team instanceof Workspace) {
+        if (! $workspace instanceof Workspace) {
             return $this->redirectWithError($user, 'Your sign-in session expired. Please reconnect the account.');
         }
 
         if (! $this->grantsMailRead($provider, $socialUser->approvedScopes)) {
-            return $this->redirectWithError($user, 'Relaticle needs permission to read your mail. Reconnect and allow every permission.', $team);
+            return $this->redirectWithError($user, 'Relaticle needs permission to read your mail. Reconnect and allow every permission.', $workspace);
         }
 
-        $this->connect($user, $team, $provider, $socialUser);
+        $this->connect($user, $workspace, $provider, $socialUser);
 
         Notification::make()
             ->title(__('filament/pages/email-accounts.notifications.connected.title'))
@@ -119,18 +119,18 @@ final readonly class CallbackController
         $returnUrl = $request->session()->pull(RedirectController::RETURN_URL_SESSION_KEY);
 
         return redirect(is_string($returnUrl) ? $returnUrl : EmailAccountsPage::getUrl([
-            'tenant' => $team->slug,
+            'tenant' => $workspace->slug,
         ]));
     }
 
-    private function connect(User $user, Workspace $team, string $provider, TwoUser $socialUser): void
+    private function connect(User $user, Workspace $workspace, string $provider, TwoUser $socialUser): void
     {
         /** @var array<int, string> $grantedScopes */
         $grantedScopes = $socialUser->approvedScopes;
 
         resolve(ConnectAccountAction::class)->execute(new ConnectAccountData(
             userId: $user->getKey(),
-            teamId: $team->getKey(),
+            workspaceId: $workspace->getKey(),
             provider: $provider,
             emailAddress: $socialUser->getEmail(),
             displayName: $socialUser->getName(),
@@ -153,16 +153,16 @@ final readonly class CallbackController
         return MailboxOAuthWorkspace::forUser($user, $request->session()->pull(RedirectController::WORKSPACE_SESSION_KEY));
     }
 
-    private function redirectWithError(User $user, string $message, ?Workspace $team = null): RedirectResponse
+    private function redirectWithError(User $user, string $message, ?Workspace $workspace = null): RedirectResponse
     {
-        $team ??= $user->currentWorkspace;
+        $workspace ??= $user->currentWorkspace;
 
-        if ($team === null) {
+        if ($workspace === null) {
             return redirect('/')->with('error', $message);
         }
 
         return redirect(EmailAccountsPage::getUrl([
-            'tenant' => $team->slug,
+            'tenant' => $workspace->slug,
         ]))->with('error', $message);
     }
 

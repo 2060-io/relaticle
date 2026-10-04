@@ -9,20 +9,20 @@ use App\Models\User;
 use App\Models\Workspace;
 use Relaticle\EmailIntegration\Enums\ContactCreationMode;
 
-final readonly class UpdateTeamContactCreationSettingsAction
+final readonly class UpdateWorkspaceContactCreationSettingsAction
 {
     public function execute(
-        Workspace $team,
+        Workspace $workspace,
         User $actor,
         ContactCreationMode $contactCreationMode,
         bool $autoCreateCompanies,
     ): void {
         abort_unless(
-            $actor->hasWorkspaceCapability($team->getKey(), WorkspaceCapability::EmailManage),
+            $actor->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::EmailManage),
             403,
         );
 
-        $team->update([
+        $workspace->update([
             'contact_creation_mode' => $contactCreationMode,
             'auto_create_companies' => $contactCreationMode === ContactCreationMode::None
                 ? false

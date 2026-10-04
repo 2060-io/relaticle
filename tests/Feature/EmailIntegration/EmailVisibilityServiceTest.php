@@ -13,7 +13,7 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleMeetingScope;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 
 mutates(EmailVisibilityService::class, VisibleMeetingScope::class);
@@ -59,7 +59,7 @@ it('treats connected mailbox addresses as protected member emails', function ():
         'email_address' => 'whitesacks.dev@gmail.com',
     ]));
 
-    expect($this->service->memberEmailsForTeam($this->workspace))->toContain('whitesacks.dev@gmail.com');
+    expect($this->service->memberEmailsForWorkspace($this->workspace))->toContain('whitesacks.dev@gmail.com');
 });
 
 it('treats pending invitee emails as protected member emails', function (): void {
@@ -68,7 +68,7 @@ it('treats pending invitee emails as protected member emails', function (): void
         'email' => 'pending@thefireflytech.com',
     ]);
 
-    expect($this->service->memberEmailsForTeam($this->workspace))->toContain('pending@thefireflytech.com');
+    expect($this->service->memberEmailsForWorkspace($this->workspace))->toContain('pending@thefireflytech.com');
 });
 
 it('normalizes domain input before matching visibility rules', function (): void {
@@ -79,14 +79,14 @@ it('normalizes domain input before matching visibility rules', function (): void
 it('hides custom visibility rows that duplicate inferred workspace domains', function (): void {
     $this->user->update(['email' => 'owner@outskill.com']);
 
-    TeamEmailBlocklist::factory()->protected()->domain('outskill.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('outskill.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
 
     $rows = $this->service->visibilityTableRows(
         $this->workspace,
-        TeamEmailBlocklist::query()->where('workspace_id', $this->workspace->id)->get(),
+        WorkspaceEmailBlocklist::query()->where('workspace_id', $this->workspace->id)->get(),
     );
 
     expect(collect($rows)->where('address', 'outskill.com')->count())->toBe(1)
@@ -95,14 +95,14 @@ it('hides custom visibility rows that duplicate inferred workspace domains', fun
 });
 
 it('shows an unknown source for a visibility row whose creator was deleted', function (): void {
-    TeamEmailBlocklist::factory()->protected()->domain('vendor-partner.test')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('vendor-partner.test')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => null,
     ]);
 
     $rows = $this->service->visibilityTableRows(
         $this->workspace,
-        TeamEmailBlocklist::query()->where('workspace_id', $this->workspace->id)->get(),
+        WorkspaceEmailBlocklist::query()->where('workspace_id', $this->workspace->id)->get(),
     );
 
     expect(collect($rows)->firstWhere('address', 'vendor-partner.test')['source'])
@@ -115,7 +115,7 @@ it('prefers blocked over protected when resolving record mailbox copy', function
         'creator_id' => $this->user->id,
     ]);
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);

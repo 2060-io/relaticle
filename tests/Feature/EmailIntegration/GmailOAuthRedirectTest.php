@@ -60,7 +60,7 @@ it('rejects mailbox oauth redirect urls without a valid signature', function ():
 
     $this->get(route('email-accounts.redirect', [
         'provider' => 'gmail',
-        'team' => $user->currentWorkspace->getKey(),
+        'workspace' => $user->currentWorkspace->getKey(),
     ]))->assertForbidden();
 });
 

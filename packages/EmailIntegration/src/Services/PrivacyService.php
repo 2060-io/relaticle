@@ -70,7 +70,7 @@ final readonly class PrivacyService
      *
      * Pass the mailbox's workspace for background sync. `$user->current_workspace_id` is
      * only the owner's currently selected workspace, so using it for imports would
-     * stamp another team's default onto this mailbox.
+     * stamp another workspace's default onto this mailbox.
      */
     public function defaultTierForUser(User $user, ?Workspace $workspace = null): EmailPrivacyTier
     {
@@ -78,16 +78,16 @@ final readonly class PrivacyService
             return $user->default_email_sharing_tier;
         }
 
-        // Resolve the team explicitly (instead of $user->currentWorkspace, whose accessor
-        // larastan types as never-null and which can auto-switch teams as a side
-        // effect) so the null case, a user without a current team, is handled.
-        $team = $workspace ?? ($user->current_workspace_id !== null ? Workspace::query()->find($user->current_workspace_id) : null);
+        // Resolve the workspace explicitly (instead of $user->currentWorkspace, whose accessor
+        // larastan types as never-null and which can auto-switch workspaces as a side
+        // effect) so the null case, a user without a current workspace, is handled.
+        $workspace ??= $user->current_workspace_id !== null ? Workspace::query()->find($user->current_workspace_id) : null;
 
-        if ($team === null) {
+        if ($workspace === null) {
             return EmailPrivacyTier::METADATA_ONLY;
         }
 
-        return $team->default_email_sharing_tier ?? EmailPrivacyTier::METADATA_ONLY;
+        return $workspace->default_email_sharing_tier ?? EmailPrivacyTier::METADATA_ONLY;
     }
 
     public function tierFromPreference(mixed $tierValue, User $user): EmailPrivacyTier
@@ -106,9 +106,9 @@ final readonly class PrivacyService
         return $this->defaultTierForUser($user, $user->currentWorkspace);
     }
 
-    public function workspaceSharingTier(Workspace $team): EmailPrivacyTier
+    public function workspaceSharingTier(Workspace $workspace): EmailPrivacyTier
     {
-        return $team->default_email_sharing_tier ?? EmailPrivacyTier::METADATA_ONLY;
+        return $workspace->default_email_sharing_tier ?? EmailPrivacyTier::METADATA_ONLY;
     }
 
     private function shareForViewer(Email $email, User $viewer): ?EmailShare

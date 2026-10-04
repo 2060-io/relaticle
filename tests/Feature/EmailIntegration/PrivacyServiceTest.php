@@ -11,7 +11,7 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\PreferredEmailCopyService;
 use Relaticle\EmailIntegration\Services\PrivacyService;
 
@@ -52,7 +52,7 @@ it('effectiveTier returns FULL when viewer is the email owner', function (): voi
 it('effectiveTier returns null when all participants are protected by a protected email address', function (): void {
     $viewer = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
-    TeamEmailBlocklist::factory()->protected()->email('protected@sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('protected@sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);
@@ -72,7 +72,7 @@ it('effectiveTier returns null when all participants are protected by a protecte
 it('effectiveTier returns a tier when only some participants are protected', function (): void {
     $viewer = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
-    TeamEmailBlocklist::factory()->protected()->email('protected@sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('protected@sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);
@@ -97,7 +97,7 @@ it('effectiveTier returns a tier when only some participants are protected', fun
 it('effectiveTier returns null when all participants match a protected domain', function (): void {
     $viewer = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
-    TeamEmailBlocklist::factory()->protected()->domain('sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);
@@ -133,7 +133,7 @@ it('effectiveTier returns null when all participants match an inferred workspace
 it('matches the protected domain by the host after the last @ for malformed addresses', function (): void {
     $viewer = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
-    TeamEmailBlocklist::factory()->protected()->domain('sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);
@@ -153,7 +153,7 @@ it('matches the protected domain by the host after the last @ for malformed addr
 it('effectiveTier returns null when any participant matches a blocked entry', function (): void {
     $viewer = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);
@@ -331,7 +331,7 @@ it('defaultTierForUser returns metadata-only when the user has no current team',
 });
 
 it('effectiveTier owner access is not blocked by protected recipient', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('protected@sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('protected@sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);
@@ -349,7 +349,7 @@ it('effectiveTier owner access is not blocked by protected recipient', function 
 });
 
 it('effectiveTier hides a blocked email from its owner', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@sensitive.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@sensitive.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->owner->id,
     ]);

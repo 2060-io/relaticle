@@ -7,10 +7,10 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Livewire\Livewire;
 use Relaticle\EmailIntegration\Actions\ApplyDefaultSharingTierToExistingEmailsAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamContactCreationSettingsAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamEmailPrivacySettingsAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamEmailVisibilityAction;
-use Relaticle\EmailIntegration\Actions\UpdateTeamEmailVisibilityEntryAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceContactCreationSettingsAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceEmailPrivacySettingsAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceEmailVisibilityAction;
+use Relaticle\EmailIntegration\Actions\UpdateWorkspaceEmailVisibilityEntryAction;
 use Relaticle\EmailIntegration\Enums\ContactCreationMode;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
@@ -18,17 +18,17 @@ use Relaticle\EmailIntegration\Filament\Pages\EmailPrivacySettingsPage;
 use Relaticle\EmailIntegration\Livewire\EmailVisibilityTable;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 mutates(
     EmailPrivacySettingsPage::class,
     EmailVisibilityTable::class,
     ApplyDefaultSharingTierToExistingEmailsAction::class,
-    UpdateTeamEmailPrivacySettingsAction::class,
-    UpdateTeamEmailVisibilityAction::class,
-    UpdateTeamEmailVisibilityEntryAction::class,
-    UpdateTeamContactCreationSettingsAction::class,
+    UpdateWorkspaceEmailPrivacySettingsAction::class,
+    UpdateWorkspaceEmailVisibilityAction::class,
+    UpdateWorkspaceEmailVisibilityEntryAction::class,
+    UpdateWorkspaceContactCreationSettingsAction::class,
 );
 
 beforeEach(function (): void {
@@ -133,7 +133,7 @@ it('shows each sharing tier with its explanation', function (): void {
 });
 
 it('shows enforcement level explanations in the row picker', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -145,7 +145,7 @@ it('shows enforcement level explanations in the row picker', function (): void {
         ->assertSee(EmailVisibilityEnforcement::Blocked->getDescription());
 });
 
-it('creates protected TeamEmailBlocklist rows from the add contacts modal', function (): void {
+it('creates protected WorkspaceEmailBlocklist rows from the add contacts modal', function (): void {
     livewire(EmailPrivacySettingsPage::class)
         ->call('setTab', 'visibility')
         ->callAction('addVisibilityContact', data: [
@@ -154,7 +154,7 @@ it('creates protected TeamEmailBlocklist rows from the add contacts modal', func
         ])
         ->assertNotified();
 
-    expect(TeamEmailBlocklist::query()
+    expect(WorkspaceEmailBlocklist::query()
         ->where('workspace_id', $this->workspace->id)
         ->where('enforcement_level', EmailVisibilityEnforcement::Protected->value)
         ->where('type', 'email')
@@ -174,7 +174,7 @@ it('defaults new visibility entries to protected and allows changing enforcement
         ])
         ->assertNotified();
 
-    $entry = TeamEmailBlocklist::query()
+    $entry = WorkspaceEmailBlocklist::query()
         ->where('workspace_id', $this->workspace->id)
         ->where('type', 'domain')
         ->where('value', 'spam.com')
@@ -199,7 +199,7 @@ it('persists include subdomains from the add contacts modal onto new domain entr
         ])
         ->assertNotified();
 
-    $entry = TeamEmailBlocklist::query()
+    $entry = WorkspaceEmailBlocklist::query()
         ->where('workspace_id', $this->workspace->id)
         ->where('type', 'domain')
         ->where('value', 'acme.com')
@@ -217,7 +217,7 @@ it('normalizes domain urls when adding visibility entries', function (): void {
         ])
         ->assertNotified();
 
-    expect(TeamEmailBlocklist::query()
+    expect(WorkspaceEmailBlocklist::query()
         ->where('workspace_id', $this->workspace->id)
         ->where('type', 'domain')
         ->orderBy('value')
@@ -241,7 +241,7 @@ it('shows system default visibility rows on the visibility tab', function (): vo
 });
 
 it('shows custom visibility entries in the table', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -254,7 +254,7 @@ it('refreshes the visibility table when entries are updated elsewhere on the pag
     $component = livewire(EmailVisibilityTable::class)
         ->assertDontSee('new-contact@example.com');
 
-    TeamEmailBlocklist::factory()->protected()->email('new-contact@example.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('new-contact@example.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -265,7 +265,7 @@ it('refreshes the visibility table when entries are updated elsewhere on the pag
 });
 
 it('deletes a custom visibility entry from the table', function (): void {
-    $entry = TeamEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
+    $entry = WorkspaceEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -274,7 +274,7 @@ it('deletes a custom visibility entry from the table', function (): void {
         ->callAction(TestAction::make('deleteVisibilityEntry')->arguments(['entry_id' => $entry->id]))
         ->assertNotified();
 
-    expect(TeamEmailBlocklist::query()->whereKey($entry->id)->exists())->toBeFalse();
+    expect(WorkspaceEmailBlocklist::query()->whereKey($entry->id)->exists())->toBeFalse();
 });
 
 it('forbids a non-admin member from deleting or editing a visibility entry', function (): void {
@@ -283,7 +283,7 @@ it('forbids a non-admin member from deleting or editing a visibility entry', fun
     $this->actingAs($member);
     Filament::setTenant($this->workspace);
 
-    $entry = TeamEmailBlocklist::factory()->protected()->domain('acme.com')->create([
+    $entry = WorkspaceEmailBlocklist::factory()->protected()->domain('acme.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
         'include_subdomains' => false,
@@ -302,12 +302,12 @@ it('forbids a non-admin member from deleting or editing a visibility entry', fun
 });
 
 it('updates enforcement level for a custom visibility entry', function (): void {
-    $entry = TeamEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
+    $entry = WorkspaceEmailBlocklist::factory()->protected()->email('legal@acme.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
 
-    resolve(UpdateTeamEmailVisibilityEntryAction::class)->execute(
+    resolve(UpdateWorkspaceEmailVisibilityEntryAction::class)->execute(
         $this->workspace,
         $this->user,
         $entry,
@@ -336,7 +336,7 @@ it('forbids a non-admin member from changing team privacy settings', function ()
     $member = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
     $this->workspace->users()->attach($member, ['role' => 'member']);
 
-    expect(fn () => resolve(UpdateTeamEmailPrivacySettingsAction::class)->execute(
+    expect(fn () => resolve(UpdateWorkspaceEmailPrivacySettingsAction::class)->execute(
         $this->workspace,
         $member,
         EmailPrivacyTier::FULL,
@@ -443,7 +443,7 @@ it('turns off company creation when record creation is saved as None', function 
 it('turns off company creation in the action when record creation is None', function (): void {
     $this->workspace->update(['auto_create_companies' => true]);
 
-    resolve(UpdateTeamContactCreationSettingsAction::class)->execute(
+    resolve(UpdateWorkspaceContactCreationSettingsAction::class)->execute(
         $this->workspace,
         $this->user,
         ContactCreationMode::None,
@@ -499,7 +499,7 @@ it('forbids a non-admin member from changing record creation settings', function
     $member = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
     $this->workspace->users()->attach($member, ['role' => 'member']);
 
-    expect(fn () => resolve(UpdateTeamContactCreationSettingsAction::class)->execute(
+    expect(fn () => resolve(UpdateWorkspaceContactCreationSettingsAction::class)->execute(
         $this->workspace,
         $member,
         ContactCreationMode::All,
@@ -513,7 +513,7 @@ it('forbids a non-admin member from changing workspace email visibility', functi
     $member = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
     $this->workspace->users()->attach($member, ['role' => 'member']);
 
-    expect(fn () => resolve(UpdateTeamEmailVisibilityAction::class)->execute(
+    expect(fn () => resolve(UpdateWorkspaceEmailVisibilityAction::class)->execute(
         $this->workspace,
         $member,
         [[
@@ -537,7 +537,7 @@ it('does not save sharing settings from the visibility modal', function (): void
 
     expect($this->workspace->fresh()->default_email_sharing_tier)->toBe(EmailPrivacyTier::METADATA_ONLY);
 
-    $this->assertDatabaseHas(TeamEmailBlocklist::class, [
+    $this->assertDatabaseHas(WorkspaceEmailBlocklist::class, [
         'workspace_id' => $this->workspace->id,
         'value' => 'blocked@example.com',
     ]);

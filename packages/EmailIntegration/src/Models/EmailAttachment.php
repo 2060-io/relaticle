@@ -45,9 +45,9 @@ final class EmailAttachment extends Model
      * Directory on {@see DISK} for RichEditor inline images. Tenant-scoped so
      * composer HTML cannot name another workspace's files.
      */
-    public static function composeImagesDirectory(string $teamId): string
+    public static function composeImagesDirectory(string $workspaceId): string
     {
-        return 'email-attachments/'.$teamId;
+        return 'email-attachments/'.$workspaceId;
     }
 
     protected static function newFactory(): EmailAttachmentFactory

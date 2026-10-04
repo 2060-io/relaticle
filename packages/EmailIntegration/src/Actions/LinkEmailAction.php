@@ -92,11 +92,11 @@ final readonly class LinkEmailAction
     private function link(Email $email, bool $applyMetricsForPrelinkedRecords): void
     {
         $participants = $email->participants()->with('contact', 'company')->get();
-        $teamId = $email->workspace_id;
+        $workspaceId = $email->workspace_id;
         $connectedAccount = $email->connectedAccount;
-        $skippedDomains = $this->domainMatcher->skippedHosts($teamId);
+        $skippedDomains = $this->domainMatcher->skippedHosts($workspaceId);
 
-        $team = $email->workspace;
+        $workspace = $email->workspace;
 
         // A single email can resolve to the same company/person/opportunity through
         // multiple participants (e.g. two recipients at the same domain). Metrics
@@ -113,19 +113,19 @@ final readonly class LinkEmailAction
             $isAutomatedSender = $this->automatedSender->matches($participant->email_address);
             $suppressCreate = $this->visibility->suppressesRecordCreation(
                 $participant->email_address,
-                $teamId,
+                $workspaceId,
                 $email->connected_account_id,
             );
 
-            $person = $this->personEmailMatcher->firstMatching($participant->email_address, $teamId);
+            $person = $this->personEmailMatcher->firstMatching($participant->email_address, $workspaceId);
 
             $wouldCreatePerson = ! $person
                 && ! $email->is_internal
                 && ! $isAutomatedSender
                 && ! $suppressCreate
                 && $connectedAccount
-                && $team
-                && $this->shouldCreatePerson($team, $participant->email_address, $email);
+                && $workspace
+                && $this->shouldCreatePerson($workspace, $participant->email_address, $email);
 
             // 2. Match or create Company by email host so a new person can be born already linked.
             $company = null;
@@ -133,11 +133,11 @@ final readonly class LinkEmailAction
             $host = $rawDomain !== null ? $this->domainMatcher->host($rawDomain) : null;
 
             if ($host && $skippedDomains->doesntContain($host)) {
-                $company = $this->domainMatcher->firstMatching($host, $teamId);
+                $company = $this->domainMatcher->firstMatching($host, $workspaceId);
 
                 // 3. Auto-create Company only when a new person would also be created.
-                if (! $company && $wouldCreatePerson && $this->shouldCreateCompany($team, $participant->email_address, $email)) {
-                    $company = $this->autoCreateCompany->execute($host, $teamId, $team);
+                if (! $company && $wouldCreatePerson && $this->shouldCreateCompany($workspace, $participant->email_address, $email)) {
+                    $company = $this->autoCreateCompany->execute($host, $workspaceId, $workspace);
                 }
 
                 if ($company instanceof Company) {
@@ -155,8 +155,8 @@ final readonly class LinkEmailAction
                 $person = $this->autoCreatePerson->execute(
                     $participant->name ?? '',
                     $participant->email_address,
-                    $teamId,
-                    $team,
+                    $workspaceId,
+                    $workspace,
                     $company?->getKey(),
                 );
             }
@@ -178,7 +178,7 @@ final readonly class LinkEmailAction
                     $this->metrics->incrementEmailMetrics($personCompany, $email);
                 }
 
-                $opportunities = Opportunity::query()->where('workspace_id', $teamId)
+                $opportunities = Opportunity::query()->where('workspace_id', $workspaceId)
                     ->where('contact_id', $person->getKey())
                     ->get();
 
@@ -209,12 +209,12 @@ final readonly class LinkEmailAction
      * - Selective:  create when any workspace mailbox has sent to this address
      * - None:       never create
      */
-    private function shouldCreatePerson(Workspace $team, string $emailAddress, Email $email): bool
+    private function shouldCreatePerson(Workspace $workspace, string $emailAddress, Email $email): bool
     {
-        return match ($team->contact_creation_mode) {
+        return match ($workspace->contact_creation_mode) {
             ContactCreationMode::All => true,
             ContactCreationMode::Selective => $email->direction === EmailDirection::OUTBOUND
-                || $this->hasTeamOutboundHistory($team, $emailAddress),
+                || $this->hasWorkspaceOutboundHistory($workspace, $emailAddress),
             ContactCreationMode::None => false,
         };
     }
@@ -226,21 +226,21 @@ final readonly class LinkEmailAction
      * the outbound message being linked). All creates them for every eligible
      * address.
      */
-    private function shouldCreateCompany(Workspace $team, string $emailAddress, Email $email): bool
+    private function shouldCreateCompany(Workspace $workspace, string $emailAddress, Email $email): bool
     {
-        return $team->auto_create_companies && $this->shouldCreatePerson($team, $emailAddress, $email);
+        return $workspace->auto_create_companies && $this->shouldCreatePerson($workspace, $emailAddress, $email);
     }
 
     /**
-     * True when any connected mailbox on this team has an outbound email involving
+     * True when any connected mailbox on this workspace has an outbound email involving
      * the address. Includes mail stored under disconnected accounts so a reply
      * on an active mailbox still creates the person after account churn.
      */
-    private function hasTeamOutboundHistory(Workspace $team, string $emailAddress): bool
+    private function hasWorkspaceOutboundHistory(Workspace $workspace, string $emailAddress): bool
     {
         return Email::query()
             ->withoutGlobalScope(ActiveAccountScope::class)
-            ->where('workspace_id', $team->getKey())
+            ->where('workspace_id', $workspace->getKey())
             ->where('direction', EmailDirection::OUTBOUND)
             ->whereHas(
                 'participants',

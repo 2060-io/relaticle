@@ -27,9 +27,9 @@ use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
 use Relaticle\EmailIntegration\Services\MeetingAttendeePresenter;
 use Relaticle\EmailIntegration\Services\MeetingTemporalState;
-use Relaticle\EmailIntegration\Services\TeamMemberDirectory;
+use Relaticle\EmailIntegration\Services\WorkspaceMemberDirectory;
 
-mutates(MeetingsHomeWidget::class, ListMeetingsForDay::class, MeetingAttendeePresenter::class, MeetingTemporalState::class, TeamMemberDirectory::class, MailboxDisplayNameDirectory::class, Dashboard::class, HasConnectMailboxActions::class);
+mutates(MeetingsHomeWidget::class, ListMeetingsForDay::class, MeetingAttendeePresenter::class, MeetingTemporalState::class, WorkspaceMemberDirectory::class, MailboxDisplayNameDirectory::class, Dashboard::class, HasConnectMailboxActions::class);
 
 beforeEach(function (): void {
     $this->travelTo(Date::parse('2026-09-09 15:00:00'));

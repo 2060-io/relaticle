@@ -9,18 +9,18 @@ use App\Models\User;
 use App\Models\Workspace;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 
-final readonly class UpdateTeamEmailPrivacySettingsAction
+final readonly class UpdateWorkspaceEmailPrivacySettingsAction
 {
-    public function execute(Workspace $team, User $actor, EmailPrivacyTier $defaultTier): void
+    public function execute(Workspace $workspace, User $actor, EmailPrivacyTier $defaultTier): void
     {
-        // Team-wide sharing defaults may only be changed by the team owner or an admin,
+        // Workspace-wide sharing defaults may only be changed by the workspace owner or an admin,
         // regardless of which caller path reaches this action.
         abort_unless(
-            $actor->hasWorkspaceCapability($team->getKey(), WorkspaceCapability::EmailManage),
+            $actor->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::EmailManage),
             403,
         );
 
-        $team->update([
+        $workspace->update([
             'default_email_sharing_tier' => $defaultTier->value,
         ]);
     }

@@ -6,7 +6,7 @@ return [
     /*
      * Email domains considered "public". These are excluded from auto-company matching
      * during email sync to prevent creating garbage companies like "Gmail Inc".
-     * Teams can add further domain exclusions via Settings → Public Email Domains.
+     * Workspaces can add further domain exclusions via Settings → Public Email Domains.
      */
     'public_domains' => [
         'gmail.com',

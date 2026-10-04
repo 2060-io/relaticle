@@ -64,16 +64,16 @@ final class SignatureBlock extends RichContentCustomBlock
         }
 
         $userId = Auth::id();
-        $teamId = Filament::getTenant()?->getKey();
+        $workspaceId = Filament::getTenant()?->getKey();
 
-        if ($userId === null || $teamId === null) {
+        if ($userId === null || $workspaceId === null) {
             return null;
         }
 
         return EmailSignature::query()
             ->whereKey($signatureId)
             ->where('user_id', $userId)
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->value('content_html');
     }
 }

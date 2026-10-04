@@ -19,7 +19,7 @@ final readonly class MarkEmailAsReadAction
     public function execute(string $emailId, User $user): void
     {
         // Only let a user mark an email they can actually see. Guards against
-        // forging read rows for private/out-of-team emails via a crafted id.
+        // forging read rows for private/out-of-workspace emails via a crafted id.
         $isVisible = Email::query()
             ->withGlobalScope('visible', new VisibleEmailScope($user))
             ->whereKey($emailId)

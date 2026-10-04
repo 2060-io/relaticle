@@ -41,7 +41,7 @@ use Relaticle\CustomFields\Services\TenantContextService;
 use Relaticle\EmailIntegration\Filament\Actions\ComposeEmailAction;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
 mutates(HasRecordPageLayout::class, CountsRelatedRecords::class, CreateTaskAction::class, ComposeEmailAction::class);
 
@@ -472,7 +472,7 @@ it('hides compose email on the rail when email integration is off', function ():
 });
 
 it('hides compose email on the rail for a person whose mailbox is blocked', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.example')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.example')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);

@@ -24,7 +24,7 @@ final readonly class LinkMeetingToRecordAction
         throw_if(
             (string) $record->getAttribute('workspace_id') !== (string) $meeting->workspace_id,
             InvalidArgumentException::class,
-            'Cannot link a meeting to a record from another team.',
+            'Cannot link a meeting to a record from another workspace.',
         );
 
         [$relation, $scorable] = match (true) {

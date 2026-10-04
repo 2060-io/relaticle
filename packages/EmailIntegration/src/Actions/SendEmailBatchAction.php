@@ -50,8 +50,8 @@ final readonly class SendEmailBatchAction
         $privacyTier = $payload['privacy_tier']
             ?? $this->privacy->defaultTierForUser($user, $user->currentWorkspace);
 
-        // Authorize the sender owns the chosen account in the current team; the
-        // per-recipient People records are this team's own selection from the
+        // Authorize the sender owns the chosen account in the current workspace; the
+        // per-recipient People records are this workspace's own selection from the
         // PeopleResource table, already tenant-scoped by Filament.
         ConnectedAccount::query()
             ->ownedBy($user, $user->currentWorkspace)

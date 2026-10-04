@@ -40,12 +40,12 @@ final class MassSendBulkAction extends BulkAction
             ->visible(function (): bool {
                 /** @var User|null $user */
                 $user = auth()->user();
-                /** @var Workspace|null $team */
-                $team = filament()->getTenant();
+                /** @var Workspace|null $workspace */
+                $workspace = filament()->getTenant();
 
                 return Feature::active(EmailIntegration::class)
                     && $user instanceof User
-                    && ConnectedAccount::hasSendableFor($user, $team);
+                    && ConnectedAccount::hasSendableFor($user, $workspace);
             })
             ->action(function (Collection $records) use ($forCompanies): void {
                 /** @var Component $page */

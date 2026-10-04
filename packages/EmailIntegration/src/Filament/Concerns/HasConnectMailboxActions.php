@@ -31,10 +31,10 @@ trait HasConnectMailboxActions
 
     private function mailboxOAuthWorkspace(): Workspace
     {
-        $team = filament()->getTenant();
+        $workspace = filament()->getTenant();
 
-        throw_unless($team instanceof Workspace, RuntimeException::class, 'Mailbox OAuth requires an active workspace.');
+        throw_unless($workspace instanceof Workspace, RuntimeException::class, 'Mailbox OAuth requires an active workspace.');
 
-        return $team;
+        return $workspace;
     }
 }

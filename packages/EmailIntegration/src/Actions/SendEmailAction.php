@@ -114,8 +114,8 @@ final readonly class SendEmailAction
         );
 
         return DB::transaction(function () use ($account, $data, $priority, $scheduledFor, $linkToType, $linkToId, $attachmentPaths, $attachmentAttributes, $attachmentFileNames, $hasDownloadableAttachments): Email {
-            // Scope the reply lookup to the sender's team. in_reply_to_email_id arrives
-            // from a client-controlled hidden field and Email has no team global scope,
+            // Scope the reply lookup to the sender's workspace. in_reply_to_email_id arrives
+            // from a client-controlled hidden field and Email has no workspace global scope,
             // so an unscoped lookup would let a user thread their outbound mail onto
             // another tenant's email and leak its thread_id / rfc_message_id.
             /** @var Email|null $inReplyTo */

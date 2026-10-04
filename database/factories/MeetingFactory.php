@@ -22,13 +22,13 @@ final class MeetingFactory extends Factory
     /** @return array<string, mixed> */
     public function definition(): array
     {
-        $team = Workspace::factory()->create();
+        $workspace = Workspace::factory()->create();
         $startsAt = fake()->dateTimeBetween('-10 days', '+30 days');
         $endsAt = (clone $startsAt)->modify('+30 minutes');
 
         return [
-            'workspace_id' => $team->getKey(),
-            'connected_account_id' => ConnectedAccount::factory()->for($team),
+            'workspace_id' => $workspace->getKey(),
+            'connected_account_id' => ConnectedAccount::factory()->for($workspace),
             'provider_event_id' => fake()->uuid(),
             'ical_uid' => fake()->uuid().'@google.com',
             'title' => fake()->sentence(3),

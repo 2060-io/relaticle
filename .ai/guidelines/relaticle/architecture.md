@@ -105,6 +105,25 @@ users `has-ai-usage` who had never typed. Scoped queries take no table alias, be
 rejects under an alias. `tests/Arch/ConventionsTest.php` fails when a public method
 outside a model, enum, or `Scope` class takes a query builder.
 
+## Business language
+
+One word per business concept. The model class owns the word, and code, tests and copy use it.
+
+| Concept | Word | Retired |
+|---|---|---|
+| The tenant | workspace (`App\Models\Workspace`) | team |
+| A user's place in a workspace | member (`App\Models\Membership`, `WorkspaceRole`) | the `editor` role key |
+
+`team` survives in three places. Jetstream's own contract and event names keep it
+(`AddsTeamMembers`, `TeamMemberAdded`). `teammate` is a person, not the tenant. A company's
+team in the email composer (`company_team`) means the people at a CRM company. `tenant` is
+the custom-fields package's word and stays at that boundary: `TenantContextService`, and the
+`team` relation name the package registers. Stripe objects already carry a `team_id` metadata
+key, so billing still writes and reads it.
+
+`tests/Arch/ConventionsTest.php` fails an identifier that uses `team` for the tenant, and any
+use of the retired `editor` role key.
+
 ## i18n enforcement
 
 Two custom PHPStan rules (`app/PHPStan/Rules/`) forbid hardcoded user-facing

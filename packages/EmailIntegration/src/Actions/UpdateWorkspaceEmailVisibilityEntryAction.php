@@ -8,22 +8,22 @@ use App\Enums\WorkspaceCapability;
 use App\Models\User;
 use App\Models\Workspace;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
-final readonly class UpdateTeamEmailVisibilityEntryAction
+final readonly class UpdateWorkspaceEmailVisibilityEntryAction
 {
     public function execute(
-        Workspace $team,
+        Workspace $workspace,
         User $actor,
-        TeamEmailBlocklist $entry,
+        WorkspaceEmailBlocklist $entry,
         EmailVisibilityEnforcement $enforcement,
     ): void {
         abort_unless(
-            $actor->hasWorkspaceCapability($team->getKey(), WorkspaceCapability::EmailManage),
+            $actor->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::EmailManage),
             403,
         );
 
-        abort_unless($entry->workspace_id === $team->getKey(), 403);
+        abort_unless($entry->workspace_id === $workspace->getKey(), 403);
 
         $entry->update([
             'enforcement_level' => $enforcement->value,

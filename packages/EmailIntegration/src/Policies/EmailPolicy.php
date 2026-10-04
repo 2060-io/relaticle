@@ -17,7 +17,7 @@ final readonly class EmailPolicy
 
     /**
      * Tenant isolation for every instance ability. Return null so viewAny (class
-     * argument) and same-team viewers still reach the method.
+     * argument) and same-workspace viewers still reach the method.
      */
     public function before(User $user, string $ability, mixed $email = null): ?bool
     {

@@ -16,7 +16,7 @@ use Relaticle\EmailIntegration\Models\MeetingAttendee;
 final readonly class MeetingAttendeePresenter
 {
     public function __construct(
-        private TeamMemberDirectory $teamMembers,
+        private WorkspaceMemberDirectory $workspaceMembers,
         private MailboxDisplayNameDirectory $mailboxNames,
         private AvatarService $avatars,
     ) {}
@@ -31,7 +31,7 @@ final readonly class MeetingAttendeePresenter
             : $attendee->contact;
         $email = Str::lower(trim((string) $attendee->email_address));
         $mailboxPerson = $attendee->is_self ? $this->mailboxPerson($attendee) : null;
-        $member = $email !== '' ? $this->teamMember($attendee, $email) : null;
+        $member = $email !== '' ? $this->workspaceMember($attendee, $email) : null;
         $contactName = $contact instanceof People ? $this->usableName($contact->name, $email) : null;
         $selfName = $mailboxPerson !== null ? $this->usableName($mailboxPerson['name'], $email) : null;
         $memberName = $member !== null ? $this->usableName($member['name'], $email) : null;
@@ -107,15 +107,15 @@ final readonly class MeetingAttendeePresenter
     /**
      * @return array{name: string, avatar: string|null}|null
      */
-    private function teamMember(MeetingAttendee $attendee, string $email): ?array
+    private function workspaceMember(MeetingAttendee $attendee, string $email): ?array
     {
-        $teamId = $this->teamId($attendee);
+        $workspaceId = $this->workspaceId($attendee);
 
-        if ($teamId === null) {
+        if ($workspaceId === null) {
             return null;
         }
 
-        return $this->teamMembers->find($teamId, $email);
+        return $this->workspaceMembers->find($workspaceId, $email);
     }
 
     private function mailboxName(string $email): ?string
@@ -140,7 +140,7 @@ final readonly class MeetingAttendeePresenter
         return $trimmed;
     }
 
-    private function teamId(MeetingAttendee $attendee): ?string
+    private function workspaceId(MeetingAttendee $attendee): ?string
     {
         if ($attendee->relationLoaded('meeting')) {
             $meeting = $attendee->getRelation('meeting');

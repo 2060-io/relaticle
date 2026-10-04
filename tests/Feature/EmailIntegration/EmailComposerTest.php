@@ -37,7 +37,7 @@ use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
 use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Models\EmailTemplate;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceInterface;
 use Relaticle\EmailIntegration\Services\RecipientSuggestionService;
@@ -1043,7 +1043,7 @@ it('excludes recipients from mail hidden by a private per-teammate share overrid
 it('excludes protected-recipient addresses from recipient suggestions', function (): void {
     $address = 'vip@protected.example';
 
-    TeamEmailBlocklist::factory()->protected()->email($address)->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email($address)->create([
         'workspace_id' => $this->user->current_workspace_id,
         'created_by' => $this->user->id,
     ]);

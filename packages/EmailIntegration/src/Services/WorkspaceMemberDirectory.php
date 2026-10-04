@@ -8,24 +8,24 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
-final class TeamMemberDirectory
+final class WorkspaceMemberDirectory
 {
     /** @var array<string, array<string, array{name: string, avatar: string|null}>> */
-    private array $membersByTeam = [];
+    private array $membersByWorkspace = [];
 
     /**
      * @return array{name: string, avatar: string|null}|null
      */
-    public function find(string $teamId, string $email): ?array
+    public function find(string $workspaceId, string $email): ?array
     {
-        $this->load($teamId);
+        $this->load($workspaceId);
 
-        return $this->membersByTeam[$teamId][Str::lower($email)] ?? null;
+        return $this->membersByWorkspace[$workspaceId][Str::lower($email)] ?? null;
     }
 
-    private function load(string $teamId): void
+    private function load(string $workspaceId): void
     {
-        if (array_key_exists($teamId, $this->membersByTeam)) {
+        if (array_key_exists($workspaceId, $this->membersByWorkspace)) {
             return;
         }
 
@@ -34,7 +34,7 @@ final class TeamMemberDirectory
         User::query()
             ->whereHas(
                 'workspaces',
-                fn (Builder $query): Builder => $query->where('workspaces.id', $teamId),
+                fn (Builder $query): Builder => $query->where('workspaces.id', $workspaceId),
             )
             ->get()
             ->each(function (User $user) use (&$members): void {
@@ -50,6 +50,6 @@ final class TeamMemberDirectory
                 ];
             });
 
-        $this->membersByTeam[$teamId] = $members;
+        $this->membersByWorkspace[$workspaceId] = $members;
     }
 }

@@ -12,7 +12,7 @@ use Relaticle\EmailIntegration\Models\PublicEmailDomain;
 
 /**
  * Single source of truth for resolving an email/attendee domain to an existing
- * Company via the team's "domains" custom field. Shared by the email and meeting
+ * Company via the workspace's "domains" custom field. Shared by the email and meeting
  * link actions (fast path) and the system auto-create action (locked re-check),
  * so the matching semantics never drift between them.
  *
@@ -23,15 +23,15 @@ use Relaticle\EmailIntegration\Models\PublicEmailDomain;
 final class CompanyDomainMatcher
 {
     /**
-     * Find the first Company in the team whose "domains" custom field contains
+     * Find the first Company in the workspace whose "domains" custom field contains
      * the given host as a complete host token. Returns null when no company
      * owns the domain.
      */
-    public function firstMatching(string $domain, string $teamId): ?Company
+    public function firstMatching(string $domain, string $workspaceId): ?Company
     {
         $host = $this->host($domain);
 
-        return Company::query()->where('workspace_id', $teamId)
+        return Company::query()->where('workspace_id', $workspaceId)
             ->whereHas('customFieldValues', fn (Builder $valueQuery) => $valueQuery
                 ->whereHas('customField', fn (Builder $fieldQuery) => $fieldQuery->where('code', 'domains'))
                 ->whereRaw('json_value::text ~* ?', [$this->matchPattern($host)])
@@ -70,15 +70,15 @@ final class CompanyDomainMatcher
     /**
      * @return Collection<int, lowercase-string>
      */
-    public function skippedHosts(string $teamId): Collection
+    public function skippedHosts(string $workspaceId): Collection
     {
         $configDomains = collect((array) config('email-integration.public_domains', []))
             ->map(fn (mixed $d): string => strtolower($this->host((string) $d)));
 
-        $teamDomains = PublicEmailDomain::query()->where('workspace_id', $teamId)
+        $workspaceDomains = PublicEmailDomain::query()->where('workspace_id', $workspaceId)
             ->pluck('domain')
             ->map(fn (mixed $d): string => strtolower($this->host((string) $d)));
 
-        return $configDomains->merge($teamDomains)->unique()->values();
+        return $configDomains->merge($workspaceDomains)->unique()->values();
     }
 }

@@ -22,7 +22,7 @@ final readonly class SaveEmailDraftAction
 {
     /**
      * Create or update a DRAFT email row. Drafts are never queued and never
-     * team-visible (privacy_tier PRIVATE).
+     * workspace-visible (privacy_tier PRIVATE).
      *
      * A draft made from another message keeps the link to it. Dropping it, as this
      * did originally, meant a reply saved as a draft came back as a plain new

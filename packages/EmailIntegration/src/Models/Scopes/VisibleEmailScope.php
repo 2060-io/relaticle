@@ -15,7 +15,7 @@ use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailVisibilityEnforcement;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\EmailBlocklist;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 use Relaticle\EmailIntegration\Support\BlocklistDomainMatcher;
 
@@ -36,10 +36,10 @@ final readonly class VisibleEmailScope implements Scope
     // Builders apply a scope once per compile, so the rule lookups run here, once per query.
     public function __construct(private User $viewer)
     {
-        $teamId = $viewer->current_workspace_id;
+        $workspaceId = $viewer->current_workspace_id;
 
-        $this->appliesMailboxBlocklist = $teamId === null || $this->workspaceHasMailboxBlocklist($teamId);
-        $this->appliesWorkspaceBlocklist = $teamId !== null && $this->workspaceHasBlockedEntry($teamId);
+        $this->appliesMailboxBlocklist = $workspaceId === null || $this->workspaceHasMailboxBlocklist($workspaceId);
+        $this->appliesWorkspaceBlocklist = $workspaceId !== null && $this->workspaceHasBlockedEntry($workspaceId);
     }
 
     /**
@@ -48,25 +48,25 @@ final readonly class VisibleEmailScope implements Scope
     public function apply(Builder $builder, Model $model): void
     {
         $viewerId = $this->viewer->getKey();
-        $teamId = $this->viewer->current_workspace_id;
+        $workspaceId = $this->viewer->current_workspace_id;
 
         $builder
-            ->where('workspace_id', $teamId)
-            ->where(function (Builder $visibilityQuery) use ($viewerId, $teamId): void {
+            ->where('workspace_id', $workspaceId)
+            ->where(function (Builder $visibilityQuery) use ($viewerId, $workspaceId): void {
                 // Both anti-joins scan every participant row, so they run only when a rule exists.
                 if ($this->appliesMailboxBlocklist) {
                     $this->excludeEmailsMatchingMailboxBlocklist($visibilityQuery);
                 }
 
-                if ($teamId !== null && $this->appliesWorkspaceBlocklist) {
-                    $this->excludeEmailsWithBlockedParticipant($visibilityQuery, $teamId);
+                if ($workspaceId !== null && $this->appliesWorkspaceBlocklist) {
+                    $this->excludeEmailsWithBlockedParticipant($visibilityQuery, $workspaceId);
                 }
 
                 // Owner sees their own emails unless a Blocked or mailbox-only rule applies above.
-                $visibilityQuery->where(function (Builder $ownerOrShared) use ($viewerId, $teamId): void {
+                $visibilityQuery->where(function (Builder $ownerOrShared) use ($viewerId, $workspaceId): void {
                     $ownerOrShared->where('user_id', $viewerId)
-                        ->orWhere(function (Builder $sharedQuery) use ($viewerId, $teamId): void {
-                            $this->whereTeammateMaySeeMetadata($sharedQuery, $viewerId, $teamId);
+                        ->orWhere(function (Builder $sharedQuery) use ($viewerId, $workspaceId): void {
+                            $this->whereTeammateMaySeeMetadata($sharedQuery, $viewerId, $workspaceId);
                         });
                 });
             });
@@ -79,7 +79,7 @@ final readonly class VisibleEmailScope implements Scope
      * @param  Builder<covariant TModel>  $builder
      * @return Builder<covariant TModel>
      */
-    private function whereTeammateMaySeeMetadata(Builder $builder, string $viewerId, ?string $teamId): Builder
+    private function whereTeammateMaySeeMetadata(Builder $builder, string $viewerId, ?string $workspaceId): Builder
     {
         $visibleTiers = [
             EmailPrivacyTier::METADATA_ONLY->value,
@@ -87,7 +87,7 @@ final readonly class VisibleEmailScope implements Scope
             EmailPrivacyTier::FULL->value,
         ];
 
-        return $builder->where(function (Builder $access) use ($viewerId, $teamId, $visibleTiers): void {
+        return $builder->where(function (Builder $access) use ($viewerId, $workspaceId, $visibleTiers): void {
             $access
                 ->whereExists(fn (BaseBuilder $copyQuery): BaseBuilder => $this->syncedCopyExists($copyQuery, $viewerId))
                 ->orWhereHas('shares', fn (Builder $shareQuery): Builder => $shareQuery
@@ -103,12 +103,12 @@ final readonly class VisibleEmailScope implements Scope
                             $visibleTiers,
                         ));
                 })
-                ->orWhere(function (Builder $byDefault) use ($viewerId, $teamId, $visibleTiers): void {
+                ->orWhere(function (Builder $byDefault) use ($viewerId, $workspaceId, $visibleTiers): void {
                     $byDefault
-                        ->where(function (Builder $publicGate) use ($teamId): void {
+                        ->where(function (Builder $publicGate) use ($workspaceId): void {
                             $publicGate->where('is_internal', false);
 
-                            $this->excludeTeammateHiddenEmails($publicGate, $teamId);
+                            $this->excludeTeammateHiddenEmails($publicGate, $workspaceId);
                         })
                         ->whereIn('privacy_tier', $visibleTiers)
                         ->whereDoesntHave('shares', fn (Builder $shareQuery): Builder => $shareQuery
@@ -156,36 +156,36 @@ final readonly class VisibleEmailScope implements Scope
     /**
      * @param  Builder<covariant TModel>  $builder
      */
-    private function excludeTeammateHiddenEmails(Builder $builder, ?string $teamId): void
+    private function excludeTeammateHiddenEmails(Builder $builder, ?string $workspaceId): void
     {
-        if ($teamId === null) {
+        if ($workspaceId === null) {
             return;
         }
 
         $visibility = resolve(EmailVisibilityService::class);
-        $team = $visibility->workspace($teamId);
+        $workspace = $visibility->workspace($workspaceId);
 
-        if ($team === null) {
+        if ($workspace === null) {
             return;
         }
 
-        $memberEmails = $visibility->memberEmailsForTeam($team);
-        $protectedDomains = $visibility->workspaceDomains($team);
+        $memberEmails = $visibility->memberEmailsForWorkspace($workspace);
+        $protectedDomains = $visibility->workspaceDomains($workspace);
 
-        $this->excludeEmailsWhereAllParticipantsAreProtected($builder, $teamId, $memberEmails, $protectedDomains);
+        $this->excludeEmailsWhereAllParticipantsAreProtected($builder, $workspaceId, $memberEmails, $protectedDomains);
     }
 
-    private function workspaceHasMailboxBlocklist(string $teamId): bool
+    private function workspaceHasMailboxBlocklist(string $workspaceId): bool
     {
         return EmailBlocklist::query()
-            ->whereIn('connected_account_id', ConnectedAccount::withTrashed()->where('workspace_id', $teamId)->select('id'))
+            ->whereIn('connected_account_id', ConnectedAccount::withTrashed()->where('workspace_id', $workspaceId)->select('id'))
             ->exists();
     }
 
-    private function workspaceHasBlockedEntry(string $teamId): bool
+    private function workspaceHasBlockedEntry(string $workspaceId): bool
     {
-        return TeamEmailBlocklist::query()
-            ->where('workspace_id', $teamId)
+        return WorkspaceEmailBlocklist::query()
+            ->where('workspace_id', $workspaceId)
             ->where('enforcement_level', EmailVisibilityEnforcement::Blocked)
             ->exists();
     }
@@ -219,19 +219,19 @@ final readonly class VisibleEmailScope implements Scope
     /**
      * @param  Builder<covariant TModel>  $builder
      */
-    private function excludeEmailsWithBlockedParticipant(Builder $builder, string $teamId): void
+    private function excludeEmailsWithBlockedParticipant(Builder $builder, string $workspaceId): void
     {
-        $builder->whereDoesntHave('participants', function (Builder $participantQuery) use ($teamId): void {
-            $participantQuery->where(function (Builder $match) use ($teamId): void {
-                $match->whereExists(function (BaseBuilder $blockedEmail) use ($teamId): void {
+        $builder->whereDoesntHave('participants', function (Builder $participantQuery) use ($workspaceId): void {
+            $participantQuery->where(function (Builder $match) use ($workspaceId): void {
+                $match->whereExists(function (BaseBuilder $blockedEmail) use ($workspaceId): void {
                     $blockedEmail->from('workspace_email_blocklists')
-                        ->where('workspace_email_blocklists.workspace_id', $teamId)
+                        ->where('workspace_email_blocklists.workspace_id', $workspaceId)
                         ->where('workspace_email_blocklists.enforcement_level', EmailVisibilityEnforcement::Blocked->value)
                         ->where('workspace_email_blocklists.type', EmailBlocklistType::EMAIL->value)
                         ->whereRaw('lower(workspace_email_blocklists.value) = lower(email_participants.email_address)');
-                })->orWhereExists(function (BaseBuilder $blockedDomain) use ($teamId): void {
+                })->orWhereExists(function (BaseBuilder $blockedDomain) use ($workspaceId): void {
                     $blockedDomain->from('workspace_email_blocklists')
-                        ->where('workspace_email_blocklists.workspace_id', $teamId)
+                        ->where('workspace_email_blocklists.workspace_id', $workspaceId)
                         ->where('workspace_email_blocklists.enforcement_level', EmailVisibilityEnforcement::Blocked->value)
                         ->where('workspace_email_blocklists.type', EmailBlocklistType::DOMAIN->value);
                     resolve(BlocklistDomainMatcher::class)->constrainWhereExistsDomainMatch(
@@ -251,15 +251,15 @@ final readonly class VisibleEmailScope implements Scope
      */
     private function excludeEmailsWhereAllParticipantsAreProtected(
         Builder $builder,
-        string $teamId,
+        string $workspaceId,
         array $memberEmails,
         array $protectedDomains,
     ): void {
-        $builder->where(function (Builder $visibleQuery) use ($teamId, $memberEmails, $protectedDomains): void {
+        $builder->where(function (Builder $visibleQuery) use ($workspaceId, $memberEmails, $protectedDomains): void {
             $visibleQuery
                 ->doesntHave('participants')
-                ->orWhereHas('participants', function (Builder $unprotectedParticipant) use ($teamId, $memberEmails, $protectedDomains): void {
-                    $unprotectedParticipant->where(function (Builder $notProtected) use ($teamId, $memberEmails, $protectedDomains): void {
+                ->orWhereHas('participants', function (Builder $unprotectedParticipant) use ($workspaceId, $memberEmails, $protectedDomains): void {
+                    $unprotectedParticipant->where(function (Builder $notProtected) use ($workspaceId, $memberEmails, $protectedDomains): void {
                         if ($memberEmails !== []) {
                             $notProtected->whereNotIn(DB::raw('lower(email_participants.email_address)'), $memberEmails);
                         }
@@ -272,16 +272,16 @@ final readonly class VisibleEmailScope implements Scope
                         }
 
                         $notProtected
-                            ->whereNotExists(function (BaseBuilder $protectedEmail) use ($teamId): void {
+                            ->whereNotExists(function (BaseBuilder $protectedEmail) use ($workspaceId): void {
                                 $protectedEmail->from('workspace_email_blocklists')
-                                    ->where('workspace_email_blocklists.workspace_id', $teamId)
+                                    ->where('workspace_email_blocklists.workspace_id', $workspaceId)
                                     ->where('workspace_email_blocklists.enforcement_level', EmailVisibilityEnforcement::Protected->value)
                                     ->where('workspace_email_blocklists.type', EmailBlocklistType::EMAIL->value)
                                     ->whereRaw('lower(workspace_email_blocklists.value) = lower(email_participants.email_address)');
                             })
-                            ->whereNotExists(function (BaseBuilder $protectedDomain) use ($teamId): void {
+                            ->whereNotExists(function (BaseBuilder $protectedDomain) use ($workspaceId): void {
                                 $protectedDomain->from('workspace_email_blocklists')
-                                    ->where('workspace_email_blocklists.workspace_id', $teamId)
+                                    ->where('workspace_email_blocklists.workspace_id', $workspaceId)
                                     ->where('workspace_email_blocklists.enforcement_level', EmailVisibilityEnforcement::Protected->value)
                                     ->where('workspace_email_blocklists.type', EmailBlocklistType::DOMAIN->value);
                                 resolve(BlocklistDomainMatcher::class)->constrainWhereExistsDomainMatch(

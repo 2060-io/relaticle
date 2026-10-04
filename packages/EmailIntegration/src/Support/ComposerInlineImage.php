@@ -56,13 +56,13 @@ final readonly class ComposerInlineImage
             return null;
         }
 
-        $teamId = $user->current_workspace_id;
+        $workspaceId = $user->current_workspace_id;
 
-        if (blank($teamId)) {
+        if (blank($workspaceId)) {
             return null;
         }
 
-        $directory = EmailAttachment::composeImagesDirectory((string) $teamId).'/';
+        $directory = EmailAttachment::composeImagesDirectory((string) $workspaceId).'/';
 
         if (! str_starts_with($path, $directory)) {
             return null;

@@ -50,12 +50,12 @@ final readonly class MeetingRespondentResolver
     /**
      * @return array<int, lowercase-string>
      */
-    public function identityEmailsForUser(User $user, string $teamId): array
+    public function identityEmailsForUser(User $user, string $workspaceId): array
     {
         $emails = collect([strtolower($user->email)]);
 
         ConnectedAccount::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->where('user_id', $user->getKey())
             ->pluck('email_address')
             ->each(function (mixed $emailAddress) use ($emails): void {

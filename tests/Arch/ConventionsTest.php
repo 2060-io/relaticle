@@ -543,6 +543,79 @@ it('keeps the retired editor role key out of everything but its historic migrati
     );
 });
 
+it('keeps the retired team word out of identifiers', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $jetstreamNames = [
+        'AddingTeam', 'AddingTeamMember', 'AddsTeamMembers', 'CreatesTeams', 'DeletesTeams', 'HasTeams',
+        'InvitesTeamMembers', 'InvitingTeamMember', 'RemovesTeamMembers', 'TeamCreated', 'TeamMemberAdded',
+        'TeamMemberRemoved', 'TeamMemberUpdated', 'UpdatesTeamNames', 'addTeamMembersUsing', 'createTeamsUsing',
+        'deleteTeamsUsing', 'inviteTeamMembersUsing', 'newTeamModel', 'removeTeamMembersUsing',
+        'updateTeamNamesUsing', 'useTeamInvitationModel', 'useTeamModel',
+    ];
+
+    $vendorVocabularyPaths = [
+        'app/Models/Concerns/HasWorkspaces.php',
+        'app/Support/Migrations/TenantMigration.php',
+        'resources/views/teams/',
+    ];
+
+    $stripeMetadataKeyPaths = [
+        'app/Actions/Billing/CreateCreditPackCheckout.php',
+        'app/Http/Controllers/Billing/StripeWebhookController.php',
+    ];
+
+    $offenders = [];
+
+    foreach (['app', 'config', 'database/factories', 'database/seeders', 'lang', 'packages', 'resources', 'routes'] as $directory) {
+        $files = new RegexIterator(
+            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory)),
+            '/\.php$/',
+        );
+
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $relativePath = str_replace($root.'/', '', $file->getPathname());
+
+            if (str_contains($relativePath, '/database/migrations/')) {
+                continue;
+            }
+
+            if (array_any($vendorVocabularyPaths, fn (string $path): bool => str_starts_with($relativePath, $path))) {
+                continue;
+            }
+
+            preg_match_all(
+                '/\$team\w*|(?<![\\\\\w])\w*[a-z]Team\w*|\bTeam[A-Z]\w*|\b\w*team_\w+|\b\w+_team\b/',
+                (string) file_get_contents($file->getPathname()),
+                $matches,
+            );
+
+            foreach (array_unique($matches[0]) as $token) {
+                if (preg_match('/teammate|companyteam|company_team/i', $token) === 1) {
+                    continue;
+                }
+
+                if (in_array($token, $jetstreamNames, true)) {
+                    continue;
+                }
+
+                if ($token === 'team_id' && in_array($relativePath, $stripeMetadataKeyPaths, true)) {
+                    continue;
+                }
+
+                $offenders[] = $relativePath.': '.$token;
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'The tenant is a workspace (.ai/guidelines/relaticle/architecture.md). The word team survives only in '.
+        'Jetstream names, in teammate, and in a company\'s team. Rename: '.implode(', ', array_slice($offenders, 0, 40)),
+    );
+});
+
 it('keeps published copy and source free of em-dashes', function (): void {
     $root = dirname(__DIR__, 2);
     $emDash = "\u{2014}";

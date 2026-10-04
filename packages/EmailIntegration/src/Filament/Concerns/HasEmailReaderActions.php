@@ -295,7 +295,7 @@ trait HasEmailReaderActions
         $emailId = $arguments['emailId'] ?? null;
 
         if (is_string($emailId) || is_int($emailId)) {
-            return $this->resolveTeamEmail((string) $emailId, $ability);
+            return $this->resolveWorkspaceEmail((string) $emailId, $ability);
         }
 
         if (! $record instanceof Email) {
@@ -309,7 +309,7 @@ trait HasEmailReaderActions
         return $record;
     }
 
-    protected function resolveTeamEmail(?string $emailId, string $ability): ?Email
+    protected function resolveWorkspaceEmail(?string $emailId, string $ability): ?Email
     {
         if ($emailId === null) {
             return null;

@@ -13,7 +13,7 @@ use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
 mutates(VisibleEmailScope::class);
 
@@ -62,7 +62,7 @@ function visibleTo(User $viewer): Collection
 }
 
 it('hides a coworker email when all participants are protected', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -77,7 +77,7 @@ it('hides a coworker email when all participants are protected', function (): vo
 });
 
 it('shows a coworker email when only some participants are protected', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -88,7 +88,7 @@ it('shows a coworker email when only some participants are protected', function 
 });
 
 it('hides a coworker email when any participant matches a blocked entry', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -99,7 +99,7 @@ it('hides a coworker email when any participant matches a blocked entry', functi
 });
 
 it('hides a coworker email whose participant matches a protected domain', function (): void {
-    TeamEmailBlocklist::factory()->protected()->domain('secret.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->domain('secret.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -110,7 +110,7 @@ it('hides a coworker email whose participant matches a protected domain', functi
 });
 
 it('shows a coworker email from a subdomain when domain block has include subdomains off', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->domain('temuemail.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->domain('temuemail.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -121,7 +121,7 @@ it('shows a coworker email from a subdomain when domain block has include subdom
 });
 
 it('hides a coworker email from a subdomain when domain block has include subdomains on', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->domain('temuemail.com')->includeSubdomains()->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->domain('temuemail.com')->includeSubdomains()->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -140,7 +140,7 @@ it('hides a coworker email whose participant matches an inferred workspace domai
 });
 
 it('still shows a protected email to its owner', function (): void {
-    TeamEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -151,7 +151,7 @@ it('still shows a protected email to its owner', function (): void {
 });
 
 it('hides a workspace-blocked email from its owner', function (): void {
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -190,7 +190,7 @@ it('hides mail from an address the workspace blocks after an earlier read', func
 
     expect(visibleTo($this->coworker)->modelKeys())->toContain($email->id);
 
-    TeamEmailBlocklist::factory()->blocked()->email('late-block@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('late-block@contact.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->viewer->id,
     ]);
@@ -215,7 +215,7 @@ it('hides mail from an address the mailbox blocks after an earlier read', functi
 it('ignores another workspace blocking the same address', function (): void {
     $otherOwner = User::factory()->withWorkspace()->create();
 
-    TeamEmailBlocklist::factory()->blocked()->email('shared@contact.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('shared@contact.com')->create([
         'workspace_id' => $otherOwner->current_workspace_id,
         'created_by' => $otherOwner->id,
     ]);

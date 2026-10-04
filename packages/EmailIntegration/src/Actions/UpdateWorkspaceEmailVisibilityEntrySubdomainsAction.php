@@ -8,18 +8,18 @@ use App\Enums\WorkspaceCapability;
 use App\Models\User;
 use App\Models\Workspace;
 use Relaticle\EmailIntegration\Enums\EmailBlocklistType;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 
-final readonly class UpdateTeamEmailVisibilityEntrySubdomainsAction
+final readonly class UpdateWorkspaceEmailVisibilityEntrySubdomainsAction
 {
-    public function execute(Workspace $team, User $actor, TeamEmailBlocklist $entry, bool $includeSubdomains): void
+    public function execute(Workspace $workspace, User $actor, WorkspaceEmailBlocklist $entry, bool $includeSubdomains): void
     {
         abort_unless(
-            $actor->hasWorkspaceCapability($team->getKey(), WorkspaceCapability::EmailManage),
+            $actor->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::EmailManage),
             403,
         );
 
-        abort_unless($entry->workspace_id === $team->getKey(), 403);
+        abort_unless($entry->workspace_id === $workspace->getKey(), 403);
 
         if ($entry->type !== EmailBlocklistType::DOMAIN) {
             return;

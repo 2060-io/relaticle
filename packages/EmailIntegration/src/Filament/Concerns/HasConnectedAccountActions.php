@@ -262,9 +262,9 @@ trait HasConnectedAccountActions
     {
         /** @var User $user */
         $user = auth()->user();
-        /** @var Workspace $team */
-        $team = filament()->getTenant();
+        /** @var Workspace $workspace */
+        $workspace = filament()->getTenant();
 
-        return ConnectedAccount::query()->ownedBy($user, $team);
+        return ConnectedAccount::query()->ownedBy($user, $workspace);
     }
 }

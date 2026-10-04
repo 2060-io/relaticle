@@ -23,7 +23,7 @@ final readonly class MassSendRecipientResolver
             return new MassSendRecipientResult([], 0);
         }
 
-        $teamId = (string) $people->first()->workspace_id;
+        $workspaceId = (string) $people->first()->workspace_id;
         /** @var list<string> $peopleIds */
         $peopleIds = array_values($people
             ->map(fn (People $person): string => (string) $person->getKey())
@@ -31,7 +31,7 @@ final readonly class MassSendRecipientResolver
 
         $emailByPersonId = [];
 
-        foreach ($this->primaryEmailEntriesForPeople($peopleIds, $teamId) as $entry) {
+        foreach ($this->primaryEmailEntriesForPeople($peopleIds, $workspaceId) as $entry) {
             $emailByPersonId[$entry['person_id']] = $entry['email'];
         }
 
@@ -72,11 +72,11 @@ final readonly class MassSendRecipientResolver
             return new MassSendRecipientResult([], 0);
         }
 
-        $teamId = (string) $companies->first()->workspace_id;
+        $workspaceId = (string) $companies->first()->workspace_id;
         $companyIds = $companies->pluck('id')->all();
 
         $people = People::query()
-            ->where('workspace_id', $teamId)
+            ->where('workspace_id', $workspaceId)
             ->whereIn('company_id', $companyIds)
             ->get();
 
@@ -87,7 +87,7 @@ final readonly class MassSendRecipientResolver
      * @param  list<string>  $peopleIds
      * @return list<array{person_id: string, email: string}>
      */
-    private function primaryEmailEntriesForPeople(array $peopleIds, string $teamId): array
+    private function primaryEmailEntriesForPeople(array $peopleIds, string $workspaceId): array
     {
         if ($peopleIds === []) {
             return [];
@@ -95,7 +95,7 @@ final readonly class MassSendRecipientResolver
 
         $emailField = CustomField::query()
             ->withoutGlobalScopes()
-            ->where('tenant_id', $teamId)
+            ->where('tenant_id', $workspaceId)
             ->where('entity_type', 'people')
             ->where('code', PeopleField::EMAILS->value)
             ->first();
@@ -108,7 +108,7 @@ final readonly class MassSendRecipientResolver
 
         foreach (CustomFieldValue::query()
             ->withoutGlobalScopes()
-            ->where('tenant_id', $teamId)
+            ->where('tenant_id', $workspaceId)
             ->where('entity_type', 'people')
             ->where('custom_field_id', $emailField->getKey())
             ->whereIn('entity_id', $peopleIds)

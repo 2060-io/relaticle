@@ -85,7 +85,7 @@ it('updates team emails only for members who follow the workspace default', func
         'privacy_tier_customized' => false,
     ]);
 
-    $updated = $this->action->executeForTeam($this->workspace, EmailPrivacyTier::FULL);
+    $updated = $this->action->executeForWorkspace($this->workspace, EmailPrivacyTier::FULL);
 
     expect($updated)->toBe(2)
         ->and($ownerEmail->fresh()->privacy_tier)->toBe(EmailPrivacyTier::FULL)
@@ -155,7 +155,7 @@ it('includes team owner emails when the owner is not on the team_user pivot', fu
 
     $email = makeRetroactiveEmail();
 
-    $updated = $this->action->executeForTeam($this->workspace, EmailPrivacyTier::FULL);
+    $updated = $this->action->executeForWorkspace($this->workspace, EmailPrivacyTier::FULL);
 
     expect($updated)->toBe(1)
         ->and($email->fresh()->privacy_tier)->toBe(EmailPrivacyTier::FULL);

@@ -10,7 +10,7 @@ final readonly class ConnectAccountData
 {
     public function __construct(
         public string $userId,
-        public string $teamId,
+        public string $workspaceId,
         public string $provider,
         public string $emailAddress,
         public ?string $displayName,

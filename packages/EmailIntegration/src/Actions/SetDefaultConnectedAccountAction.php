@@ -10,9 +10,9 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 final readonly class SetDefaultConnectedAccountAction
 {
     /**
-     * Promote the given account to the user's default within its team. Only one
+     * Promote the given account to the user's default within its workspace. Only one
      * account is default at a time, so the previous default is demoted first
-     * (the partial unique index forbids two live defaults for a user/team).
+     * (the partial unique index forbids two live defaults for a user/workspace).
      */
     public function execute(ConnectedAccount $account): void
     {

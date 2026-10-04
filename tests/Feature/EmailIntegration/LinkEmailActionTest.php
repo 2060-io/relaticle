@@ -20,7 +20,7 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\PublicEmailDomain;
-use Relaticle\EmailIntegration\Models\TeamEmailBlocklist;
+use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Support\PersonEmailMatcher;
 
 mutates(LinkEmailAction::class);
@@ -873,7 +873,7 @@ it('does not auto-create a person for a workspace-blocked address', function ():
         'auto_create_companies' => true,
     ]);
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@partner.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@partner.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -897,7 +897,7 @@ it('does not auto-create a person for a workspace-blocked address', function ():
 it('still auto-creates a person for a protected address', function (): void {
     $this->workspace->update(['contact_creation_mode' => ContactCreationMode::All]);
 
-    TeamEmailBlocklist::factory()->protected()->email('vip@partner.com')->create([
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@partner.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -946,7 +946,7 @@ it('does not auto-create a person for a mailbox-blocklisted address', function (
 it('auto-creates other participants when one address is blocked', function (): void {
     $this->workspace->update(['contact_creation_mode' => ContactCreationMode::All]);
 
-    TeamEmailBlocklist::factory()->blocked()->email('blocked@partner.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@partner.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
@@ -973,7 +973,7 @@ it('auto-creates other participants when one address is blocked', function (): v
 it('does not auto-create a company for a workspace-blocked domain', function (): void {
     $this->workspace->update(['auto_create_companies' => true]);
 
-    TeamEmailBlocklist::factory()->blocked()->domain('blockedcorp.com')->create([
+    WorkspaceEmailBlocklist::factory()->blocked()->domain('blockedcorp.com')->create([
         'workspace_id' => $this->workspace->id,
         'created_by' => $this->user->id,
     ]);
