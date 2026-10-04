@@ -14,6 +14,7 @@ use Relaticle\EmailIntegration\Actions\LinkEmailAction;
 use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Jobs\Concerns\ReleasesOnProviderRateLimit;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 use Relaticle\EmailIntegration\Services\EmailSendingService;
@@ -22,6 +23,7 @@ use Throwable;
 final class SendEmailJob implements ShouldQueue
 {
     use Queueable;
+    use ReleasesOnProviderRateLimit;
 
     public int $tries = 3;
 
@@ -67,8 +69,37 @@ final class SendEmailJob implements ShouldQueue
 
     private function deliver(EmailSendingService $sendingService, LinkEmailAction $linkEmailAction): void
     {
-        /** @var Email|null $email */
-        $email = DB::transaction(function (): ?Email {
+        $email = $this->claimedEmail();
+
+        if (! $email instanceof Email) {
+            $existing = Email::query()->withoutGlobalScope(ActiveAccountScope::class)->find($this->emailId);
+            $this->syncBatchCounters($existing?->batch_id);
+
+            return;
+        }
+
+        if ($email->status !== EmailStatus::SENT) {
+            try {
+                $email = $sendingService->send($email);
+            } catch (Throwable $exception) {
+                if ($this->releaseIfProviderRateLimited((string) $email->connected_account_id, $exception)) {
+                    return;
+                }
+
+                throw $exception;
+            }
+
+            $this->syncBatchCounters($email->batch_id);
+        }
+
+        $linkEmailAction->execute($email);
+
+        $this->syncBatchCounters($email->batch_id);
+    }
+
+    private function claimedEmail(): ?Email
+    {
+        return DB::transaction(function (): ?Email {
             /** @var Email|null $lockedEmail */
             $lockedEmail = Email::query()->withoutGlobalScope(ActiveAccountScope::class)->lockForUpdate()->find($this->emailId);
 
@@ -103,22 +134,6 @@ final class SendEmailJob implements ShouldQueue
 
             return $lockedEmail;
         });
-
-        if ($email === null) {
-            $existing = Email::query()->withoutGlobalScope(ActiveAccountScope::class)->find($this->emailId);
-            $this->syncBatchCounters($existing?->batch_id);
-
-            return;
-        }
-
-        if ($email->status !== EmailStatus::SENT) {
-            $email = $sendingService->send($email);
-            $this->syncBatchCounters($email->batch_id);
-        }
-
-        $linkEmailAction->execute($email);
-
-        $this->syncBatchCounters($email->batch_id);
     }
 
     public function failed(Throwable $exception): void
