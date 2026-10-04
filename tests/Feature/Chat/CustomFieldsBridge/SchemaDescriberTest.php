@@ -12,6 +12,8 @@ use Laravel\Pennant\Feature;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Services\Tools\CustomFieldsSchemaDescriber;
+use Relaticle\Chat\Tools\Company\ListCompaniesTool;
+use Relaticle\Chat\Tools\People\ListPeopleTool;
 
 mutates(CustomFieldsSchemaDescriber::class, CustomFieldsFilterDescriber::class, WorkspaceCustomFields::class);
 
@@ -149,6 +151,36 @@ it('describes a custom field created after the schema was first read', function 
 
     expect(resolve(CustomFieldsSchemaDescriber::class)->describe($workspace, 'task'))->toContain('effort (number')
         ->and(resolve(CustomFieldsFilterDescriber::class)->describe($user, 'task'))->toContain('- effort (Effort');
+});
+
+it('shows a field and an option added mid-request on the list tool and on a related list tool', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspaceId = $user->currentWorkspace->getKey();
+    $this->actingAs($user);
+    $describe = fn (string $tool): string => resolve($tool)->schema(new JsonSchemaTypeFactory)['filter']->toArray()['description'];
+
+    $describe(ListCompaniesTool::class);
+    $describe(ListPeopleTool::class);
+
+    $field = CustomField::query()->create([
+        'tenant_id' => $workspaceId,
+        'entity_type' => 'company',
+        'code' => 'segment',
+        'name' => 'Segment',
+        'type' => 'select',
+        'sort_order' => 0,
+        'validation_rules' => [],
+        'active' => true,
+        'system_defined' => false,
+    ]);
+
+    expect($describe(ListCompaniesTool::class))->toContain('- segment (Segment, select')
+        ->and($describe(ListPeopleTool::class))->toContain('nested custom field example {"company":{"custom_fields":{"segment":');
+
+    $field->options()->create(['tenant_id' => $workspaceId, 'name' => 'Enterprise', 'sort_order' => 0]);
+
+    expect($describe(ListCompaniesTool::class))->toContain('- segment (Segment, select; one of: "Enterprise"')
+        ->and($describe(ListPeopleTool::class))->toContain('nested custom field example {"company":{"custom_fields":{"segment":{"$in":["Enterprise"]}}}}');
 });
 
 it('keeps a custom field name and option label on one line of the filter description', function (): void {

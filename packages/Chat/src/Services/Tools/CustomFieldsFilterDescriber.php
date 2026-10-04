@@ -15,10 +15,7 @@ use Relaticle\Chat\Support\PromptText;
 
 final readonly class CustomFieldsFilterDescriber
 {
-    public function __construct(
-        private FilterVocabulary $vocabulary,
-        private CustomFieldFilterSchema $filterSchema,
-    ) {}
+    public function __construct(private FilterVocabulary $vocabulary) {}
 
     public function describe(User $user, string $entityType): string
     {
@@ -115,6 +112,6 @@ final readonly class CustomFieldsFilterDescriber
      */
     public function sortableCodes(User $user, string $entityType): array
     {
-        return array_keys($this->filterSchema->build($user, $entityType));
+        return $this->vocabulary->customFieldCodes($user, CrmEntity::from($entityType));
     }
 }

@@ -72,9 +72,30 @@ final readonly class FilterVocabulary
     }
 
     /**
+     * @return list<string>
+     */
+    public function customFieldCodes(User $user, CrmEntity $entity): array
+    {
+        return array_keys($this->customFieldEntries($user, $entity)['fields']);
+    }
+
+    /**
      * @return array{types: array<string, array<string, mixed>>, fields: array<string, array<string, mixed>>}
      */
     private function customFieldEntries(User $user, CrmEntity $entity): array
+    {
+        /** @var array{types: array<string, array<string, mixed>>, fields: array<string, array<string, mixed>>} */
+        return $this->customFields->remember(
+            $user->currentWorkspace,
+            "filter_vocabulary:{$entity->value}",
+            fn (): array => $this->buildCustomFieldEntries($user, $entity),
+        );
+    }
+
+    /**
+     * @return array{types: array<string, array<string, mixed>>, fields: array<string, array<string, mixed>>}
+     */
+    private function buildCustomFieldEntries(User $user, CrmEntity $entity): array
     {
         $schema = $this->filterSchema->build($user, $entity->value);
         $fields = $this->customFields->forEntity($user->currentWorkspace, $entity->value)->keyBy('code');
