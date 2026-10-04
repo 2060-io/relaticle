@@ -17,12 +17,4 @@
         <x-marketing.faq-accordion :faqs="$faqs" />
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var e = [0.22, 1, 0.36, 1];
-            inView('#faq .divide-y', function() {
-                animate('.faq-item', { y: [20, 0] }, { delay: stagger(0.08), duration: 0.5, ease: e });
-            }, { amount: 0.15 });
-        });
-    </script>
 </section>
