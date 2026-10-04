@@ -1062,6 +1062,8 @@ final class ProposalCard extends BaseLivewireComponent
         $pendingAction = $this->loadStep($this->activeStepId());
 
         if (! $pendingAction instanceof PendingAction) {
+            $this->reportLapsedStep();
+
             return;
         }
 
@@ -1295,6 +1297,8 @@ final class ProposalCard extends BaseLivewireComponent
         $pendingAction = $this->loadStep($this->activeStepId());
 
         if (! $pendingAction instanceof PendingAction) {
+            $this->reportLapsedStep();
+
             return;
         }
 
@@ -1564,6 +1568,24 @@ final class ProposalCard extends BaseLivewireComponent
         $this->reportResolveFailure($pendingAction, $index === null
             ? $message
             : $this->itemFailureMessage($pendingAction, $index, $message));
+    }
+
+    // The page expires proposals on its own clock, which can run behind the server's.
+    private function reportLapsedStep(): void
+    {
+        $user = $this->authUser();
+
+        $lapsed = PendingAction::query()
+            ->whereKey($this->activeStepId())
+            ->where('workspace_id', $user->currentWorkspace->getKey())
+            ->where('user_id', $user->getKey())
+            ->first();
+
+        if (! $lapsed instanceof PendingAction || ! $lapsed->isPending() || ! $lapsed->isExpired()) {
+            return;
+        }
+
+        $this->dispatch('proposal:lapsed', pendingActionId: $lapsed->getKey(), context: $this->context);
     }
 
     private function reportResolveFailure(PendingAction $pendingAction, string $message): void

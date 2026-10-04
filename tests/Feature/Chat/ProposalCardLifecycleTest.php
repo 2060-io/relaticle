@@ -113,6 +113,20 @@ it('does not surface an expired pending action', function (): void {
         ->assertSet('pendingActionId', null);
 });
 
+it('tells the page when the proposal lapsed before the approve or discard click', function (string $method): void {
+    $action = ProposalCardFixture::proposal($this->user, ['name' => 'Stale'], ['title' => 't', 'summary' => 's', 'fields' => []]);
+
+    $component = Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+        ->dispatch('proposal:set-active', id: $action->getKey(), context: 'conversation');
+
+    $action->update(['expires_at' => now()->subMinute()]);
+
+    $component->call($method)
+        ->assertDispatched('proposal:lapsed', pendingActionId: $action->getKey(), context: 'conversation');
+
+    expect(Company::query()->where('name', 'Stale')->exists())->toBeFalse();
+})->with(['createCurrent', 'discardCurrent']);
+
 it('creates only the active batch record and advances to the next', function (): void {
     Bus::fake();
     $action = ProposalCardFixture::batchCompany($this->user, ['Alpha', 'Beta']);

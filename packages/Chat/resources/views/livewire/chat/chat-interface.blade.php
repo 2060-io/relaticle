@@ -440,6 +440,11 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
                 if ((payload?.context ?? 'conversation') !== this.context) return;
                 this.applyProposalResolution(payload);
             }),
+            window.Livewire.on('proposal:lapsed', (payload) => {
+                if ((payload?.context ?? 'conversation') !== this.context) return;
+                const action = this.findPendingAction(payload?.pendingActionId);
+                if (action?.status === 'pending') action.status = 'expired';
+            }),
             // The dock queued a resumed turn (TurnContinuationService). Nothing
             // streams for a second or two while the job picks it up, and without
             // this the composer sits there looking like the approval ended the
