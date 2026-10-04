@@ -157,7 +157,7 @@ final readonly class FilterTree
             $key = (string) $key;
 
             if (in_array('$'.$key, FilterDefinition::LINK_OPERATORS, true)) {
-                throw FilterErrors::at("{$path}.{$key}", __('validation.filter.operator_sigil', ['operator' => '$'.$key]));
+                throw FilterErrors::sigil("{$path}.{$key}", $key);
             }
 
             if ($definition->related instanceof CrmEntity && str_starts_with($key, '$') && ! in_array($key, LogicFilter::KEYWORDS, true)) {

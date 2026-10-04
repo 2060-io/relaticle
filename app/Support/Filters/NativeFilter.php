@@ -34,8 +34,8 @@ final readonly class NativeFilter implements Filter
         foreach ($value as $operator => $operand) {
             $operator = (string) $operator;
 
-            if (! str_starts_with($operator, '$') && in_array('$'.$operator, $operators, true)) {
-                throw FilterErrors::at($operator, __('validation.filter.operator_sigil', ['operator' => '$'.$operator]));
+            if (in_array('$'.$operator, $operators, true)) {
+                throw FilterErrors::sigil($operator, $operator);
             }
 
             if (! in_array($operator, $operators, true)) {

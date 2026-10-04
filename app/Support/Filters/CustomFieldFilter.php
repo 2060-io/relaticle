@@ -319,8 +319,8 @@ final readonly class CustomFieldFilter implements Filter
      */
     private function assertSupported(string $path, string $operator, array $supported): void
     {
-        if (! str_starts_with($operator, '$') && isset($supported['$'.$operator])) {
-            throw FilterErrors::at("{$path}.{$operator}", __('validation.filter.operator_sigil', ['operator' => '$'.$operator]));
+        if (isset($supported['$'.$operator])) {
+            throw FilterErrors::sigil("{$path}.{$operator}", $operator);
         }
 
         if (! isset($supported[$operator])) {

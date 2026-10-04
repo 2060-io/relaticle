@@ -18,6 +18,11 @@ final readonly class FilterErrors
         return self::at($operator, __('validation.filter.operand_type', ['name' => "{$name} {$operator}", 'expected' => $expected]));
     }
 
+    public static function sigil(string $path, string $operator): ValidationException
+    {
+        return self::at($path, __('validation.filter.operator_sigil', ['operator' => '$'.$operator]));
+    }
+
     public static function prefix(ValidationException $exception, string|int $segment): ValidationException
     {
         $messages = [];
