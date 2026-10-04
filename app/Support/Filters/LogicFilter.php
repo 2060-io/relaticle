@@ -23,7 +23,6 @@ final readonly class LogicFilter implements Filter
     public const array KEYWORDS = ['$and', '$or', '$not'];
 
     public function __construct(
-        private string $keyword,
         private CrmEntity $entity,
         private EntityFilters $filters,
         private User $user,
@@ -36,17 +35,17 @@ final readonly class LogicFilter implements Filter
     {
         $registry = $this->filters->for($this->entity);
 
-        if ($this->keyword === '$not') {
+        if ($property === '$not') {
             $this->complement($query, $registry, $value);
 
             return;
         }
 
         if (! is_array($value) || $value === [] || ! array_is_list($value)) {
-            throw FilterErrors::at('', __('validation.filter.logic_list', ['keyword' => $this->keyword]));
+            throw FilterErrors::at('', __('validation.filter.logic_list', ['keyword' => $property]));
         }
 
-        $boolean = $this->keyword === '$or' ? 'or' : 'and';
+        $boolean = $property === '$or' ? 'or' : 'and';
 
         $query->where(function (Builder $group) use ($registry, $value, $boolean): void {
             foreach ($value as $index => $node) {

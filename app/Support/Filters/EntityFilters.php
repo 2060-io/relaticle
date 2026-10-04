@@ -143,8 +143,10 @@ final readonly class EntityFilters
 
         $filters[] = TreeAllowedFilter::custom('custom_fields', new CustomFieldFilter($entity->value, $this->user));
 
+        $logic = new LogicFilter($entity, $this, $this->user);
+
         foreach (LogicFilter::KEYWORDS as $keyword) {
-            $filters[] = TreeAllowedFilter::custom($keyword, new LogicFilter($keyword, $entity, $this, $this->user));
+            $filters[] = TreeAllowedFilter::custom($keyword, $logic);
         }
 
         return $filters;
