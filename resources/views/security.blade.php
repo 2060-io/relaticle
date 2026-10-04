@@ -23,22 +23,25 @@
 
     $ai = [
         [
+            'ri-sparkling-2-line',
             __('The built-in assistant'),
             __('A request to :name, a voice message or an email summary sends the content needed to answer it to an AI provider: Anthropic or OpenAI. :name proposes every change as a card and waits for your approval.', ['name' => $assistantName]),
         ],
         [
+            'ri-plug-line',
             __('Assistants you connect'),
             __('Claude, ChatGPT and other MCP clients receive only what they request through the tools you authorized, inside the one workspace you picked. Their changes apply directly. Relaticle does not see or store the conversation in your assistant.'),
         ],
         [
+            'ri-hard-drive-3-line',
             __('On your own server'),
             __('Self-host Relaticle with your own provider key, or with a local model through Ollama. With a local model, the assistant sends nothing to an outside AI provider.'),
         ],
     ];
 
     $email = [
-        __('Relaticle reads mail and calendar events only from an account you connect, and never changes, labels or deletes messages in your mailbox.'),
-        __('Mailbox access tokens are encrypted at rest. Disconnecting deletes them.'),
+        ['ri-mail-check-line', __('Only the account you connect'), __('Relaticle reads mail and calendar events only from an account you connect, and never changes, labels or deletes messages in your mailbox.')],
+        ['ri-lock-2-line', __('Encrypted tokens'), __('Mailbox access tokens are encrypted at rest. Disconnecting deletes them.')],
     ];
 
     $tokens = [
@@ -52,6 +55,24 @@
         ['ri-delete-bin-line', __('Delete'), __('Ask for deletion at privacy@relaticle.com. An account scheduled for deletion is removed after a 30-day grace period. Records in shared workspaces remain.')],
         ['ri-server-line', __('Leave'), __('Relaticle is open source under AGPL-3.0. Move to your own server whenever you want.')],
     ];
+
+    $glance = [
+        ['ri-brain-line', __('No training on your data'), __('Relaticle does not train AI models on your CRM data.'), '#ai'],
+        ['ri-checkbox-circle-line', __(':name asks first', ['name' => $assistantName]), __('The built-in assistant proposes each change and waits for you.'), '#ai'],
+        ['ri-fingerprint-line', __('Passkeys and two-factor'), __('Sign in with a passkey, or require an authenticator code.'), '#account'],
+        ['ri-open-source-line', __('Open source'), __('AGPL-3.0. Read the code, or run it on your own server.'), '#data'],
+    ];
+
+    $policyLink = [route('policy.show'), __('Read the privacy policy for sharing settings, deletion and the Google Limited Use commitment.')];
+
+    $sections = array_filter([
+        ['account', __('Your account'), __('How you sign in, and what protects the account.'), $account, null],
+        ['workspace', __('Your workspace'), __('Who can reach a record, and how you see what they did.'), $workspace, null],
+        ['ai', __('What the AI sees'), __('Three ways AI touches your records, and what leaves Relaticle in each.'), $ai, null],
+        $emailActive ? ['email', __('Email and calendar'), __('What happens when you connect a Google or Microsoft account.'), $email, $policyLink] : null,
+        ['access', __('API and connector access'), __('Every token is scoped, and you can cut any of them off.'), $tokens, null],
+        ['data', __('Your data stays yours'), __('Export it, delete it, or take it to your own server.'), $ownership, null],
+    ]);
 
     $providers = [
         ['Hetzner', __('Hosts the application and its database'), __('All workspace data')],
@@ -85,10 +106,8 @@
         ],
     ];
 
-    $card = 'rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-6';
-    $iconWrap = 'flex items-center justify-center w-9 h-9 rounded-lg bg-primary/[0.08] dark:bg-primary/[0.15] mb-4';
-    $sectionTitle = 'font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white';
-    $sectionLead = 'mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed';
+    $sectionTitle = 'text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white';
+    $sectionLead = 'mt-4 text-balance text-base text-gray-500 dark:text-gray-400 leading-relaxed';
 @endphp
 
 <x-guest-layout
@@ -109,11 +128,11 @@
                 </div>
             </div>
 
-            <h1 class="font-display text-4xl sm:text-5xl font-bold text-gray-950 dark:text-white tracking-[-0.03em] leading-[1.1]">
+            <h1 class="text-balance font-display text-4xl sm:text-5xl font-bold text-gray-950 dark:text-white tracking-[-0.03em] leading-[1.1]">
                 {{ __('How Relaticle protects your data') }}
             </h1>
 
-            <p class="mt-5 text-base md:text-lg text-gray-500 dark:text-gray-400 leading-relaxed max-w-2xl mx-auto">
+            <p class="mt-5 text-balance text-base md:text-lg text-gray-500 dark:text-gray-400 leading-relaxed max-w-2xl mx-auto">
                 {{ __('Where your records live, who can reach them, and what the AI sees. Relaticle is open source, so most of this page can be checked in the code.') }}
             </p>
 
@@ -126,137 +145,56 @@
                 </x-marketing.button>
             </div>
         </div>
+
+        {{-- At a glance: the four answers a buyer looks for first, each linked to its section --}}
+        <div class="relative mx-auto mt-14 max-w-5xl px-6 lg:px-8">
+            <ul class="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-gray-200/80 bg-gray-200/80 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)] sm:grid-cols-2 lg:grid-cols-4 dark:border-white/[0.08] dark:bg-white/[0.08]">
+                @foreach($glance as [$icon, $fact, $detail, $anchor])
+                    <li class="bg-white dark:bg-gray-950">
+                        <a href="{{ $anchor }}" class="group flex h-full flex-col p-5 transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]">
+                            <x-dynamic-component :component="$icon" class="h-5 w-5 shrink-0 text-primary dark:text-primary-400"/>
+                            <span class="mt-3 font-display text-sm font-semibold text-gray-900 dark:text-white">{{ $fact }}</span>
+                            <span class="mt-1 text-sm leading-relaxed text-gray-500 dark:text-gray-400">{{ $detail }}</span>
+                        </a>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
     </section>
 
-    {{-- Account --}}
-    <section class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
+    {{-- One row per topic: the heading on the left, the facts on the right --}}
+    <section class="bg-white dark:bg-gray-950 pb-8 md:pb-12">
         <div class="max-w-5xl mx-auto px-6 lg:px-8">
-            <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="{{ $sectionTitle }}">{{ __('Your account') }}</h2>
-                <p class="{{ $sectionLead }}">{{ __('How you sign in, and what protects the account.') }}</p>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                @foreach($account as [$icon, $cardTitle, $cardDesc])
-                    <div class="{{ $card }}">
-                        <div class="{{ $iconWrap }}">
-                            <x-dynamic-component :component="$icon" class="w-4.5 h-4.5 text-primary dark:text-primary-400"/>
-                        </div>
-                        <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">{{ $cardTitle }}</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ $cardDesc }}</p>
+            @foreach($sections as [$id, $heading, $lead, $items, $link])
+                <div id="{{ $id }}" class="grid scroll-mt-24 grid-cols-1 gap-x-12 gap-y-8 border-t border-gray-200/80 py-12 md:grid-cols-3 md:py-16 dark:border-white/[0.06]">
+                    <div>
+                        <h2 class="text-balance font-display text-xl sm:text-2xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">{{ $heading }}</h2>
+                        <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ $lead }}</p>
                     </div>
-                @endforeach
-            </div>
-        </div>
-    </section>
 
-    {{-- Workspace --}}
-    <section class="py-20 md:py-28 bg-white dark:bg-gray-950">
-        <div class="max-w-5xl mx-auto px-6 lg:px-8">
-            <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="{{ $sectionTitle }}">{{ __('Your workspace') }}</h2>
-                <p class="{{ $sectionLead }}">{{ __('Who can reach a record, and how you see what they did.') }}</p>
-            </div>
+                    <div class="md:col-span-2">
+                        <dl class="space-y-7">
+                            @foreach($items as [$icon, $term, $meaning])
+                                <div class="flex gap-4">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/[0.08] dark:bg-primary/[0.15]">
+                                        <x-dynamic-component :component="$icon" class="h-4.5 w-4.5 text-primary dark:text-primary-400"/>
+                                    </div>
+                                    <div>
+                                        <dt class="font-display text-base font-semibold text-gray-900 dark:text-white">{{ $term }}</dt>
+                                        <dd class="mt-1 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ $meaning }}</dd>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </dl>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                @foreach($workspace as [$icon, $cardTitle, $cardDesc])
-                    <div class="{{ $card }}">
-                        <div class="{{ $iconWrap }}">
-                            <x-dynamic-component :component="$icon" class="w-4.5 h-4.5 text-primary dark:text-primary-400"/>
-                        </div>
-                        <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">{{ $cardTitle }}</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ $cardDesc }}</p>
+                        @if($link)
+                            <p class="mt-7 pl-13 text-sm">
+                                <a href="{{ $link[0] }}" class="font-medium text-primary dark:text-primary-400 hover:underline">{{ $link[1] }}</a>
+                            </p>
+                        @endif
                     </div>
-                @endforeach
-            </div>
-        </div>
-    </section>
-
-    {{-- AI --}}
-    <section id="ai" class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
-        <div class="max-w-3xl mx-auto px-6 lg:px-8">
-            <div class="text-center mb-14">
-                <h2 class="{{ $sectionTitle }}">{{ __('What the AI sees') }}</h2>
-                <p class="{{ $sectionLead }} max-w-xl mx-auto">{{ __('Three ways AI touches your records, and what leaves Relaticle in each.') }}</p>
-            </div>
-
-            <div class="space-y-4">
-                @foreach($ai as [$term, $meaning])
-                    <div class="{{ $card }}">
-                        <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">{{ $term }}</h3>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ $meaning }}</p>
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    </section>
-
-    @if($emailActive)
-        {{-- Email --}}
-        <section class="py-20 md:py-28 bg-white dark:bg-gray-950">
-            <div class="max-w-3xl mx-auto px-6 lg:px-8">
-                <div class="text-center mb-14">
-                    <h2 class="{{ $sectionTitle }}">{{ __('Email and calendar') }}</h2>
-                    <p class="{{ $sectionLead }} max-w-xl mx-auto">{{ __('What happens when you connect a Google or Microsoft account.') }}</p>
                 </div>
-
-                <ul class="space-y-3">
-                    @foreach($email as $point)
-                        <li class="flex gap-3 {{ $card }}">
-                            <x-ri-check-line class="mt-0.5 h-4.5 w-4.5 shrink-0 text-primary dark:text-primary-400"/>
-                            <span class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{{ $point }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-
-                <p class="mt-6 text-center text-sm">
-                    <a href="{{ route('policy.show') }}" class="font-medium text-primary dark:text-primary-400 hover:underline">{{ __('Read the privacy policy for sharing settings, deletion and the Google Limited Use commitment.') }}</a>
-                </p>
-            </div>
-        </section>
-    @endif
-
-    {{-- Tokens --}}
-    <section class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
-        <div class="max-w-5xl mx-auto px-6 lg:px-8">
-            <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="{{ $sectionTitle }}">{{ __('API and connector access') }}</h2>
-                <p class="{{ $sectionLead }}">{{ __('Every token is scoped, and you can cut any of them off.') }}</p>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                @foreach($tokens as [$icon, $cardTitle, $cardDesc])
-                    <div class="{{ $card }}">
-                        <div class="{{ $iconWrap }}">
-                            <x-dynamic-component :component="$icon" class="w-4.5 h-4.5 text-primary dark:text-primary-400"/>
-                        </div>
-                        <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">{{ $cardTitle }}</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ $cardDesc }}</p>
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    </section>
-
-    {{-- Ownership --}}
-    <section class="py-20 md:py-28 bg-white dark:bg-gray-950">
-        <div class="max-w-5xl mx-auto px-6 lg:px-8">
-            <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="{{ $sectionTitle }}">{{ __('Your data stays yours') }}</h2>
-                <p class="{{ $sectionLead }}">{{ __('Export it, delete it, or take it to your own server.') }}</p>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                @foreach($ownership as [$icon, $cardTitle, $cardDesc])
-                    <div class="{{ $card }}">
-                        <div class="{{ $iconWrap }}">
-                            <x-dynamic-component :component="$icon" class="w-4.5 h-4.5 text-primary dark:text-primary-400"/>
-                        </div>
-                        <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">{{ $cardTitle }}</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ $cardDesc }}</p>
-                    </div>
-                @endforeach
-            </div>
+            @endforeach
         </div>
     </section>
 
