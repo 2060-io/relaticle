@@ -10,7 +10,7 @@ use App\Filament\Pages\AccessTokens;
 use App\Filament\Pages\Workspace\CustomFields;
 use App\Filament\Pages\Workspace\Members;
 use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
-use App\Filament\Resources\NoteResource\Pages\ManageNotes;
+use App\Filament\Resources\NoteResource\Pages\NotesCards;
 use App\Filament\Resources\OpportunityResource\Pages\ListOpportunities;
 use App\Filament\Resources\PeopleResource\Pages\ListPeople;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
@@ -88,7 +88,7 @@ final readonly class DestinationResolver
                 'export_people' => ListPeople::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
                 'export_opportunities' => ListOpportunities::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
                 'export_tasks' => ManageTasks::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
-                'export_notes' => ManageNotes::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
+                'export_notes' => NotesCards::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
                 'workspace_members' => Members::getUrl(panel: 'app', tenant: $workspace),
                 'access_tokens' => AccessTokens::getUrl(panel: 'app', tenant: $workspace),
                 'connect_assistant' => url()->getPublicUrl(route('help.show', ['category' => 'ai-assistant', 'slug' => 'connect-claude-or-chatgpt'], absolute: false)),

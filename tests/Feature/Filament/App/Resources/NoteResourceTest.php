@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Filament\Resources\NoteResource;
 use App\Filament\Resources\NoteResource\Pages\ManageNotes;
+use App\Filament\Resources\NoteResource\Pages\NotesCards;
 use App\Filament\RichEditor\SlashMenuPlugin;
 use App\Models\Note;
 use App\Models\User;
@@ -15,7 +16,7 @@ use Filament\Schemas\Components\Component;
 use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Database\Eloquent\Model;
 
-mutates(NoteResource::class);
+mutates(NoteResource::class, NotesCards::class);
 
 beforeEach(function () {
     $this->user = User::factory()->withWorkspace()->create();
@@ -284,4 +285,77 @@ it('keeps file attachments enabled on a toolbarless note body', function (): voi
         ->first(fn (Component $component): bool => $component instanceof RichEditor);
 
     expect($editor->hasFileAttachments())->toBeTrue();
+});
+
+it('groups note cards by when they were created and counts each group', function (): void {
+    $this->travelTo('2026-10-07 12:00:00');
+
+    $note = fn (string $title, string $createdAt): Note => Note::factory()
+        ->recycle([$this->user, $this->workspace])
+        ->create(['title' => $title, 'created_at' => $createdAt]);
+
+    $note('Written this morning', '2026-10-07 08:00:00');
+    $note('Written on Monday', '2026-10-05 09:00:00');
+    $note('Written on Tuesday', '2026-10-06 09:00:00');
+    $note('Written in March', '2026-03-25 09:00:00');
+    $note('Written last year', '2025-06-01 09:00:00');
+
+    livewire(NotesCards::class)
+        ->assertOk()
+        ->assertSeeHtmlInOrder([
+            'Created today <span class="fi-ta-group-count">1</span>',
+            'Written this morning',
+            'Created this week <span class="fi-ta-group-count">2</span>',
+            'Written on Tuesday',
+            'Written on Monday',
+            'Created this year <span class="fi-ta-group-count">1</span>',
+            'Written in March',
+            'Created earlier <span class="fi-ta-group-count">1</span>',
+            'Written last year',
+        ])
+        ->assertDontSee('Created this month');
+});
+
+it('shows the note body on a card as plain text', function (): void {
+    Note::factory()->recycle([$this->user, $this->workspace])->create([
+        'title' => 'Call recap',
+        'custom_fields' => ['body' => '<p>Agreed on <strong>pricing</strong>.</p><p>Follow up Friday.</p>'],
+    ]);
+    Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Empty note']);
+
+    livewire(NotesCards::class)
+        ->assertSee('Agreed on pricing. Follow up Friday.')
+        ->assertSee('This note has no content.')
+        ->assertSee($this->user->name);
+});
+
+it('searches note cards by title', function (): void {
+    $match = Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Renewal terms']);
+    $other = Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Kickoff agenda']);
+
+    livewire(NotesCards::class)
+        ->searchTable('Renewal')
+        ->assertCanSeeTableRecords([$match])
+        ->assertCanNotSeeTableRecords([$other]);
+});
+
+it('edits a note from its card', function (): void {
+    $record = Note::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(NotesCards::class)
+        ->callAction(TestAction::make('edit')->table($record), data: ['title' => 'Edited from a card'])
+        ->assertHasNoActionErrors();
+
+    expect($record->refresh()->title)->toBe('Edited from a card');
+});
+
+it('opens notes on the cards view and links it to the list', function (string $page): void {
+    livewire($page)
+        ->assertSeeHtml('href="'.NoteResource::getUrl('index').'"')
+        ->assertSeeHtml('href="'.NoteResource::getUrl('list').'"');
+})->with([ManageNotes::class, NotesCards::class]);
+
+it('serves the cards view at the notes index and the table at the list route', function (): void {
+    $this->get(NoteResource::getUrl('index'))->assertSeeLivewire(NotesCards::class);
+    $this->get(NoteResource::getUrl('list'))->assertSeeLivewire(ManageNotes::class);
 });

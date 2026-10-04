@@ -7,6 +7,7 @@ return [
         'label' => 'Switch view',
         'list' => 'List',
         'board' => 'Board',
+        'cards' => 'Cards',
     ],
 
     'opportunities' => [
