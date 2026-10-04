@@ -714,8 +714,9 @@ it('maps asks for new record types and pipelines onto fields that exist', functi
 it('names records as the app does and repeats a word the user chose', function (): void {
     expect(resolve(CrmAssistant::class)->staticInstructions())
         ->toContain('Name records as the app does: companies, people, opportunities, tasks, notes')
+        ->toContain('This covers every sentence you write, the closing offer included')
+        ->toContain('a person record is a "person", never a "contact"')
         ->toContain('use their word in that reply')
-        ->toContain('When the user has not chosen a word, use the app\'s')
         ->not->toContain('interchangeably')
         ->toContain('people per company')
         ->toContain('an email draft to a person')
