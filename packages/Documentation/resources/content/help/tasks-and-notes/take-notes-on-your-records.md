@@ -28,4 +28,4 @@ on in the Notes list either way.
 The **Notes** list shows every note with its linked companies and people as
 clickable columns. Notes are searchable from the sidebar search by title, the
 AI assistant reads them when you ask about a record, and each record's
-**Notes** tab is the running history for that account.
+**Notes** tab is the running history for that record.

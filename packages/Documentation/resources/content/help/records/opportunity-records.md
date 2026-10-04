@@ -13,7 +13,7 @@ your pipeline board.
 ## The fields
 
 - **Name**: required.
-- **Company** and **Point of Contact**: the account and the person you're working
+- **Company** and **Point of Contact**: the company and the person you're working
   with, both linked on the record page.
 - **Amount**: the deal's value, shown as a badge on board cards.
 - **Close Date**: drives the board's "Closes Today" / "Overdue" badges.

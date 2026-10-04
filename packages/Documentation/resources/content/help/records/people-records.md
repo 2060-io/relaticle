@@ -13,7 +13,7 @@ in bulk [by import](/help/import/what-each-record-type-needs).
 ## The fields
 
 - **Name**: required.
-- **Company**: the account they belong to. If the company doesn't exist yet,
+- **Company**: the company they belong to. If the company doesn't exist yet,
   click **Create Company** right inside the select and it's created and
   linked in one step.
 - **Emails**: one or more addresses, unique across people, which is what
@@ -24,9 +24,9 @@ in bulk [by import](/help/import/what-each-record-type-needs).
 ## The record page
 
 A person's page shows their details with the company as a link. Click
-through to the account any time. Two working tabs, **Tasks** and **Notes**,
+through to the company any time. Two working tabs, **Tasks** and **Notes**,
 create records pre-linked to this person, and **Activity log** shows the
 change history.
 
-In the **People** list the company column links to the account too, so you
+In the **People** list the company column links to the company too, so you
 can move between a person and their company from anywhere.

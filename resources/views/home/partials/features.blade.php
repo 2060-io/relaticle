@@ -104,7 +104,7 @@
                         <x-ri-building-2-line class="w-3.5 h-3.5 text-primary dark:text-primary-400"/>
                         Company profiles
                     </h3>
-                    <p class="{{ $cardDesc }}">See every account in context. Keep company details, people, and deals together so your team can prepare for the next conversation.</p>
+                    <p class="{{ $cardDesc }}">See every company in context. Keep its details, people, and deals together so your team can prepare for the next conversation.</p>
                 </div>
             </div>
 

@@ -31,6 +31,6 @@ no way for Relaticle support to bring it back. If there's any doubt,
 - Deleted records don't appear in lists, search, the board, or the AI
   assistant's answers.
 - Deleting a company doesn't delete the people, tasks, or notes attached to
-  it. Restoring the company brings the account view back together.
+  it. Restoring the company shows them on its page again.
 - Everyone but Viewers can delete and restore; only the owner and Admins can
   force delete.

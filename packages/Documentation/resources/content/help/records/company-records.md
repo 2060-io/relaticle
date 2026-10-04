@@ -6,8 +6,8 @@ updated: "2026-08-13"
 related: [help/records/people-records, help/getting-started/create-your-first-company, help/records/see-who-changed-a-record]
 ---
 
-A company record is the account view: who owns the relationship, the web
-domains that identify it, and every person, task, and note attached to it.
+A company record gathers one company in one place: who owns the relationship,
+its web domains, and every person, task, and note attached to it.
 Only the name is required. Everything else can arrive later.
 
 ## The fields
@@ -17,7 +17,7 @@ Only the name is required. Everything else can arrive later.
 - **ICP**: a toggle for "matches our ideal customer profile", handy as a
   board and list filter.
 - **Domains**: one or more web domains. Domains are unique across companies,
-  which is what lets the CSV import match rows to existing accounts.
+  which is what lets the CSV import match rows to existing companies.
 - **LinkedIn**: the company's profile URL.
 - Plus every custom field your workspace has added for companies.
 
@@ -44,7 +44,7 @@ and **Delete record**.
 
 ## The list
 
-**Companies** in the sidebar lists every account with sortable columns for
+**Companies** in the sidebar lists every company with sortable columns for
 owner, creator, and dates, plus a column for each custom field marked
 visible in lists. Filter by **Creation Source** (the app, an import, the API,
 or the AI assistant, whichever created the record) or show
