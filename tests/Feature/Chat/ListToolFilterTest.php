@@ -18,8 +18,10 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\CurrentWorkspace;
 use App\Support\Filters\EntityFilters;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Tools\BaseReadListTool;
@@ -721,4 +723,50 @@ it('leaves a column out when the filtered code belongs to a related record', fun
     $filter = ['$or' => [['company' => ['custom_fields' => ['linkedin' => ['$is_empty' => false]]]], ['custom_fields' => ['job_title' => ['$is_empty' => false]]]]];
 
     expect(peopleListColumnKeys($user, $filter))->not->toContain('linkedin');
+});
+
+/**
+ * @param  array<string, mixed>  $filter
+ * @return list<string>
+ */
+function peopleIdsWithoutWorkspaceContext(array $filter): array
+{
+    resolve(CurrentWorkspace::class)->forget();
+
+    $payload = json_decode((new ListPeopleTool)->handle(new Request(['filter' => $filter])), true);
+
+    expect($payload)->not->toHaveKey('error');
+
+    return collect($payload['data'])->pluck('id')->sort()->values()->all();
+}
+
+it('ignores a related record from another workspace when no workspace is ambient', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    $stranger = User::factory()->withPersonalWorkspace()->create();
+    $foreign = Company::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create(['name' => 'Foreign Holdings']);
+    Opportunity::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create(['company_id' => $foreign->id, 'name' => 'Foreign Deal']);
+    $person = People::factory()->recycle([$user, $user->personalWorkspace()])->create();
+    DB::table('people')->where('id', $person->id)->update(['company_id' => $foreign->id]);
+
+    expect(peopleIdsWithoutWorkspaceContext(['company' => ['name' => ['$contains' => 'Foreign']]]))->toBe([])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['name' => ['$eq' => 'Foreign Deal']]]]))->toBe([])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['$in' => [$foreign->id]]]))->toBe([])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['$is_empty' => false]]))->toBe([])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['$is_empty' => true]]))->toBe([$person->id])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['$not_in' => [$foreign->id]]]))->toBe([$person->id]);
+});
+
+it('ignores a second-hop record from another workspace when no workspace is ambient', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    $stranger = User::factory()->withPersonalWorkspace()->create();
+    $foreignDeal = Opportunity::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create(['name' => 'Foreign Deal']);
+    $company = Company::factory()->recycle([$user, $user->personalWorkspace()])->create();
+    $person = People::factory()->recycle([$user, $user->personalWorkspace()])->create(['company_id' => $company->id]);
+    DB::table('opportunities')->where('id', $foreignDeal->id)->update(['company_id' => $company->id]);
+
+    expect(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['name' => ['$eq' => 'Foreign Deal']]]]))->toBe([])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['$in' => [$foreignDeal->id]]]]))->toBe([])
+        ->and(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['$is_empty' => true]]]))->toBe([$person->id]);
 });

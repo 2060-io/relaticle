@@ -3,25 +3,19 @@
 declare(strict_types=1);
 
 use App\Actions\CustomFields\CreateCustomField;
-use App\Actions\People\ListPeople;
 use App\Enums\CreationSource;
-use App\Mcp\Servers\RelaticleServer;
-use App\Mcp\Tools\Company\ListCompaniesTool;
-use App\Mcp\Tools\Opportunity\ListOpportunitiesTool;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
-use App\Support\CurrentWorkspace;
 use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterTree;
 use App\Support\Filters\LogicFilter;
 use App\Support\Filters\NativeFilter;
 use App\Support\Filters\RelationFilter;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
 mutates(EntityFilters::class, FilterTree::class, LogicFilter::class, NativeFilter::class, RelationFilter::class);
@@ -35,17 +29,6 @@ beforeEach(function (): void {
 function listIds(mixed $test, string $entity, array $filter): array
 {
     return collect($test->getJson("/api/v1/{$entity}?".http_build_query(['filter' => $filter]))->assertOk()->json('data'))
-        ->pluck('id')
-        ->sort()
-        ->values()
-        ->all();
-}
-
-function listIdsWithoutWorkspaceContext(mixed $test, array $filter): array
-{
-    resolve(CurrentWorkspace::class)->forget();
-
-    return collect(resolve(ListPeople::class)->execute($test->user, filters: $filter)->items())
         ->pluck('id')
         ->sort()
         ->values()
@@ -339,33 +322,6 @@ it('keeps $not_in and $is_empty as statements about the whole link', function ()
         ->and(listIds($this, 'companies', ['people' => ['$is_empty' => false, 'name' => ['$eq' => 'Alice']]]))->toBe([$company->id]);
 });
 
-it('ignores a related record from another workspace when no workspace is ambient', function (): void {
-    $stranger = User::factory()->withPersonalWorkspace()->create();
-    $foreign = Company::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create(['name' => 'Foreign Holdings']);
-    Opportunity::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create(['company_id' => $foreign->id, 'name' => 'Foreign Deal']);
-    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
-    DB::table('people')->where('id', $person->id)->update(['company_id' => $foreign->id]);
-
-    expect(listIdsWithoutWorkspaceContext($this, ['company' => ['name' => ['$contains' => 'Foreign']]]))->toBe([])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['opportunities' => ['name' => ['$eq' => 'Foreign Deal']]]]))->toBe([])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['$in' => [$foreign->id]]]))->toBe([])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['$is_empty' => false]]))->toBe([])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['$is_empty' => true]]))->toBe([$person->id])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['$not_in' => [$foreign->id]]]))->toBe([$person->id]);
-});
-
-it('ignores a second-hop record from another workspace when no workspace is ambient', function (): void {
-    $stranger = User::factory()->withPersonalWorkspace()->create();
-    $foreignDeal = Opportunity::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create(['name' => 'Foreign Deal']);
-    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
-    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);
-    DB::table('opportunities')->where('id', $foreignDeal->id)->update(['company_id' => $company->id]);
-
-    expect(listIdsWithoutWorkspaceContext($this, ['company' => ['opportunities' => ['name' => ['$eq' => 'Foreign Deal']]]]))->toBe([])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['opportunities' => ['$in' => [$foreignDeal->id]]]]))->toBe([])
-        ->and(listIdsWithoutWorkspaceContext($this, ['company' => ['opportunities' => ['$is_empty' => true]]]))->toBe([$person->id]);
-});
-
 it('counts a person whose company is trashed as having no company', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $person = People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);
@@ -437,15 +393,15 @@ it('caps logic depth at three and relation hops at two', function (): void {
 it('rejects an empty $or and an empty relation node', function (): void {
     $this->getJson('/api/v1/companies?filter[$or]=')->assertUnprocessable()->assertJsonValidationErrors(['filter.$or' => '$or takes a non-empty list of condition objects.']);
 
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListOpportunitiesTool::class, ['filter' => ['$or' => [['company' => []]]]])
-        ->assertHasErrors(['filter.$or.0.company needs at least one condition.']);
+    $this->postJson('/api/v1/opportunities/query', ['filter' => ['$or' => [['company' => []]]]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.$or.0.company' => 'filter.$or.0.company needs at least one condition.']);
 });
 
 it('rejects an empty $not sent as JSON', function (): void {
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListOpportunitiesTool::class, ['filter' => ['$not' => []]])
-        ->assertHasErrors(['filter.$not needs at least one condition.']);
+    $this->postJson('/api/v1/opportunities/query', ['filter' => ['$not' => []]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.$not' => 'filter.$not needs at least one condition.']);
 });
 
 it('rejects a null or empty value for a name', function (): void {
@@ -453,21 +409,21 @@ it('rejects a null or empty value for a name', function (): void {
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['filter.name' => 'name takes an operator object, for example {"$eq": ...}.']);
 
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListOpportunitiesTool::class, ['filter' => ['$not' => ['name' => null]]])
-        ->assertHasErrors(['name takes an operator object, for example {"$eq":']);
+    $this->postJson('/api/v1/opportunities/query', ['filter' => ['$not' => ['name' => null]]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.$not.name' => 'name takes an operator object, for example {"$eq":']);
 
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListOpportunitiesTool::class, ['filter' => ['company' => null]])
-        ->assertHasErrors(['company takes an operator object, for example {"$in":']);
+    $this->postJson('/api/v1/opportunities/query', ['filter' => ['company' => null]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.company' => 'company takes an operator object, for example {"$in":']);
 });
 
 it('ignores an empty custom_fields at the top level and rejects it inside a group', function (): void {
     $this->getJson('/api/v1/companies?filter[custom_fields]=')->assertOk();
 
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListOpportunitiesTool::class, ['filter' => ['$not' => ['custom_fields' => null]]])
-        ->assertHasErrors(['Custom field filters must be an object keyed by field code.']);
+    $this->postJson('/api/v1/opportunities/query', ['filter' => ['$not' => ['custom_fields' => null]]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.$not.custom_fields' => 'Custom field filters must be an object keyed by field code.']);
 });
 
 it('hints the sigil for a bare operator on a relation node', function (): void {
@@ -483,24 +439,22 @@ it('allows logic nested three levels deep', function (): void {
     expect(listIds($this, 'companies', $filter))->toBe([$company->id]);
 });
 
-it('rejects an empty node at every level', function (array $filter, string $message): void {
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListCompaniesTool::class, ['filter' => $filter])
-        ->assertHasErrors([$message]);
+it('rejects an empty node at every level', function (array $filter, string $key, string $message): void {
+    $this->postJson('/api/v1/companies/query', ['filter' => $filter])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([$key => $message]);
 })->with([
-    'custom_fields under $not' => [['$not' => ['custom_fields' => []]], 'filter.$not.custom_fields needs at least one condition.'],
-    'custom_fields under $not in a relation' => [['people' => ['$not' => ['custom_fields' => []]]], 'filter.people.$not.custom_fields needs at least one condition.'],
-    'custom_fields in a relation' => [['people' => ['custom_fields' => []]], 'filter.people.custom_fields needs at least one condition.'],
-    'custom_fields under $and' => [['$and' => [['custom_fields' => []]]], 'filter.$and.0.custom_fields needs at least one condition.'],
-    'a custom field code' => [['custom_fields' => ['stage' => []]], 'filter.custom_fields.stage needs at least one condition.'],
-    'a native field' => [['$not' => ['name' => []]], 'name takes an operator object'],
-    'a member relation' => [['$not' => ['creator' => []]], 'filter.$not.creator needs at least one condition.'],
+    'custom_fields under $not' => [['$not' => ['custom_fields' => []]], 'filter.$not.custom_fields', 'filter.$not.custom_fields needs at least one condition.'],
+    'custom_fields under $not in a relation' => [['people' => ['$not' => ['custom_fields' => []]]], 'filter.people.$not.custom_fields', 'filter.people.$not.custom_fields needs at least one condition.'],
+    'custom_fields in a relation' => [['people' => ['custom_fields' => []]], 'filter.people.custom_fields', 'filter.people.custom_fields needs at least one condition.'],
+    'custom_fields under $and' => [['$and' => [['custom_fields' => []]]], 'filter.$and.0.custom_fields', 'filter.$and.0.custom_fields needs at least one condition.'],
+    'a custom field code' => [['custom_fields' => ['stage' => []]], 'filter.custom_fields.stage', 'filter.custom_fields.stage needs at least one condition.'],
+    'a native field' => [['$not' => ['name' => []]], 'filter.$not.name', 'name takes an operator object'],
+    'a member relation' => [['$not' => ['creator' => []]], 'filter.$not.creator', 'filter.$not.creator needs at least one condition.'],
 ]);
 
 it('ignores an empty custom_fields object at the top level', function (): void {
-    RelaticleServer::actingAs($this->user)
-        ->tool(ListCompaniesTool::class, ['filter' => ['custom_fields' => []]])
-        ->assertOk();
+    $this->postJson('/api/v1/companies/query', ['filter' => ['custom_fields' => []]])->assertOk();
 });
 
 it('counts a member relation as a relation hop', function (): void {
