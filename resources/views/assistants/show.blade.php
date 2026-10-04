@@ -170,7 +170,27 @@
                                 {{ $stepBody }}
                             </p>
                             @if($stepCode)
-                                <code class="mt-3 inline-block max-w-full break-all rounded-md border border-gray-200/80 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] px-2.5 py-1 font-mono text-xs text-gray-800 dark:text-gray-200">{{ $stepCode }}</code>
+                                <div class="mt-3 flex flex-wrap items-center gap-2" x-data="{ copied: false }">
+                                    <code class="min-w-0 break-all rounded-md border border-gray-200/80 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] px-2.5 py-1 font-mono text-xs text-gray-800 dark:text-gray-200">{{ $stepCode }}</code>
+                                    <button
+                                        type="button"
+                                        @click="navigator.clipboard.writeText(@js($stepCode)).then(() => { copied = true; setTimeout(() => copied = false, 2000) })"
+                                        class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                                    >
+                                        <template x-if="! copied">
+                                            <span class="inline-flex items-center gap-1.5">
+                                                <x-ri-file-copy-line class="h-3.5 w-3.5"/>
+                                                {{ __('Copy') }}
+                                            </span>
+                                        </template>
+                                        <template x-if="copied">
+                                            <span class="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                                <x-ri-check-line class="h-3.5 w-3.5"/>
+                                                {{ __('Copied') }}
+                                            </span>
+                                        </template>
+                                    </button>
+                                </div>
                             @endif
                         </div>
                     </li>
