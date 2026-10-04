@@ -61,7 +61,6 @@ return [
                 'Relaticle\Chat\Services\MyTasksService::forUser' => 74,
                 'Relaticle\Chat\Services\PendingActionService::approve' => 67,
                 'Relaticle\Chat\Services\TipTapDocumentParser::walkDocument' => 67,
-                'Relaticle\Chat\Services\Tools\CustomFieldsDisplayFormatter::format' => 62,
                 'Relaticle\Chat\Services\Tools\PlanReferenceValidator::error' => 66,
                 'Relaticle\Chat\Tools\Activity\ListActivityTool::handle' => 74,
                 'Relaticle\Chat\Tools\BaseReadListTool::buildDisplayBlock' => 61,

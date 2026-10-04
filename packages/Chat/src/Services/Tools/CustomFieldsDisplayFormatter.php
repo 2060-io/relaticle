@@ -47,12 +47,13 @@ final readonly class CustomFieldsDisplayFormatter
             ->keyBy('code');
 
         $rows = [];
-        foreach ($cleanFields as $code => $newValue) {
+        foreach ($cleanFields as $code => $proposedValue) {
             $field = $fields->get($code);
             if (! $field instanceof CustomField) {
                 continue;
             }
 
+            $newValue = $this->storedForm($field, $proposedValue);
             $dataType = CustomFieldsType::getFieldType($field->type)?->dataType;
 
             $row = [
@@ -64,11 +65,7 @@ final readonly class CustomFieldsDisplayFormatter
 
             if ($field->type === CustomFieldType::RECORD->value) {
                 $row['values'] = $this->recordNames($field, $newValue);
-            } elseif ($dataType === FieldDataType::MULTI_CHOICE && $field->type !== CustomFieldType::LINK->value && is_array($newValue)) {
-                $row['values'] = $this->optionNames($field, $newValue);
-            }
-
-            if ($field->type === CustomFieldType::LINK->value && is_array($newValue)) {
+            } elseif ($dataType === FieldDataType::MULTI_CHOICE && is_array($newValue)) {
                 $row['values'] = $this->optionNames($field, $newValue);
             }
 
@@ -307,6 +304,13 @@ final readonly class CustomFieldsDisplayFormatter
         $carbon = $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
 
         return $carbon->isoFormat('MMM D, YYYY');
+    }
+
+    private function storedForm(CustomField $field, mixed $value): mixed
+    {
+        return in_array($field->type, [CustomFieldType::LINK->value, CustomFieldType::PHONE->value], true)
+            ? $this->comparable($field, $value)
+            : $value;
     }
 
     private function comparable(CustomField $field, mixed $value): mixed

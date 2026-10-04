@@ -154,6 +154,24 @@ it('proposes no change for a phone that only differs by formatting', function ()
         ->and(PendingAction::query()->count())->toBe(0);
 });
 
+it('shows the value an approval will store for a link or phone proposal', function (string $toolClass, string $modelClass, string $actionClass, string $code, array $stored, array $proposed): void {
+    $model = $modelClass::factory()->for($this->workspace)->create();
+    $model->saveCustomFields([$code => $stored]);
+
+    runUpdateToolForCustomFieldsTest($toolClass, $model, [$code => $proposed]);
+    $pending = latestPendingForCustomFieldsTest();
+    resolve($actionClass)->execute($this->user, $model, $pending->action_data);
+
+    $card = collect($pending->display_data['fields'])->firstWhere('code', $code);
+    $written = jsonValueForCustomFieldsTest($model, $code);
+
+    expect($card['new'])->toBe(implode(', ', $written))
+        ->and($card['values'])->toBe($written);
+})->with([
+    'company domains' => [UpdateCompanyTool::class, Company::class, UpdateCompany::class, 'domains', ['acme.com'], ['https://www.acme.com/pricing', 'beta.com']],
+    'person phone' => [UpdatePersonTool::class, People::class, UpdatePeople::class, 'phone_number', ['+14155550100'], ['+1 (415) 555-0100', '+1 (415) 555-0200']],
+]);
+
 it('updates the note body via custom_fields and persists as text_value', function (): void {
     $note = Note::factory()->for($this->workspace)->create(['title' => 'N']);
 
