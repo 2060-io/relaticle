@@ -43,13 +43,15 @@ months two copies of the same field vocabulary drifted apart.
   keeps the old shape working (`RichContentAttachments::getFileAttachmentUrl()` still serves a
   legacy bare-filename `data-id`), then queue the command from a migration, as
   `2026_09_15_150837_queue_rich_editor_attachment_backfill` does:
-  `Artisan::queue($command, ['--force' => true])->onQueue('imports')->afterCommit()`. Pgsql
-  wraps every migration in a transaction, so without `afterCommit` a worker can start before the
-  DDL lands. `imports` is the long lane (300s, 2 tries, 256MB) where `default` allows 60s and one
+  `Artisan::queue($command, ['--force' => true])->onQueue('imports')->delay(now()->addMinutes(5))->afterCommit()`.
+  Pgsql wraps every migration in a transaction, so without `afterCommit` a worker can start before
+  the DDL lands. The delay holds the job until the deploy has restarted Horizon: a worker booted
+  before the deploy does not know a new command, and on 2026-09-24 one failed
+  `media:purge-unsafe-images` on both tries, so the purge never ran in production. `imports` is the long lane (300s, 2 tries, 256MB) where `default` allows 60s and one
   try, and `QUEUE_CONNECTION=sync` runs the command inline, so it stays chunked and idempotent
   either way. Never `Artisan::call()` in `up()`: the container entrypoint runs under `set -e`, so
   a throw there crash-loops the app and takes Horizon down with it. `tests/Arch/ConventionsTest.php`
-  fails when a migration names a command that no longer exists
+  fails when a migration names a command that no longer exists, or queues one without a delay
 - A migration that drops a column queued jobs still read or write ships with a deploy step:
   `php artisan horizon:pause` before `migrate`, `php artisan horizon:terminate` after. Otherwise a
   job still running the old code hits the missing column and fails with no retry.
