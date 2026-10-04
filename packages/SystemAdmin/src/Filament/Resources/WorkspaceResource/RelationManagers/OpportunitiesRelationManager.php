@@ -45,7 +45,7 @@ final class OpportunitiesRelationManager extends RelationManager
                     ->color('primary')
                     ->url(RecordLink::to(CompanyResource::class, 'company')),
                 TextColumn::make('contact.name')
-                    ->label('Contact')
+                    ->label('Point of Contact')
                     ->sortable()
                     ->color('primary')
                     ->url(RecordLink::to(PeopleResource::class, 'contact')),

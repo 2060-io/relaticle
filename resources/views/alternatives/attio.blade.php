@@ -52,7 +52,7 @@
                         <span class="block text-primary dark:text-primary-400">{{ __('Attio alternative.') }}</span>
                     </h1>
                     <p class="mt-6 max-w-xl text-lg leading-relaxed text-gray-600 dark:text-gray-400">
-                        {{ __('Relaticle brings your people, companies and sales pipeline together in a CRM you can self-host and modify. Choose our cloud for flat workspace pricing and unlimited users.') }}
+                        {{ __('Relaticle keeps the people and companies you sell to, and your sales pipeline, in a CRM you can self-host and modify. Choose our cloud for flat workspace pricing and unlimited users.') }}
                     </p>
                     <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
                         <x-marketing.button :href="route('login')" icon-trailing="ri-arrow-right-line">

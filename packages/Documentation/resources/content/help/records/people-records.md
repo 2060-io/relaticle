@@ -1,6 +1,6 @@
 ---
 title: People records
-description: People with unique emails, phone, job title, and a company link, created standalone or from the account.
+description: People with unique emails, phone, job title, and a company link, created standalone or from a company.
 order: 2
 updated: "2026-08-13"
 related: [help/records/company-records, help/getting-started/add-your-first-person]
