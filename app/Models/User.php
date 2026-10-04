@@ -12,6 +12,7 @@ use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
 use App\Models\Concerns\HasProfilePhoto;
 use App\Models\Concerns\HasWorkspaces;
+use App\Models\Pivots\TaskAssignee;
 use App\Notifications\Auth\ResetPassword;
 use App\Notifications\Auth\VerifyEmail;
 use App\Observers\UserObserver;
@@ -291,11 +292,11 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
     }
 
     /**
-     * @return BelongsToMany<Task, $this>
+     * @return BelongsToMany<Task, $this, TaskAssignee>
      */
     public function tasks(): BelongsToMany
     {
-        return $this->belongsToMany(Task::class);
+        return $this->belongsToMany(Task::class)->using(TaskAssignee::class);
     }
 
     /**

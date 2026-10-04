@@ -25,7 +25,9 @@ months two copies of the same field vocabulary drifted apart.
      so only the new migration is pending, and `\copy` of every table the migration reads.
      Replace personal columns in the export query (names, emails, bodies, free-text JSON values)
   2. Load the export into a scratch database. Tables loaded without their parents need
-     `set session_replication_role = replica`. Save a before-state query of the rows in scope
+     `set session_replication_role = replica`. A migration that inserts needs a stub parent row
+     for every enforced foreign key, because `migrate` runs with the checks on. Save a
+     before-state query of the rows in scope
   3. Run `DB_DATABASE=<scratch> php artisan migrate --force` and confirm only the new migration
      ran. Diff the after-state against the before-state, row counts and the rows it must leave alone
   4. Run `migrate` again to prove it is a no-op, then drop the scratch database and delete the export

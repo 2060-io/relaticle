@@ -6,12 +6,13 @@ namespace App\Models;
 
 use App\Enums\CreationSource;
 use App\Enums\MediaCollection;
-use App\Models\ActivityLog\Activity;
 use App\Models\Concerns\BelongsToWorkspaceCreator;
 use App\Models\Concerns\HasActivityTimeline;
 use App\Models\Concerns\HasCreator;
 use App\Models\Concerns\HasNotes;
 use App\Models\Concerns\HasWorkspace;
+use App\Models\Concerns\LogsRelationChanges;
+use App\Models\Pivots\Taskable;
 use App\Models\Scopes\WorkspaceScope;
 use App\Observers\CompanyObserver;
 use App\Support\Media\UploadAllowlist;
@@ -73,6 +74,7 @@ final class Company extends Model implements HasAvatar, HasCustomFields, HasMedi
     use HasWorkspace;
     use InteractsWithMedia;
     use LogsActivity;
+    use LogsRelationChanges;
     use SoftDeletes;
     use UsesCustomFields;
 
@@ -158,45 +160,21 @@ final class Company extends Model implements HasAvatar, HasCustomFields, HasMedi
     }
 
     /**
-     * @return MorphToMany<Task, $this>
+     * @return MorphToMany<Task, $this, Taskable>
      */
     public function tasks(): MorphToMany
     {
-        return $this->morphToMany(Task::class, 'taskable');
+        return $this->morphToMany(Task::class, 'taskable')->using(Taskable::class);
     }
 
-    public function beforeActivityLogged(Activity $activity, string $eventName): void
+    /**
+     * @return array<string, string>
+     */
+    public function relationChangeLabels(): array
     {
-        $changes = $activity->attribute_changes?->toArray() ?? [];
-
-        $sidesWithOwner = array_filter(
-            ['attributes', 'old'],
-            fn (string $side): bool => is_array($changes[$side] ?? null) && array_key_exists('account_owner_id', $changes[$side]),
-        );
-
-        if ($sidesWithOwner === []) {
-            return;
-        }
-
-        $ownerIds = collect($sidesWithOwner)
-            ->map(fn (string $side): mixed => $changes[$side]['account_owner_id'])
-            ->filter(fn (mixed $id): bool => is_string($id));
-
-        $ownerNames = $ownerIds->isEmpty()
-            ? collect()
-            : User::query()->whereKey($ownerIds->all())->pluck('name', 'id');
-
-        foreach ($sidesWithOwner as $side) {
-            $ownerId = $changes[$side]['account_owner_id'];
-            unset($changes[$side]['account_owner_id']);
-            $changes[$side]['account_owner'] = is_string($ownerId) ? $ownerNames->get($ownerId) : null;
-        }
-
-        if (($changes['attributes']['account_owner'] ?? null) === null && ($changes['old']['account_owner'] ?? null) === null) {
-            unset($changes['attributes']['account_owner'], $changes['old']['account_owner']);
-        }
-
-        $activity->attribute_changes = collect($changes);
+        return [
+            'account_owner_id' => __('filament/resources/company.fields.account_owner_id.label'),
+        ];
     }
 
     public function getActivitylogOptions(): LogOptions
@@ -209,7 +187,7 @@ final class Company extends Model implements HasAvatar, HasCustomFields, HasMedi
                 'id', 'workspace_id', 'creator_id', 'creation_source', 'custom_fields',
                 'created_at', 'updated_at', 'deleted_at',
                 'last_email_at', 'last_interaction_at', 'email_count', 'inbound_email_count',
-                'outbound_email_count', 'meeting_count', 'last_meeting_at',
+                'outbound_email_count', 'meeting_count', 'last_meeting_at', 'account_owner_id',
             ])
             ->useLogName('crm')
             ->setDescriptionForEvent(fn (string $eventName): string => $eventName);

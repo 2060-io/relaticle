@@ -11,6 +11,8 @@ use App\Models\Concerns\HasActivityTimeline;
 use App\Models\Concerns\HasCreator;
 use App\Models\Concerns\HasNotes;
 use App\Models\Concerns\HasWorkspace;
+use App\Models\Concerns\LogsRelationChanges;
+use App\Models\Pivots\Taskable;
 use App\Models\Scopes\WorkspaceScope;
 use App\Observers\PeopleObserver;
 use App\Services\AvatarService;
@@ -70,6 +72,7 @@ final class People extends Model implements HasAvatar, HasCustomFields, HasMedia
     use HasWorkspace;
     use InteractsWithMedia;
     use LogsActivity;
+    use LogsRelationChanges;
     use SoftDeletes;
     use UsesCustomFields;
 
@@ -107,17 +110,27 @@ final class People extends Model implements HasAvatar, HasCustomFields, HasMedia
     }
 
     /**
-     * @return MorphToMany<Task, $this>
+     * @return MorphToMany<Task, $this, Taskable>
      */
     public function tasks(): MorphToMany
     {
-        return $this->morphToMany(Task::class, 'taskable');
+        return $this->morphToMany(Task::class, 'taskable')->using(Taskable::class);
     }
 
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection(MediaCollection::Attachments->value)
             ->acceptsMimeTypes(UploadAllowlist::mimeTypes());
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function relationChangeLabels(): array
+    {
+        return [
+            'company_id' => __('filament/resources/person.fields.company_id.label'),
+        ];
     }
 
     public function getActivitylogOptions(): LogOptions
