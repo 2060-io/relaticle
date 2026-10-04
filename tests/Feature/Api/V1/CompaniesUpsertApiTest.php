@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\CompaniesUpsertController;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Sleep;
@@ -396,6 +397,26 @@ it('rejects an unknown match field', function (): void {
     ])
         ->assertUnprocessable()
         ->assertInvalid(['match.field']);
+});
+
+it('rejects a match value longer than the rule allows without looking it up', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $value = str_repeat('abcdefghij', 30);
+    $bound = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$bound): void {
+        $bound = [...$bound, ...array_map(strval(...), $query->bindings)];
+    });
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => $value],
+        'name' => 'Acme Corp',
+    ])
+        ->assertUnprocessable()
+        ->assertInvalid(['match.value']);
+
+    expect(array_filter($bound, fn (string $binding): bool => str_contains($binding, 'abcdefghij')))->toBe([]);
 });
 
 it('rejects a people custom field as a company match field', function (): void {

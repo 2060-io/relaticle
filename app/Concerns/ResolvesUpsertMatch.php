@@ -34,6 +34,8 @@ trait ResolvesUpsertMatch
     // Enough to show a caller which records to merge without hydrating every duplicate.
     private const int REPORTED_MATCH_LIMIT = 25;
 
+    private const int MAX_MATCH_VALUE_LENGTH = 255;
+
     private bool $storesMatchValue = false;
 
     abstract protected function entity(): CrmEntity;
@@ -94,17 +96,17 @@ trait ResolvesUpsertMatch
         return [
             'match' => ['required', 'array'],
             'match.field' => ['required', 'string', Rule::in($this->matchableFields()->keys()->all())],
-            'match.value' => ['required', 'string', 'max:255'],
+            'match.value' => ['required', 'string', 'max:'.self::MAX_MATCH_VALUE_LENGTH],
         ];
     }
 
     protected function resolveMatch(): ?Model
     {
         $field = $this->matchField();
-        $value = $this->input('match.value');
+        $value = $this->submittedMatchValue();
 
         // Resolved before validation runs, so input the rules would reject is skipped here.
-        if (! $field instanceof CustomField || ! is_string($value)) {
+        if (! $field instanceof CustomField || $value === null) {
             return null;
         }
 
@@ -142,10 +144,10 @@ trait ResolvesUpsertMatch
     private function storeMatchValueOnCreate(): void
     {
         $field = $this->matchField();
-        $value = $this->input('match.value');
+        $value = $this->submittedMatchValue();
         $customFields = $this->input('custom_fields') ?? [];
 
-        if (! $field instanceof CustomField || ! is_string($value) || blank($value) || ! is_array($customFields)) {
+        if (! $field instanceof CustomField || $value === null || blank($value) || ! is_array($customFields)) {
             return;
         }
 
@@ -166,6 +168,13 @@ trait ResolvesUpsertMatch
         $code = $this->input('match.field');
 
         return is_string($code) ? $this->matchableFields()->get($code) : null;
+    }
+
+    private function submittedMatchValue(): ?string
+    {
+        $value = $this->input('match.value');
+
+        return is_string($value) && mb_strlen($value) <= self::MAX_MATCH_VALUE_LENGTH ? $value : null;
     }
 
     // Rows written before values were normalized on every write can still hold the spelling as sent.
