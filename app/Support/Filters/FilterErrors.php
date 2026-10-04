@@ -13,6 +13,11 @@ final readonly class FilterErrors
         return ValidationException::withMessages([$path => [$message]]);
     }
 
+    public static function operand(string $name, string $operator, string $expected): ValidationException
+    {
+        return self::at($operator, __('validation.filter.operand_type', ['name' => "{$name} {$operator}", 'expected' => $expected]));
+    }
+
     public static function prefix(ValidationException $exception, string|int $segment): ValidationException
     {
         $messages = [];

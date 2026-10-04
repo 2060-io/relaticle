@@ -62,7 +62,7 @@ final readonly class NativeFilter implements Filter
      */
     private function text(Builder $query, string $property, string $column, string $operator, mixed $operand): void
     {
-        $text = Operand::string($operand) ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => 'a string']));
+        $text = Operand::string($operand) ?? throw FilterErrors::operand($property, $operator, __('validation.filter.expected.string'));
 
         $operator === '$contains'
             ? $query->where($column, 'ILIKE', '%'.LikePattern::escape($text).'%')
@@ -74,7 +74,7 @@ final readonly class NativeFilter implements Filter
      */
     private function dateTime(Builder $query, string $property, string $column, string $operator, mixed $operand): void
     {
-        $date = Operand::date($operand) ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => 'a date or date-time']));
+        $date = Operand::date($operand) ?? throw FilterErrors::operand($property, $operator, __('validation.filter.expected.date'));
 
         is_string($operand) && Operand::isBareDate($operand)
             ? $query->whereDate($column, CustomFieldFilterSchema::COMPARISONS[$operator], $date->toDateString())
@@ -89,7 +89,7 @@ final readonly class NativeFilter implements Filter
         /** @var class-string<BackedEnum> $enumClass */
         $enumClass = $this->definition->enumClass;
         $allowed = array_map(static fn (BackedEnum $case): string => (string) $case->value, $enumClass::cases());
-        $expected = 'one of: '.implode(', ', $allowed);
+        $expected = __('validation.filter.expected.one_of', ['values' => implode(', ', $allowed)]);
         $values = $operator === '$eq'
             ? [$this->single($operand, $property, $operator, $expected)]
             : Operand::listOrFail($operand, splitsStrings: true, field: $property, operator: $operator, expected: $expected);
@@ -110,7 +110,7 @@ final readonly class NativeFilter implements Filter
         $value = Operand::string($operand);
 
         if ($value === null || str_contains($value, ',')) {
-            throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => "{$property} {$operator}", 'expected' => $expected]));
+            throw FilterErrors::operand($property, $operator, $expected);
         }
 
         return $value;
@@ -122,7 +122,7 @@ final readonly class NativeFilter implements Filter
     private function emptiness(Builder $query, string $property, string $column, mixed $operand): void
     {
         $blankIsEmpty = $this->definition->kind === FilterKind::Text;
-        $empty = Operand::boolean($operand) ?? throw FilterErrors::at('$is_empty', __('validation.filter.operand_type', ['name' => "{$property} \$is_empty", 'expected' => 'true or false']));
+        $empty = Operand::boolean($operand) ?? throw FilterErrors::operand($property, '$is_empty', __('validation.filter.expected.boolean'));
 
         if ($empty) {
             $query->where(fn (Builder $q): Builder => $blankIsEmpty ? $q->whereNull($column)->orWhere($column, '') : $q->whereNull($column));

@@ -131,10 +131,10 @@ final readonly class CustomFieldFilter implements Filter
         }
 
         $expected = match (true) {
-            $type === 'array' => 'an array of strings',
-            $type === 'integer' => 'an integer',
-            isset($operatorSchema['format']) => "a {$operatorSchema['format']}",
-            default => "a {$type}",
+            $type === 'array' => __('validation.custom_field.expected.string_list'),
+            $type === 'integer' => __('validation.custom_field.expected.integer'),
+            isset($operatorSchema['format']) => __('validation.custom_field.expected.format', ['format' => $operatorSchema['format']]),
+            default => __('validation.custom_field.expected.type', ['type' => $type]),
         };
         throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.operand_type', [
             'field' => $fieldCode,
@@ -294,7 +294,7 @@ final readonly class CustomFieldFilter implements Filter
                 throw FilterErrors::at("{$path}.{$operator}", __('validation.custom_field.operand_type', [
                     'field' => $path,
                     'operator' => $operator,
-                    'expected' => 'a list of domains such as acme.com',
+                    'expected' => __('validation.custom_field.expected.domains'),
                 ]));
             }
 

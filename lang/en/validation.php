@@ -43,6 +43,13 @@ return [
         'unsupported_lookup' => ':field: lookup type ":type" cannot be written by API, MCP, or chat.',
         'record_ids' => ':field: pass an array of record IDs.',
         'upload' => 'This file is unavailable for :field. Upload a new file or keep the file already attached to this field.',
+        'expected' => [
+            'string_list' => 'an array of strings',
+            'integer' => 'an integer',
+            'format' => 'a :format',
+            'type' => 'a :type',
+            'domains' => 'a list of domains such as acme.com',
+        ],
     ],
     'filter' => [
         'operator_sigil' => 'Operators start with $. Use :operator.',
@@ -68,6 +75,13 @@ return [
         'too_many_hops' => 'Relations nest at most :max levels.',
         'phone_invalid' => ':name: :value is not a valid phone number.',
         'phone_country_code' => ':name needs a country code, for example +1 415 555 0100.',
+        'expected' => [
+            'string' => 'a string',
+            'date' => 'a date or date-time',
+            'boolean' => 'true or false',
+            'record_ids' => 'a list of record IDs',
+            'one_of' => 'one of: :values',
+        ],
     ],
     'date' => 'The :attribute field must be a valid date.',
     'date_equals' => 'The :attribute field must be a date equal to :date.',

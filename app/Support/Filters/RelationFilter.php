@@ -101,7 +101,7 @@ final readonly class RelationFilter implements Filter
      */
     private function ids(string $property, string $operator, mixed $operand): array
     {
-        $ids = Operand::listOrFail($operand, splitsStrings: true, field: $property, operator: $operator, expected: 'a list of record IDs');
+        $ids = Operand::listOrFail($operand, splitsStrings: true, field: $property, operator: $operator, expected: __('validation.filter.expected.record_ids'));
 
         $invalid = array_find($ids, static fn (string $id): bool => ! Str::isUlid($id));
 
@@ -117,7 +117,7 @@ final readonly class RelationFilter implements Filter
      */
     private function emptiness(Builder $query, string $property, mixed $operand): void
     {
-        $empty = Operand::boolean($operand) ?? throw FilterErrors::at('$is_empty', __('validation.filter.operand_type', ['name' => "{$property} \$is_empty", 'expected' => 'true or false']));
+        $empty = Operand::boolean($operand) ?? throw FilterErrors::operand($property, '$is_empty', __('validation.filter.expected.boolean'));
 
         $inWorkspace = fn (Builder $related): Builder => $this->bounded($related);
 

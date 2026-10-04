@@ -42,8 +42,7 @@ final readonly class Operand
     {
         $name = "{$field} {$operator}";
 
-        $list = self::stringList($operand, $splitsStrings)
-            ?? throw FilterErrors::at($operator, __('validation.filter.operand_type', ['name' => $name, 'expected' => $expected]));
+        $list = self::stringList($operand, $splitsStrings) ?? throw FilterErrors::operand($field, $operator, $expected);
 
         if (count($list) > CustomFieldFilterSchema::MAX_LIST_VALUES) {
             throw FilterErrors::at($operator, __('validation.filter.too_many_values', ['name' => $name, 'max' => CustomFieldFilterSchema::MAX_LIST_VALUES]));
