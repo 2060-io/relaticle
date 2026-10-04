@@ -34,6 +34,7 @@ final readonly class CustomFieldFilter implements Filter
     public function __construct(
         private string $entityType,
         private User $user,
+        private CustomFieldOptionMap $optionMap = new CustomFieldOptionMap,
     ) {}
 
     public function __invoke(Builder $query, mixed $value, string $property): void
@@ -64,8 +65,9 @@ final readonly class CustomFieldFilter implements Filter
             ]), (string) $unknownFieldCode);
         }
 
-        $optionMap = resolve(CustomFieldOptionMap::class);
-        $options = $this->translatedOptions($optionMap, $fields, $fieldCodes);
+        $options = $this->optionMap->fromFields(
+            $fields->filter(fn (CustomField $field): bool => in_array($field->code, $fieldCodes, true) && $this->optionMap->translates($field))->values(),
+        );
 
         foreach ($value as $fieldCode => $operators) {
             if (! is_array($operators) || $operators === []) {
@@ -88,24 +90,12 @@ final readonly class CustomFieldFilter implements Filter
                 }
 
                 $operand = $this->normalizeOperand($fieldCode, $operator, $operand, $supportedOperators[$operator], $entry !== null);
-                $operand = $this->resolveOptions($optionMap, $fieldCode, $operator, $entry, $operand);
+                $operand = $this->resolveOptions($fieldCode, $operator, $entry, $operand);
                 $operand = $this->spellings($field, $operator, $operand);
 
                 $this->applyCondition($query, $field, $valueColumn, $operator, $operand);
             }
         }
-    }
-
-    /**
-     * @param  Collection<string, CustomField>  $fields
-     * @param  array<int, string>  $fieldCodes
-     * @return array<string, array{ids: array<string, list<string>>, labels: list<string>}>
-     */
-    private function translatedOptions(CustomFieldOptionMap $optionMap, Collection $fields, array $fieldCodes): array
-    {
-        return $optionMap->fromFields(
-            $fields->filter(fn (CustomField $field): bool => in_array($field->code, $fieldCodes, true) && $optionMap->translates($field))->values(),
-        );
     }
 
     /**
@@ -156,31 +146,31 @@ final readonly class CustomFieldFilter implements Filter
     /**
      * @param  array{ids: array<string, list<string>>, labels: list<string>}|null  $entry
      */
-    private function resolveOptions(CustomFieldOptionMap $optionMap, string $fieldCode, string $operator, ?array $entry, mixed $operand): mixed
+    private function resolveOptions(string $fieldCode, string $operator, ?array $entry, mixed $operand): mixed
     {
         if ($entry === null || is_bool($operand)) {
             return $operand;
         }
 
         if (is_array($operand)) {
-            return array_map(fn (string $value): string => $this->optionId($optionMap, $fieldCode, $operator, $entry, $value), $operand);
+            return array_map(fn (string $value): string => $this->optionId($fieldCode, $operator, $entry, $value), $operand);
         }
 
-        return $this->optionId($optionMap, $fieldCode, $operator, $entry, (string) $operand);
+        return $this->optionId($fieldCode, $operator, $entry, (string) $operand);
     }
 
     /**
      * @param  array{ids: array<string, list<string>>, labels: list<string>}  $entry
      */
-    private function optionId(CustomFieldOptionMap $optionMap, string $fieldCode, string $operator, array $entry, string $value): string
+    private function optionId(string $fieldCode, string $operator, array $entry, string $value): string
     {
-        $id = $optionMap->idFor($entry, $value);
+        $id = $this->optionMap->idFor($entry, $value);
 
         if ($id !== null) {
             return $id;
         }
 
-        if ($optionMap->isAmbiguous($entry, $value)) {
+        if ($this->optionMap->isAmbiguous($entry, $value)) {
             $this->invalid(__('validation.custom_field.ambiguous_option', ['field' => $fieldCode, 'value' => $value]), "{$fieldCode}.{$operator}");
         }
 
