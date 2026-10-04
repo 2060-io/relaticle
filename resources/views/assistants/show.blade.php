@@ -90,7 +90,7 @@
         <div class="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
             <div class="flex justify-center mb-6">
                 <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-gray-200/80 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.04] backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                    <x-ri-plug-line class="h-3.5 w-3.5 text-primary dark:text-primary-400"/>
+                    <x-dynamic-component :component="$assistant->icon()" class="h-3.5 w-3.5 text-primary dark:text-primary-400"/>
                     <span class="uppercase tracking-wider text-[10px] font-medium text-gray-500 dark:text-gray-400">{{ __('Relaticle for :name', ['name' => $name]) }}</span>
                 </div>
             </div>
@@ -250,7 +250,7 @@
             </div>
 
             <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <x-marketing.button variant="secondary" href="{{ route($sibling->routeName()) }}">
+                <x-marketing.button variant="secondary" :icon="$sibling->icon()" href="{{ route($sibling->routeName()) }}">
                     {{ __('Using :name instead?', ['name' => $sibling->label()]) }}
                 </x-marketing.button>
                 <x-marketing.button variant="secondary" href="{{ route('ai') }}">

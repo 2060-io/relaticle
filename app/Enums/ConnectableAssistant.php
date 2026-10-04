@@ -17,6 +17,14 @@ enum ConnectableAssistant: string
         };
     }
 
+    public function icon(): string
+    {
+        return match ($this) {
+            self::Claude => 'ri-claude-fill',
+            self::ChatGPT => 'ri-openai-fill',
+        };
+    }
+
     public function sibling(): self
     {
         return match ($this) {
