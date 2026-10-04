@@ -101,6 +101,32 @@ it('lands on the account settings after a connect with no return page', function
     Notification::assertNotified(__('filament/pages/email-accounts.notifications.connected.title'));
 });
 
+it('does not connect a gmail mailbox when the mail read permission was not granted', function (): void {
+    Bus::fake();
+
+    $social = connectedGmailUser();
+    $social->approvedScopes = [
+        'openid',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/gmail.send',
+    ];
+
+    Socialite::fake('gmail', $social);
+    bindMailboxOAuthWorkspace($this->user);
+
+    $this->get(route('email-accounts.callback', ['provider' => 'gmail']))
+        ->assertRedirect(EmailAccountsPage::getUrl([
+            'tenant' => $this->user->currentWorkspace->slug,
+        ], panel: 'app'))
+        ->assertSessionHas('error', 'Relaticle needs permission to read your mail. Reconnect and allow every permission.');
+
+    $this->assertDatabaseMissing(ConnectedAccount::class, [
+        'email_address' => 'connected@example.com',
+    ]);
+
+    Bus::assertNothingDispatched();
+});
+
 function connectedGmailUser(): SocialiteUser
 {
     $social = new SocialiteUser;
