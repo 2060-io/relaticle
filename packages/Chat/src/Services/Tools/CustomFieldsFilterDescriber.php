@@ -27,6 +27,7 @@ final readonly class CustomFieldsFilterDescriber
 
         $lines = ['Names for this entity type:'];
         $rules = [];
+        $nestedExample = null;
 
         foreach ($vocabulary as $name => $entry) {
             $line = "- {$name} ({$entry['type']}".(isset($entry['entity']) ? " to {$entry['entity']}" : '').'; operators: '.implode(', ', $entry['operators']);
@@ -42,9 +43,13 @@ final readonly class CustomFieldsFilterDescriber
             $line .= isset($entry['nested_example']) ? '; nested example: '.CustomFieldFilterSchema::json($entry['nested_example']) : '';
             $lines[] = $line.')';
 
-            if (isset($entry['nested_custom_field_example']) && isset($rules['relation']) && ! str_contains($rules['relation'], 'nested custom field example')) {
-                $rules['relation'] .= '; nested custom field example '.CustomFieldFilterSchema::json([$name => $entry['nested_custom_field_example']]);
+            if (isset($entry['nested_custom_field_example'])) {
+                $nestedExample ??= CustomFieldFilterSchema::json([$name => $entry['nested_custom_field_example']]);
             }
+        }
+
+        if ($nestedExample !== null && isset($rules['relation'])) {
+            $rules['relation'] .= "; nested custom field example {$nestedExample}";
         }
 
         if ($rules !== []) {
@@ -54,7 +59,9 @@ final readonly class CustomFieldsFilterDescriber
         $lines[] = '';
         $lines[] = 'Example: '.CustomFieldFilterSchema::json(EntityFilters::example($entity));
 
-        if ($customFields === []) {
+        $customFieldExample = $this->vocabulary->firstCustomFieldExample($user, $entity);
+
+        if ($customFieldExample === null) {
             $lines[] = '';
             $lines[] = 'No filterable custom fields are defined for this entity type.';
 
@@ -62,6 +69,9 @@ final readonly class CustomFieldsFilterDescriber
         }
 
         array_push($lines, ...$this->customFieldLines($customFields, $types));
+
+        $lines[] = '';
+        $lines[] = 'Custom field example: '.CustomFieldFilterSchema::json($customFieldExample);
 
         return implode("\n", $lines);
     }
@@ -98,20 +108,6 @@ final readonly class CustomFieldsFilterDescriber
             $lines[] = $line.(isset($entry['example']) ? '; example '.CustomFieldFilterSchema::json($entry['example']) : '').')';
         }
 
-        $firstCode = array_key_first($customFields);
-        $lines[] = '';
-        $lines[] = 'Custom field example: '.CustomFieldFilterSchema::json(['custom_fields' => [$firstCode => $customFields[$firstCode]['example'] ?? $types[$customFields[$firstCode]['type']]['example']]]);
-
         return $lines;
-    }
-
-    /**
-     * The codes accepted by the `sort` slot, alongside the native columns.
-     *
-     * @return list<string>
-     */
-    public function sortableCodes(User $user, string $entityType): array
-    {
-        return $this->vocabulary->customFieldCodes($user, CrmEntity::from($entityType));
     }
 }

@@ -61,7 +61,7 @@ final readonly class FilterVocabulary
     /**
      * @return array<string, array<string, mixed>>|null
      */
-    private function firstCustomFieldExample(User $user, CrmEntity $entity): ?array
+    public function firstCustomFieldExample(User $user, CrmEntity $entity): ?array
     {
         ['types' => $types, 'fields' => $fields] = $this->customFieldEntries($user, $entity);
         $code = array_key_first($fields);

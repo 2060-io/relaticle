@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterVocabulary;
 use App\Support\Filters\LogicFilter;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Collection;
@@ -114,7 +115,7 @@ abstract class BaseReadListTool implements Tool
         if ($user instanceof User) {
             $describer = resolve(CustomFieldsFilterDescriber::class);
             $filterDescription = $describer->describe($user, $entityType);
-            $sortable = array_merge($sortable, $describer->sortableCodes($user, $entityType));
+            $sortable = array_merge($sortable, resolve(FilterVocabulary::class)->customFieldCodes($user, CrmEntity::from($entityType)));
         }
 
         $fields = [
