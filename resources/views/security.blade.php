@@ -2,6 +2,19 @@
     $assistantName = (string) config('chat.assistant_name');
     $emailActive = \Relaticle\EmailIntegration\EmailIntegrationServiceProvider::enabled();
     $hosted = \Laravel\Pennant\Feature::active(\App\Features\Billing::class);
+    $signupChallenge = \App\Rules\TurnstileChallenge::isEnabled();
+    $errorReportsCarryIdentity = (bool) config('sentry.send_default_pii');
+
+    $aiProviders = collect(resolve(\Relaticle\Chat\Services\ModelRegistry::class)->offered())
+        ->map(fn (\Relaticle\Chat\Support\ModelDescriptor $model): ?string => match ($model->provider) {
+            'anthropic' => 'Anthropic',
+            'openai' => 'OpenAI',
+            'gemini' => 'Google',
+            default => null,
+        })
+        ->filter()
+        ->unique()
+        ->values();
 
     $title = __('Security: where your CRM data lives').' - Relaticle';
     $description = __(
@@ -25,7 +38,9 @@
         [
             'ri-sparkling-2-line',
             __('The built-in assistant'),
-            __('A request to :name, a voice message or an email summary sends the content needed to answer it to an AI provider: Anthropic or OpenAI. :name proposes every change as a card and waits for your approval.', ['name' => $assistantName]),
+            $aiProviders->isEmpty()
+                ? __('A request to :name, a voice message or an email summary sends the content needed to answer it to an AI provider. :name proposes every change as a card and waits for your approval.', ['name' => $assistantName])
+                : __('A request to :name, a voice message or an email summary sends the content needed to answer it to an AI provider: :providers. :name proposes every change as a card and waits for your approval.', ['name' => $assistantName, 'providers' => $aiProviders->join(', ', ' or ')]),
         ],
         [
             'ri-plug-line',
@@ -40,7 +55,7 @@
     ];
 
     $email = [
-        ['ri-mail-check-line', __('Only the account you connect'), __('Relaticle reads mail and calendar events only from an account you connect, and never changes, labels or deletes messages in your mailbox.')],
+        ['ri-mail-check-line', __('Only the account you connect'), __('Relaticle reads mail and calendar events only from an account you connect, and never changes, labels or deletes messages in your mailbox. It sends email and answers invitations only when you do that from Relaticle.')],
         ['ri-lock-2-line', __('Encrypted tokens'), __('Mailbox access tokens are encrypted at rest. Disconnecting deletes them.')],
     ];
 
@@ -74,18 +89,22 @@
         ['data', __('Your data stays yours'), __('Export it, delete it, or take it to your own server.'), $ownership, null],
     ]);
 
-    $providers = [
-        ['Hetzner', __('Hosts the application and its database'), __('All workspace data')],
+    $providers = array_values(array_filter([
+        ['Hetzner', __('Hosts the application and its database, in Germany'), __('All workspace data')],
+        ['Laravel Forge', __('Manages the server and runs deploys'), __('Administrative access to the server')],
         ['Mailcoach', __('Sends account, notification and product update email'), __('Recipient name, address, message content and usage tags')],
         ['Postmark', __('Delivers that email for Mailcoach'), __('Recipient address and message content')],
         ['Stripe', __('Takes payment for Cloud plans'), __('Billing details. Card numbers go to Stripe directly.')],
-        ['Sentry', __('Reports application errors'), __('Anonymized error reports')],
+        ['Sentry', __('Reports application errors'), $errorReportsCarryIdentity
+            ? __('Error reports, which can include your account identity and data from the request that failed.')
+            : __('Error reports without your account identity. A report can include data from the request that failed.')],
         ['Fathom Analytics', __('Counts page views on the website and in the app'), __('Page, referrer and signup events, without cookies')],
-        ['Anthropic, OpenAI', __('Run the AI models behind the assistant, voice input and email summaries'), __('The content of that request')],
+        $aiProviders->isEmpty() ? null : [$aiProviders->join(', '), __('Run the AI models behind the assistant, voice input and email summaries'), __('The content of that request')],
+        $signupChallenge ? ['Cloudflare', __('Checks that a new account is created by a person'), __('Signals from your browser on the create-account step')] : null,
         ['Google, DuckDuckGo', __('Look up a company logo'), __('The company domain')],
         ['Maxforms', __('Hosts the support and feedback forms'), __('What you type into the form')],
         ['Oh Dear', __('Watches uptime and health checks'), __('No customer data')],
-    ];
+    ]));
 
     $faqs = [
         [
@@ -198,16 +217,20 @@
         </div>
     </section>
 
-    @if($hosted)
     {{-- Providers --}}
     <section id="providers" class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
         <div class="max-w-4xl mx-auto px-6 lg:px-8">
-            <div class="max-w-2xl mx-auto text-center mb-14">
+            <div class="max-w-2xl mx-auto text-center">
                 <h2 class="{{ $sectionTitle }}">{{ __('Service providers') }}</h2>
-                <p class="{{ $sectionLead }}">{{ __('The companies that handle data for Relaticle Cloud, and what each one receives.') }}</p>
+                <p class="{{ $sectionLead }}">
+                    {{ $hosted
+                        ? __('The companies that handle data for Relaticle Cloud, and what each one receives.')
+                        : __('This install is run by its own operator. It uses only the company logo lookup, which sends a company domain to Google and DuckDuckGo, unless the operator configures other providers.') }}
+                </p>
             </div>
 
-            <div class="overflow-hidden rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
+            @if($hosted)
+            <div class="mt-14 overflow-hidden rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
                 <table class="w-full text-left text-sm">
                     <caption class="sr-only">{{ __('Service providers for Relaticle Cloud') }}</caption>
                     <thead class="hidden sm:table-header-group">
@@ -235,9 +258,9 @@
             <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
                 {{ __('A self-hosted install uses only the logo lookup, unless its operator configures the others.') }}
             </p>
+            @endif
         </div>
     </section>
-    @endif
 
     {{-- Report --}}
     <section id="report" class="py-20 md:py-28 bg-white dark:bg-gray-950">

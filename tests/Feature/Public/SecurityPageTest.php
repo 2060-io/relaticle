@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use App\Features\Billing as BillingFeature;
 use App\Features\EmailIntegration;
+use App\Features\SignupChallenge;
 use Laravel\Pennant\Feature;
+use Relaticle\Chat\Services\ModelRegistry;
+use Tests\Helpers\ChatCatalog;
 
 function securityPageText(string $html): string
 {
@@ -45,15 +48,61 @@ it('names each service provider on a hosted install', function (string $provider
     Feature::define(BillingFeature::class, true);
 
     $this->get('/security')->assertOk()->assertSee($provider);
-})->with(['Hetzner', 'Mailcoach', 'Postmark', 'Stripe', 'Sentry', 'Fathom Analytics', 'Anthropic, OpenAI', 'Google, DuckDuckGo', 'Maxforms', 'Oh Dear']);
+})->with(['Hetzner', 'Laravel Forge', 'Mailcoach', 'Postmark', 'Stripe', 'Sentry', 'Fathom Analytics', 'Anthropic, OpenAI', 'Google, DuckDuckGo', 'Maxforms', 'Oh Dear']);
 
-it('leaves the provider table out where hosted billing is off', function (): void {
+it('says which country the hosted data lives in', function (): void {
+    Feature::define(BillingFeature::class, true);
+
+    $this->get('/security')->assertOk()->assertSee('Hosts the application and its database, in Germany');
+});
+
+it('names the operator instead of a provider table where hosted billing is off', function (): void {
     Feature::define(BillingFeature::class, false);
 
     $this->get('/security')->assertOk()
+        ->assertSee('id="providers"', false)
+        ->assertSee('This install is run by its own operator.')
         ->assertDontSee('Hetzner')
-        ->assertDontSee(__('Service providers'));
+        ->assertDontSee('Laravel Forge');
 });
+
+it('names the AI providers of the models the product offers', function (): void {
+    Feature::define(BillingFeature::class, true);
+    config()->set('chat.models', [
+        ChatCatalog::entry(),
+        ChatCatalog::entry(['label' => 'Gemini 3 Flash', 'provider' => 'gemini', 'model' => 'gemini-3-flash']),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+
+    $text = securityPageText($this->get('/security')->assertOk()->getContent());
+
+    expect($text)->toContain('to an AI provider: Anthropic or Google.')
+        ->and($text)->toContain('Anthropic, Google Run the AI models')
+        ->and($text)->not->toContain('OpenAI Run the AI models');
+});
+
+it('lists Cloudflare only while the signup challenge is on', function (bool $enabled): void {
+    Feature::define(BillingFeature::class, true);
+    Feature::define(SignupChallenge::class, $enabled);
+    config()->set('services.turnstile.key', 'site-key');
+    config()->set('services.turnstile.secret', 'secret-key');
+
+    $response = $this->get('/security')->assertOk();
+
+    $enabled
+        ? $response->assertSee('Checks that a new account is created by a person')
+        : $response->assertDontSee('Checks that a new account is created by a person');
+})->with([true, false]);
+
+it('says an error report carries no account identity unless the install sends it', function (bool $sendsIdentity, string $expected): void {
+    Feature::define(BillingFeature::class, true);
+    config()->set('sentry.send_default_pii', $sendsIdentity);
+
+    $this->get('/security')->assertOk()->assertSee($expected);
+})->with([
+    [false, 'Error reports without your account identity.'],
+    [true, 'Error reports, which can include your account identity'],
+]);
 
 it('says plainly that it holds no SOC 2 or ISO 27001 certification', function (): void {
     $text = securityPageText($this->get('/security')->assertOk()->getContent());
@@ -80,7 +129,9 @@ it('describes mailbox handling where the email integration is on', function (): 
     config()->set('relaticle.features.email_integration', true);
     Feature::for(null)->activate(EmailIntegration::class);
 
-    $this->get('/security')->assertOk()->assertSee('never changes, labels or deletes messages in your mailbox');
+    $this->get('/security')->assertOk()
+        ->assertSee('never changes, labels or deletes messages in your mailbox')
+        ->assertSee('It sends email and answers invitations only when you do that from Relaticle.');
 });
 
 it('leaves mailbox handling out where the email integration is off', function (): void {
