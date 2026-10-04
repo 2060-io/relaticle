@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Enums\ConnectableAssistant;
 use App\Features\Blog;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -78,6 +79,10 @@ final class GenerateSitemapCommand extends Command
         $this->ensureUrl($sitemap, route('help.index'));
         $this->ensureUrl($sitemap, route('documentation.index'));
         $this->ensureUrl($sitemap, route('aiNativeCrm'));
+
+        foreach (ConnectableAssistant::cases() as $assistant) {
+            $this->ensureUrl($sitemap, route($assistant->routeName()));
+        }
 
         $docsRepository->categories()
             ->filter(fn (DocCategory $category): bool => $category->area === DocUrl::HELP)

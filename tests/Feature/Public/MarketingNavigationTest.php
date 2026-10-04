@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\ConnectableAssistant;
 use App\Support\MarketingNavigation;
 use App\Support\NavItem;
 use Illuminate\Support\Facades\Blade;
@@ -38,6 +39,17 @@ it('links every declared comparison and alternatives page from the footer', func
 
     foreach (config('comparisons.alternatives') as $slug) {
         expect($html)->toContain(route('alternatives.show', ['competitor' => $slug]));
+    }
+});
+
+it('links a page for every connectable assistant from the footer', function (): void {
+    $html = $this->get('/pricing')->assertOk()->getContent();
+
+    preg_match('/<footer[\s\S]*?<\/footer>/', $html, $footer);
+
+    foreach (ConnectableAssistant::cases() as $assistant) {
+        expect($footer[0])->toContain('href="'.route($assistant->routeName()).'"')
+            ->and($footer[0])->toContain(__('For :name', ['name' => $assistant->label()]));
     }
 });
 

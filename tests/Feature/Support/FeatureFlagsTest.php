@@ -172,6 +172,7 @@ describe('Documentation', function (): void {
         $this->get('/pricing')->assertOk();
         $this->get('/ai')->assertOk();
         $this->get('/self-hosted')->assertOk();
+        $this->get('/crm-for-claude')->assertOk();
 
         putenv('RELATICLE_FEATURE_DOCUMENTATION');
         CachedState::$cachedRoutes = null;
