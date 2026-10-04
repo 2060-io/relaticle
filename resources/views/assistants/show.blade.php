@@ -204,14 +204,12 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 @foreach($prompts as [$icon, $prompt, $outcome])
-                    <div class="rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-6">
-                        <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/[0.08] dark:bg-primary/[0.15] mb-4">
-                            <x-dynamic-component :component="$icon" class="w-4.5 h-4.5 text-primary dark:text-primary-400"/>
-                        </div>
-                        <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">
+                    <div class="flex flex-col rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-6">
+                        <h3 class="self-start rounded-2xl rounded-bl-md bg-gray-100 px-3.5 py-2.5 text-sm font-medium leading-relaxed text-gray-900 dark:bg-white/10 dark:text-gray-100">
                             {{ $prompt }}
                         </h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                        <p class="mt-4 flex items-start gap-2.5 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                            <x-dynamic-component :component="$icon" class="mt-0.5 h-4 w-4 shrink-0 text-primary dark:text-primary-400"/>
                             {{ $outcome }}
                         </p>
                     </div>
