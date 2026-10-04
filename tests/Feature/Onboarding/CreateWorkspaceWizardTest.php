@@ -500,6 +500,134 @@ it('stores referral source', function (): void {
     expect($workspace->onboarding_referral_source)->toBe(OnboardingReferralSource::Google);
 });
 
+it('stores the assistant and the question behind an AI referral', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->fillForm([
+            'onboarding_use_case' => OnboardingUseCase::Other->value,
+            'onboarding_referral_source' => OnboardingReferralSource::AI->value,
+            'onboarding_referral_detail' => 'claude',
+            'onboarding_referral_prompt' => 'A CRM my assistant can update',
+            'name' => 'Assistant Sent Me',
+        ])
+        ->call('register')
+        ->assertHasNoFormErrors();
+
+    $workspace = Workspace::query()->where('name', 'Assistant Sent Me')->sole();
+
+    expect($workspace->onboarding_referral_source)->toBe(OnboardingReferralSource::AI)
+        ->and($workspace->onboarding_referral_detail)->toBe('claude')
+        ->and($workspace->onboarding_referral_prompt)->toBe('A CRM my assistant can update');
+});
+
+it('stores an AI referral that answers neither follow-up', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->fillForm([
+            'onboarding_use_case' => OnboardingUseCase::Other->value,
+            'onboarding_referral_source' => OnboardingReferralSource::AI->value,
+            'name' => 'Quiet Referral',
+        ])
+        ->call('register')
+        ->assertHasNoFormErrors();
+
+    $workspace = Workspace::query()->where('name', 'Quiet Referral')->sole();
+
+    expect($workspace->onboarding_referral_source)->toBe(OnboardingReferralSource::AI)
+        ->and($workspace->onboarding_referral_detail)->toBeNull()
+        ->and($workspace->onboarding_referral_prompt)->toBeNull();
+});
+
+it('asks which assistant and what was asked only for an AI referral', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->goToWizardStep(2)
+        ->assertWizardCurrentStep(2)
+        ->fillForm([
+            'onboarding_referral_source' => OnboardingReferralSource::GitHub->value,
+        ])
+        ->assertFormFieldHidden('onboarding-attribution.onboarding_referral_detail')
+        ->assertFormFieldHidden('onboarding-attribution.onboarding_referral_prompt')
+        ->fillForm([
+            'onboarding_referral_source' => OnboardingReferralSource::AI->value,
+        ])
+        ->assertFormFieldVisible('onboarding-attribution.onboarding_referral_detail')
+        ->assertFormFieldVisible('onboarding-attribution.onboarding_referral_prompt')
+        ->assertSee(__('filament/pages/workspaces.create_workspace.form.referral_detail_label'))
+        ->assertSee(__('filament/pages/workspaces.create_workspace.form.referral_prompt_label'))
+        ->assertSee('Perplexity');
+});
+
+it('caps the question behind an AI referral at 200 characters', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    livewire(CreateWorkspace::class)
+        ->fillForm([
+            'onboarding_use_case' => OnboardingUseCase::Other->value,
+            'onboarding_referral_source' => OnboardingReferralSource::AI->value,
+            'onboarding_referral_prompt' => str_repeat('a', 201),
+            'name' => 'Long Question Co',
+        ])
+        ->call('register')
+        ->assertHasFormErrors(['onboarding_referral_prompt' => 'max']);
+});
+
+it('the action drops the assistant and the question for a source that asks for neither', function (): void {
+    $user = User::factory()->create();
+
+    $workspace = resolve(CreateWorkspaceAction::class)->create($user, [
+        'name' => 'Search Visitor Co',
+        'slug' => 'search-visitor-co',
+        'onboarding_use_case' => OnboardingUseCase::Other->value,
+        'onboarding_referral_source' => OnboardingReferralSource::Google->value,
+        'onboarding_referral_detail' => 'claude',
+        'onboarding_referral_prompt' => 'A CRM my assistant can update',
+    ]);
+
+    expect($workspace->onboarding_referral_source)->toBe(OnboardingReferralSource::Google)
+        ->and($workspace->onboarding_referral_detail)->toBeNull()
+        ->and($workspace->onboarding_referral_prompt)->toBeNull();
+});
+
+it('the action rejects an assistant the AI referral does not offer', function (): void {
+    $user = User::factory()->create();
+
+    expect(fn (): Workspace => resolve(CreateWorkspaceAction::class)->create($user, [
+        'name' => 'Unknown Assistant Co',
+        'slug' => 'unknown-assistant-co',
+        'onboarding_use_case' => OnboardingUseCase::Other->value,
+        'onboarding_referral_source' => OnboardingReferralSource::AI->value,
+        'onboarding_referral_detail' => 'a-made-up-assistant',
+    ]))->toThrow(ValidationException::class);
+
+    expect(Workspace::query()->where('name', 'Unknown Assistant Co')->exists())->toBeFalse();
+});
+
+it('the action rejects a question over 200 characters', function (): void {
+    $user = User::factory()->create();
+
+    expect(fn (): Workspace => resolve(CreateWorkspaceAction::class)->create($user, [
+        'name' => 'Tampered Question Co',
+        'slug' => 'tampered-question-co',
+        'onboarding_use_case' => OnboardingUseCase::Other->value,
+        'onboarding_referral_source' => OnboardingReferralSource::AI->value,
+        'onboarding_referral_prompt' => str_repeat('a', 201),
+    ]))->toThrow(ValidationException::class);
+
+    expect(Workspace::query()->where('name', 'Tampered Question Co')->exists())->toBeFalse();
+});
+
 it('previews the pipeline stages the chosen use case creates', function (): void {
     $user = User::factory()->create();
 

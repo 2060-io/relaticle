@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\BillingStatus;
 use App\Enums\CreationSource;
+use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
 use App\Features\Billing;
@@ -581,6 +582,42 @@ it('lands the owner impersonation link in the viewed workspace', function (): vo
 
     expect($link)->toStartWith(url()->getPublicUrl("impersonate/{$workspace->user_id}?"))
         ->and($query['workspace'])->toBe($workspace->getKey());
+});
+
+it('shows which assistant sent a workspace and what its owner asked, by label', function (): void {
+    $owner = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $owner->ownedWorkspaces()->first();
+    $workspace->forceFill([
+        'onboarding_referral_source' => OnboardingReferralSource::AI,
+        'onboarding_referral_detail' => 'chatgpt',
+        'onboarding_referral_prompt' => 'A CRM my assistant can update',
+    ])->save();
+
+    livewire(ViewWorkspace::class, ['record' => $workspace->getKey()])
+        ->assertSuccessful()
+        ->assertSee('ChatGPT')
+        ->assertSee('A CRM my assistant can update')
+        ->assertDontSee('chatgpt');
+});
+
+it('filters workspaces by the assistant that sent them, and names it by label', function (): void {
+    $fromClaude = User::factory()->withPersonalWorkspace()->create()->ownedWorkspaces()->first();
+    $fromClaude->forceFill([
+        'onboarding_referral_source' => OnboardingReferralSource::AI,
+        'onboarding_referral_detail' => 'claude',
+    ])->save();
+
+    $fromGemini = User::factory()->withPersonalWorkspace()->create()->ownedWorkspaces()->first();
+    $fromGemini->forceFill([
+        'onboarding_referral_source' => OnboardingReferralSource::AI,
+        'onboarding_referral_detail' => 'gemini',
+    ])->save();
+
+    livewire(ListWorkspaces::class)
+        ->filterTable('onboarding_referral_detail', 'claude')
+        ->assertCanSeeTableRecords([$fromClaude])
+        ->assertCanNotSeeTableRecords([$fromGemini])
+        ->assertTableColumnFormattedStateSet('onboarding_referral_detail', 'Claude', record: $fromClaude);
 });
 
 it('filters workspaces owned by a system administrator as internal', function (): void {
