@@ -382,9 +382,16 @@ final readonly class CustomFieldFilter implements Filter
      */
     private function filterableFields(): Collection
     {
-        return resolve(WorkspaceCustomFields::class)
-            ->forEntity($this->user->currentWorkspace, $this->entityType)
-            ->filter(CustomFieldFilterSchema::isFilterable(...))
-            ->keyBy('code');
+        $workspace = $this->user->currentWorkspace;
+        $customFields = resolve(WorkspaceCustomFields::class);
+
+        return collect($customFields->remember(
+            $workspace,
+            "filterable_fields:{$this->entityType}",
+            fn (): array => $customFields->forEntity($workspace, $this->entityType)
+                ->filter(CustomFieldFilterSchema::isFilterable(...))
+                ->keyBy('code')
+                ->all(),
+        ));
     }
 }

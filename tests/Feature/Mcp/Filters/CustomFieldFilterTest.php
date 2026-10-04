@@ -254,6 +254,23 @@ it('rejects an encrypted custom field as an unknown filter code', function (): v
         ->assertHasErrors(['"secret_code" is not a filterable custom field on opportunity']);
 });
 
+it('sees a custom field created or deactivated after an earlier filter in the same process', function (): void {
+    filterTestField($this->workspace, 'people', 'first_note', 'text');
+    $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
+    peopleNamesMatching($this->user, ['custom_fields' => ['first_note' => ['$is_empty' => true]]]);
+
+    $second = filterTestField($this->workspace, 'people', 'second_note', 'text');
+    $ana->saveCustomFieldValue($second, 'hello');
+
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['second_note' => ['$contains' => 'hell']]]))->toBe(['Ana']);
+
+    $second->update(['active' => false]);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['second_note' => ['$contains' => 'hell']]]])
+        ->assertHasErrors(['"second_note" is not a filterable custom field on people']);
+});
+
 it('returns an actionable MCP error for an invalid operand shape', function (): void {
     RelaticleServer::actingAs($this->user)
         ->tool(ListOpportunitiesTool::class, [
