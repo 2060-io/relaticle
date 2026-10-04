@@ -446,14 +446,6 @@ it('names the replacement of a removed param', function (string $param, string $
     'search' => ['search', 'name or title with $contains'],
 ]);
 
-it('caps a filter at twenty conditions', function (): void {
-    $conditions = array_fill(0, 21, ['name' => ['$eq' => 'x']]);
-
-    $this->postJson('/api/v1/companies/query', ['filter' => ['$or' => $conditions]])
-        ->assertUnprocessable()
-        ->assertJsonFragment(['A filter holds at most 20 conditions. This one has 21.']);
-});
-
 it('counts every operator in the tree toward the twenty-condition cap', function (): void {
     $dates = ['$eq' => '2026-01-01', '$gt' => '2025-12-31', '$gte' => '2026-01-01', '$lt' => '2027-01-01', '$lte' => '2026-12-31'];
     $source = ['$eq' => 'api', '$in' => ['api', 'web'], '$not_in' => ['mcp'], '$is_empty' => false];
