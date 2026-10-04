@@ -769,3 +769,32 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
         'A class in these directories is named for its role (.ai/guidelines/relaticle/core.md): '.implode(', ', $offenders),
     );
 });
+
+it('keeps each negated arch expectation to one layer', function (): void {
+    $root = dirname(__DIR__, 2);
+    $offenders = [];
+
+    foreach (glob($root.'/tests/Arch/*.php') ?: [] as $file) {
+        $source = (string) file_get_contents($file);
+
+        preg_match_all('/->expect\(\s*\[(.*?)\]\s*\)(.*?);/s', $source, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+
+        foreach ($matches as $match) {
+            $layers = preg_match_all('/([\'"]).+?\1/', $match[1][0]);
+            $negatesUse = preg_match('/->not\s*->\s*(toUse|toBeUsedIn)\(/', $match[2][0]) === 1;
+
+            if ($layers < 2 || ! $negatesUse) {
+                continue;
+            }
+
+            $line = substr_count($source, "\n", 0, $match[0][1]) + 1;
+            $offenders[] = str_replace($root.'/', '', $file).':'.$line;
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'A negated toUse over several layers only fails when every layer violates at once '.
+        '(.ai/guidelines/relaticle/testing.md). Write one arch() per layer in a foreach: '.implode(', ', $offenders),
+    );
+});

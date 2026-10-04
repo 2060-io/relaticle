@@ -446,6 +446,11 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
   to avoid flaky boundary failures
 - Match test organization to existing conventions: before creating a test file,
   search `tests/` for files covering the same class or feature and extend those
+- A negated arch expectation covers one layer: `expect($layer)->not->toUse(...)` inside a
+  `foreach`. Pest fails `expect([$a, $b])->not->toUse(...)` only when every layer violates
+  at once. Two module-boundary checks passed that way with 20 violations behind them.
+  `tests/Arch/ConventionsTest.php` fails the multi-layer form. Plant a violation to prove a
+  new arch check before trusting it
 
 ## Running the suite
 
