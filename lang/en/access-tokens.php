@@ -108,6 +108,8 @@ return [
         'api_description' => 'Manage CRM data programmatically.',
         'mcp_link' => 'MCP Server',
         'mcp_description' => 'Connect AI assistants like Claude.',
+        'forms_link' => 'Web forms',
+        'forms_description' => 'Turn form submissions into records with Maxforms.',
     ],
 
     'user_menu' => 'Access Tokens',

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Features\Billing;
+use App\Features\Documentation;
 use App\Filament\Clusters\Settings;
 use App\Livewire\App\AccessTokens\CreateAccessToken;
 use App\Livewire\App\AccessTokens\ManageAccessTokens;
@@ -13,6 +15,7 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Schema;
 use Laravel\Jetstream\Features;
+use Laravel\Pennant\Feature;
 use Override;
 
 final class AccessTokens extends Page
@@ -48,6 +51,11 @@ final class AccessTokens extends Page
             Livewire::make(ManageAccessTokens::class),
             Livewire::make(ManageOAuthConnectors::class),
         ]);
+    }
+
+    public function offersWebForms(): bool
+    {
+        return Feature::active(Billing::class) && Feature::active(Documentation::class);
     }
 
     public static function getLabel(): string
