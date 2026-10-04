@@ -166,7 +166,7 @@
                                     <tr class="text-xs text-gray-400 dark:text-gray-500">
                                         <th scope="col" class="pb-2 text-left font-medium">{{ __('Stage') }}</th>
                                         <th scope="col" class="pb-2 text-right font-medium">{{ __('Opportunities') }}</th>
-                                        <th scope="col" class="pb-2 text-right font-medium">{{ __('Value') }}</th>
+                                        <th scope="col" class="pb-2 pl-4 text-right font-medium">{{ __('Value') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-white/5 dark:border-white/5">
@@ -174,7 +174,7 @@
                                         <tr>
                                             <td class="py-2 text-gray-700 dark:text-gray-300">{{ $stage }}</td>
                                             <td class="py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">{{ $count }}</td>
-                                            <td class="py-2 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ $value }}</td>
+                                            <td class="py-2 pl-4 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ $value }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
