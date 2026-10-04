@@ -722,3 +722,50 @@ it('keeps the method length list to methods that still exist', function (): void
         'Remove these entries from phpstan-method-length.php, their methods are gone: '.implode(', ', $missing),
     );
 });
+
+it('keeps the role suffix on classes whose directory carries one', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $suffixes = [
+        'Console/Commands' => 'Command',
+        'Http/Controllers' => 'Controller',
+        'Http/Requests' => 'Request',
+        'Http/Resources' => 'Resource',
+        'Mail' => 'Mail',
+        'Mcp/Tools' => 'Tool',
+        'Observers' => 'Observer',
+        'Policies' => 'Policy',
+        'Tools' => 'Tool',
+    ];
+
+    $offenders = [];
+
+    foreach ($suffixes as $directory => $suffix) {
+        $paths = array_filter(
+            [$root.'/app/'.$directory, ...glob($root.'/packages/*/src/'.$directory, GLOB_ONLYDIR) ?: []],
+            is_dir(...),
+        );
+
+        foreach ($paths as $path) {
+            $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS));
+
+            /** @var SplFileInfo $file */
+            foreach ($files as $file) {
+                if ($file->getExtension() !== 'php' || str_contains($file->getPathname(), '/Concerns/')) {
+                    continue;
+                }
+
+                if (str_ends_with($file->getBasename('.php'), $suffix)) {
+                    continue;
+                }
+
+                $offenders[] = str_replace($root.'/', '', $file->getPathname()).' (expected *'.$suffix.')';
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'A class in these directories is named for its role (.ai/guidelines/relaticle/core.md): '.implode(', ', $offenders),
+    );
+});

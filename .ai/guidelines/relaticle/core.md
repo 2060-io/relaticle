@@ -155,6 +155,15 @@ are under about 50. Each rule below names what fails when it is broken.
 - The methods that were already longer are listed in `phpstan-method-length.php`, and that list
   only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
   that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
+- A class is named for its role where its directory carries one: `Command`, `Controller`,
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
+  fails a class there without the suffix.
+- Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
+  can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
+  direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.
+- Before writing a helper, look for it in PHP, then in the framework, then in a package from
+  `composer.json`, then in this codebase. Rector's Laravel sets rewrite the hand-rolled forms
+  they know, and `composer test:refactor` fails until the rewrite is taken.
 
 ## Comments
 
