@@ -12,7 +12,6 @@ use App\Models\CustomField;
 use App\Models\User;
 use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\CustomFields\WorkspaceCustomFields;
-use BackedEnum;
 
 final readonly class FilterVocabulary
 {
@@ -47,7 +46,7 @@ final readonly class FilterVocabulary
             }
 
             if ($definition->enumClass !== null) {
-                $entry['values'] = array_map(static fn (BackedEnum $case): string => (string) $case->value, $definition->enumClass::cases());
+                $entry['values'] = $definition->enumValues();
             }
 
             if ($definition->operand() !== null) {

@@ -93,7 +93,7 @@ final readonly class FilterDefinition
         return match ($this->kind) {
             FilterKind::Text => ['$contains' => 'Acme'],
             FilterKind::DateTime => ['$gte' => '2026-01-01'],
-            FilterKind::Enum => ['$in' => $this->firstEnumValue()],
+            FilterKind::Enum => ['$in' => array_slice($this->enumValues(), 0, 1)],
             FilterKind::Members, FilterKind::Relation => ['$in' => [self::SAMPLE_ID]],
             FilterKind::Computed => $this->computedExample,
         };
@@ -109,13 +109,13 @@ final readonly class FilterDefinition
         };
     }
 
-    /**
-     * @return list<string>
-     */
-    private function firstEnumValue(): array
+    /** @return list<string> */
+    public function enumValues(): array
     {
-        $case = $this->enumClass === null ? null : array_first($this->enumClass::cases());
+        if ($this->enumClass === null) {
+            return [];
+        }
 
-        return $case === null ? [] : [(string) $case->value];
+        return array_map(static fn (BackedEnum $case): string => (string) $case->value, $this->enumClass::cases());
     }
 }

@@ -7,7 +7,6 @@ namespace App\Support\Filters;
 use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Support\LikePattern;
-use BackedEnum;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\QueryBuilder\Filters\Filter;
@@ -86,9 +85,7 @@ final readonly class NativeFilter implements Filter
      */
     private function enum(Builder $query, string $property, string $column, string $operator, mixed $operand): void
     {
-        /** @var class-string<BackedEnum> $enumClass */
-        $enumClass = $this->definition->enumClass;
-        $allowed = array_map(static fn (BackedEnum $case): string => (string) $case->value, $enumClass::cases());
+        $allowed = $this->definition->enumValues();
         $expected = __('validation.filter.expected.one_of', ['values' => implode(', ', $allowed)]);
         $values = $operator === '$eq'
             ? [$this->single($operand, $property, $operator, $expected)]
