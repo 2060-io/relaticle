@@ -64,7 +64,7 @@ it('generates the complete API documentation with company ownership fields', fun
 
     expect($queryBody)->toHaveKeys(['filter', 'sort', 'include', 'per_page', 'cursor', 'page'])
         ->and($query['parameters'])->toBe([])
-        ->and($query['description'])->toContain('re-send the same body with `page` or `cursor`')
+        ->and($query['description'])->toContain('`cursor` set to `meta.next_cursor`', '256 KB')
         ->and($queryBody['sort']['description'])->toBe($listParameters['sort']['description'])
         ->and($queryBody['include']['description'])->toBe($listParameters['include']['description'])
         ->and($queryBody['sort']['description'])->toContain('Allowed:')

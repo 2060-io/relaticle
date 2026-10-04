@@ -32,7 +32,7 @@ final class GetFilterQueryMetadata extends Strategy
 
         return [
             'title' => "Query {$records}",
-            'description' => 'Returns the same records as the list endpoint, with filter, sort, include and pagination sent as a JSON body, so a filter too large for a URL still fits. To fetch the next page, re-send the same body with `page` or `cursor`: a GET to `links.next` is not a valid request.',
+            'description' => 'Returns the same records as the list endpoint, with filter, sort, include and pagination sent as a JSON body, so a filter too large for a URL still fits. To fetch the next page, re-send the same body with the next `page`, or with `cursor` set to `meta.next_cursor` after a first request with `"cursor": true`. A GET to `links.next` is not a valid request. A body larger than 256 KB returns 413.',
         ];
     }
 }

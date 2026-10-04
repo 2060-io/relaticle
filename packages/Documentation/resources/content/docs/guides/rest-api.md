@@ -71,7 +71,7 @@ POST /v1/tasks/query
 POST /v1/notes/query
 ```
 
-The body is a JSON object. It takes `filter`, `sort`, `include`, `per_page` and `page`. Every key is optional, and an empty object returns the first page of records, 15 by default.
+The body is a JSON object. It takes `filter`, `sort`, `include`, `per_page`, `page` and `cursor`. Every key is optional, and an empty object returns the first page of records, 15 by default. `include` is a comma-separated string or a list of names. A body larger than 256 KB returns `413`.
 
 ```bash
 curl https://api.relaticle.com/v1/opportunities/query \
@@ -90,6 +90,10 @@ curl https://api.relaticle.com/v1/opportunities/query \
 ```
 
 The response has the same shape as the matching `GET` list. To fetch the next page, send the same body with the next `page`. The `links` URLs in a response cannot be fetched with `GET`, so page a query by sending the body again.
+
+For a long result, page with a cursor. Send `"cursor": true` for the first page, then send the same body with `cursor` set to `meta.next_cursor` from the previous response. The last page has a `next_cursor` of `null`. Cursor paging sorts by `name` (`title` on tasks and notes), `created_at` or `updated_at`. A custom field sort needs `page`, and asking for one with a cursor returns `400`. A cursor that is neither `true` nor a value from a previous page returns `422`. `GET` lists take the same values as `?cursor=true`.
+
+A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`. Any other format returns `422`. A date without a time covers that whole UTC day.
 
 A body that is not a JSON object returns `422`. That includes truncated JSON, a bare string or number, and a body sent without the `application/json` content type. An empty body counts as no filter.
 

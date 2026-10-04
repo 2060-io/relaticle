@@ -276,7 +276,7 @@ Native fields and relations sit at the top level. Custom fields sit under `custo
 | Tasks | Native fields `title`, `created_at`, `updated_at`, `creation_source`, `assigned_to_me`. Record relations `companies`, `people`, `opportunities`. Member relations `creator`, `assignees`. |
 | Notes | Native fields `title`, `created_at`, `updated_at`, `creation_source`. Record relations `companies`, `people`, `opportunities`. Member relation `creator`. |
 
-`name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators, and a bare date such as `2026-10-01` compares the UTC calendar date. `creation_source` is a single choice with the values `web`, `system`, `import`, `api`, `mcp`, `chat` and `mailbox`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
+`name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators. A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`, and any other format is an error. A date without a time covers that whole UTC day, on these fields and on a custom date and time field. `creation_source` is a single choice with the values `web`, `system`, `import`, `api`, `mcp`, `chat` and `mailbox`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
 
 #### Combine conditions
 
@@ -291,7 +291,7 @@ Native fields and relations sit at the top level. Custom fields sit under `custo
 A relation node holds the same filter grammar, applied to the related records. The names inside it belong to the related entity.
 
 - Record relations take `$in`, `$not_in` (record IDs) and `$is_empty`, or conditions on the related record.
-- Member relations take `$in`, `$not_in` (member IDs) and `$is_empty`. Member names and emails are not filterable.
+- Member relations take `$in`, `$not_in` (member IDs) and `$is_empty`. Member names and emails are not filterable. Someone who has left the workspace counts as no member, so a record they created matches `{"creator": {"$is_empty": true}}`.
 - A to-many relation matches when at least one related record matches. Every condition in one relation node applies to the same related record. To find records with none, wrap the node in `$not`.
 - Relations nest at most 2 levels, such as `company` then `people`.
 

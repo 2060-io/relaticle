@@ -164,7 +164,7 @@ trait DescribesListEndpoint
             'cursor' => [
                 'type' => 'string',
                 'required' => false,
-                'description' => 'Cursor for cursor-based pagination. When present, switches from offset to cursor pagination.',
+                'description' => 'Switches to cursor pagination. Send `true` for the first page, then the `meta.next_cursor` value of the previous page. Sorts by a custom field need `page`.',
                 'example' => null,
             ],
             'page' => [
