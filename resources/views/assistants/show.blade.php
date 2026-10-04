@@ -39,6 +39,12 @@
         ['ri-sticky-note-line', __('What did we agree with Northwind last time?'), __('It reads the notes on the company and answers from them.')],
     ];
 
+    $exampleStages = [
+        [__('Qualification'), 4, '$48,000'],
+        [__('Proposal/Price Quote'), 3, '$72,500'],
+        [__('Negotiation/Review'), 2, '$61,000'],
+    ];
+
     $fit = [
         ['ri-file-list-line', __('A named list, not a lead funnel'), __('Import your target companies from a CSV, or have :name add them as you work. Each company keeps its people, opportunities, tasks and notes together.', ['name' => $name])],
         ['ri-stack-line', __('Fields that fit your deals'), __('Add custom fields for the dates, criteria and stages your deals turn on. :name reads and sets them by name, option labels included.', ['name' => $name])],
@@ -111,6 +117,76 @@
                     {{ __('See how to connect') }}
                 </x-marketing.button>
             </div>
+
+            {{-- One exchange in the site's own bubble style, never a copy of the
+                 assistant's interface. Stage names are the default pipeline's. --}}
+            <figure
+                class="mx-auto mt-14 max-w-2xl text-left"
+                x-data="{ shown: false }"
+                x-init="$nextTick(() => shown = true)"
+            >
+                <div class="overflow-hidden rounded-2xl border border-gray-200/80 bg-[var(--surface-block-bg)] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-16px_rgba(0,0,0,0.14)] dark:border-white/[0.08]">
+                    <div class="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-white/[0.06]">
+                        <x-dynamic-component :component="$assistant->icon()" class="h-4 w-4 shrink-0 text-gray-900 dark:text-white"/>
+                        <span class="text-sm font-medium text-gray-900 dark:text-white">{{ $name }}</span>
+                        <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                            {{ __('Relaticle connected') }}
+                        </span>
+                    </div>
+
+                    <div class="space-y-4 px-4 py-5 sm:px-5">
+                        <div
+                            class="flex justify-end transition duration-500 ease-out motion-reduce:transition-none"
+                            :class="shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'"
+                        >
+                            <p class="max-w-[85%] rounded-2xl rounded-br-md bg-gray-100 px-3.5 py-2.5 text-sm leading-relaxed text-gray-900 dark:bg-white/10 dark:text-gray-100">
+                                {{ $prompts[0][1] }}
+                            </p>
+                        </div>
+
+                        <div
+                            class="space-y-3 transition delay-300 duration-500 ease-out motion-reduce:transition-none motion-reduce:delay-0"
+                            :class="shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'"
+                        >
+                            <p class="inline-flex items-center gap-1.5 rounded-md border border-gray-200/80 bg-gray-50 px-2 py-1 text-xs text-gray-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-400">
+                                <x-ri-plug-line class="h-3.5 w-3.5 shrink-0 text-primary dark:text-primary-400"/>
+                                {{ __('Relaticle') }}
+                                <span aria-hidden="true">·</span>
+                                {{ __('Aggregate opportunities') }}
+                                <x-ri-check-line class="h-3.5 w-3.5 shrink-0 text-emerald-500"/>
+                            </p>
+
+                            <p class="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                                {{ __('You have 9 open opportunities worth $181,500. Most of the value sits in proposals.') }}
+                            </p>
+
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-xs text-gray-400 dark:text-gray-500">
+                                        <th scope="col" class="pb-2 text-left font-medium">{{ __('Stage') }}</th>
+                                        <th scope="col" class="pb-2 text-right font-medium">{{ __('Opportunities') }}</th>
+                                        <th scope="col" class="pb-2 text-right font-medium">{{ __('Value') }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-white/5 dark:border-white/5">
+                                    @foreach($exampleStages as [$stage, $count, $value])
+                                        <tr>
+                                            <td class="py-2 text-gray-700 dark:text-gray-300">{{ $stage }}</td>
+                                            <td class="py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">{{ $count }}</td>
+                                            <td class="py-2 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ $value }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <figcaption class="mt-3 text-center text-xs text-gray-400 dark:text-gray-500">
+                    {{ __('An example exchange. :name answers from the records in your own workspace.', ['name' => $name]) }}
+                </figcaption>
+            </figure>
         </div>
     </section>
 
