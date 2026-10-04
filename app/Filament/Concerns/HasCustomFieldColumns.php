@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Concerns;
 
+use App\Enums\CrmEntity;
 use App\Filament\Components\Tables\ColumnHeaderLabel;
 use App\Models\CustomField;
 use Filament\Support\Icons\Heroicon;
@@ -31,8 +32,14 @@ trait HasCustomFieldColumns
             })
             ->all();
 
-        foreach (array_slice($table->getColumns(), 1) as $column) {
+        $titleColumn = CrmEntity::tryFromModel(new ($this->getModel()))?->titleColumn();
+
+        foreach ($table->getColumns() as $column) {
             $label = $column->getLabel();
+
+            if ($column->getName() === $titleColumn) {
+                continue;
+            }
 
             if ($label instanceof Htmlable) {
                 continue;
