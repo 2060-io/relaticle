@@ -13,6 +13,7 @@ use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Queue\Middleware\Skip;
 use Illuminate\Support\Facades\Bus;
 use Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction;
 use Relaticle\EmailIntegration\Actions\ReconcileCalendarMeetingsAction;
@@ -41,6 +42,14 @@ final class IncrementalCalendarSyncJob implements ShouldBeUnique, ShouldQueue
         public readonly ConnectedAccount $connectedAccount,
         public readonly bool $reconcileAfter = false,
     ) {}
+
+    /**
+     * @return list<Skip>
+     */
+    public function middleware(): array
+    {
+        return [Skip::when($this->connectedAccount->trashed())];
+    }
 
     public function handle(CalendarServiceFactoryInterface $serviceFactory): void
     {

@@ -14,6 +14,7 @@ use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\MaxExceptions;
 use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Queue\Middleware\Skip;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Config;
 use Relaticle\EmailIntegration\Actions\StoreEmailAction;
@@ -75,11 +76,12 @@ final class StoreEmailJob implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * @return list<WithoutOverlapping>
+     * @return list<Skip|WithoutOverlapping>
      */
     public function middleware(): array
     {
         return [
+            Skip::when($this->connectedAccount->trashed()),
             new WithoutOverlapping($this->uniqueId())
                 ->releaseAfter(15)
                 ->expireAfter(300),

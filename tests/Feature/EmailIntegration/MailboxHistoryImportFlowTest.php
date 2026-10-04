@@ -401,10 +401,9 @@ it('does not create duplicate email rows when store runs twice for the same prov
 it('registers withoutOverlapping middleware on store email jobs', function (): void {
     $account = ConnectedAccount::factory()->make();
     $job = new StoreEmailJob($account, 'msg-1');
-    $middleware = $job->middleware()[0];
+    $middleware = collect($job->middleware())->first(fn (object $middleware): bool => $middleware instanceof WithoutOverlapping);
 
-    expect($job->middleware())->toHaveCount(1)
-        ->and($middleware)->toBeInstanceOf(WithoutOverlapping::class)
+    expect($middleware)->toBeInstanceOf(WithoutOverlapping::class)
         ->and($middleware->releaseAfter)->toBe(15)
         ->and($middleware->expiresAfter)->toBe(300);
 });

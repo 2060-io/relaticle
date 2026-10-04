@@ -14,6 +14,7 @@ use Illuminate\Queue\Attributes\MaxExceptions;
 use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Queue\Middleware\Skip;
 use Illuminate\Support\Facades\Config;
 use Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
@@ -46,6 +47,14 @@ final class InitialEmailSyncJob implements ShouldBeUnique, ShouldQueue
     public function retryUntil(): CarbonImmutable
     {
         return now()->addDay();
+    }
+
+    /**
+     * @return list<Skip>
+     */
+    public function middleware(): array
+    {
+        return [Skip::when($this->connectedAccount->trashed())];
     }
 
     /**
