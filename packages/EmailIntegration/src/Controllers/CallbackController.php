@@ -25,6 +25,15 @@ final readonly class CallbackController
     private const array SUPPORTED_PROVIDERS = ['gmail', 'azure'];
 
     /**
+     * @var list<string>
+     */
+    private const array GMAIL_READ_SCOPES = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://mail.google.com/',
+    ];
+
+    /**
      * Google Calendar grants that mean Relaticle may sync meetings. Granular
      * consent can return any one of these instead of the full requested set.
      *
@@ -97,22 +106,12 @@ final readonly class CallbackController
 
         /** @var array<int, string> $grantedScopes */
         $grantedScopes = $socialUser->approvedScopes;
-        $hasCalendar = $this->detectCalendarCapability($provider, $grantedScopes);
-        $hasSend = $this->detectSendCapability($provider, $grantedScopes);
 
-        resolve(ConnectAccountAction::class)->execute(new ConnectAccountData(
-            userId: $user->getKey(),
-            teamId: $team->getKey(),
-            provider: $provider,
-            emailAddress: $socialUser->getEmail(),
-            displayName: $socialUser->getName(),
-            providerAccountId: $socialUser->getId(),
-            accessToken: $socialUser->token,
-            refreshToken: $socialUser->refreshToken,
-            tokenExpiresAt: now()->addSeconds($socialUser->expiresIn),
-            hasCalendar: $hasCalendar,
-            hasSend: $hasSend,
-        ));
+        if (! $this->grantsMailRead($provider, $grantedScopes)) {
+            return $this->redirectWithError($user, 'Relaticle needs permission to read your mail. Reconnect and allow every permission.', $team);
+        }
+
+        $this->connect($user, $team, $provider, $socialUser);
 
         Notification::make()
             ->title(__('filament/pages/email-accounts.notifications.connected.title'))
@@ -125,6 +124,26 @@ final readonly class CallbackController
         return redirect(is_string($returnUrl) ? $returnUrl : EmailAccountsPage::getUrl([
             'tenant' => $team->slug,
         ]));
+    }
+
+    private function connect(User $user, Workspace $team, string $provider, TwoUser $socialUser): void
+    {
+        /** @var array<int, string> $grantedScopes */
+        $grantedScopes = $socialUser->approvedScopes;
+
+        resolve(ConnectAccountAction::class)->execute(new ConnectAccountData(
+            userId: $user->getKey(),
+            teamId: $team->getKey(),
+            provider: $provider,
+            emailAddress: $socialUser->getEmail(),
+            displayName: $socialUser->getName(),
+            providerAccountId: $socialUser->getId(),
+            accessToken: $socialUser->token,
+            refreshToken: $socialUser->refreshToken,
+            tokenExpiresAt: now()->addSeconds($socialUser->expiresIn),
+            hasCalendar: $this->detectCalendarCapability($provider, $grantedScopes),
+            hasSend: $this->detectSendCapability($provider, $grantedScopes),
+        ));
     }
 
     private function boundWorkspace(Request $request, User $user): ?Workspace
@@ -148,6 +167,19 @@ final readonly class CallbackController
         return redirect(EmailAccountsPage::getUrl([
             'tenant' => $team->slug,
         ]))->with('error', $message);
+    }
+
+    /**
+     * @param  array<int, string>  $approvedScopes
+     */
+    private function grantsMailRead(string $provider, array $approvedScopes): bool
+    {
+        // Only Google's consent screen lets a user untick a single permission.
+        if ($provider !== 'gmail') {
+            return true;
+        }
+
+        return $this->grantsAnyScope($approvedScopes, self::GMAIL_READ_SCOPES);
     }
 
     /**
