@@ -89,11 +89,11 @@ final readonly class CustomFieldFilterSchema
         $operators = match ($fieldType) {
             CustomFieldType::TEXT => self::buildOperators(self::STRING_OPERATORS, 'string'),
             CustomFieldType::EMAIL, CustomFieldType::LINK => [
-                ...self::listOperators(['$has_any', '$has_none']),
-                'domain' => ['type' => 'object', 'properties' => self::listOperators(self::DOMAIN_OPERATORS)],
+                ...self::buildOperators(['$has_any', '$has_none'], 'array'),
+                'domain' => ['type' => 'object', 'properties' => self::buildOperators(self::DOMAIN_OPERATORS, 'array')],
             ],
             CustomFieldType::PHONE,
-            CustomFieldType::MULTI_SELECT, CustomFieldType::CHECKBOX_LIST, CustomFieldType::TAGS_INPUT => self::listOperators(['$has_any', '$has_none']),
+            CustomFieldType::MULTI_SELECT, CustomFieldType::CHECKBOX_LIST, CustomFieldType::TAGS_INPUT => self::buildOperators(['$has_any', '$has_none'], 'array'),
             CustomFieldType::CURRENCY => self::buildOperators(array_keys(self::COMPARISONS), 'number'),
             CustomFieldType::NUMBER => self::buildOperators(array_keys(self::COMPARISONS), 'integer'),
             CustomFieldType::DATE => self::buildOperators(array_keys(self::COMPARISONS), 'string', 'date'),
@@ -101,7 +101,7 @@ final readonly class CustomFieldFilterSchema
             CustomFieldType::CHECKBOX, CustomFieldType::TOGGLE => self::buildOperators(self::BOOLEAN_OPERATORS, 'boolean'),
             CustomFieldType::SELECT, CustomFieldType::RADIO, CustomFieldType::TOGGLE_BUTTONS => [
                 ...self::buildOperators(['$eq'], 'string'),
-                ...self::listOperators(['$in', '$not_in']),
+                ...self::buildOperators(['$in', '$not_in'], 'array'),
             ],
             default => [],
         };
@@ -198,15 +198,6 @@ final readonly class CustomFieldFilterSchema
     private static function buildOperators(array $operators, string $jsonType, ?string $format = null): array
     {
         return array_fill_keys($operators, array_filter(['type' => $jsonType, 'format' => $format]));
-    }
-
-    /**
-     * @param  array<int, string>  $operators
-     * @return array<string, array<string, mixed>>
-     */
-    private static function listOperators(array $operators): array
-    {
-        return array_fill_keys($operators, ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => self::MAX_LIST_VALUES]);
     }
 
     /**
