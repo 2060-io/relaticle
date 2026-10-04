@@ -225,6 +225,24 @@ it('publishes one filter object and no flat filter params on every list tool', f
     ListNotesTool::class,
 ]);
 
+it('names a registered tool as the source of the filter codes on every list tool', function (string $toolClass): void {
+    $description = resolve($toolClass)->toArray()['inputSchema']['properties']['filter']['description'];
+    $registeredNames = array_map(
+        fn (string $registered): string => resolve($registered)->name(),
+        new ReflectionClass(RelaticleServer::class)->getDefaultProperties()['tools'],
+    );
+
+    preg_match('/(\S+) lists those codes/', $description, $matches);
+
+    expect($registeredNames)->toContain($matches[1] ?? null);
+})->with([
+    ListCompaniesTool::class,
+    ListPeopleTool::class,
+    ListOpportunitiesTool::class,
+    ListTasksTool::class,
+    ListNotesTool::class,
+]);
+
 it('rejects malformed list tool inputs before building the database query', function (string $toolClass, array $input, string $error): void {
     RelaticleServer::actingAs($this->user)
         ->tool($toolClass, $input)
