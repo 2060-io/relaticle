@@ -24,7 +24,6 @@ final readonly class FilterDefinition
     /**
      * @param  class-string<BackedEnum>|null  $enumClass
      * @param  class-string<Filter<*>>|null  $filterClass
-     * @param  list<string>  $computedOperators
      * @param  array<string, mixed>  $computedExample
      */
     private function __construct(
@@ -32,7 +31,6 @@ final readonly class FilterDefinition
         public ?CrmEntity $related = null,
         public ?string $enumClass = null,
         public ?string $filterClass = null,
-        private array $computedOperators = [],
         private array $computedExample = [],
         private ?string $computedOperand = null,
     ) {}
@@ -64,13 +62,11 @@ final readonly class FilterDefinition
     }
 
     /**
-     * @param  class-string<Filter<*>>  $filterClass
-     * @param  list<string>  $operators
-     * @param  array<string, mixed>  $example
+     * @param  class-string<StaleDaysFilter|AssignedToMeFilter>  $filterClass
      */
-    public static function computed(string $filterClass, array $operators, array $example, string $operand): self
+    public static function computed(string $filterClass): self
     {
-        return new self(FilterKind::Computed, filterClass: $filterClass, computedOperators: $operators, computedExample: $example, computedOperand: $operand);
+        return new self(FilterKind::Computed, filterClass: $filterClass, computedExample: $filterClass::EXAMPLE, computedOperand: $filterClass::OPERAND);
     }
 
     /** @return list<string> */
@@ -81,7 +77,7 @@ final readonly class FilterDefinition
             FilterKind::DateTime => array_keys(CustomFieldFilterSchema::operatorsForType(CustomFieldType::DATE_TIME->value)),
             FilterKind::Enum => array_keys(CustomFieldFilterSchema::operatorsForType(CustomFieldType::SELECT->value)),
             FilterKind::Members, FilterKind::Relation => self::LINK_OPERATORS,
-            FilterKind::Computed => $this->computedOperators,
+            FilterKind::Computed => array_keys($this->computedExample),
         };
     }
 

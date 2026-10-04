@@ -70,11 +70,14 @@ final readonly class EntityFilters
      */
     public static function example(CrmEntity $entity): array
     {
+        $definitions = self::definitions($entity);
+        $title = $entity->titleColumn();
+
         return [
-            $entity->titleColumn() => ['$contains' => 'Acme'],
+            $title => $definitions[$title]->example(),
             '$or' => [
                 ['creation_source' => ['$eq' => CreationSource::API->value]],
-                ['created_at' => ['$gte' => '2026-01-01']],
+                ['created_at' => $definitions['created_at']->example()],
             ],
         ];
     }
@@ -104,14 +107,14 @@ final readonly class EntityFilters
             CrmEntity::Opportunity => [
                 'company' => FilterDefinition::relation(CrmEntity::Company),
                 'contact' => FilterDefinition::relation(CrmEntity::People),
-                'stale_days' => FilterDefinition::computed(StaleDaysFilter::class, ['$gte'], StaleDaysFilter::EXAMPLE, StaleDaysFilter::OPERAND),
+                'stale_days' => FilterDefinition::computed(StaleDaysFilter::class),
             ],
             CrmEntity::Task => [
                 'assignees' => FilterDefinition::members(),
                 'companies' => FilterDefinition::relation(CrmEntity::Company),
                 'people' => FilterDefinition::relation(CrmEntity::People),
                 'opportunities' => FilterDefinition::relation(CrmEntity::Opportunity),
-                'assigned_to_me' => FilterDefinition::computed(AssignedToMeFilter::class, ['$eq'], AssignedToMeFilter::EXAMPLE, AssignedToMeFilter::OPERAND),
+                'assigned_to_me' => FilterDefinition::computed(AssignedToMeFilter::class),
             ],
             CrmEntity::Note => [
                 'companies' => FilterDefinition::relation(CrmEntity::Company),
