@@ -104,6 +104,12 @@ it('runs the greeting on the opener and carries its instructions in the turn blo
         && str_contains($prompt->agent->dynamicInstructions(), "<turn>\n".MessageOrigin::Greeting->directive()."\n</turn>"));
 });
 
+it('asks for a list of people or companies in the greeting', function (): void {
+    expect(MessageOrigin::Greeting->directive())
+        ->toContain('paste a list of people or companies in any columns and any order')
+        ->not->toContain('contacts');
+});
+
 it('saves the greeting as its opener with a greeting origin', function (): void {
     CrmAssistant::fake(['Hi Jane, your workspace is ready.']);
 
