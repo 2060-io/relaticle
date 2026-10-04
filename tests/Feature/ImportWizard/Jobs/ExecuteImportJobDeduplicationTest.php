@@ -8,6 +8,7 @@ use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use Filament\Facades\Filament;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ use Relaticle\ImportWizard\Support\EntityLinkResolver;
 use Tests\Helpers\ImportExecutionFixture;
 use Tests\Helpers\WorkspaceCustomField;
 
-mutates(ExecuteImportJob::class, EntityLinkResolver::class);
+mutates(ExecuteImportJob::class, EntityLinkResolver::class, CanonicalValue::class);
 
 beforeEach(function (): void {
     Event::fake()->except([WorkspaceCreated::class]);

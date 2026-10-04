@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use Relaticle\ImportWizard\Data\EntityLink;
 use Relaticle\ImportWizard\Data\MatchableField;
 use Relaticle\ImportWizard\Enums\EntityLinkSource;
@@ -13,7 +14,7 @@ use Relaticle\ImportWizard\Support\EntityLinkResolver;
 use Tests\Helpers\LegacyCompanyDomains;
 use Tests\Helpers\WorkspaceCustomField;
 
-mutates(EntityLinkResolver::class);
+mutates(EntityLinkResolver::class, CanonicalValue::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();

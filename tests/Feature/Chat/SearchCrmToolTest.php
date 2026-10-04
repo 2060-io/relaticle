@@ -8,12 +8,13 @@ use App\Models\Note;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\PhoneSearch;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Tools\SearchCrmTool;
 use Relaticle\CustomFields\Services\TenantContextService;
 
-mutates(SearchCrmTool::class);
+mutates(SearchCrmTool::class, PhoneSearch::class);
 
 it('finds a person by their email custom field value, not just their name', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();

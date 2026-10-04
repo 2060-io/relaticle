@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\CompaniesUpsertController;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ use Tests\Helpers\WorkspaceCustomField;
 mutates(
     CompaniesUpsertController::class,
     FindEntitiesByFieldValue::class,
+    CanonicalValue::class,
 );
 
 beforeEach(function (): void {

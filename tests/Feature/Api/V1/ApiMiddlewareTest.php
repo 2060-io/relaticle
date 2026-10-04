@@ -6,6 +6,7 @@ use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Models\Company;
 use App\Models\User;
+use App\Support\Http\RequestAbility;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -15,6 +16,7 @@ use Relaticle\SystemAdmin\Models\SystemAdministrator;
 
 mutates(
     ForceJsonResponse::class,
+    RequestAbility::class,
     SetApiWorkspaceContext::class,
 );
 

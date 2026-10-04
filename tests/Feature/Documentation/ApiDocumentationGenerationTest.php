@@ -8,6 +8,8 @@ use App\Http\Requests\Api\V1\BaseCrmEntityRequest;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
+use App\Scribe\Strategies\GetFilterBodyFromEntityFilters;
+use App\Scribe\Strategies\GetFilterQueryMetadata;
 use App\Scribe\Strategies\GetFromSpatieQueryBuilder;
 use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\Filters\EntityFilters;
@@ -17,7 +19,13 @@ use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Symfony\Component\Yaml\Yaml;
 
-mutates(AppServiceProvider::class, BaseCrmEntityRequest::class, GetFromSpatieQueryBuilder::class);
+mutates(
+    AppServiceProvider::class,
+    BaseCrmEntityRequest::class,
+    GetFilterBodyFromEntityFilters::class,
+    GetFilterQueryMetadata::class,
+    GetFromSpatieQueryBuilder::class,
+);
 
 it('generates the complete API documentation with company ownership fields', function (): void {
     expect(Schema::hasTable('custom_fields'))->toBeTrue();

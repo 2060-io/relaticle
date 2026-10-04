@@ -4,21 +4,41 @@ declare(strict_types=1);
 
 use App\Actions\CustomFields\CreateCustomField;
 use App\Enums\CreationSource;
+use App\Http\Requests\Api\V1\IndexRequest;
 use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\Filters\AssignedToMeFilter;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterDefinition;
+use App\Support\Filters\FilterErrors;
 use App\Support\Filters\FilterTree;
 use App\Support\Filters\LogicFilter;
 use App\Support\Filters\NativeFilter;
+use App\Support\Filters\Operand;
 use App\Support\Filters\RelationFilter;
+use App\Support\Filters\StaleDaysFilter;
+use App\Support\Filters\TreeAllowedFilter;
 use Illuminate\Support\Arr;
 use Laravel\Sanctum\Sanctum;
 use Tests\Helpers\WorkspaceCustomField;
 
-mutates(EntityFilters::class, FilterTree::class, LogicFilter::class, NativeFilter::class, RelationFilter::class);
+mutates(
+    AssignedToMeFilter::class,
+    EntityFilters::class,
+    FilterDefinition::class,
+    FilterErrors::class,
+    FilterTree::class,
+    IndexRequest::class,
+    LogicFilter::class,
+    NativeFilter::class,
+    Operand::class,
+    RelationFilter::class,
+    StaleDaysFilter::class,
+    TreeAllowedFilter::class,
+);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withPersonalWorkspace()->create();

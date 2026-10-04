@@ -12,10 +12,11 @@ use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\PhoneSearch;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Tests\Helpers\WorkspaceCustomField;
 
-mutates(SearchTool::class, FetchTool::class);
+mutates(SearchTool::class, FetchTool::class, PhoneSearch::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withPersonalWorkspace()->create();
