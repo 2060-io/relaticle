@@ -620,6 +620,22 @@ it('filters workspaces by the assistant that sent them, and names it by label', 
         ->assertTableColumnFormattedStateSet('onboarding_referral_detail', 'Claude', record: $fromClaude);
 });
 
+it('finds a workspace by what its owner asked the assistant', function (): void {
+    $asked = User::factory()->withPersonalWorkspace()->create()->ownedWorkspaces()->first();
+    $asked->forceFill([
+        'onboarding_referral_source' => OnboardingReferralSource::AI,
+        'onboarding_referral_detail' => 'claude',
+        'onboarding_referral_prompt' => 'A CRM my assistant can update',
+    ])->save();
+
+    $other = User::factory()->withPersonalWorkspace()->create()->ownedWorkspaces()->first();
+
+    livewire(ListWorkspaces::class)
+        ->searchTable('assistant can update')
+        ->assertCanSeeTableRecords([$asked])
+        ->assertCanNotSeeTableRecords([$other]);
+});
+
 it('filters workspaces owned by a system administrator as internal', function (): void {
     $internal = OverviewData::workspaceOf(OverviewData::internalOwner());
     $external = OverviewData::workspaceOf(OverviewData::owner());
