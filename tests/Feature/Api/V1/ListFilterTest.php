@@ -79,6 +79,13 @@ it('filters created_at by a calendar date', function (): void {
         ->and(listIds($this, 'companies', ['created_at' => ['$lte' => '2026-10-01']]))->toBe(collect([$early->id, $late->id])->sort()->values()->all());
 });
 
+it('compares a date-time operand with an offset as the same instant in utc', function (): void {
+    $inside = Company::factory()->recycle([$this->user, $this->workspace])->create(['created_at' => '2026-01-01 05:30:00']);
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['created_at' => '2026-01-01 04:30:00']);
+
+    expect(listIds($this, 'companies', ['created_at' => ['$gte' => '2026-01-01T10:00:00+05:00']]))->toBe([$inside->id]);
+});
+
 it('filters creation_source with $in and $not_in', function (): void {
     $api = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::API]);
     $web = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::WEB]);

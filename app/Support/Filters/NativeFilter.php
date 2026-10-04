@@ -85,7 +85,7 @@ final readonly class NativeFilter implements Filter
 
         is_string($operand) && Operand::isBareDate($operand)
             ? $query->whereDate($column, self::COMPARISONS[$operator], $date->toDateString())
-            : $query->where($column, self::COMPARISONS[$operator], $date->toDateTimeString());
+            : $query->where($column, self::COMPARISONS[$operator], $date->utc()->toDateTimeString());
     }
 
     /**
