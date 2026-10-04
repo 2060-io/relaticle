@@ -77,7 +77,7 @@ abstract class BaseListTool extends Tool
         $user = auth()->user();
 
         $validated = $request->validate([
-            'filter' => ['sometimes', $this->objectRule(allowEmpty: true)],
+            'filter' => ['sometimes', $this->objectRule()],
             'sort' => ['sometimes', 'array:field,direction', 'required_array_keys:field'],
             'sort.field' => ['string'],
             'sort.direction' => ['sometimes', 'string', Rule::in(['asc', 'desc'])],
@@ -163,11 +163,10 @@ abstract class BaseListTool extends Tool
         return Response::structured($response);
     }
 
-    private function objectRule(bool $allowEmpty): Closure
+    private function objectRule(): Closure
     {
-        return static function (string $attribute, mixed $value, Closure $fail) use ($allowEmpty): void {
-            $isObject = is_array($value)
-                && ($allowEmpty && $value === [] || $value !== [] && ! array_is_list($value));
+        return static function (string $attribute, mixed $value, Closure $fail): void {
+            $isObject = is_array($value) && ($value === [] || ! array_is_list($value));
 
             if (! $isObject) {
                 $fail("The {$attribute} field must be an object.");

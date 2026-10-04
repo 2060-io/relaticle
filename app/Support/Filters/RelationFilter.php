@@ -101,7 +101,7 @@ final readonly class RelationFilter implements Filter
      */
     private function ids(string $property, string $operator, mixed $operand): array
     {
-        $ids = Operand::listOrFail($operand, splitsStrings: true, field: $property, operator: $operator, expected: __('validation.filter.expected.record_ids'));
+        $ids = Operand::listOrFail($operand, field: $property, operator: $operator, expected: __('validation.filter.expected.record_ids'));
 
         $invalid = array_find($ids, static fn (string $id): bool => ! Str::isUlid($id));
 

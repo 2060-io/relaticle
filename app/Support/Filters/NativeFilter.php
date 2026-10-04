@@ -89,7 +89,7 @@ final readonly class NativeFilter implements Filter
         $expected = __('validation.filter.expected.one_of', ['values' => implode(', ', $allowed)]);
         $values = $operator === '$eq'
             ? [$this->single($operand, $property, $operator, $expected)]
-            : Operand::listOrFail($operand, splitsStrings: true, field: $property, operator: $operator, expected: $expected);
+            : Operand::listOrFail($operand, field: $property, operator: $operator, expected: $expected);
         $unknown = array_first(array_diff($values, $allowed));
 
         if ($unknown !== null) {
