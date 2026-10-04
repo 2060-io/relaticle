@@ -67,10 +67,11 @@ final class PersonaCatalog
                 email: 'paused@'.self::DOMAIN,
                 name: 'Pia Paused',
                 workspace: 'Paused Workspace',
-                purpose: 'Free plan with billing on, so every page hits the paywall.',
-                // Free with billing on, so EnsureHostedWorkspaceAccess pins
-                // every page to /billing. The paywall, walkable.
-                expect: BillingStatus::Free,
+                purpose: 'Trial ran out with no subscription, so every page hits the paywall.',
+                // What the nightly downgrade leaves behind: Free, the trial
+                // marker kept, trial_ends_at cleared.
+                expect: BillingStatus::TrialEnded,
+                workspaceAttributes: ['pro_trial_used_at' => '-20 days'],
             ),
 
             new Persona(

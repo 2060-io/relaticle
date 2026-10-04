@@ -60,15 +60,31 @@
                  line states the deadline and the click acts on it, so there is
                  no dead text sitting next to a live control. --}}
             <div class="mt-2 border-t border-gray-200 pt-2 dark:border-white/10">
-                <a href="{{ \App\Filament\Pages\Billing::getUrl() }}" class="{{ $rowClasses }} group">
-                    <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                @if(! $billing['urgent'])
+                    <button
+                        type="button"
+                        class="{{ $rowClasses }} group w-[calc(100%-2rem)] text-left"
+                        x-on:click="$dispatch('open-modal', { id: @js(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) })"
+                    >
+                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
 
-                    <span class="flex-1 truncate">{{ $billing['label'] }}</span>
+                        <span class="flex-1 truncate">{{ $billing['label'] }}</span>
 
-                    <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
-                        {{ $billing['action'] }}
-                    </span>
-                </a>
+                        <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
+                            {{ $billing['action'] }}
+                        </span>
+                    </button>
+                @else
+                    <a href="{{ \App\Filament\Pages\Billing::getUrl() }}" class="{{ $rowClasses }} group">
+                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+
+                        <span class="flex-1 truncate">{{ $billing['label'] }}</span>
+
+                        <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
+                            {{ $billing['action'] }}
+                        </span>
+                    </a>
+                @endif
             </div>
         @endif
     </div>

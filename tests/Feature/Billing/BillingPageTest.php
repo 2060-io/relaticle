@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Actions\Billing\CreateProCheckout;
 use App\Actions\Billing\StartProTrial;
 use App\Enums\Plan;
 use App\Features\Billing as BillingFeature;
@@ -19,7 +18,6 @@ use Relaticle\Chat\Models\AiCreditBalance;
 
 mutates(
     Billing::class,
-    CreateProCheckout::class,
     CreditPackCatalog::class,
     HostedWorkspaceAccess::class,
     StartProTrial::class,
@@ -66,10 +64,11 @@ it('hides the trial CTA once the workspace used its trial', function (): void {
 
     livewire(Billing::class)
         ->assertDontSee(__('billing.trial.start_button'))
-        ->assertSee(__('billing.upgrade.button'));
+        ->assertSee(__('billing.upgrade.button'))
+        ->assertDontSee('@js(', false);
 });
 
-it('offers the trial on the paused screen to a hosted workspace that never received one', function (): void {
+it('asks a paused workspace that never trialed to subscribe, without offering a trial', function (): void {
     config()->set('services.stripe.credit_packs.small', ['price' => 'price_credits_1k_test', 'credits' => 1000]);
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null])->save();
@@ -77,19 +76,23 @@ it('offers the trial on the paused screen to a hosted workspace that never recei
     livewire(Billing::class)
         ->assertSee(__('billing.paused.heading.free', ['workspace' => $workspace->name]))
         ->assertDontSee('billing.paused.heading.', false)
-        ->assertSee(__('billing.paused.trial_body', ['workspace' => $workspace->name]))
-        ->assertSee(__('billing.trial.start_button'))
-        ->assertSee(__('billing.upgrade.now'))
+        ->assertSee(__('billing.paused.owner_body', ['workspace' => $workspace->name]))
+        ->assertSee(__('billing.paused.continue'))
+        ->assertDontSee(__('billing.trial.start_button'))
+        ->assertDontSee(__('billing.upgrade.now'))
         ->assertDontSee(__('billing.packs.buy', ['credits' => number_format(1000)]));
 });
 
-it('opens the workspace once the trial starts from the paused screen', function (): void {
+it('refuses to start a trial on a paused workspace', function (): void {
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null])->save();
 
     livewire(Billing::class)
         ->call('startTrial')
-        ->assertRedirect(Filament::getUrl($workspace));
+        ->assertNotified(__('billing.trial.not_available'))
+        ->assertNoRedirect();
+
+    expect($workspace->refresh()->pro_trial_used_at)->toBeNull();
 });
 
 it('replaces the app shell with a standalone paused screen when the trial ends', function (): void {
@@ -108,7 +111,6 @@ it('replaces the app shell with a standalone paused screen when the trial ends',
         ->assertDontSee('billing.paused.heading.', false)
         ->assertSee(__('billing.paused.owner_body', ['workspace' => $workspace->name]))
         ->assertSee(__('billing.paused.continue'))
-        ->assertDontSee(__('billing.paused.review.proceed'))
         ->assertSee('href="https://marketing.test/contact"', false)
         ->assertSee(__('billing.paused.sign_out'))
         ->assertDontSee('Delete workspace')
@@ -116,32 +118,38 @@ it('replaces the app shell with a standalone paused screen when the trial ends',
         ->assertDontSee(__('billing.usage.title'));
 });
 
-it('reviews the plan and totals on a second step before sending the owner to checkout', function (): void {
+it('opens the upgrade modal from the paused screen instead of a review page', function (): void {
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null, 'pro_trial_used_at' => now()->subDays(20)])->save();
 
     livewire(Billing::class)
-        ->call('$set', 'step', 'plan')
-        ->assertSee(__('billing.paused.review.summary'))
-        ->assertSee(__('billing.paused.review.line_item', ['workspace' => $workspace->name]))
-        ->assertSee(__('billing.paused.review.amount_yearly'))
-        ->assertSee(__('billing.paused.review.credits', ['credits' => number_format(Plan::Pro->credits())]))
-        ->assertSee(__('billing.paused.review.proceed'))
-        ->assertDontSee(__('billing.paused.continue'));
+        ->assertSee(__('billing.paused.continue'))
+        ->assertSeeHtml("open-modal', { id: 'upgrade-plan' }")
+        ->assertDontSee(__('billing.upgrade.review.proceed'))
+        ->assertDontSee('Js::from', false);
 });
 
-it('keeps a member on the paused screen when they open the plan review step', function (): void {
+it('opens the dashboard when a reopening checkout returns after the subscription landed', function (): void {
+    [, $workspace] = billingPageOwner();
+
+    livewire(Billing::class, ['checkout' => Billing::CHECKOUT_REOPENED])
+        ->assertRedirect(Filament::getUrl($workspace));
+});
+
+it('keeps an ordinary upgrade on the billing page when checkout returns', function (): void {
+    billingPageOwner();
+
+    livewire(Billing::class, ['checkout' => Billing::CHECKOUT_SUCCESS])
+        ->assertNoRedirect();
+});
+
+it('waits on the paused screen while a reopening checkout is still activating', function (): void {
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null, 'pro_trial_used_at' => now()->subDays(20)])->save();
-    $member = User::factory()->create();
-    $workspace->users()->attach($member, ['role' => 'member']);
 
-    test()->actingAs($member);
-    Filament::setTenant($workspace->refresh());
-
-    livewire(Billing::class, ['step' => 'plan'])
-        ->assertSee(__('billing.paused.heading.trial_ended'))
-        ->assertDontSee(__('billing.paused.review.proceed'));
+    livewire(Billing::class, ['checkout' => Billing::CHECKOUT_REOPENED])
+        ->assertNoRedirect()
+        ->assertSee(__('billing.upgrade.activating'));
 });
 
 it('names the ended subscription on the paused screen', function (): void {
@@ -273,20 +281,6 @@ it('refuses a second trial on a workspace even when called directly', function (
         ->and($workspace->onGenericTrial())->toBeFalse();
 });
 
-it('shows a graceful error instead of 500 when checkout cannot start', function (): void {
-    // No Stripe secret configured in tests → the checkout call throws; the page must
-    // catch it, notify, and stay put rather than surfacing a 500.
-    [, $workspace] = billingPageOwner();
-    $workspace->forceFill(['plan' => Plan::Free])->save();
-
-    livewire(Billing::class)
-        ->call('upgrade', 'monthly')
-        ->assertNotified()
-        ->assertOk();
-
-    expect($workspace->refresh()->plan)->toBe(Plan::Free);
-});
-
 it('blocks the trial action for non-owners', function (): void {
     [, $workspace] = billingPageOwner();
     $member = User::factory()->create();
@@ -323,6 +317,23 @@ it('shows manage state for an active subscription', function (): void {
     livewire(Billing::class)
         ->assertSee(__('billing.manage.button'))
         ->assertDontSee(__('billing.upgrade.button'));
+});
+
+it('says when the first charge lands instead of claiming the plan renews', function (): void {
+    [, $workspace] = billingPageOwner();
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+    $workspace->subscriptions()->create([
+        'type' => 'default',
+        'stripe_id' => 'sub_test_trialing',
+        'stripe_status' => 'trialing',
+        'stripe_price' => 'price_pro_yearly_test',
+        'quantity' => 1,
+        'trial_ends_at' => now()->addDays(9),
+    ]);
+
+    livewire(Billing::class)
+        ->assertSee(__('billing.manage.first_charge', ['date' => now()->addDays(9)->toFormattedDateString()]))
+        ->assertDontSee(__('billing.manage.auto_renews'));
 });
 
 it('shows cancellation-scheduled state on grace period', function (): void {
@@ -513,15 +524,6 @@ it('keeps the plan allowance as the denominator once the monthly allowance is ex
         ->assertDontSee('/ '.number_format(2050));
 });
 
-it('names the workspace in the upgrade confirmation step', function (): void {
-    [, $workspace] = billingPageOwner();
-    $workspace->forceFill(['name' => 'Acme Manufacturing'])->save();
-
-    livewire(Billing::class)
-        ->assertSee(__('billing.upgrade.confirm_title'))
-        ->assertSee(__('billing.upgrade.confirm_button', ['workspace' => 'Acme Manufacturing']));
-});
-
 it('offers owners an Enterprise conversation without changing their plan', function (): void {
     config()->set('app.url', 'https://marketing.test');
     [, $workspace] = billingPageOwner();
@@ -563,18 +565,6 @@ it('keeps an Enterprise grant managed after an older subscription ended', functi
         ->assertSeeHtml('href="https://marketing.test/contact"')
         ->assertDontSee(__('billing.upgrade.button'))
         ->assertDontSee('From $20,000 / year');
-});
-
-it('does not send an Enterprise workspace through Pro checkout', function (): void {
-    [, $workspace] = billingPageOwner();
-    $workspace->forceFill(['plan' => Plan::Enterprise])->save();
-
-    livewire(Billing::class)
-        ->call('upgrade', 'yearly')
-        ->assertNoRedirect()
-        ->assertNotNotified();
-
-    expect($workspace->refresh()->plan)->toBe(Plan::Enterprise);
 });
 
 it('keeps Enterprise access clear while an older Pro subscription is canceling', function (): void {

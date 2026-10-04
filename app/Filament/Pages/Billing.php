@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Actions\Billing\CreateCreditPackCheckout;
-use App\Actions\Billing\CreateProCheckout;
 use App\Actions\Billing\StartProTrial;
 use App\Enums\BillingStatus;
 use App\Enums\Plan;
@@ -38,14 +37,15 @@ final class Billing extends Page
 
     protected string $view = 'filament.pages.billing';
 
+    public const string CHECKOUT_SUCCESS = 'success';
+
+    public const string CHECKOUT_REOPENED = 'reopened';
+
     #[Url]
     public ?string $checkout = null;
 
     #[Url]
     public ?string $credits = null;
-
-    #[Url(history: true)]
-    public ?string $step = null;
 
     #[Override]
     public static function shouldRegisterNavigation(): bool
@@ -61,6 +61,10 @@ final class Billing extends Page
     public function mount(): void
     {
         abort_unless(Feature::active(BillingFeature::class), 403);
+
+        if ($this->checkout === self::CHECKOUT_REOPENED && ! $this->isPaused()) {
+            $this->redirect(Filament::getUrl($this->workspace()));
+        }
     }
 
     #[Override]
@@ -95,8 +99,6 @@ final class Billing extends Page
             return;
         }
 
-        $wasPaused = $this->isPaused();
-
         try {
             $started = $startProTrial->execute($this->user(), $this->workspace());
         } catch (AuthorizationException $exception) {
@@ -112,26 +114,6 @@ final class Billing extends Page
         }
 
         Notification::make()->title(__('billing.trial.started'))->success()->send();
-
-        if ($wasPaused) {
-            $this->reopenWhenActive();
-        }
-    }
-
-    public function upgrade(CreateProCheckout $createCheckout, string $interval = 'monthly'): void
-    {
-        $workspace = $this->workspace();
-
-        if (! $this->user()->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage) || $workspace->subscribed() || $workspace->plan === Plan::Enterprise) {
-            return;
-        }
-
-        try {
-            $this->redirect($createCheckout->execute($workspace, $interval));
-        } catch (Throwable $exception) {
-            report($exception);
-            $this->notifyCheckoutFailed();
-        }
     }
 
     public function managePortal(): void
@@ -192,23 +174,21 @@ final class Billing extends Page
             'pastDue' => $workspace->billingStatus() === BillingStatus::PastDue,
             'onGrace' => $subscription?->onGracePeriod() ?? false,
             'trialAvailable' => $this->trialAvailable(),
+            'onStripeTrial' => $subscription?->onTrial() ?? false,
             'isGrandfathered' => $isGrandfathered,
             'balance' => AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->first(),
-            'activating' => $this->checkout === 'success' && ! $workspace->subscribed() && $workspace->plan !== Plan::Enterprise,
+            'activating' => in_array($this->checkout, [self::CHECKOUT_SUCCESS, self::CHECKOUT_REOPENED], true) && ! $workspace->subscribed() && $workspace->plan !== Plan::Enterprise,
             'creditsFulfilling' => $this->credits === 'success',
             'availablePacks' => resolve(CreditPackCatalog::class)->purchasable(),
             ...($hasHostedAccess ? [] : $this->pausedViewData($workspace)),
         ];
     }
 
-    /** @return array{billingStatus: BillingStatus, reviewingPlan: bool, otherWorkspaces: Collection<int, Workspace>} */
+    /** @return array{billingStatus: BillingStatus, otherWorkspaces: Collection<int, Workspace>} */
     private function pausedViewData(Workspace $workspace): array
     {
         return [
             'billingStatus' => $workspace->billingStatus(),
-            'reviewingPlan' => $this->step === 'plan'
-                && $this->user()->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)
-                && $this->checkout !== 'success',
             'otherWorkspaces' => $this->user()->allWorkspaces()
                 ->reject(fn (Workspace $other): bool => $other->is($workspace))
                 ->values(),
@@ -221,15 +201,15 @@ final class Billing extends Page
     }
 
     /**
-     * A manual trial start is the escape hatch for a workspace that never
-     * received its automatic creation-time trial: grandfathered pre-billing
-     * workspaces and workspaces created while trials were per-user.
+     * A manual trial start exists for grandfathered pre-billing workspaces,
+     * which never received the automatic creation-time trial.
      */
     private function trialAvailable(): bool
     {
         $workspace = $this->workspace();
 
-        return $workspace->plan === Plan::Free
+        return ! $this->isPaused()
+            && $workspace->plan === Plan::Free
             && $workspace->pro_trial_used_at === null
             && ! $workspace->subscriptions()->exists();
     }

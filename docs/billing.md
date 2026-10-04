@@ -43,13 +43,17 @@ Because Managed Payments is enabled per transaction on our own Stripe account, t
 payment methods, and subscriptions are ours. Disabling it later (own tax ops, lower fees) is a
 config flip on `services.stripe.managed_payments`, with no other code change.
 
+Every upgrade entry point (sidebar, Billing page, paused screen) opens one modal that reviews
+the plan, the billing period, and the total. Its button redirects to hosted Stripe Checkout.
+A paused workspace returns with `checkout=reopened` and lands on the dashboard once active.
+
 ```text
 Workspace onboarding (billing enabled)
   └─ Create workspace ─────► automatic StartProTrial (Cashier generic trial, no Stripe objects)
 
 Billing page (/app/{team}/billing, flag-gated)
   ├─ Legacy trial fallback ► StartProTrial (grandfathered eligible workspaces only)
-  ├─ Upgrade ──────────────► CreateProCheckout → hosted Stripe Checkout
+  ├─ Upgrade ──────────────► Upgrade modal → CreateProCheckout → hosted Stripe Checkout
   │                            └ managed_payments[enabled] = config('services.stripe.managed_payments')
   └─ Manage subscription ──► Stripe Billing Portal (redirectToBillingPortal)
 

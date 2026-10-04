@@ -6,12 +6,16 @@ namespace App\Actions\Billing;
 
 use App\Filament\Pages\Billing;
 use App\Models\Workspace;
+use App\Services\Billing\HostedWorkspaceAccess;
+use Carbon\CarbonInterface;
 use InvalidArgumentException;
 
 final readonly class CreateProCheckout
 {
     /** @var list<string> */
-    private const array INTERVALS = ['monthly', 'yearly'];
+    public const array INTERVALS = ['monthly', 'yearly'];
+
+    public function __construct(private HostedWorkspaceAccess $hostedAccess) {}
 
     /**
      * Create the hosted Stripe Checkout session and return its redirect URL.
@@ -19,12 +23,20 @@ final readonly class CreateProCheckout
      */
     public function execute(Workspace $workspace, string $interval): string
     {
-        $checkout = $workspace
+        $builder = $workspace
             ->newSubscription('default', $this->priceId($interval))
-            ->allowPromotionCodes()
-            ->checkout($this->sessionOptions($workspace));
+            ->allowPromotionCodes();
 
-        return (string) $checkout->asStripeCheckoutSession()->url;
+        $trialEndsAt = $workspace->onGenericTrial() ? $workspace->trial_ends_at : null;
+
+        $builder = $trialEndsAt instanceof CarbonInterface
+            ? $builder->trialUntil($trialEndsAt)
+            : $builder->skipTrial();
+
+        return (string) $builder
+            ->checkout($this->sessionOptions($workspace, $this->hostedAccess->isPaused($workspace)))
+            ->asStripeCheckoutSession()
+            ->url;
     }
 
     private function priceId(string $interval): string
@@ -41,12 +53,13 @@ final readonly class CreateProCheckout
     }
 
     /** @return array<string, mixed> */
-    private function sessionOptions(Workspace $workspace): array
+    private function sessionOptions(Workspace $workspace, bool $reopensWorkspace): array
     {
         $billingUrl = Billing::getUrl(panel: 'app', tenant: $workspace);
+        $outcome = $reopensWorkspace ? Billing::CHECKOUT_REOPENED : Billing::CHECKOUT_SUCCESS;
 
         $options = [
-            'success_url' => "{$billingUrl}?checkout=success",
+            'success_url' => "{$billingUrl}?checkout={$outcome}",
             'cancel_url' => $billingUrl,
             'client_reference_id' => (string) $workspace->getKey(),
         ];

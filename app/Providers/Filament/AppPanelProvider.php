@@ -260,6 +260,32 @@ final class AppPanelProvider extends PanelProvider
         return $user instanceof User ? $user : null;
     }
 
+    private function upgradeModal(): string
+    {
+        $workspace = Filament::getTenant();
+        $user = $this->signedInUser();
+
+        if (! Feature::active(BillingFeature::class) || ! $workspace instanceof Workspace || ! $user instanceof User || ! $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)) {
+            return '';
+        }
+
+        return Blade::render('@livewire(\App\Livewire\App\Billing\UpgradeModal::class)');
+    }
+
+    private function inviteMembersModal(): string
+    {
+        $workspace = Filament::getTenant();
+
+        if (! $workspace instanceof Workspace || $this->signedInUser()?->can('manageMembers', $workspace) !== true) {
+            return '';
+        }
+
+        return Blade::render(
+            '@livewire(\App\Livewire\App\Workspaces\InviteWorkspaceMembersModal::class, [\'workspace\' => $workspace])',
+            ['workspace' => $workspace],
+        );
+    }
+
     /**
      * Configure the Filament admin panel.
      *
@@ -533,21 +559,14 @@ final class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::BODY_END,
                 fn (): View|Factory => view('filament.scripts.identity-confirmation'),
             )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                $this->upgradeModal(...),
+            )
             // Mounted on the body: a modal inside the sidebar is clipped to its width.
             ->renderHook(
                 PanelsRenderHook::BODY_END,
-                function (): string {
-                    $workspace = Filament::getTenant();
-
-                    if (! $workspace instanceof Workspace || $this->signedInUser()?->can('manageMembers', $workspace) !== true) {
-                        return '';
-                    }
-
-                    return Blade::render(
-                        '@livewire(\App\Livewire\App\Workspaces\InviteWorkspaceMembersModal::class, [\'workspace\' => $workspace])',
-                        ['workspace' => $workspace],
-                    );
-                },
+                $this->inviteMembersModal(...),
             )
             ->renderHook(
                 PanelsRenderHook::PAGE_START,

@@ -43,7 +43,7 @@ it('builds monthly checkout options with managed payments enabled', function ():
     config()->set('services.stripe.managed_payments', true);
 
     expect(invokeCheckout('priceId', ['monthly']))->toBe('price_pro_monthly_test')
-        ->and(invokeCheckout('sessionOptions', [checkoutWorkspace()]))->toHaveKey('managed_payments.enabled', true);
+        ->and(invokeCheckout('sessionOptions', [checkoutWorkspace(), false]))->toHaveKey('managed_payments.enabled', true);
 });
 
 it('rejects an interval that is not a configured billing period', function (): void {
@@ -54,7 +54,7 @@ it('rejects an interval that is not a configured billing period', function (): v
 it('omits managed payments when the switch is off', function (): void {
     config()->set('services.stripe.managed_payments', false);
 
-    $options = invokeCheckout('sessionOptions', [checkoutWorkspace()]);
+    $options = invokeCheckout('sessionOptions', [checkoutWorkspace(), false]);
 
     expect($options)->not->toHaveKey('managed_payments');
 });
@@ -66,7 +66,7 @@ it('selects the yearly price for the yearly interval', function (): void {
 it('points success and cancel urls at the workspace billing page', function (): void {
     $workspace = checkoutWorkspace();
 
-    $options = invokeCheckout('sessionOptions', [$workspace]);
+    $options = invokeCheckout('sessionOptions', [$workspace, false]);
 
     expect($options['success_url'])->toContain("/app/{$workspace->slug}/billing")
         ->and($options['success_url'])->toContain('checkout=success')
@@ -143,7 +143,7 @@ describe('domain-routed app panel', function (): void {
     });
 
     it('returns from pro checkout to the billing route without a panel path prefix', function (): void {
-        $options = invokeCheckout('sessionOptions', [unsavedWorkspace()]);
+        $options = invokeCheckout('sessionOptions', [unsavedWorkspace(), false]);
 
         expect($options['cancel_url'])->toBe('http://app.example.com/acme/billing')
             ->and($options['success_url'])->toBe('http://app.example.com/acme/billing?checkout=success');
