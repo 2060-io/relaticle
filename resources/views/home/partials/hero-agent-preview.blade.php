@@ -27,7 +27,7 @@
 <div x-data="heroChat()"
      @hero-chat-reset.window="cancelInflight(); resetChat()"
      @hero-chat-animate.window="animateChat()"
-     class="hero-agent-preview relative bg-gray-50 dark:bg-zinc-950 flex h-[520px] sm:h-[580px] md:h-[640px]">
+     class="hero-agent-preview relative bg-white dark:bg-zinc-900 flex h-[520px] sm:h-[580px] md:h-[640px]">
 
     {{-- Non-interactive overlay: blocks clicks, right-click, and drag.
          z-30 puts it above all panel content. --}}
@@ -51,7 +51,7 @@
              phases, because the demo only ever visits those two surfaces.
              Sits above the entry overlay (which starts at top-10) so the shell
              stays continuous across the transition, exactly like the real one. --}}
-        <div class="relative z-30 flex h-10 shrink-0 items-center justify-between border-b border-gray-200/60 bg-white px-3 dark:border-white/[0.06] dark:bg-zinc-900">
+        <div class="relative z-30 flex h-10 shrink-0 items-center justify-between border-b border-zinc-200/60 bg-white px-3 dark:border-white/10 dark:bg-zinc-900">
             <div class="hero-agent-title min-w-0 flex-1">
                 <h2 class="truncate text-sm font-semibold text-gray-900 dark:text-white">Overdue tasks this week</h2>
             </div>
@@ -141,26 +141,13 @@
 
             // Swap the sidebar's active item between Home (dashboard phase) and
             // the demo conversation, mirroring how the real shell highlights the
-            // current page. Labels and icons both carry the active primary tone.
+            // current page.
             setShellActive(which) {
                 var home = this.$root.querySelector('#hero-shell-nav-home');
                 var chat = this.$root.querySelector('#hero-shell-nav-chat');
                 if (!home || !chat) return;
-                var itemOn = ['bg-gray-100', 'dark:bg-zinc-800', 'font-medium', 'text-primary-700', 'dark:text-primary-400'];
-                var itemOff = ['text-gray-700', 'dark:text-zinc-200'];
-                var iconOn = ['text-primary-700', 'dark:text-primary-400'];
-                var iconOff = ['text-gray-400', 'dark:text-zinc-500'];
-                var apply = function(el, active) {
-                    el.classList.remove.apply(el.classList, active ? itemOff : itemOn);
-                    el.classList.add.apply(el.classList, active ? itemOn : itemOff);
-                    var icon = el.querySelector('svg');
-                    if (icon) {
-                        icon.classList.remove.apply(icon.classList, active ? iconOff : iconOn);
-                        icon.classList.add.apply(icon.classList, active ? iconOn : iconOff);
-                    }
-                };
-                apply(home, which === 'home');
-                apply(chat, which === 'chat');
+                home.toggleAttribute('data-active', which === 'home');
+                chat.toggleAttribute('data-active', which === 'chat');
             },
 
             // Reset only the conversation layer (messages, cards, title, scroll,
