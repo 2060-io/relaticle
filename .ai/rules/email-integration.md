@@ -14,9 +14,9 @@ Fall back to `sendMail` only when this mailbox has no matching message.
 
 ## Bind mailbox OAuth to the initiating workspace
 
-`RedirectController` stores the current team id in the session before sending
+`RedirectController` stores the current workspace id in the session before sending
 the user to Google or Microsoft. `CallbackController` connects the mailbox to
-that stored team, not `$user->currentTeam`. Switching workspaces in another tab
+that stored workspace, not `$user->currentWorkspace`. Switching workspaces in another tab
 during consent must not import history under the other workspace's sharing
 defaults. A missing or non-member binding fails closed: no account is created.
 
@@ -69,7 +69,7 @@ Bob's copy still shows Bob when the mailbox is Bob's email.
 ## Meeting attendee mailbox names
 
 `MailboxDisplayNameDirectory` must resolve names through `VisibleEmailScope`
-for the current viewer. A team-wide participant search leaks names from
+for the current viewer. A workspace-wide participant search leaks names from
 private and mailbox-blocked mail onto another user's meeting.
 
 ## Personal calendar vs workspace meetings
