@@ -283,7 +283,7 @@
                     window.animate(reel, {
                         transform: ['translateY(0em)', 'translateY(-' + digit + 'em)'],
                     }, {
-                        type: 'spring',
+                        type: window.spring,
                         visualDuration: 0.48,
                         bounce: 0,
                         delay: index * 0.03,

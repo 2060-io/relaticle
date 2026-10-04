@@ -211,36 +211,5 @@
 
         </div>
 
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                var e = [0.22, 1, 0.36, 1];
-
-                // Cards entrance: staggered fade up (visible by default for Lighthouse/no-JS)
-                inView('#features > div > .grid', function() {
-                    animate('.feat-card', { y: [32, 0] }, { delay: stagger(0.07), duration: 0.6, ease: e });
-                }, { amount: 0.1 });
-
-                // Built-in AI Chat: bubbles fill in sequence (user → assistant → suggestion)
-                inView('#card-builtin-ai', function() {
-                    animate('#card-builtin-ai .ai-fill', { width: ['0%', '100%'] }, { delay: stagger(0.18, { start: 0.3 }), duration: 0.6, ease: e });
-                    animate('#ai-sparkle', { scale: [1, 1.2, 1] }, { duration: 0.5, delay: 0.2, ease: e });
-                }, { amount: 0.4 });
-
-                // Data Model: form fields slide in from left
-                inView('#card-data', function() {
-                    animate('#card-data .field-row', { x: [-16, 0] }, { delay: stagger(0.1, { start: 0.3 }), duration: 0.4, ease: e });
-                }, { amount: 0.4 });
-
-                // Sales Pipeline: segments scale in from left
-                inView('#card-sales', function() {
-                    animate('.pipe-seg', { scaleX: [0, 1] }, { delay: stagger(0.12, { start: 0.3 }), duration: 0.6, ease: e });
-                }, { amount: 0.4 });
-
-                // Tasks: rows slide in staggered from right
-                inView('#card-tasks', function() {
-                    animate('.task-row', { x: [20, 0] }, { delay: stagger(0.15, { start: 0.2 }), duration: 0.45, ease: e });
-                }, { amount: 0.3 });
-            });
-        </script>
     </div>
 </section>
