@@ -3,9 +3,13 @@
 declare(strict_types=1);
 
 use App\Models\Company;
+use App\Models\CustomField;
+use App\Models\CustomFieldValue;
+use App\Models\People;
 use App\Models\User;
 use Relaticle\ImportWizard\Data\EntityLink;
 use Relaticle\ImportWizard\Data\MatchableField;
+use Relaticle\ImportWizard\Enums\EntityLinkSource;
 use Relaticle\ImportWizard\Support\EntityLinkResolver;
 use Tests\Helpers\LegacyCompanyDomains;
 
@@ -99,4 +103,54 @@ it('links a row to the company storing the legacy www spelling of its domain', f
     $result = $resolver->batchResolve(EntityLink::company(), MatchableField::domain('custom_fields_domains'), ['https://www.acme.com']);
 
     expect($result['https://www.acme.com'])->toBe($company->id);
+});
+
+it('matches a legacy-format value by the identical csv value and a canonical value by a formatted one', function (string $stored, string $csvValue): void {
+    $field = CustomField::query()->withoutGlobalScopes()
+        ->where('tenant_id', $this->workspace->id)
+        ->where('entity_type', 'people')
+        ->where('code', 'phone_number')
+        ->firstOrFail();
+    $person = People::factory()->create(['workspace_id' => $this->workspace->id]);
+
+    CustomFieldValue::factory()->withJsonValue([$stored])->create([
+        'custom_field_id' => $field->id,
+        'entity_type' => 'people',
+        'entity_id' => $person->id,
+        'tenant_id' => $this->workspace->id,
+    ]);
+
+    $link = new EntityLink(key: 'self', source: EntityLinkSource::Relationship, targetEntity: 'people', targetModelClass: People::class);
+    $resolved = (new EntityLinkResolver((string) $this->workspace->id))
+        ->batchResolve($link, MatchableField::phone(), [$csvValue]);
+
+    expect((string) $resolved[$csvValue])->toBe((string) $person->id);
+})->with([
+    'legacy value, identical csv value' => ['+1 415-555-0100', '+1 415-555-0100'],
+    'canonical value, formatted csv value' => ['+14155550100', '+1 (415) 555-0100'],
+]);
+
+it('prefers the record storing the exact csv value over one storing its canonical form', function (): void {
+    $field = CustomField::query()->withoutGlobalScopes()
+        ->where('tenant_id', $this->workspace->id)
+        ->where('entity_type', 'people')
+        ->where('code', 'phone_number')
+        ->firstOrFail();
+    $legacy = People::factory()->create(['workspace_id' => $this->workspace->id]);
+    $canonical = People::factory()->create(['workspace_id' => $this->workspace->id]);
+
+    foreach ([[$legacy, '+1 415-555-0100'], [$canonical, '+14155550100']] as [$person, $stored]) {
+        CustomFieldValue::factory()->withJsonValue([$stored])->create([
+            'custom_field_id' => $field->id,
+            'entity_type' => 'people',
+            'entity_id' => $person->id,
+            'tenant_id' => $this->workspace->id,
+        ]);
+    }
+
+    $link = new EntityLink(key: 'self', source: EntityLinkSource::Relationship, targetEntity: 'people', targetModelClass: People::class);
+    $resolved = (new EntityLinkResolver((string) $this->workspace->id))
+        ->batchResolve($link, MatchableField::phone(), ['+1 415-555-0100']);
+
+    expect((string) $resolved['+1 415-555-0100'])->toBe((string) $legacy->id);
 });

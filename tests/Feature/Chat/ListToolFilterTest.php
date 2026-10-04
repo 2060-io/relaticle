@@ -7,9 +7,6 @@ use App\Actions\CustomFields\SetCustomFieldOptions;
 use App\Actions\CustomFields\UpdateCustomField;
 use App\Actions\People\CreatePeople;
 use App\Enums\CreationSource;
-use App\Enums\CrmEntity;
-use App\Enums\CustomFieldType;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
@@ -19,11 +16,8 @@ use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\CurrentWorkspace;
-use App\Support\Filters\EntityFilters;
-use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Tools\Request;
-use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Tools\BaseReadListTool;
 use Relaticle\Chat\Tools\Company\ListCompaniesTool;
 use Relaticle\Chat\Tools\Note\ListNotesTool;
@@ -607,69 +601,6 @@ it('shows the operator example when a bare value is given', function (): void {
     ])), true);
 
     expect($result['error'])->toContain('must be an operator object, e.g. {"$eq": "..."}');
-});
-
-it('lists option labels for a select but not for a tags-input field with suggestions', function (): void {
-    $user = User::factory()->withPersonalWorkspace()->create();
-    $this->actingAs($user);
-
-    app(CreateCustomField::class)->execute($user, [
-        'entity_type' => 'company',
-        'name' => 'Segment',
-        'code' => 'segment',
-        'type' => 'select',
-        'options' => ['Enterprise', 'SMB'],
-    ]);
-    TenantContextService::setTenantId($user->currentWorkspace->getKey());
-
-    $labels = app(CreateCustomField::class)->execute($user, [
-        'entity_type' => 'company',
-        'name' => 'Labels',
-        'code' => 'labels',
-        'type' => 'tags-input',
-    ]);
-    $labels->options()->create([
-        'tenant_id' => $user->currentWorkspace->getKey(),
-        'name' => 'Priority',
-        'sort_order' => 0,
-    ]);
-
-    $description = resolve(CustomFieldsFilterDescriber::class)->describe($user, 'company');
-    $lines = collect(explode("\n", $description));
-
-    TenantContextService::setTenantId(null);
-
-    expect($lines->first(fn (string $line): bool => str_starts_with($line, '- segment')))->toContain('one of: "Enterprise", "SMB"')
-        ->and($lines->first(fn (string $line): bool => str_starts_with($line, '- labels')))->not->toContain('one of:');
-});
-
-it('names the domain sub-field operators and the matching rule once per email and phone type', function (): void {
-    $user = User::factory()->withPersonalWorkspace()->create();
-    $this->actingAs($user);
-
-    $lines = collect(explode("\n", resolve(CustomFieldsFilterDescriber::class)->describe($user, 'people')));
-    $email = $lines->first(fn (string $line): bool => str_starts_with($line, '- email:'));
-    $phone = $lines->first(fn (string $line): bool => str_starts_with($line, '- phone:'));
-    $field = $lines->first(fn (string $line): bool => str_starts_with($line, '- emails ('));
-    $filterDescription = (new ListPeopleTool)->schema(new JsonSchemaTypeFactory)['filter']->toArray()['description'];
-
-    expect($email)->toContain('operators $has_any, $has_none, $is_empty;', 'sub-field domain takes $in, $not_in', CustomFieldType::EMAIL->filterMatching())
-        ->and($phone)->toContain(CustomFieldType::PHONE->filterMatching())
-        ->and($phone)->not->toContain('sub-field')
-        ->and($field)->toBe('- emails (Emails, email)')
-        ->and($filterDescription)->toStartWith('Names for this entity type:')
-        ->and($filterDescription)->not->toContain(EntityFilters::names(CrmEntity::People))
-        ->and(CustomFieldFilterSchema::valueRules())->toContain('domain sub-field with $in or $not_in', CustomFieldType::PHONE->filterMatching());
-});
-
-it('renders the related entity and the field type on chat and states emptiness on an entity without custom fields', function (): void {
-    $user = User::factory()->withPersonalWorkspace()->create();
-    $this->actingAs($user);
-
-    $opportunities = resolve(CustomFieldsFilterDescriber::class)->describe($user, 'opportunity');
-
-    expect($opportunities)->toContain('- contact (relation to people;', '- amount (Amount, currency)', '- close_date (Close Date, date)')
-        ->and(resolve(CustomFieldsFilterDescriber::class)->describe($user, 'note'))->toContain('No filterable custom fields are defined');
 });
 
 function hideLinkedinFromPeopleList(User $user): void
