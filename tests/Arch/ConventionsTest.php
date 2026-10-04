@@ -700,3 +700,25 @@ it('keeps the word trait out of class files so type coverage analyses them', fun
         'these files are never checked. Reword the text. Offending files: '.implode(', ', $offenders),
     );
 });
+
+it('keeps the method length list to methods that still exist', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    /** @var array<string, int> $grandfathered */
+    $grandfathered = (require $root.'/phpstan-method-length.php')['parameters']['methodLength']['grandfathered'];
+
+    $missing = array_values(array_filter(
+        array_keys($grandfathered),
+        function (string $method): bool {
+            [$class, $name] = explode('::', $method);
+
+            return ! method_exists($class, $name);
+        },
+    ));
+
+    expect($missing)->toBe(
+        [],
+        'The method length list only shrinks (.ai/guidelines/relaticle/core.md). '.
+        'Remove these entries from phpstan-method-length.php, their methods are gone: '.implode(', ', $missing),
+    );
+});

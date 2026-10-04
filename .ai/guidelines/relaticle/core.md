@@ -143,6 +143,19 @@ Do not add new PHPStan ignores without approval. All parameters and return types
   Never put it behind an `app()->environment()` branch inside `app/Actions/` or
   other production code.
 
+## Code shape
+
+The reference is the framework's own code and Spatie's packages. Measured on the installed
+versions, nine of their methods in ten are under about 20 lines, and ninety-nine in a hundred
+are under about 50. Each rule below names what fails when it is broken.
+
+- A method stays within 60 lines. `MethodLengthRule` (PHPStan, `app/PHPStan/Rules/`) fails a
+  longer one. Extract a step and name it for what it returns. `packages/SystemAdmin` is outside
+  PHPStan, so the cap does not reach it.
+- The methods that were already longer are listed in `phpstan-method-length.php`, and that list
+  only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
+  that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
+
 ## Comments
 
 Write code that needs no comment. In a finished diff, 90%+ of the code carries zero
