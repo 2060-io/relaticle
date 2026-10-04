@@ -6,14 +6,14 @@ updated: "2026-08-12"
 related: [help/getting-started/add-your-first-person, help/getting-started/import-your-existing-data]
 ---
 
-A company record tracks an account you sell to or work with: its name, who
+A company record tracks a business you sell to or work with: its name, who
 owns the relationship, and the people, tasks, and notes tied to it. You only
 need a name to create one; everything else can wait.
 
 1. Click **Companies** in the sidebar.
 2. Click **New company** in the top right.
 3. Type the company's name into **Name**. This is the only required field.
-4. Select an **Account Owner** if you want to assign the account to a teammate.
+4. Select an **Account Owner** if you want to assign the company to a teammate.
 5. Fill in **Domains**, **LinkedIn**, or toggle **ICP** if you already know
    them. You can add these later.
 6. Click **Create**.
