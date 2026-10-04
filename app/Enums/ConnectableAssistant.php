@@ -29,4 +29,12 @@ enum ConnectableAssistant: string
     {
         return "assistants.{$this->value}";
     }
+
+    public function connectSummary(): string
+    {
+        return match ($this) {
+            self::Claude => __('Connect Claude to the CRM with OAuth, what it can read and write, and the setup steps.'),
+            self::ChatGPT => __('Install the Relaticle plugin in ChatGPT, what it can read and write, and the setup steps.'),
+        };
+    }
 }
