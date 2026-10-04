@@ -1,7 +1,7 @@
 ---
 title: Custom fields
 description: Shape every record type around your process with your own fields, options, and visibility rules.
-order: 4
+order: 5
 ---
 
 Companies, people, opportunities, tasks, and notes each carry a set of fields

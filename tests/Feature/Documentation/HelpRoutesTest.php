@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Features\EmailIntegration;
+use Laravel\Pennant\Feature;
 use Relaticle\Documentation\Support\DocsNavigation;
+use Relaticle\Documentation\Support\DocsRepository;
 
 dataset('documentation shell pages', [
     '/help',
@@ -45,6 +48,22 @@ it('offers a direct contact path from the hub and the article footer', function 
 it('404s an unknown category and an unknown article', function (): void {
     $this->get('/help/no-such-category')->assertNotFound();
     $this->get('/help/getting-started/no-such-article')->assertNotFound();
+});
+
+it('lists the email category on the hub while email integration is on', function (): void {
+    $this->get('/help')->assertOk()->assertSee('/help/email-and-calendar', false);
+    $this->get('/help/email-and-calendar/connect-your-google-account')->assertOk();
+});
+
+it('hides the email category and its articles while email integration is off', function (): void {
+    Feature::deactivate(EmailIntegration::class);
+    app()->forgetInstance(DocsRepository::class);
+
+    $this->get('/help')->assertOk()->assertDontSee('/help/email-and-calendar', false);
+    $this->get('/help/email-and-calendar')->assertNotFound();
+    $this->get('/help/email-and-calendar/connect-your-google-account')->assertNotFound();
+    $this->get('/help/search-index.json')->assertOk()->assertDontSee('email-and-calendar', false);
+    $this->get('/llms.txt')->assertOk()->assertDontSee('email-and-calendar', false);
 });
 
 it('serves an article as markdown to an agent', function (): void {

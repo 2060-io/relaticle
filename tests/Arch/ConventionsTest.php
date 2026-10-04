@@ -639,6 +639,7 @@ it('keeps the retired contact and deal words out of record copy', function (): v
 
     $emailParticipantPaths = [
         'lang/en/filament/pages/email-privacy-settings.php',
+        'packages/Documentation/resources/content/help/email-and-calendar/set-workspace-email-privacy.md',
     ];
 
     $offenders = [];

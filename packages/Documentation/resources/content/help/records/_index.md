@@ -1,7 +1,7 @@
 ---
 title: Records
 description: Everything about company, people, and opportunity records, from pages and links between them to exports and recovery.
-order: 5
+order: 6
 ---
 
 Companies, people, and opportunities are the records your pipeline is built

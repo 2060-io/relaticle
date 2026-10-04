@@ -1,7 +1,7 @@
 ---
 title: Tasks & notes
 description: Track the work and the context around your records with assignable tasks on a board, and notes that attach anywhere.
-order: 6
+order: 7
 ---
 
 Tasks carry the follow-ups, with statuses, priorities, due dates, and
