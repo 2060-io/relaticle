@@ -42,6 +42,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\BrandColors;
 use App\Support\Impersonation\Impersonator;
+use App\Support\OutlinedIcons;
 use App\Support\SupportForms;
 use Asmit\ResizedColumn\ResizedColumnPlugin;
 use Exception;
@@ -238,6 +239,18 @@ final class AppPanelProvider extends PanelProvider
         return [self::PAGINATION_PAGE_OPTIONS[0]];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function panelColors(): array
+    {
+        return [
+            'primary' => BrandColors::primary(),
+            'purple' => Color::Purple,
+            'indigo' => Color::Indigo,
+        ];
+    }
+
     private function isCurrentPanel(): bool
     {
         return Filament::getCurrentPanel()?->getId() === 'app';
@@ -331,12 +344,9 @@ final class AppPanelProvider extends PanelProvider
                 livewireComponent: AppDatabaseNotifications::class,
                 position: DatabaseNotificationsPosition::Sidebar,
             )
-            ->colors([
-                'primary' => BrandColors::primary(),
-                'purple' => Color::Purple,
-                'indigo' => Color::Indigo,
-            ])
+            ->colors($this->panelColors())
             ->viteTheme('resources/css/filament/app/theme.css')
+            ->icons(OutlinedIcons::aliases())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverPages(in: base_path('packages/ImportWizard/src/Filament/Pages'), for: 'Relaticle\\ImportWizard\\Filament\\Pages')

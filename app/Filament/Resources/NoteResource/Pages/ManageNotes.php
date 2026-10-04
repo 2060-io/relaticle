@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\NoteResource\Pages;
 
+use App\Filament\Concerns\HasCustomFieldColumns;
 use App\Filament\Exports\NoteExporter;
 use App\Filament\Resources\NoteResource;
 use App\Models\Note;
@@ -16,13 +17,12 @@ use Filament\Resources\Pages\ManageRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportNotes;
 
 final class ManageNotes extends ManageRecords
 {
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
 
     protected static string $resource = NoteResource::class;
 

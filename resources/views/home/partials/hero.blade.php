@@ -160,52 +160,39 @@
                                 @include('home.partials.hero-agent-preview')
                             </div>
 
-                            {{-- Pipeline tab --}}
-                            <div id="panel-pipeline" role="tabpanel" aria-labelledby="tab-pipeline" x-ref="panel-pipeline" class="col-start-1 row-start-1 invisible absolute inset-0 w-full">
-                                <picture class="block h-full w-full">
-                                    <source data-light-srcset="{{ asset('images/app-pipeline-preview-380w.webp') }} 380w, {{ asset('images/app-pipeline-preview-640w.webp') }} 640w, {{ asset('images/app-pipeline-preview-832w.webp') }} 832w, {{ asset('images/app-pipeline-preview.webp') }} 1440w"
-                                            data-dark-srcset="{{ asset('images/app-pipeline-preview-dark-380w.webp') }} 380w, {{ asset('images/app-pipeline-preview-dark-640w.webp') }} 640w, {{ asset('images/app-pipeline-preview-dark-832w.webp') }} 832w, {{ asset('images/app-pipeline-preview-dark.webp') }} 1440w"
-                                            srcset="{{ asset('images/app-pipeline-preview-380w.webp') }} 380w, {{ asset('images/app-pipeline-preview-640w.webp') }} 640w, {{ asset('images/app-pipeline-preview-832w.webp') }} 832w, {{ asset('images/app-pipeline-preview.webp') }} 1440w"
-                                            sizes="(max-width: 640px) 750px, 842px"
-                                            type="image/webp">
-                                    <img data-light-src="{{ asset('images/app-pipeline-preview.png') }}"
-                                         data-dark-src="{{ asset('images/app-pipeline-preview-dark.png') }}"
-                                         src="{{ asset('images/app-pipeline-preview.png') }}"
-                                         alt="{{ __('Relaticle opportunities board with deals grouped into pipeline stages, showing deal value and close date') }}"
-                                         class="hero-preview-image h-full w-full object-cover object-left-top"
-                                         width="1440"
-                                         height="1116"
-                                         loading="lazy">
-                                </picture>
-                            </div>
+                            @php
+                                $heroScreenshots = [
+                                    'pipeline' => ['widths' => [380, 640, 832, 1652], 'alt' => __('Relaticle opportunities board with deals grouped into pipeline stages, showing deal value and close date')],
+                                    'companies' => ['widths' => [1652], 'alt' => __('Relaticle companies list showing account owner, ICP status, and website domain for each company')],
+                                    'custom-fields' => ['widths' => [1652], 'alt' => __('Relaticle custom fields settings showing field name, type, constraints, and properties for Opportunities')],
+                                ];
 
-                            <div id="panel-companies" role="tabpanel" aria-labelledby="tab-companies" x-ref="panel-companies" class="col-start-1 row-start-1 invisible absolute inset-0 w-full">
-                                <picture class="block h-full w-full">
-                                    <source data-light-srcset="{{ asset('images/app-companies-preview.webp') }}" data-dark-srcset="{{ asset('images/app-companies-preview-dark.webp') }}" srcset="{{ asset('images/app-companies-preview.webp') }}" type="image/webp">
-                                    <img data-light-src="{{ asset('images/app-companies-preview.png') }}"
-                                         data-dark-src="{{ asset('images/app-companies-preview-dark.png') }}"
-                                         src="{{ asset('images/app-companies-preview.png') }}"
-                                         alt="{{ __('Relaticle companies list showing account owner, ICP status, and website domain for each company') }}"
-                                         class="hero-preview-image h-full w-full object-cover object-left-top"
-                                         width="1440"
-                                         height="1116"
-                                         loading="lazy">
-                                </picture>
-                            </div>
+                                // 1652w is rendered at the frame's own pixel size on a 2x display, so the browser draws it without resampling.
+                                $heroSrcset = static fn (string $id, string $theme, array $widths): string => collect($widths)
+                                    ->map(fn (int $width): string => Vite::asset("resources/images/app-{$id}-preview{$theme}-{$width}w.webp")." {$width}w")
+                                    ->push(Vite::asset("resources/images/app-{$id}-preview{$theme}.webp").' 2880w')
+                                    ->implode(', ');
+                            @endphp
 
-                            <div id="panel-custom-fields" role="tabpanel" aria-labelledby="tab-custom-fields" x-ref="panel-custom-fields" class="col-start-1 row-start-1 invisible absolute inset-0 w-full">
-                                <picture class="block h-full w-full">
-                                    <source data-light-srcset="{{ asset('images/app-custom-fields-preview.webp') }}" data-dark-srcset="{{ asset('images/app-custom-fields-preview-dark.webp') }}" srcset="{{ asset('images/app-custom-fields-preview.webp') }}" type="image/webp">
-                                    <img data-light-src="{{ asset('images/app-custom-fields-preview.png') }}"
-                                         data-dark-src="{{ asset('images/app-custom-fields-preview-dark.png') }}"
-                                         src="{{ asset('images/app-custom-fields-preview.png') }}"
-                                         alt="{{ __('Relaticle custom fields settings showing field name, type, constraints, and properties for Opportunities') }}"
-                                         class="hero-preview-image h-full w-full object-cover object-left-top"
-                                         width="1440"
-                                         height="1116"
-                                         loading="lazy">
-                                </picture>
-                            </div>
+                            @foreach($heroScreenshots as $id => $screenshot)
+                                <div id="panel-{{ $id }}" role="tabpanel" aria-labelledby="tab-{{ $id }}" x-ref="panel-{{ $id }}" class="col-start-1 row-start-1 invisible absolute inset-0 w-full">
+                                    <picture class="block h-full w-full">
+                                        <source data-light-srcset="{{ $heroSrcset($id, '', $screenshot['widths']) }}"
+                                                data-dark-srcset="{{ $heroSrcset($id, '-dark', $screenshot['widths']) }}"
+                                                srcset="{{ $heroSrcset($id, '', $screenshot['widths']) }}"
+                                                sizes="(max-width: 640px) 750px, (max-width: 1023px) 842px, 826px"
+                                                type="image/webp">
+                                        <img data-light-src="{{ Vite::asset("resources/images/app-{$id}-preview.png") }}"
+                                             data-dark-src="{{ Vite::asset("resources/images/app-{$id}-preview-dark.png") }}"
+                                             src="{{ Vite::asset("resources/images/app-{$id}-preview.png") }}"
+                                             alt="{{ $screenshot['alt'] }}"
+                                             class="hero-preview-image h-full w-full object-cover object-left-top"
+                                             width="1440"
+                                             height="1116"
+                                             loading="lazy">
+                                    </picture>
+                                </div>
+                            @endforeach
                             {{-- Bottom fade overlay --}}
                             <div class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white/60 via-white/20 to-transparent dark:from-gray-950/60 dark:via-gray-950/20 dark:to-transparent pointer-events-none"></div>
                         </div>

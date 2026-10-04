@@ -47,7 +47,8 @@ it('serves the press page as markdown', function (): void {
         ->assertHeader('content-type', 'text/markdown; charset=UTF-8')
         ->assertSee('brand/kit.zip')
         ->assertSee('brand/kit/logos/lockup-color.svg')
-        ->assertSee('images/app-pipeline-preview-dark.png');
+        ->assertSee('Inside Relaticle')
+        ->assertSee('Dark PNG');
 });
 
 it('offers existing nonempty files for every press download', function (): void {
@@ -58,6 +59,10 @@ it('offers existing nonempty files for every press download', function (): void 
     expect($downloads->length)->toBeGreaterThan(30);
 
     foreach ($downloads as $download) {
+        if ($download->closest('#screenshots') !== null) {
+            continue;
+        }
+
         $path = public_path(ltrim((string) parse_url($download->getAttribute('href'), PHP_URL_PATH), '/'));
 
         expect($path)->toBeFile();

@@ -150,13 +150,13 @@
                 <div class="mt-7 grid gap-5 sm:grid-cols-3">
                     @foreach ($screenshots as $screenshot)
                         <figure class="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
-                            <img src="{{ asset('images/app-'.$screenshot['id'].'-preview.png') }}" alt="{{ $screenshot['alt'] }}" width="2880" height="2232" class="block h-auto w-full dark:hidden" loading="lazy"/>
-                            <img src="{{ asset('images/app-'.$screenshot['id'].'-preview-dark.png') }}" alt="{{ $screenshot['alt'] }}" width="2880" height="2232" class="hidden h-auto w-full dark:block" loading="lazy"/>
+                            <img src="{{ Vite::asset('resources/images/app-'.$screenshot['id'].'-preview.png') }}" alt="{{ $screenshot['alt'] }}" width="2880" height="2232" class="block h-auto w-full dark:hidden" loading="lazy"/>
+                            <img src="{{ Vite::asset('resources/images/app-'.$screenshot['id'].'-preview-dark.png') }}" alt="{{ $screenshot['alt'] }}" width="2880" height="2232" class="hidden h-auto w-full dark:block" loading="lazy"/>
                             <figcaption class="border-t border-gray-200 p-5 dark:border-gray-800">
                                 <h3 class="text-sm font-semibold">{{ $screenshot['title'] }}</h3>
                                 <div class="mt-3 flex flex-wrap gap-2">
                                     @foreach (['' => __('Light PNG'), '-dark' => __('Dark PNG')] as $suffix => $label)
-                                        <a href="{{ asset('images/app-'.$screenshot['id'].'-preview'.$suffix.'.png') }}" download class="{{ $downloadClass }}" aria-label="{{ __('Download :screenshot, :theme', ['screenshot' => $screenshot['title'], 'theme' => $label]) }}">{{ $label }}</a>
+                                        <a href="{{ Vite::asset('resources/images/app-'.$screenshot['id'].'-preview'.$suffix.'.png') }}" download="relaticle-{{ $screenshot['id'] }}{{ $suffix }}.png" class="{{ $downloadClass }}" aria-label="{{ __('Download :screenshot, :theme', ['screenshot' => $screenshot['title'], 'theme' => $label]) }}">{{ $label }}</a>
                                     @endforeach
                                 </div>
                             </figcaption>

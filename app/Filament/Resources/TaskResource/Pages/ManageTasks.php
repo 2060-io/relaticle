@@ -6,6 +6,7 @@ namespace App\Filament\Resources\TaskResource\Pages;
 
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Concerns\HasBoardViewSwitcher;
+use App\Filament\Concerns\HasCustomFieldColumns;
 use App\Filament\Exports\TaskExporter;
 use App\Filament\Resources\TaskResource;
 use App\Models\Task;
@@ -17,14 +18,13 @@ use Filament\Resources\Pages\ManageRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportTasks;
 
 final class ManageTasks extends ManageRecords
 {
     use HasBoardViewSwitcher;
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
 
     protected static string $resource = TaskResource::class;
 

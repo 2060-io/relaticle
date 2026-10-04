@@ -20,10 +20,6 @@
     $panel = \Filament\Facades\Filament::getCurrentOrDefaultPanel();
     $isCollapsible = $panel?->isSidebarCollapsibleOnDesktop() || $panel?->isSidebarFullyCollapsibleOnDesktop();
 
-    // Mirrors a nav item's geometry so the footer reads as part of the same
-    // list rather than a stack bolted underneath it.
-    $rowClasses = 'mx-4 flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/5';
-
     // A failure gets a solid button; an offer keeps the quieter outlined pill.
     $actionClasses = $billing !== null && $billing['urgent']
         ? 'border-transparent bg-danger-600 px-2 py-1 text-white group-hover:bg-danger-500'
@@ -39,52 +35,56 @@
             x-show="$store.sidebar.isOpen"
             x-cloak
         @endif
-        class="fi-sidebar-footer-activation border-t border-gray-200 py-2 dark:border-white/10"
+        class="fi-sidebar-footer-activation border-t border-gray-200/60 py-2 dark:border-white/10"
     >
         @livewire(\App\Livewire\App\Onboarding\ActivationChecklist::class)
 
         @if($canInviteMembers)
-            <button
-                type="button"
-                x-data
-                x-on:click="$dispatch('open-invite-workspace-members')"
-                class="{{ $rowClasses }} w-[calc(100%-2rem)] text-start"
-            >
-                <x-heroicon-o-user-plus class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
-                <span class="truncate">{{ __('filament/pages/dashboard.activation.invite_members') }}</span>
-            </button>
+            <div class="fi-sidebar-item mx-4">
+                <button
+                    type="button"
+                    x-data
+                    x-on:click="$dispatch('open-invite-workspace-members')"
+                    class="fi-sidebar-item-btn w-full text-start"
+                >
+                    <x-heroicon-o-user-plus class="fi-icon fi-size-lg fi-sidebar-item-icon" />
+                    <span class="fi-sidebar-item-label">{{ __('filament/pages/dashboard.activation.invite_members') }}</span>
+                </button>
+            </div>
         @endif
 
         @if($billing !== null)
             {{-- The whole row is the target, not just a button at its end: the
                  line states the deadline and the click acts on it, so there is
                  no dead text sitting next to a live control. --}}
-            <div class="mt-2 border-t border-gray-200 pt-2 dark:border-white/10">
-                @if(! $billing['urgent'])
-                    <button
-                        type="button"
-                        class="{{ $rowClasses }} group w-[calc(100%-2rem)] text-left"
-                        x-on:click="$dispatch('open-modal', { id: @js(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) })"
-                    >
-                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+            <div class="mt-2 border-t border-gray-200/60 pt-2 dark:border-white/10">
+                <div class="fi-sidebar-item mx-4">
+                    @if(! $billing['urgent'])
+                        <button
+                            type="button"
+                            class="fi-sidebar-item-btn group w-full text-start"
+                            x-on:click="$dispatch('open-modal', { id: @js(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) })"
+                        >
+                            <x-heroicon-o-arrow-up-circle class="fi-icon fi-size-lg fi-sidebar-item-icon" />
 
-                        <span class="flex-1 truncate">{{ $billing['label'] }}</span>
+                            <span class="fi-sidebar-item-label">{{ $billing['label'] }}</span>
 
-                        <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
-                            {{ $billing['action'] }}
-                        </span>
-                    </button>
-                @else
-                    <a href="{{ \App\Filament\Pages\Billing::getUrl() }}" class="{{ $rowClasses }} group">
-                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                            <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
+                                {{ $billing['action'] }}
+                            </span>
+                        </button>
+                    @else
+                        <a href="{{ \App\Filament\Pages\Billing::getUrl() }}" class="fi-sidebar-item-btn group">
+                            <x-heroicon-o-arrow-up-circle class="fi-icon fi-size-lg fi-sidebar-item-icon" />
 
-                        <span class="flex-1 truncate">{{ $billing['label'] }}</span>
+                            <span class="fi-sidebar-item-label">{{ $billing['label'] }}</span>
 
-                        <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
-                            {{ $billing['action'] }}
-                        </span>
-                    </a>
-                @endif
+                            <span class="flex-shrink-0 rounded-md border text-xs font-medium transition {{ $actionClasses }}">
+                                {{ $billing['action'] }}
+                            </span>
+                        </a>
+                    @endif
+                </div>
             </div>
         @endif
     </div>

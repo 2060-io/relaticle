@@ -12,6 +12,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\RichEditor;
 use Filament\Schemas\Components\Component;
+use Filament\Tables\Columns\Column;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\QueryExecuted;
@@ -36,6 +37,15 @@ it('can render the index page', function (): void {
 // Column metadata is checked against a single mounted table rather than one
 // dataset case per column: mounting the page dominates the cost, and Filament's
 // assertion messages already name the offending column.
+it('heads every column but the task title with an icon', function (): void {
+    $hasIcon = fn (Column $column): bool => str_contains((string) $column->getLabel(), '<svg');
+
+    livewire(ManageTasks::class)
+        ->assertTableColumnExists('title', fn (Column $column): bool => ! $hasIcon($column))
+        ->assertTableColumnExists('assignees.name', $hasIcon)
+        ->assertTableColumnExists('created_at', $hasIcon);
+});
+
 it('exposes the expected table columns', function (): void {
     $table = livewire(ManageTasks::class);
 

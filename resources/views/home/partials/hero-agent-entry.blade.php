@@ -5,7 +5,7 @@
      Visibility is driven by .mcp-el rule (opacity: 0 at rest) and the
      heroChat factory; no x-show so the markup is also visible to the SEO
      crawler and to no-JS users alongside the conversation. --}}
-<div class="hero-agent-entry mcp-el absolute inset-x-0 bottom-0 top-10 z-20 flex items-start justify-center bg-gray-50 dark:bg-zinc-950 px-4 sm:px-6 md:px-8 overflow-hidden">
+<div class="hero-agent-entry mcp-el absolute inset-x-0 bottom-0 top-10 z-20 flex items-start justify-center bg-white dark:bg-zinc-900 px-4 sm:px-6 md:px-8 overflow-hidden">
     {{-- pt-12/pt-20 mirrors the real dashboard's `py-16` while leaving headroom
          on the shorter mobile panel (h-[520px]). max-w-2xl keeps the composer
          readable without dominating the panel. --}}

@@ -19,10 +19,12 @@ trialLocked: @js(app(\Relaticle\Chat\Services\ModelAccess::class)->isTrialLocked
 modelOptions: @js(app(\Relaticle\Chat\Services\ModelRegistry::class)->pickerOptions()),
 ...window.ChatModules.modelPickerModule({
     persistSelection: @js($persistSelection ?? false),
+    {{-- Each icon carries its own size: WebKit collapses an SVG that has only a viewBox inside the picker's flex slot. --}}
     providerIcons: @js([
-        'anthropic' => svg('ri-claude-fill')->toHtml(),
-        'openai' => svg('ri-openai-fill')->toHtml(),
-        'ollama' => svg('ri-server-line')->toHtml(),
-        'selfhosted' => svg('ri-server-line')->toHtml(),
+        'auto' => svg('ri-sparkling-2-line', 'size-full')->toHtml(),
+        'anthropic' => svg('ri-claude-fill', 'size-full')->toHtml(),
+        'openai' => svg('ri-openai-fill', 'size-full')->toHtml(),
+        'ollama' => svg('ri-server-line', 'size-full')->toHtml(),
+        'selfhosted' => svg('ri-server-line', 'size-full')->toHtml(),
     ]),
 }),

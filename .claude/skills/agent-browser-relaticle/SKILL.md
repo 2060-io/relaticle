@@ -266,3 +266,47 @@ For any deliverable screenshot, invoke `Skill('screenshot-with-callout')` per sh
   at `rect.x+20, rect.y+32`. Under zsh `mouse move $XY` fails with "Missing arguments": an
   unquoted variable is not word-split, so `read -r X Y <<< "$XY"` first.
 - `agent-browser set media dark` exists; toggling `document.documentElement.classList` also works.
+
+## 11. WebKit pass (verified: 2026-10-04)
+
+agent-browser drives Chromium only, and so does the Browser suite by default. A page can pass
+here and be broken in Safari: the chat model picker's icons measured 16px in Chromium and 0x0
+in WebKit. Run this pass after the Chromium walk for any change to a view, a stylesheet, or icon or image markup.
+
+- **Surfaces with a browser test:** `php artisan test --compact <files> --browser safari`.
+  The value is `safari`. The plugin's usage text says `webkit`, and that value is rejected.
+  Install the engine once per machine: `pnpm exec playwright install webkit`.
+- **Anything else:** this throwaway check from the repo root. It logs in through the persona
+  button, screenshots the page to `.context/webkit.png`, and exits 1 when a rendered SVG or
+  image has no size inside a slot that has one.
+
+  ```bash
+  node -e '
+  const { webkit } = require("playwright");
+  (async () => {
+    const [base, path] = process.argv.slice(1);
+    const browser = await webkit.launch();
+    const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1490, height: 930 } });
+    const page = await context.newPage();
+    await page.goto(base + "/login");
+    await page.evaluate(() => [...document.querySelectorAll("button[type=submit]")].find((b) => b.innerText.trim() === "owner@relaticle.test").click());
+    await page.waitForURL((url) => !url.pathname.endsWith("/login"));
+    await page.goto(base + path, { waitUntil: "networkidle" });
+    const collapsed = await page.evaluate(() => [...document.querySelectorAll("svg, img")].filter((el) => {
+      const box = el.getBoundingClientRect();
+      const slot = el.parentElement.getBoundingClientRect();
+      return el.getClientRects().length > 0 && slot.width > 0 && slot.height > 0 && (box.width === 0 || box.height === 0);
+    }).map((el) => el.parentElement.outerHTML.slice(0, 120)));
+    console.log(collapsed.length + " collapsed svg/img", collapsed.slice(0, 3));
+    await page.screenshot({ path: ".context/webkit.png" });
+    await browser.close();
+    process.exit(collapsed.length ? 1 : 0);
+  })();
+  ' "$APP_PANEL_URL" /acme-sales/companies
+  ```
+
+  Read `.context/webkit.png` back like any other screenshot. The check only catches collapsed
+  media; layout differences still need the eye.
+- A bug the user reports that Chromium does not show: reproduce it here first. Measuring the
+  element in both engines (`getBoundingClientRect()`) settles whether it is an engine difference.
+- The installed Firefox builds lag the Playwright version and hang on launch. Use WebKit.

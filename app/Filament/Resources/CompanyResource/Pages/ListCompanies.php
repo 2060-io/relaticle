@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\CompanyResource\Pages;
 
+use App\Filament\Concerns\HasCustomFieldColumns;
 use App\Filament\Exports\CompanyExporter;
 use App\Filament\Resources\CompanyResource;
 use App\Models\Company;
@@ -16,13 +17,12 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportCompanies;
 
 final class ListCompanies extends ListRecords
 {
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
 
     /** @var class-string<CompanyResource> */
     protected static string $resource = CompanyResource::class;
