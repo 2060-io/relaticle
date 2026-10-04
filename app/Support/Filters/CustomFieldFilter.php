@@ -73,9 +73,7 @@ final readonly class CustomFieldFilter implements Filter
         }
 
         $optionMap = resolve(CustomFieldOptionMap::class);
-        $options = $optionMap->fromFields(
-            $fields->filter(fn (CustomField $field): bool => in_array($field->code, $fieldCodes, true) && $optionMap->translates($field))->values(),
-        );
+        $options = $this->translatedOptions($optionMap, $fields, $fieldCodes);
 
         foreach ($value as $fieldCode => $operators) {
             if (! is_array($operators) || $operators === []) {
@@ -104,6 +102,18 @@ final readonly class CustomFieldFilter implements Filter
                 $this->applyCondition($query, $field, $valueColumn, $operator, $operand);
             }
         }
+    }
+
+    /**
+     * @param  Collection<string, CustomField>  $fields
+     * @param  array<int, string>  $fieldCodes
+     * @return array<string, array{ids: array<string, list<string>>, labels: list<string>}>
+     */
+    private function translatedOptions(CustomFieldOptionMap $optionMap, Collection $fields, array $fieldCodes): array
+    {
+        return $optionMap->fromFields(
+            $fields->filter(fn (CustomField $field): bool => in_array($field->code, $fieldCodes, true) && $optionMap->translates($field))->values(),
+        );
     }
 
     /**

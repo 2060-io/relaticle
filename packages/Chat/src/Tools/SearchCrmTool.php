@@ -113,6 +113,15 @@ final class SearchCrmTool implements Tool
                 ->toArray(),
         ];
 
+        return (string) json_encode($this->withTruncation($results, $limit), JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * @param  array<string, array<int, mixed>>  $results
+     * @return array<string, mixed>
+     */
+    private function withTruncation(array $results, int $limit): array
+    {
         // Fetched one past the cap per entity: anything still present after the
         // slice means there are more matches than shown. Without this the model
         // reads a capped list as the whole truth and states a wrong count, which
@@ -126,7 +135,7 @@ final class SearchCrmTool implements Tool
 
         $results['truncated'] = $truncated;
 
-        return (string) json_encode($results, JSON_UNESCAPED_SLASHES);
+        return $results;
     }
 
     /**

@@ -72,6 +72,20 @@ final readonly class CustomFieldsFilterDescriber
             return implode("\n", $lines);
         }
 
+        array_push($lines, ...$this->customFieldLines($customFields, $types));
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $customFields
+     * @param  array<string, array<string, mixed>>  $types
+     * @return list<string>
+     */
+    private function customFieldLines(array $customFields, array $types): array
+    {
+        $lines = [];
+
         $lines[] = '';
         $lines[] = 'Custom field conditions go under custom_fields. Their keys MUST be one of the codes below; each value is an object of operator => operand, as its type allows.';
         $lines[] = 'For choice fields pass the option label as listed; an option ID also works.';
@@ -97,7 +111,7 @@ final readonly class CustomFieldsFilterDescriber
         $lines[] = '';
         $lines[] = 'Custom field example: '.CustomFieldFilterSchema::json(['custom_fields' => [$firstCode => $customFields[$firstCode]['example'] ?? $types[$customFields[$firstCode]['type']]['example']]]);
 
-        return implode("\n", $lines);
+        return $lines;
     }
 
     /**

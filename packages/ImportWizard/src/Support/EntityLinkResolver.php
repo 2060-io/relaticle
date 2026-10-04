@@ -235,41 +235,7 @@ final class EntityLinkResolver
             $lowerChunk = array_map(mb_strtolower(...), $chunk);
             $placeholders = implode(',', array_fill(0, count($lowerChunk), '?'));
 
-            $sql = match ($driver) {
-                'sqlite' => "SELECT cfv.entity_id, je.value AS matched_value
-                   FROM {$table} cfv, json_each(
-                       CASE WHEN JSON_TYPE(cfv.json_value) = 'array'
-                           THEN cfv.json_value
-                           ELSE JSON_ARRAY(cfv.json_value)
-                       END
-                   ) je
-                   WHERE cfv.{$tenantKey} = ?
-                     AND cfv.custom_field_id = ?
-                     AND cfv.entity_type = ?
-                     AND LOWER(CAST(je.value AS TEXT)) IN ({$placeholders})",
-                'pgsql' => "SELECT cfv.entity_id, LOWER(je.value) AS matched_value
-                   FROM {$table} cfv
-                   CROSS JOIN LATERAL jsonb_array_elements_text(
-                       CASE WHEN jsonb_typeof(cfv.json_value::jsonb) = 'array'
-                           THEN cfv.json_value::jsonb
-                           ELSE jsonb_build_array(cfv.json_value::jsonb)
-                       END
-                   ) AS je(value)
-                   WHERE cfv.{$tenantKey} = ?
-                     AND cfv.custom_field_id = ?
-                     AND cfv.entity_type = ?
-                     AND LOWER(je.value) IN ({$placeholders})",
-                default => "SELECT cfv.entity_id, jt.val AS matched_value
-                   FROM {$table} cfv
-                   JOIN JSON_TABLE(
-                       IF(JSON_TYPE(cfv.json_value) = 'ARRAY', cfv.json_value, JSON_ARRAY(cfv.json_value)),
-                       '\$[*]' COLUMNS(val TEXT PATH '\$')
-                   ) AS jt
-                   WHERE cfv.{$tenantKey} = ?
-                     AND cfv.custom_field_id = ?
-                     AND cfv.entity_type = ?
-                     AND LOWER(jt.val) IN ({$placeholders})",
-            };
+            $sql = $this->jsonValueMatchSql($driver, $table, $tenantKey, $placeholders);
 
             $sql .= " AND cfv.entity_id IN ({$accessibleEntities->toSql()})";
             $bindings = array_merge(
@@ -297,6 +263,45 @@ final class EntityLinkResolver
         }
 
         return $matched;
+    }
+
+    private function jsonValueMatchSql(string $driver, string $table, string $tenantKey, string $placeholders): string
+    {
+        return match ($driver) {
+            'sqlite' => "SELECT cfv.entity_id, je.value AS matched_value
+                   FROM {$table} cfv, json_each(
+                       CASE WHEN JSON_TYPE(cfv.json_value) = 'array'
+                           THEN cfv.json_value
+                           ELSE JSON_ARRAY(cfv.json_value)
+                       END
+                   ) je
+                   WHERE cfv.{$tenantKey} = ?
+                     AND cfv.custom_field_id = ?
+                     AND cfv.entity_type = ?
+                     AND LOWER(CAST(je.value AS TEXT)) IN ({$placeholders})",
+            'pgsql' => "SELECT cfv.entity_id, LOWER(je.value) AS matched_value
+                   FROM {$table} cfv
+                   CROSS JOIN LATERAL jsonb_array_elements_text(
+                       CASE WHEN jsonb_typeof(cfv.json_value::jsonb) = 'array'
+                           THEN cfv.json_value::jsonb
+                           ELSE jsonb_build_array(cfv.json_value::jsonb)
+                       END
+                   ) AS je(value)
+                   WHERE cfv.{$tenantKey} = ?
+                     AND cfv.custom_field_id = ?
+                     AND cfv.entity_type = ?
+                     AND LOWER(je.value) IN ({$placeholders})",
+            default => "SELECT cfv.entity_id, jt.val AS matched_value
+                   FROM {$table} cfv
+                   JOIN JSON_TABLE(
+                       IF(JSON_TYPE(cfv.json_value) = 'ARRAY', cfv.json_value, JSON_ARRAY(cfv.json_value)),
+                       '\$[*]' COLUMNS(val TEXT PATH '\$')
+                   ) AS jt
+                   WHERE cfv.{$tenantKey} = ?
+                     AND cfv.custom_field_id = ?
+                     AND cfv.entity_type = ?
+                     AND LOWER(jt.val) IN ({$placeholders})",
+        };
     }
 
     /**
