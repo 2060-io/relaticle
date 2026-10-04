@@ -973,6 +973,7 @@ describe('Page metadata', function () {
         ['/ai', true],
         ['/ai-native-crm', true],
         ['/self-hosted', true],
+        ['/security', true],
         ['/press', true],
         ['/contact', true],
         ['/help', true],

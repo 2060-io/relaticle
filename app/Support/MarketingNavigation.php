@@ -89,6 +89,7 @@ final readonly class MarketingNavigation
             new NavItem(__('Company'), children: [
                 new NavItem(__('Contact'), route('contact')),
                 new NavItem(__('GitHub'), self::GITHUB_URL, external: true),
+                new NavItem(__('Security'), route('security')),
                 new NavItem(__('Privacy Policy'), url('privacy-policy')),
                 new NavItem(__('Terms of Service'), url('terms-of-service')),
             ]),

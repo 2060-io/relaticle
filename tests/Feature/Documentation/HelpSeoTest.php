@@ -170,6 +170,7 @@ it('lists the product pages in llms.txt', function (): void {
 
     expect($body)->toContain(route('ai'))
         ->and($body)->toContain(route('selfHosted'))
+        ->and($body)->toContain(route('security'))
         ->and($body)->toContain(config('chat.assistant_name'));
 });
 
