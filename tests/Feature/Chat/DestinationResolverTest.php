@@ -23,6 +23,9 @@ it('resolves the custom fields destination to an app-panel url', function (): vo
 });
 
 it('resolves every declared destination to a non-null url', function (): void {
+    config()->set('relaticle.features.billing', true);
+    Feature::flushCache();
+
     $resolver = app(DestinationResolver::class);
 
     foreach (DestinationResolver::DESTINATIONS as $destination) {
@@ -81,6 +84,24 @@ it('resolves email_accounts to the mailbox page while the email integration is o
     expect($url)->toBeString()
         ->and($url)->toContain((string) $this->user->currentWorkspace->slug)
         ->and($url)->toContain('workspace/email');
+});
+
+it('resolves billing to the billing page while billing is on', function (): void {
+    config()->set('relaticle.features.billing', true);
+    Feature::flushCache();
+
+    $url = app(DestinationResolver::class)->resolve('billing', $this->user->currentWorkspace);
+
+    expect($url)->toBeString()
+        ->and($url)->toContain((string) $this->user->currentWorkspace->slug)
+        ->and($url)->toEndWith('/billing');
+});
+
+it('resolves no billing page while billing is off', function (): void {
+    config()->set('relaticle.features.billing', false);
+    Feature::flushCache();
+
+    expect(app(DestinationResolver::class)->resolve('billing', $this->user->currentWorkspace))->toBeNull();
 });
 
 it('resolves no email_accounts page while the email integration is off', function (): void {

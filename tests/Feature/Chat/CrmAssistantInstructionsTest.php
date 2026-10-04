@@ -96,7 +96,7 @@ it('scopes the block claim to the read tools that emit one', function (): void {
     expect($instructions)
         ->toContain('rendered as a table or card block')
         ->toContain('SearchCrmTool, ListWorkspaceMembersTool and ListCustomFieldsTool are the exceptions: they render no block')
-        ->toContain('neither do AggregateCrmTool, GetCrmSummaryTool, SearchDocsTool or GuideToPageTool')
+        ->toContain('neither do AggregateCrmTool, GetCrmSummaryTool, GetCreditBalanceTool, SearchDocsTool or GuideToPageTool')
         ->toContain('A list with zero results renders no block either')
         ->toContain('ONE short lead-in sentence');
 });
@@ -128,7 +128,15 @@ it('routes export requests to the export destinations', function (): void {
 
     expect($instructions)
         ->toContain('Exporting records to a CSV or XLSX file -> the matching "export_*" destination, when their capabilities include `data.export`.')
-        ->toContain('(custom field definitions, bulk imports, exports, workspace members)');
+        ->toContain('(custom field definitions, bulk imports, exports, workspace members, billing)');
+});
+
+it('answers credit questions from the balance tool and routes plan changes to billing', function (): void {
+    $instructions = resolve(CrmAssistant::class)->instructions();
+
+    expect($instructions)
+        ->toContain('call GetCreditBalanceTool and state its figures')
+        ->toContain('buying more AI credits -> call GuideToPageTool with "billing"');
 });
 
 it('tells the model who it is talking to so "me" and "mine" resolve without a question', function (): void {
