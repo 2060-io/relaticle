@@ -91,9 +91,13 @@ final readonly class RelationFilter implements Filter
      */
     private function bounded(Builder $related): Builder
     {
-        return $this->definition->related instanceof CrmEntity
-            ? $related->whereBelongsTo($this->user->currentWorkspace)
-            : $related;
+        $workspace = $this->user->currentWorkspace;
+
+        if ($this->definition->related instanceof CrmEntity) {
+            return $related->whereBelongsTo($workspace);
+        }
+
+        return $related->scopes(['memberOf' => [$workspace]]);
     }
 
     /**

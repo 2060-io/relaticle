@@ -413,6 +413,30 @@ it('never leaks another workspace\'s tasks through assignees', function (): void
     expect($rows)->toBeEmpty();
 });
 
+it('treats a member who left the workspace as no member on every member relation', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    $workspace = $user->currentWorkspace;
+    $departed = User::factory()->create();
+
+    $orphan = Company::factory()->for($workspace)->create(['name' => 'Orphan', 'creator_id' => $departed->getKey(), 'account_owner_id' => $departed->getKey()]);
+    $kept = Company::factory()->for($workspace)->create(['name' => 'Kept', 'creator_id' => $user->getKey(), 'account_owner_id' => $user->getKey()]);
+    Task::factory()->for($workspace)->create(['title' => 'Orphan task'])->assignees()->attach($departed);
+    Task::factory()->for($workspace)->create(['title' => 'Kept task'])->assignees()->attach($user);
+
+    $companies = fn (array $filter): array => Arr::pluck(listToolRows((new ListCompaniesTool)->handle(new Request(['filter' => $filter]))), 'attributes.name');
+    $tasks = fn (array $filter): array => Arr::pluck(listToolRows((new ListTasksTool)->handle(new Request(['filter' => $filter]))), 'attributes.title');
+    $departedId = (string) $departed->getKey();
+
+    expect($companies(['creator' => ['$is_empty' => true]]))->toBe(['Orphan'])
+        ->and($companies(['creator' => ['$is_empty' => false]]))->toBe(['Kept'])
+        ->and($companies(['creator' => ['$in' => [$departedId]]]))->toBe([])
+        ->and($companies(['accountOwner' => ['$is_empty' => true]]))->toBe(['Orphan'])
+        ->and($companies(['accountOwner' => ['$not_in' => [$departedId]], 'name' => ['$contains' => 'Orphan']]))->toBe(['Orphan'])
+        ->and($tasks(['assignees' => ['$is_empty' => true]]))->toBe(['Orphan task'])
+        ->and($tasks(['assignees' => ['$in' => [$departedId]]]))->toBe([]);
+});
+
 it('rejects an empty assignees list instead of returning nothing', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
