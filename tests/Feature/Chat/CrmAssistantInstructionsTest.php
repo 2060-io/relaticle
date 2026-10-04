@@ -711,6 +711,17 @@ it('maps asks for new record types and pipelines onto fields that exist', functi
         ->toContain('Never say the board can filter by pipeline');
 });
 
+it('names records as the app does and repeats a word the user chose', function (): void {
+    expect(resolve(CrmAssistant::class)->staticInstructions())
+        ->toContain('Name records as the app does: companies, people, opportunities, tasks, notes')
+        ->toContain('use their word in that reply')
+        ->toContain('When the user has not chosen a word, use the app\'s')
+        ->not->toContain('interchangeably')
+        ->toContain('people per company')
+        ->toContain('an email draft to a person')
+        ->toContain('A pasted list of people or companies, in any columns and any order');
+});
+
 it('links a contact to a task, offers to invite a non-member and asks for a title once', function (): void {
     expect(resolve(CrmAssistant::class)->staticInstructions())
         ->toContain('you say the task is linked to them with no assignee')
