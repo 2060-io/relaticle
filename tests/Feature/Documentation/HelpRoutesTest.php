@@ -51,6 +51,9 @@ it('404s an unknown category and an unknown article', function (): void {
 });
 
 it('lists the email category on the hub while email integration is on', function (): void {
+    Feature::activate(EmailIntegration::class);
+    app()->forgetInstance(DocsRepository::class);
+
     $this->get('/help')->assertOk()->assertSee('/help/email-and-calendar', false);
     $this->get('/help/email-and-calendar/connect-your-google-account')->assertOk();
 });
