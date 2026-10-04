@@ -329,14 +329,16 @@ it('shows the note body on a card as plain text', function (): void {
         ->assertSee($this->user->name);
 });
 
-it('searches note cards by title', function (): void {
+it('searches note cards by title and recounts the group', function (): void {
     $match = Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Renewal terms']);
     $other = Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Kickoff agenda']);
 
     livewire(NotesCards::class)
+        ->assertSeeHtml('Created today <span class="fi-ta-group-count">2</span>')
         ->searchTable('Renewal')
         ->assertCanSeeTableRecords([$match])
-        ->assertCanNotSeeTableRecords([$other]);
+        ->assertCanNotSeeTableRecords([$other])
+        ->assertSeeHtml('Created today <span class="fi-ta-group-count">1</span>');
 });
 
 it('edits a note from its card', function (): void {
