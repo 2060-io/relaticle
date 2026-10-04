@@ -12,6 +12,12 @@
   sources in `.ai/guidelines/relaticle/`, then run `php artisan boost:update`
   and copy `AGENTS.md` to `GEMINI.md` (boost does not write it). Never edit the
   compiled files directly; `tests/Arch/ConventionsTest.php` fails when they drift.
+- A bundled Boost line that contradicts a rule here is deleted, never argued with.
+  Copy the bundled file to the same path under `.ai/guidelines/` and delete only that
+  line: `.ai/guidelines/php/core.blade.php` replaces Boost's `php/core`.
+  `tests/Arch/ConventionsTest.php` pins each deleted line and fails when Boost changes
+  the file, so the copy is refreshed instead of going stale. An override never adds
+  text. Project rules go in `.ai/guidelines/relaticle/`.
 
 ## Releases
 

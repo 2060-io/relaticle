@@ -157,7 +157,6 @@ is the exception that admits the code could not.
   the PR; the next reader reads the code.
 - No comments in tests. The test name carries the intent.
 - Docblocks carry types, generics, and array shapes PHPStan cannot infer. Never prose.
-  This overrides the composed Boost PHP rule that prefers docblocks over inline comments.
 - Draft with comments if it helps you think. Before handing over the diff, re-read every
   `//` you added and delete any the code already says.
 

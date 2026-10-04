@@ -29,6 +29,9 @@ yarn-error.log
 !/.ai/guidelines/
 /.ai/guidelines/*
 !/.ai/guidelines/relaticle/
+!/.ai/guidelines/laravel/
+!/.ai/guidelines/pest/
+!/.ai/guidelines/php/
 !/.ai/rules/
 /.github/skills
 /.fleet

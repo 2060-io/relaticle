@@ -355,7 +355,6 @@ is the exception that admits the code could not.
   the PR; the next reader reads the code.
 - No comments in tests. The test name carries the intent.
 - Docblocks carry types, generics, and array shapes PHPStan cannot infer. Never prose.
-  This overrides the composed Boost PHP rule that prefers docblocks over inline comments.
 - Draft with comments if it helps you think. Before handing over the diff, re-read every
   `//` you added and delete any the code already says.
 
@@ -490,6 +489,12 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
   sources in `.ai/guidelines/relaticle/`, then run `php artisan boost:update`
   and copy `AGENTS.md` to `GEMINI.md` (boost does not write it). Never edit the
   compiled files directly; `tests/Arch/ConventionsTest.php` fails when they drift.
+- A bundled Boost line that contradicts a rule here is deleted, never argued with.
+  Copy the bundled file to the same path under `.ai/guidelines/` and delete only that
+  line: `.ai/guidelines/php/core.blade.php` replaces Boost's `php/core`.
+  `tests/Arch/ConventionsTest.php` pins each deleted line and fails when Boost changes
+  the file, so the copy is refreshed instead of going stale. An override never adds
+  text. Project rules go in `.ai/guidelines/relaticle/`.
 
 ## Releases
 
@@ -658,7 +663,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`. Do not leave empty zero-parameter `__construct()` methods unless the constructor is private.
 - Use explicit return type declarations and type hints for all method parameters: `function isAccessible(User $user, ?string $path = null): bool`
 - Follow existing application Enum naming conventions.
-- Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
 
 === deployments rules ===

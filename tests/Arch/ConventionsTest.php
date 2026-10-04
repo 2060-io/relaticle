@@ -141,6 +141,41 @@ it('keeps compiled agent guidelines in sync with their .ai sources', function ()
     }
 });
 
+it('keeps each Boost guideline override a copy of the bundled file minus its pinned lines', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $removedLines = [
+        'laravel/core' => ["- When creating tests, make use of `{{ \$assist->artisanCommand('make:test [options] {name}') }}` to create a feature test, and pass `--unit` to create a unit test. Most tests should be feature tests."],
+        'pest/core' => ["- After the feature tests pass, ask the user to run the complete suite with `{{ \$assist->artisanCommand('test --compact') }}`."],
+        'php/core' => ['- Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.'],
+    ];
+
+    $overrides = array_map(
+        fn (string $path): string => str_replace([$root.'/.ai/guidelines/', '.blade.php'], '', $path),
+        glob($root.'/.ai/guidelines/*/*.blade.php') ?: [],
+    );
+
+    expect($overrides)->toBe(
+        array_keys($removedLines),
+        'Every Boost guideline override pins the bundled lines it removes (.ai/guidelines/relaticle/workflow.md).',
+    );
+
+    foreach ($removedLines as $key => $removed) {
+        $bundled = file("{$root}/vendor/laravel/boost/.ai/{$key}.blade.php", FILE_IGNORE_NEW_LINES) ?: [];
+        $override = file("{$root}/.ai/guidelines/{$key}.blade.php", FILE_IGNORE_NEW_LINES) ?: [];
+
+        expect(array_values(array_diff($bundled, $override)))->toBe(
+            $removed,
+            "Boost changed {$key}. Copy the bundled file over .ai/guidelines/{$key}.blade.php again, then delete only the pinned lines.",
+        );
+
+        expect(array_values(array_diff($override, $bundled)))->toBe(
+            [],
+            ".ai/guidelines/{$key}.blade.php adds text. An override only deletes lines, and project rules go in .ai/guidelines/relaticle/.",
+        );
+    }
+});
+
 it('keeps every action on the canonical single-execute() shape', function (): void {
     $root = dirname(__DIR__, 2);
 
