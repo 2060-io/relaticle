@@ -10,7 +10,7 @@ use Illuminate\Support\HtmlString;
 use Relaticle\Flowforge\BoardResourcePage;
 
 /**
- * Appends the list/board view switcher directly after the page heading,
+ * Puts the list/board view switcher at the start of the row under the topbar,
  * so it keeps a stable position when toggling between the two layouts.
  */
 trait HasBoardViewSwitcher
@@ -26,11 +26,11 @@ trait HasBoardViewSwitcher
         return view('filament.app.board-header', [
             'boardToolbar' => $header,
             'heading' => $this->getHeading(),
-            'headingEnd' => $this->getHeadingEnd(),
+            'viewSwitcher' => $this->getViewSwitcher(),
         ]);
     }
 
-    public function getHeadingEnd(): ?Htmlable
+    public function getViewSwitcher(): ?Htmlable
     {
         $resource = static::getResource();
         $pages = $resource::getPages();

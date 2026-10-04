@@ -13,12 +13,13 @@
     $beforeActions = \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::PAGE_HEADER_ACTIONS_BEFORE, scopes: $this->getRenderHookScopes());
     $afterActions = \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::PAGE_HEADER_ACTIONS_AFTER, scopes: $this->getRenderHookScopes());
     $headingStart = $isAppPanel && method_exists($this, 'getHeadingStart') ? $this->getHeadingStart() : null;
-    $headingEnd = $isAppPanel && method_exists($this, 'getHeadingEnd') ? $this->getHeadingEnd() : null;
+    $viewSwitcher = $isAppPanel && method_exists($this, 'getViewSwitcher') ? $this->getViewSwitcher() : null;
     $hasInlineHeaderContent = $breadcrumbs
         || filled($beforeHeading)
         || (! $isAppPanel && filled($heading))
         || filled($afterHeading)
-        || filled($subheading);
+        || filled($subheading)
+        || filled($viewSwitcher);
     $hasHeaderActions = filled($beforeActions) || $actions || filled($afterActions);
 @endphp
 
@@ -32,7 +33,7 @@
     }}
 >
     @if ($isAppPanel && filled($heading))
-        @include('filament.app.topbar-page-heading', ['heading' => $heading, 'headingStart' => $headingStart, 'headingEnd' => $headingEnd])
+        @include('filament.app.topbar-page-heading', ['heading' => $heading, 'headingStart' => $headingStart])
     @endif
 
     @if ($hasInlineHeaderContent)
@@ -50,6 +51,8 @@
             @endif
 
             {{ $afterHeading }}
+
+            {{ $viewSwitcher }}
 
             @if (filled($subheading))
                 <p @class(['fi-header-subheading', 'mt-0!' => $isAppPanel])>

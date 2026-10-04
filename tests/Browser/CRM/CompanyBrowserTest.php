@@ -106,14 +106,15 @@ it('keeps app page headings in the topbar across navigation and viewport sizes',
     expect($spacing)->toMatchArray([
         'topbarHeight' => 48,
         'titleCentered' => true,
-        'actionsTopGap' => 24,
-        'tableTopGap' => 24,
+        'actionsTopGap' => 8,
+        'tableTopGap' => 9,
         'hasHorizontalOverflow' => false,
     ]);
 
     $page->resize(1440, 900)
         ->navigate("/app/{$workspace->slug}/tasks")
-        ->click("a[href$='/app/{$workspace->slug}/tasks/board']")
+        ->click('.fi-view-switcher .fi-dropdown-trigger button')
+        ->click(".fi-view-switcher a[href$='/app/{$workspace->slug}/tasks/board']")
         ->assertPathIs("/app/{$workspace->slug}/tasks/board")
         ->assertVisible('[data-page-heading]')
         ->assertSeeIn('[data-page-heading]', 'Tasks')
@@ -121,16 +122,17 @@ it('keeps app page headings in the topbar across navigation and viewport sizes',
         ->assertNoJavaScriptErrors()
         ->assertScript('(() => document.querySelectorAll("[data-page-heading]").length === 1)()')
         ->assertScript('(() => document.querySelector("[data-page-heading] h1")?.textContent.trim() === "Tasks")()')
-        ->assertScript('(() => document.querySelector("[data-page-heading] nav")?.parentElement.matches("[data-page-heading]") === true)()')
+        ->assertVisible('.fi-board-header .fi-view-switcher')
+        ->assertScript('(() => document.querySelector("[data-page-heading] .fi-view-switcher") === null)()')
         ->assertScript('(() => !document.querySelector("main .fi-header-heading").getClientRects().length)()')
-        ->click(".fi-topbar-start a[href$='/app/{$workspace->slug}/tasks']")
+        ->click('.fi-view-switcher .fi-dropdown-trigger button')
+        ->click(".fi-view-switcher a[href$='/app/{$workspace->slug}/tasks']")
         ->assertPathIs("/app/{$workspace->slug}/tasks")
         ->assertScript('(() => document.querySelectorAll("[data-page-heading]").length === 1)()');
 
     $page->resize(390, 844)
-        ->assertVisible('.fi-view-switcher')
-        ->assertScript('(() => { const label = document.querySelector(".fi-view-switcher-label"); return label !== null && label.getClientRects().length === 0; })()')
-        ->assertScript('(() => document.querySelector(".fi-view-switcher a[aria-label]") !== null)()')
+        ->assertVisible('.fi-view-switcher .fi-dropdown-trigger button[aria-label]')
+        ->click('.fi-view-switcher .fi-dropdown-trigger button')
         ->click(".fi-view-switcher a[href$='/app/{$workspace->slug}/tasks/board']")
         ->assertPathIs("/app/{$workspace->slug}/tasks/board")
         ->assertNoJavaScriptErrors();

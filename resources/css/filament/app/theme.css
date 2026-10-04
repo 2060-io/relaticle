@@ -54,6 +54,15 @@ html.fi:has(body.fi-panel-app) {
     overflow: hidden;
 }
 
+/* The content area is the surface colour on every page; the sidebar carries the canvas grey.
+   The chat canvas and composer dock drop their wash so they sit on that surface too. */
+.fi-body.fi-panel-app:has(.fi-app-layout) {
+    @apply bg-white dark:bg-gray-900;
+
+    --surface-canvas-bg: transparent;
+    --surface-shell-bg: transparent;
+}
+
 .fi-app-layout {
     @apply flex h-full overflow-hidden;
 }
@@ -77,17 +86,14 @@ html.fi:has(body.fi-panel-app) {
 
 .fi-header-heading {
     @apply text-2xl font-bold;
-
-    /* Page headings that embed the list/board switcher render it inline,
-       right after the title text */
-    &:has(.fi-view-switcher) {
-        @apply flex items-center gap-x-3;
-    }
 }
 
 /* Sidebar Enhancements */
 .fi-sidebar {
-    @apply h-full border-r border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900;
+    /* Lighter than gray-50: the canvas tint stays fainter than the hairline that edges it. */
+    --sidebar-bg: color-mix(in oklab, var(--color-gray-50) 80%, white);
+
+    @apply h-full border-r border-gray-200/60 bg-(--sidebar-bg) dark:border-white/10 dark:bg-gray-950;
 }
 
 /* Heroicons draw a 1.5 stroke on a 24 grid, a 1px line at the sidebar's 16px,
@@ -108,7 +114,7 @@ html.fi:has(body.fi-panel-app) {
 .fi-sidebar-search-ctn {
     /* 12px above and below the rule; the field then gets a wider gap before the
        navigation starts (`.fi-sidebar-nav` already opens with 10px of its own). */
-    @apply mt-2 flex items-center justify-center gap-x-2 border-t border-gray-200 px-4 pt-3 pb-2.5 dark:border-white/10;
+    @apply mt-2 flex items-center justify-center gap-x-2 border-t border-gray-200/60 px-4 pt-3 pb-2.5 dark:border-white/10;
 }
 
 .fi-sidebar-search {
@@ -120,10 +126,9 @@ html.fi:has(body.fi-panel-app) {
         @apply mx-0 mt-0;
     }
 
-    /* Compact, flat field: the panel default is taller and stacks a drop shadow
-       on top of its ring, which reads as a double edge at this size. */
+    /* Compact field on the surface colour, so it lifts off the sidebar's canvas grey. */
     .fi-input-wrp {
-        @apply h-8 rounded-lg bg-gray-100 shadow-none ring-gray-950/[0.06] dark:bg-white/5 dark:ring-white/10;
+        @apply h-8 rounded-lg bg-white shadow-xs ring-gray-950/10 dark:bg-white/5 dark:ring-white/10;
     }
 
     .fi-input-wrp-prefix {
@@ -153,13 +158,13 @@ html.fi:has(body.fi-panel-app) {
         @apply pe-1.5;
 
         .fi-input-wrp-label {
-            @apply rounded-md bg-white px-1.5 py-px text-[0.6875rem]/[1.125rem] font-medium text-gray-500 ring-1 ring-gray-950/[0.06] dark:bg-white/10 dark:text-gray-400 dark:ring-white/10;
+            @apply rounded-md bg-gray-50 px-1.5 py-px text-[0.6875rem]/[1.125rem] font-medium text-gray-500 ring-1 ring-gray-950/[0.06] dark:bg-white/10 dark:text-gray-400 dark:ring-white/10;
         }
     }
 }
 
 .fi-sidebar-notifications-btn {
-    @apply relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200;
+    @apply relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow-xs ring-1 ring-gray-950/10 transition hover:bg-gray-50 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:bg-white/5 dark:text-gray-400 dark:ring-white/10 dark:hover:bg-white/10 dark:hover:text-gray-200;
 
     .fi-icon {
         @apply h-4 w-4;
@@ -260,14 +265,12 @@ html.fi-chat-docked .fi-app-main-wrapper {
     @apply transition-colors duration-200 ease-in-out;
 
     .fi-sidebar-item-btn {
-        @apply hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5;
+        @apply hover:bg-gray-200/25 dark:text-gray-300 dark:hover:bg-white/5;
         padding-block: calc(var(--spacing) * 1.5);
     }
 
-    /* Filament ships these at 1rem, which reads a size larger than every other
-       label in the panel and than the sidebar footer directly beneath. */
     .fi-sidebar-item-label {
-        @apply text-sm font-normal;
+        @apply text-sm font-medium text-gray-950 dark:text-gray-200;
     }
 
     .fi-sidebar-item-icon {
@@ -276,7 +279,7 @@ html.fi-chat-docked .fi-app-main-wrapper {
     }
 
     &:not(.fi-active) .fi-sidebar-item-icon {
-        @apply text-gray-500 dark:text-gray-400;
+        @apply text-gray-600 dark:text-gray-400;
     }
 
     .fi-sidebar-item-grouped-border {
@@ -285,12 +288,13 @@ html.fi-chat-docked .fi-app-main-wrapper {
     }
 }
 
+/* The active row is marked by its fill and icon; the label stays the text colour. */
 .fi-sidebar-item.fi-active {
     > .fi-sidebar-item-btn {
-        @apply bg-gray-100 dark:bg-white/10;
+        @apply bg-gray-200/40 dark:bg-white/10;
 
         .fi-sidebar-item-label {
-            @apply font-medium;
+            @apply text-gray-950 dark:text-white;
         }
     }
 }
@@ -305,7 +309,7 @@ html.fi-chat-docked .fi-app-main-wrapper {
     @apply py-1;
 
     .fi-sidebar-group-label {
-        @apply text-xs leading-5;
+        @apply text-xs leading-5 text-gray-600 dark:text-gray-400;
     }
 
     .fi-sidebar-group-collapse-btn {
@@ -319,15 +323,15 @@ html.fi-chat-docked .fi-app-main-wrapper {
 }
 
 .fi-topbar {
-    @apply min-h-(--topbar-height);
+    @apply min-h-(--topbar-height) lg:px-6;
+}
+
+.fi-topbar-start .fi-logo:has(> .sr-only:only-child) {
+    @apply ms-0;
 }
 
 .fi-page-header-main-ctn {
     @apply gap-y-6 py-6;
-}
-
-.fi-topbar nav {
-    @apply px-4 lg:px-6;
 }
 
 .fi-topbar-page-heading {
@@ -340,16 +344,10 @@ html.fi-chat-docked .fi-app-main-wrapper {
     .fi-topbar-page-title {
         @apply min-w-0 truncate;
     }
+}
 
-    /* Below md the labels drop and the switcher stays as an icon pair, so
-       phones keep a way to reach the board; the links carry aria-labels. */
-    .fi-view-switcher {
-        @apply inline-flex shrink-0;
-    }
-
-    .fi-view-switcher-label {
-        @apply hidden md:inline;
-    }
+.fi-view-switcher-chevron {
+    @apply -me-0.5 size-4 text-gray-400 dark:text-gray-500;
 }
 
 .fi-header-page-heading-only {
@@ -535,12 +533,16 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
 
 /* Button Enhancements */
 .fi-btn {
-    @apply relative overflow-hidden transition-shadow duration-200 rounded-xl;
+    @apply relative overflow-hidden rounded-lg transition-shadow duration-200;
+
+    &:not(.fi-color) {
+        @apply text-gray-700 shadow-none ring-gray-950/10 dark:text-gray-200 dark:ring-white/10;
+    }
 }
 
 /* Icon Buttons */
 .fi-icon-btn {
-    @apply rounded-xl;
+    @apply rounded-lg;
 }
 
 /* Cards & Sections */
@@ -563,7 +565,14 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
 
 /* Compact table density */
 .fi-ta-header-cell {
-    @apply py-2 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400;
+    @apply py-2 text-sm font-medium text-gray-700 dark:text-gray-200;
+}
+
+/* Row and card menus recede until hovered; a primary-coloured trigger on every row reads as noise. */
+.fi-ta-row .fi-ac-icon-btn-group,
+.flowforge-card .fi-ac-icon-btn-group,
+.flowforge-column-header .fi-icon-btn {
+    @apply text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200;
 }
 
 .fi-ta-text:not(.fi-inline),
@@ -587,7 +596,7 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
 
 /* Column borders on body rows only (header uses resize handle's visual separator) */
 .fi-ta-table tbody td:not(:last-child):not(.fi-ta-selection-cell) {
-    @apply border-r border-gray-100 dark:border-gray-800;
+    @apply border-r border-gray-200/60 dark:border-gray-800;
 }
 
 /* Rounded corners only. overflow-hidden made this box Floating UI's flip
@@ -597,8 +606,25 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply rounded-xl;
 }
 
-.fi-ta-table thead {
-    @apply bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900;
+/* The head sits on its surface. Filament tints the row and each cell inherits it, which doubles the tint in dark mode. */
+.fi-ta-table thead,
+.fi-ta-table thead tr {
+    @apply bg-transparent bg-none dark:bg-transparent;
+}
+
+/* Borders sit on the cells: where columns resize the table collapses none, so a row border never paints. */
+.fi-ta-table thead th,
+.fi-ta-table tbody tr:not(:last-child) td {
+    @apply border-b border-gray-200/60 dark:border-white/10;
+}
+
+.fi-ta-table tbody tr:not(:last-child) td {
+    @apply dark:border-white/5;
+}
+
+/* The head cells already rule off an empty table. */
+.fi-ta-ctn .fi-ta-empty-state {
+    @apply border-t-0;
 }
 
 /* Table header actions */
@@ -676,10 +702,6 @@ html.fi-record-stacked .fi-record-layout {
     @apply flex-col items-stretch;
 }
 
-body:has(.fi-record-page) {
-    @apply bg-white dark:bg-gray-900;
-}
-
 .fi-main:has(.fi-record-page) {
     @apply record-split:px-0;
 }
@@ -692,7 +714,7 @@ body:has(.fi-record-page) {
     @apply record-split:min-h-[calc(100dvh-var(--topbar-height))] record-split:items-stretch record-split:gap-0;
 
     & > :first-child {
-        @apply record-split:w-(--record-rail-width) record-split:max-w-[calc(100%-var(--resize-reserve))] record-split:shrink-0 record-split:border-e record-split:border-gray-200 record-split:[--resize-reserve:var(--record-pane-min-width)] dark:record-split:border-white/10;
+        @apply record-split:w-(--record-rail-width) record-split:max-w-[calc(100%-var(--resize-reserve))] record-split:shrink-0 record-split:border-e record-split:border-gray-200/60 record-split:[--resize-reserve:var(--record-pane-min-width)] dark:record-split:border-white/10;
     }
 
     & > :has(> .fi-record-rail-resize-handle) {
@@ -708,7 +730,7 @@ body:has(.fi-record-page) {
     @apply record-split:sticky record-split:top-0 record-split:max-h-[calc(100dvh-var(--topbar-height))] record-split:overflow-y-auto record-split:px-5 record-split:py-5;
 
     .fi-record-rail-section {
-        @apply border-t border-gray-200 pt-4 dark:border-white/10;
+        @apply border-t border-gray-200/60 pt-4 dark:border-white/10;
     }
 
     .fi-sc-actions .fi-ac {
@@ -750,7 +772,7 @@ body:has(.fi-record-page) {
 
 .fi-record-pane {
     .fi-tabs:not(.fi-contained) {
-        @apply mx-0 rounded-none border-b border-gray-200 bg-transparent px-0 pt-0 pb-0 shadow-none ring-0 record-split:px-3.5 record-split:pt-5 dark:border-white/10 dark:bg-transparent;
+        @apply mx-0 rounded-none border-b border-gray-200/60 bg-transparent px-0 pt-0 pb-0 shadow-none ring-0 record-split:px-3.5 record-split:pt-5 dark:border-white/10 dark:bg-transparent;
     }
 
     .fi-tabs-item {
@@ -807,6 +829,182 @@ body:has(.fi-record-page) {
 
 .fi-record-breadcrumb-separator {
     @apply -ms-2.5 -me-1 text-gray-300 dark:text-gray-600;
+}
+
+/* ===================================
+   List pages and boards run edge to edge
+   =================================== */
+
+.fi-main:has(.fi-resource-list-records-page:not(.fi-page-has-sub-navigation)),
+.fi-main:has(.fi-board-header) {
+    @apply px-0;
+}
+
+/* Toolbar fields are flat and 2rem tall, the height of a small button, so a row shares one height. */
+.fi-resource-list-records-page:not(.fi-page-has-sub-navigation),
+.fi-board-header {
+    .fi-ta-grouping-settings-fields .fi-input-wrp {
+        @apply h-8 shadow-none ring-gray-950/10 dark:ring-white/10;
+
+        .fi-input-wrp-label {
+            @apply text-sm;
+        }
+
+        .fi-select-input {
+            @apply h-full py-0;
+        }
+    }
+
+    .fi-ta-search-field .fi-input-wrp {
+        @apply h-8 shadow-none ring-gray-950/10 dark:ring-white/10;
+
+        .fi-input-wrp-prefix {
+            @apply ps-2.5;
+
+            .fi-icon {
+                @apply size-4;
+            }
+        }
+
+        .fi-input {
+            @apply h-full py-0;
+        }
+    }
+}
+
+.fi-resource-list-records-page:not(.fi-page-has-sub-navigation) {
+    .fi-page-header-main-ctn,
+    .fi-page-content {
+        @apply gap-y-0 py-0;
+    }
+
+    .fi-header:not(.fi-header-page-heading-only) {
+        @apply flex-row items-center justify-between gap-3 border-b border-gray-200/60 px-4 py-2 lg:px-6 dark:border-white/10;
+    }
+
+    .fi-page-content .fi-ta-ctn:not(.fi-modal *) {
+        @apply rounded-none border-b border-gray-200/60 bg-transparent shadow-none ring-0 dark:border-white/10 dark:bg-transparent;
+
+        .fi-ta-header-toolbar {
+            @apply gap-x-0 border-gray-200/60 px-4 py-2 lg:px-6 dark:border-white/10;
+
+            /* The first slot is empty until rows are selected, so its children carry the gap. */
+            & > :nth-child(1) {
+                @apply gap-x-0;
+
+                & > * {
+                    @apply me-4;
+                }
+            }
+
+            & > :nth-child(2) {
+                @apply ms-0 flex-1;
+            }
+
+            .fi-ta-search-field {
+                @apply me-auto;
+            }
+        }
+
+        .fi-ta-content-ctn,
+        .fi-ta-content,
+        .fi-ta-pagination,
+        .fi-pagination {
+            @apply rounded-none;
+        }
+
+        .fi-ta-cell.fi-ta-selection-cell {
+            @apply lg:first-of-type:ps-6;
+        }
+
+        .fi-ta-pagination {
+            @apply px-4 lg:px-6;
+        }
+    }
+}
+
+/* Boards: a toolbar row like the lists, then the columns fill what is left of the viewport. */
+.fi-app-layout .fi-main:has(.fi-board-header) {
+    @apply h-full;
+}
+
+.fi-page:has(.fi-board-header) {
+    @apply h-full;
+
+    .fi-page-header-main-ctn {
+        @apply h-full gap-y-0 py-0;
+    }
+
+    .fi-board-header {
+        @apply flex items-center gap-x-4 border-b border-gray-200/60 bg-white px-4 py-2 lg:px-6 dark:border-white/10 dark:bg-gray-900;
+
+        & > div:not(.fi-view-switcher) {
+            @apply min-w-0 flex-1;
+        }
+
+        /* The package reserves this slot for a heading the topbar already shows. */
+        & > div:not(.fi-view-switcher) > div > :first-child:not(:has(.fi-header-subheading)) {
+            @apply hidden;
+        }
+
+        & > div:not(.fi-view-switcher) > div,
+        & > div:not(.fi-view-switcher) > div > :last-child {
+            @apply flex-nowrap;
+        }
+
+        & > div:not(.fi-view-switcher) > div > :last-child {
+            @apply min-w-0 flex-1 flex-row-reverse justify-between gap-x-3;
+        }
+
+        .fi-ta-search-field {
+            @apply min-w-0 shrink;
+        }
+    }
+
+    .fi-page-main {
+        @apply min-h-0 flex-1;
+    }
+
+    .fi-page-content {
+        @apply h-full;
+
+        & > div {
+            @apply h-full;
+        }
+    }
+
+    :has(> .flowforge-column) {
+        @apply gap-x-3 px-4 py-4 lg:px-6;
+    }
+
+    .flowforge-column {
+        @apply border-transparent bg-gray-50 shadow-none dark:border-transparent dark:bg-gray-950/50;
+    }
+
+    .flowforge-column-header {
+        @apply rounded-none border-b-0 bg-transparent py-2.5 dark:bg-transparent;
+
+        h3 {
+            @apply font-semibold text-gray-950 dark:text-white;
+        }
+    }
+
+    .flowforge-column-content {
+        @apply px-2 pt-0 pb-2;
+
+        /* The empty state is a hint, not a drop zone the size of the column. */
+        & > .border-dashed {
+            @apply h-auto min-h-0 border-0 py-10;
+
+            svg {
+                @apply size-6;
+            }
+        }
+    }
+
+    .flowforge-card {
+        @apply mb-2 rounded-xl shadow-xs;
+    }
 }
 
 /* Page sub-navigation tabs (workspace settings). Filament centres the strip;
@@ -917,7 +1115,7 @@ body:has(.fi-record-page) {
 
 /* Avatar height, flat ring: the stock outlined shadow blurs the edge at this size. */
 .fi-topbar .fi-topbar-ask-btn {
-    @apply rounded-lg py-1 text-gray-700 shadow-none ring-gray-950/10 dark:text-gray-200 dark:ring-white/10;
+    @apply py-1;
 
     & > .fi-icon {
         @apply size-4 text-gray-500 dark:text-gray-400;

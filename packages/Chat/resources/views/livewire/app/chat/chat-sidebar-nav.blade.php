@@ -170,7 +170,7 @@
                         <a
                             href="{{ $chatUrl }}"
                             wire:navigate
-                            class="fi-sidebar-item-btn pe-8 group-hover/chat-item:bg-gray-50 dark:group-hover/chat-item:bg-white/5"
+                            class="fi-sidebar-item-btn pe-8 group-hover/chat-item:bg-gray-200/25 dark:group-hover/chat-item:bg-white/5"
                         >
                             <x-heroicon-o-chat-bubble-left class="fi-icon fi-size-lg fi-sidebar-item-icon" />
                             <span

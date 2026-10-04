@@ -22,7 +22,7 @@
 
     // Mirrors a nav item's geometry so the footer reads as part of the same
     // list rather than a stack bolted underneath it.
-    $rowClasses = 'mx-4 flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/5';
+    $rowClasses = 'mx-4 flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-950 transition hover:bg-gray-200/25 dark:text-gray-200 dark:hover:bg-white/5';
 
     // A failure gets a solid button; an offer keeps the quieter outlined pill.
     $actionClasses = $billing !== null && $billing['urgent']
@@ -39,7 +39,7 @@
             x-show="$store.sidebar.isOpen"
             x-cloak
         @endif
-        class="fi-sidebar-footer-activation border-t border-gray-200 py-2 dark:border-white/10"
+        class="fi-sidebar-footer-activation border-t border-gray-200/60 py-2 dark:border-white/10"
     >
         @livewire(\App\Livewire\App\Onboarding\ActivationChecklist::class)
 
@@ -50,7 +50,7 @@
                 x-on:click="$dispatch('open-invite-workspace-members')"
                 class="{{ $rowClasses }} w-[calc(100%-2rem)] text-start"
             >
-                <x-heroicon-o-user-plus class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                <x-heroicon-o-user-plus class="size-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
                 <span class="truncate">{{ __('filament/pages/dashboard.activation.invite_members') }}</span>
             </button>
         @endif
@@ -59,14 +59,14 @@
             {{-- The whole row is the target, not just a button at its end: the
                  line states the deadline and the click acts on it, so there is
                  no dead text sitting next to a live control. --}}
-            <div class="mt-2 border-t border-gray-200 pt-2 dark:border-white/10">
+            <div class="mt-2 border-t border-gray-200/60 pt-2 dark:border-white/10">
                 @if(! $billing['urgent'])
                     <button
                         type="button"
                         class="{{ $rowClasses }} group w-[calc(100%-2rem)] text-left"
                         x-on:click="$dispatch('open-modal', { id: @js(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) })"
                     >
-                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
 
                         <span class="flex-1 truncate">{{ $billing['label'] }}</span>
 
@@ -76,7 +76,7 @@
                     </button>
                 @else
                     <a href="{{ \App\Filament\Pages\Billing::getUrl() }}" class="{{ $rowClasses }} group">
-                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                        <x-heroicon-o-arrow-up-circle class="size-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
 
                         <span class="flex-1 truncate">{{ $billing['label'] }}</span>
 
