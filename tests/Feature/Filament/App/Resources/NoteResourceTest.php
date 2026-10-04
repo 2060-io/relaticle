@@ -25,6 +25,7 @@ beforeEach(function () {
     $this->actingAs($this->user);
     $this->workspace = $this->user->currentWorkspace;
     Filament::setTenant($this->workspace);
+    Filament::setCurrentPanel(Filament::getPanel('app'));
 });
 
 it('can render the index page', function (): void {
@@ -90,12 +91,12 @@ it('cannot display trashed records by default', function (): void {
 });
 
 it('can paginate records', function (): void {
-    $records = Note::factory(20)->recycle([$this->user, $this->workspace])->create();
+    $records = Note::factory(30)->recycle([$this->user, $this->workspace])->create();
 
     livewire(ManageNotes::class)
-        ->assertCanSeeTableRecords($records->take(10), inOrder: true)
+        ->assertCanSeeTableRecords($records->take(25), inOrder: true)
         ->call('gotoPage', 2)
-        ->assertCanSeeTableRecords($records->skip(10)->take(10), inOrder: true);
+        ->assertCanSeeTableRecords($records->skip(25), inOrder: true);
 });
 
 it('can bulk delete records', function (): void {
@@ -391,4 +392,18 @@ it('shows 24 note cards on a page', function (): void {
     livewire(NotesCards::class)
         ->assertCanSeeTableRecords($records->take(24))
         ->assertCanNotSeeTableRecords($records->skip(24));
+});
+
+it('offers a per page choice on note cards only once there is more than one page', function (): void {
+    Note::factory(24)->recycle([$this->user, $this->workspace])->create();
+
+    livewire(NotesCards::class)
+        ->assertDontSeeHtml('fi-pagination-records-per-page-select');
+
+    Note::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $component = livewire(NotesCards::class)
+        ->assertSeeHtml('fi-pagination-records-per-page-select');
+
+    expect($component->instance()->getTable()->getPaginationPageOptions())->toBe([24, 48, 96]);
 });

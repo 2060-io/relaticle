@@ -118,8 +118,7 @@ final class AppPanelProvider extends PanelProvider
      */
     private const string DATE_TIME_FORMAT = 'M j, Y H:i';
 
-    /** @var list<int> */
-    private const array PAGINATION_PAGE_OPTIONS = [25, 50, 100];
+    private const int DEFAULT_PAGINATION_PAGE_OPTION = 25;
 
     /**
      * Perform post-registration booting of components.
@@ -174,7 +173,7 @@ final class AppPanelProvider extends PanelProvider
                 ->defaultDateTimeDisplayFormat(self::DATE_TIME_FORMAT)
                 ->reorderableColumns()
                 ->columnManager(! $table->getLivewire() instanceof RelationManager)
-                ->defaultPaginationPageOption(self::PAGINATION_PAGE_OPTIONS[0])
+                ->defaultPaginationPageOption(self::DEFAULT_PAGINATION_PAGE_OPTION)
                 ->paginationPageOptions(fn (HasTable $livewire): array => $this->paginationPageOptions($livewire))
             : $table);
 
@@ -226,17 +225,20 @@ final class AppPanelProvider extends PanelProvider
     /** @return list<int> */
     private function paginationPageOptions(HasTable $livewire): array
     {
+        $onePage = (int) $livewire->getTable()->getDefaultPaginationPageOption();
+        $pageOptions = [$onePage, $onePage * 2, $onePage * 4];
+
         // Mount reads these before any query runs; afterwards the count comes from the
         // already-fetched paginator, and a single option is what hides the select.
         if ($livewire->getTableRecordsPerPage() === null) {
-            return self::PAGINATION_PAGE_OPTIONS;
+            return $pageOptions;
         }
 
-        if ($livewire->getAllTableRecordsCount() > self::PAGINATION_PAGE_OPTIONS[0]) {
-            return self::PAGINATION_PAGE_OPTIONS;
+        if ($livewire->getAllTableRecordsCount() > $onePage) {
+            return $pageOptions;
         }
 
-        return [self::PAGINATION_PAGE_OPTIONS[0]];
+        return [$onePage];
     }
 
     /**

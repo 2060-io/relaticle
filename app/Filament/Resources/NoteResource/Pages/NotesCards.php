@@ -38,7 +38,6 @@ final class NotesCards extends ManageRecords
                 ]),
             ])
             ->contentGrid(['md' => 2])
-            ->paginated([24, 48, 96])
             ->defaultPaginationPageOption(24)
             ->defaultGroup($this->createdPeriodGroup(), 'desc')
             ->groupingSettingsHidden()
