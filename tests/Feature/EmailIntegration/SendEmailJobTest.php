@@ -6,6 +6,8 @@ use App\Enums\CustomFields\PeopleField;
 use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
+use Google\Service\Exception as GoogleServiceException;
+use Illuminate\Contracts\Queue\Job as QueueJob;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -30,6 +32,7 @@ use Relaticle\EmailIntegration\Notifications\EmailSendFailedNotification;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceInterface;
 use Relaticle\EmailIntegration\Services\EmailSendingService;
+use Relaticle\EmailIntegration\Services\ProviderRateLimit;
 
 mutates(SendEmailJob::class, SyncEmailBatchCountersAction::class, MarkEmailsSendFailedAction::class, RetryFailedEmailAction::class, EmailSendFailedNotification::class);
 
@@ -690,4 +693,66 @@ it('does not deliver the same email twice when a second attempt overlaps the fir
 
     expect($mail->sendCount)->toBe(1)
         ->and($email->fresh()->attempts)->toBe(1);
+});
+
+it('releases the send for a later attempt when the provider rate limits the mailbox', function (): void {
+    Notification::fake();
+
+    $email = Email::factory()->outbound()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'status' => EmailStatus::SENDING,
+        'sent_at' => null,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'creation_source' => EmailCreationSource::COMPOSE,
+        'rfc_message_id' => '<send-job-rate-limited@example.com>',
+        'provider_message_id' => null,
+        'thread_id' => null,
+        'attempts' => 0,
+    ]);
+
+    $email->body()->create(['body_text' => 'hi', 'body_html' => '<p>hi</p>']);
+
+    EmailParticipant::factory()->to()->create([
+        'email_id' => $email->getKey(),
+        'email_address' => 'recipient@partner.com',
+    ]);
+
+    $quotaExceeded = new GoogleServiceException(<<<'JSON'
+{
+  "error": {
+    "code": 403,
+    "message": "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user' of service 'gmail.googleapis.com'.",
+    "errors": [
+      {
+        "message": "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user' of service 'gmail.googleapis.com'.",
+        "domain": "usageLimits",
+        "reason": "rateLimitExceeded"
+      }
+    ],
+    "status": "PERMISSION_DENIED"
+  }
+}
+JSON, 403);
+
+    $service = Mockery::mock(MailServiceInterface::class);
+    $service->shouldReceive('sendMessage')->once()->andThrow($quotaExceeded);
+
+    $factory = Mockery::mock(MailServiceFactoryInterface::class);
+    $factory->shouldReceive('make')->andReturn($service);
+    app()->instance(MailServiceFactoryInterface::class, $factory);
+
+    $queueJob = Mockery::mock(QueueJob::class);
+    $queueJob->shouldReceive('release')->once()->with(Mockery::on(fn (int $seconds): bool => $seconds >= 60 && $seconds <= 90));
+
+    $job = new SendEmailJob($email->getKey());
+    $job->setJob($queueJob);
+
+    $job->handle(resolve(EmailSendingService::class), resolve(LinkEmailAction::class));
+
+    expect($email->fresh()->status)->toBe(EmailStatus::SENDING)
+        ->and(ProviderRateLimit::remainingSeconds((string) $this->account->getKey()))->not->toBeNull();
+
+    Notification::assertNothingSent();
 });
