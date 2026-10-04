@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Filament\Resources\TaskResource\Pages;
 
 use App\Filament\Actions\CreateTaskAction;
-use App\Filament\Concerns\HasBoardViewSwitcher;
 use App\Filament\Concerns\HasCustomFieldColumns;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Exports\TaskExporter;
 use App\Filament\Resources\TaskResource;
 use App\Models\Task;
@@ -22,9 +22,9 @@ use Relaticle\ImportWizard\Filament\Pages\ImportTasks;
 
 final class ManageTasks extends ManageRecords
 {
-    use HasBoardViewSwitcher;
     use HasCustomFieldColumns;
     use HasResizableColumn;
+    use HasViewSwitcher;
 
     protected static string $resource = TaskResource::class;
 

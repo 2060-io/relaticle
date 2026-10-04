@@ -15,7 +15,7 @@ use Relaticle\Flowforge\BoardResourcePage;
  * Puts the view switcher at the start of the row under the topbar, so it keeps
  * a stable position when toggling between a resource's layouts.
  */
-trait HasBoardViewSwitcher
+trait HasViewSwitcher
 {
     public function getHeader(): ?View
     {

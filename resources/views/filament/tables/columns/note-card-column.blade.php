@@ -5,12 +5,20 @@
     $creator = $getCreatorChip();
 @endphp
 
-<article class="fi-note-card">
-    @if ($chips !== [])
+<article @class(['fi-note-card', 'fi-note-card-deleted' => $note->trashed()])>
+    @if ($chips !== [] || $note->trashed())
         <div class="fi-note-card-records">
-            @foreach ($chips as $chip)
-                {{ $chip }}
-            @endforeach
+            @if ($chips !== [])
+                {{ $chips[0] }}
+            @endif
+
+            @if (count($chips) > 1)
+                <span class="fi-note-card-more">+{{ count($chips) - 1 }}</span>
+            @endif
+
+            @if ($note->trashed())
+                <span class="fi-note-card-deleted-badge">{{ __('filament/resources/note.cards.deleted') }}</span>
+            @endif
         </div>
     @endif
 

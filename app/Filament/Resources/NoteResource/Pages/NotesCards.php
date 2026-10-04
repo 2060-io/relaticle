@@ -6,8 +6,8 @@ namespace App\Filament\Resources\NoteResource\Pages;
 
 use App\Enums\CreatedPeriod;
 use App\Filament\Components\Tables\NoteCardColumn;
-use App\Filament\Concerns\HasBoardViewSwitcher;
 use App\Filament\Concerns\HasNoteHeaderActions;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\NoteResource;
 use App\Models\Note;
 use Carbon\CarbonImmutable;
@@ -23,8 +23,8 @@ use Livewire\Attributes\On;
 
 final class NotesCards extends ManageRecords
 {
-    use HasBoardViewSwitcher;
     use HasNoteHeaderActions;
+    use HasViewSwitcher;
 
     protected static string $resource = NoteResource::class;
 
@@ -37,7 +37,9 @@ final class NotesCards extends ManageRecords
                     NoteCardColumn::make('title')->searchable(),
                 ]),
             ])
-            ->contentGrid(['md' => 2, 'xl' => 3])
+            ->contentGrid(['md' => 2])
+            ->paginated([24, 48, 96])
+            ->defaultPaginationPageOption(24)
             ->defaultGroup($this->createdPeriodGroup(), 'desc')
             ->groupingSettingsHidden()
             ->columnManager(false)

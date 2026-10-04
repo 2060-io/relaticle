@@ -51,6 +51,7 @@ return [
         'no_content' => 'This note has no content.',
         'today' => 'Today',
         'yesterday' => 'Yesterday',
+        'deleted' => 'Deleted',
     ],
 
     'pages' => [

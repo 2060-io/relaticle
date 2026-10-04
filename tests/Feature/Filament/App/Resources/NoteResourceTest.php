@@ -6,7 +6,9 @@ use App\Filament\Resources\NoteResource;
 use App\Filament\Resources\NoteResource\Pages\ManageNotes;
 use App\Filament\Resources\NoteResource\Pages\NotesCards;
 use App\Filament\RichEditor\SlashMenuPlugin;
+use App\Models\Company;
 use App\Models\Note;
+use App\Models\People;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
@@ -360,4 +362,33 @@ it('opens notes on the cards view and links it to the list', function (string $p
 it('serves the cards view at the notes index and the table at the list route', function (): void {
     $this->get(NoteResource::getUrl('index'))->assertSeeLivewire(NotesCards::class);
     $this->get(NoteResource::getUrl('list'))->assertSeeLivewire(ManageNotes::class);
+});
+
+it('shows the first linked record on a card and counts the rest', function (): void {
+    $note = Note::factory()->recycle([$this->user, $this->workspace])->create();
+    $note->people()->attach(People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Priya Raman']));
+    $note->companies()->attach(Company::factory()->count(2)->recycle([$this->user, $this->workspace])->create());
+
+    livewire(NotesCards::class)
+        ->assertSee('Priya Raman')
+        ->assertSeeHtml('<span class="fi-note-card-more">+2</span>');
+});
+
+it('marks a deleted note on its card', function (): void {
+    Note::factory()->recycle([$this->user, $this->workspace])->create();
+    $trashed = Note::factory()->trashed()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(NotesCards::class)
+        ->assertDontSeeHtml('fi-note-card-deleted-badge')
+        ->filterTable('trashed', true)
+        ->assertCanSeeTableRecords([$trashed])
+        ->assertSeeHtml('fi-note-card-deleted-badge');
+});
+
+it('shows 24 note cards on a page', function (): void {
+    $records = Note::factory(25)->recycle([$this->user, $this->workspace])->create();
+
+    livewire(NotesCards::class)
+        ->assertCanSeeTableRecords($records->take(24))
+        ->assertCanNotSeeTableRecords($records->skip(24));
 });

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\OpportunityResource\Pages;
 
-use App\Filament\Concerns\HasBoardViewSwitcher;
 use App\Filament\Concerns\HasCustomFieldColumns;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Exports\OpportunityExporter;
 use App\Filament\Resources\OpportunityResource;
 use App\Models\Opportunity;
@@ -22,9 +22,9 @@ use Relaticle\ImportWizard\Filament\Pages\ImportOpportunities;
 
 final class ListOpportunities extends ListRecords
 {
-    use HasBoardViewSwitcher;
     use HasCustomFieldColumns;
     use HasResizableColumn;
+    use HasViewSwitcher;
 
     protected static string $resource = OpportunityResource::class;
 
