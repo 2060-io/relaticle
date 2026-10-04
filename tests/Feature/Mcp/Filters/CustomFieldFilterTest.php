@@ -960,3 +960,16 @@ it('offers the domain sub-field only on email and link fields', function (): voi
         ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['job_title' => ['domain' => ['$in' => ['x']]]]]])
         ->assertHasErrors(['Operator "domain" is not supported for "job_title".']);
 });
+
+it('publishes fields that share a sort order by id', function (): void {
+    foreach (['7zzzzzzzzzzzzzzzzzzzzzzzzz' => 'tied_late', '00000000000000000000000001' => 'tied_early'] as $id => $code) {
+        filterTestField($this->workspace, 'note', $code, 'text')->forceFill(['id' => $id])->save();
+    }
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(GetCrmSchemaTool::class, ['entity_type' => 'note'])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('filterable_fields.custom_fields', fn (Illuminate\Support\Collection $fields): bool => $fields->keys()->all() === ['tied_early', 'tied_late'])
+            ->etc());
+});

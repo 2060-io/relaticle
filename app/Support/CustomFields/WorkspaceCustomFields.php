@@ -52,6 +52,7 @@ final class WorkspaceCustomFields
             ->withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->with('options')
             ->get();
     }
