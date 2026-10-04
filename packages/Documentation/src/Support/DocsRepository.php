@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use Laravel\Pennant\Feature;
 use RuntimeException;
 use Symfony\Component\Finder\SplFileInfo;
 use Symfony\Component\Yaml\Yaml;
@@ -34,7 +35,15 @@ final readonly class DocsRepository
 
     public function __construct()
     {
-        [$this->pages, $this->categories] = $this->resolve();
+        [$pages, $categories] = $this->resolve();
+
+        $this->categories = $categories->filter(
+            fn (DocCategory $category): bool => $category->feature === null || Feature::active($category->feature),
+        );
+
+        $gated = $categories->diffKeys($this->categories);
+
+        $this->pages = $pages->reject(fn (DocPage $page): bool => $gated->has("{$page->area}/{$page->category}"));
     }
 
     /** @return Collection<string, DocPage> */
@@ -141,32 +150,12 @@ final readonly class DocsRepository
             [$meta, $body] = $this->parseFrontMatter($file->getContents(), $relative);
 
             if ($slugOrIndex === '_index') {
-                $path = "{$area}/{$category}";
-
-                $categories->put($path, new DocCategory(
-                    path: $path,
-                    area: $area,
-                    title: $this->requiredString($meta, 'title', $relative),
-                    description: $this->requiredString($meta, 'description', $relative),
-                    order: $this->requiredInt($meta, 'order', $relative),
-                    body: $body,
-                ));
+                $categories->put("{$area}/{$category}", $this->category($area, $category, $meta, $body, $relative));
 
                 continue;
             }
 
-            $pages->put($relative, new DocPage(
-                path: $relative,
-                area: $area,
-                category: $category,
-                slug: $slugOrIndex,
-                title: $this->requiredString($meta, 'title', $relative),
-                description: $this->requiredString($meta, 'description', $relative),
-                order: $this->requiredInt($meta, 'order', $relative),
-                related: array_values((array) ($meta['related'] ?? [])),
-                body: $body,
-                updated: $this->parseUpdated($meta['updated'] ?? null),
-            ));
+            $pages->put($relative, $this->page($area, $category, $slugOrIndex, $meta, $body));
         }
 
         /** @var array<string, int> $categoryOrder */
@@ -185,6 +174,39 @@ final readonly class DocsRepository
             ]),
             $categories->sortBy(fn (DocCategory $category): int => $category->order),
         ];
+    }
+
+    /** @param array<string, mixed> $meta */
+    private function page(string $area, string $category, string $slug, array $meta, string $body): DocPage
+    {
+        $path = "{$area}/{$category}/{$slug}";
+
+        return new DocPage(
+            path: $path,
+            area: $area,
+            category: $category,
+            slug: $slug,
+            title: $this->requiredString($meta, 'title', $path),
+            description: $this->requiredString($meta, 'description', $path),
+            order: $this->requiredInt($meta, 'order', $path),
+            related: array_values((array) ($meta['related'] ?? [])),
+            body: $body,
+            updated: $this->parseUpdated($meta['updated'] ?? null),
+        );
+    }
+
+    /** @param array<string, mixed> $meta */
+    private function category(string $area, string $category, array $meta, string $body, string $relative): DocCategory
+    {
+        return new DocCategory(
+            path: "{$area}/{$category}",
+            area: $area,
+            title: $this->requiredString($meta, 'title', $relative),
+            description: $this->requiredString($meta, 'description', $relative),
+            order: $this->requiredInt($meta, 'order', $relative),
+            body: $body,
+            feature: $this->optionalFeature($meta, $relative),
+        );
     }
 
     /**
@@ -241,6 +263,25 @@ final readonly class DocsRepository
         $meta = (array) Yaml::parse($yaml);
 
         return [$meta, ltrim($body)];
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return class-string|null
+     */
+    private function optionalFeature(array $meta, string $path): ?string
+    {
+        $name = $meta['feature'] ?? null;
+
+        if ($name === null) {
+            return null;
+        }
+
+        $feature = is_string($name) ? "App\\Features\\{$name}" : '';
+
+        throw_unless(class_exists($feature), RuntimeException::class, "Content file [{$path}.md] gates on an unknown feature.");
+
+        return $feature;
     }
 
     /** @param array<string, mixed> $meta */
