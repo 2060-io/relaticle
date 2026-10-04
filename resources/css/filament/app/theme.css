@@ -568,6 +568,11 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply py-2 text-sm font-medium text-gray-700 dark:text-gray-200;
 }
 
+/* Filament darkens every header icon on the sorted column; only the sort chevron should change. */
+.fi-ta-header-cell.fi-ta-header-cell-sorted .fi-ta-header-cell-field .fi-icon {
+    @apply text-gray-400 dark:text-gray-500;
+}
+
 /* Row and card menus recede until hovered; a primary-coloured trigger on every row reads as noise. */
 .fi-ta-row .fi-ac-icon-btn-group,
 .flowforge-card .fi-ac-icon-btn-group,

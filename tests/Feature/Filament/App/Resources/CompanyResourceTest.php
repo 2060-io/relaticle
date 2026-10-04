@@ -14,6 +14,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\RichEditor;
 use Filament\Schemas\Components\Component;
+use Filament\Tables\Columns\Column;
 use Illuminate\Database\Eloquent\Model;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 
@@ -300,4 +301,33 @@ it('records a company created in the panel as created on the web', function (): 
         ->assertHasNoActionErrors();
 
     expect(Company::query()->where('name', 'Panel Made')->sole()->creation_source)->toBe(CreationSource::WEB);
+});
+
+it('heads every column but the record name with an icon and an escaped label', function (): void {
+    CustomField::forceCreate([
+        'tenant_id' => $this->workspace->id,
+        'code' => 'tier',
+        'name' => '<b>Tier</b>',
+        'type' => 'text',
+        'entity_type' => 'company',
+        'sort_order' => 50,
+        'active' => true,
+        'system_defined' => false,
+        'validation_rules' => [],
+        'settings' => new CustomFieldSettingsData,
+    ]);
+
+    $hasIcon = fn (Column $column): bool => str_contains((string) $column->getLabel(), '<svg');
+
+    livewire(ListCompanies::class)
+        ->assertTableColumnExists('name', fn (Column $column): bool => ! $hasIcon($column))
+        ->assertTableColumnExists('accountOwner.name', $hasIcon)
+        ->assertTableColumnExists('created_at', $hasIcon)
+        ->assertTableColumnExists('custom_fields.tier', function (Column $column) use ($hasIcon): bool {
+            $label = (string) $column->getLabel();
+
+            return $hasIcon($column)
+                && str_contains($label, '&lt;b&gt;Tier&lt;/b&gt;')
+                && ! str_contains($label, '<b>Tier</b>');
+        });
 });

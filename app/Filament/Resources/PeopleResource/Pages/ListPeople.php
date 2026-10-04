@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\PeopleResource\Pages;
 
+use App\Filament\Concerns\HasCustomFieldColumns;
 use App\Filament\Exports\PeopleExporter;
 use App\Filament\Resources\PeopleResource;
 use App\Models\People;
@@ -16,13 +17,12 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportPeople;
 
 final class ListPeople extends ListRecords
 {
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
 
     protected static string $resource = PeopleResource::class;
 

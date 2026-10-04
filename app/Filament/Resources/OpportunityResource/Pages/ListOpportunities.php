@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\OpportunityResource\Pages;
 
 use App\Filament\Concerns\HasBoardViewSwitcher;
+use App\Filament\Concerns\HasCustomFieldColumns;
 use App\Filament\Exports\OpportunityExporter;
 use App\Filament\Resources\OpportunityResource;
 use App\Models\Opportunity;
@@ -17,14 +18,13 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportOpportunities;
 
 final class ListOpportunities extends ListRecords
 {
     use HasBoardViewSwitcher;
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
 
     protected static string $resource = OpportunityResource::class;
 
