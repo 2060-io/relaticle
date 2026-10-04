@@ -207,6 +207,13 @@
                     {{ __('Meet :name', ['name' => $assistantName]) }}
                 </x-marketing.button>
             </div>
+
+            <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                {{ __('Connecting an assistant you already use?') }}
+                <a href="{{ route('assistants.claude') }}" class="font-medium text-primary dark:text-primary-400 hover:underline">{{ __('Relaticle for Claude') }}</a>
+                <span aria-hidden="true">·</span>
+                <a href="{{ route('assistants.chatgpt') }}" class="font-medium text-primary dark:text-primary-400 hover:underline">{{ __('Relaticle for ChatGPT') }}</a>
+            </p>
         </div>
     </section>
 

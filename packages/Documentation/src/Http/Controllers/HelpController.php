@@ -181,6 +181,18 @@ final readonly class HelpController
                 route('selfHosted'),
                 __('Run Relaticle on your own server with Docker Compose, AGPL-3.0, and local AI via Ollama.'),
             ),
+            sprintf(
+                '- [%s](%s): %s',
+                __('Relaticle for Claude'),
+                route('assistants.claude'),
+                __('Connect Claude to the CRM with OAuth, what it can read and write, and the setup steps.'),
+            ),
+            sprintf(
+                '- [%s](%s): %s',
+                __('Relaticle for ChatGPT'),
+                route('assistants.chatgpt'),
+                __('Install the Relaticle plugin in ChatGPT, what it can read and write, and the setup steps.'),
+            ),
         ];
     }
 

@@ -152,6 +152,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'home', 'welcome', 'features', 'demo', 'enterprise', 'pro',
         'careers', 'jobs', 'partners', 'affiliate', 'store', 'marketplace',
         'press', 'compare', 'alternatives', 'ai', 'ai-native-crm', 'self-hosted',
+        'crm-for-claude', 'crm-for-chatgpt',
 
         // Communication
         'mail', 'email', 'contact', 'feedback', 'abuse', 'report',
