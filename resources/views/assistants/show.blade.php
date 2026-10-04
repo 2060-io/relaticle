@@ -158,7 +158,7 @@
                             </p>
 
                             <p class="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                                {{ __('You have 9 open opportunities worth $181,500. Most of the value sits in proposals.') }}
+                                {{ __('You have 9 open opportunities worth $181,500. The largest share sits in proposals.') }}
                             </p>
 
                             <table class="w-full text-sm">
