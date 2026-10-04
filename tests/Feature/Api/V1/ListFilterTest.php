@@ -86,6 +86,55 @@ it('compares a date-time operand with an offset as the same instant in utc', fun
     expect(listIds($this, 'companies', ['created_at' => ['$gte' => '2026-01-01T10:00:00+05:00']]))->toBe([$inside->id]);
 });
 
+it('accepts a date operand as YYYY-MM-DD or ISO 8601', function (string $operand): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['created_at' => ['$gte' => $operand]]]))->assertOk();
+})->with([
+    'bare date' => ['2026-01-01'],
+    'utc instant' => ['2026-01-01T10:00:00Z'],
+    'offset' => ['2026-01-01T10:00:00+05:00'],
+    'no seconds' => ['2026-01-01T10:00'],
+    'fraction' => ['2026-01-01T10:00:00.123Z'],
+]);
+
+it('rejects a date operand in any other format', function (string $operand): void {
+    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['created_at' => ['$gte' => $operand]]]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.created_at.$gte' => 'created_at $gte must be a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z.']);
+})->with([
+    'slashes' => ['02/03/2026'],
+    'relative' => ['2026-01-01 +1 week'],
+    'space separated' => ['2026-01-01 10:00:00'],
+    'words' => ['Jan 1st 2026'],
+    'keyword' => ['tomorrow'],
+    'impossible day' => ['2026-02-30'],
+    'impossible hour' => ['2026-01-01T25:00:00Z'],
+]);
+
+it('rejects a custom date operand in any other format', function (string $code, string $entity): void {
+    $this->getJson("/api/v1/{$entity}?".http_build_query(['filter' => ['custom_fields' => [$code => ['$gte' => '02/03/2026']]]]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(["filter.custom_fields.{$code}.\$gte" => "Custom field filter [{$code}.\$gte] must be a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z."]);
+})->with([
+    'date' => ['close_date', 'opportunities'],
+    'date-time' => ['due_date', 'tasks'],
+]);
+
+it('reads a bare date on a custom date-time field as the whole day', function (): void {
+    $ids = collect(['2025-12-31T23:59:00', '2026-01-01T00:00:00', '2026-01-01T09:00:00', '2026-01-01T23:59:59', '2026-01-02T00:00:00'])
+        ->mapWithKeys(fn (string $due): array => [$due => $this->postJson('/api/v1/tasks', ['title' => "Due {$due}", 'custom_fields' => ['due_date' => $due]])->assertCreated()->json('data.id')]);
+    $on = fn (string ...$due): array => $ids->only($due)->sort()->values()->all();
+    $due = fn (string $operator, string $operand): array => listIds($this, 'tasks', ['custom_fields' => ['due_date' => [$operator => $operand]]]);
+
+    expect($due('$eq', '2026-01-01'))->toBe($on('2026-01-01T00:00:00', '2026-01-01T09:00:00', '2026-01-01T23:59:59'))
+        ->and($due('$lte', '2026-01-01'))->toBe($on('2025-12-31T23:59:00', '2026-01-01T00:00:00', '2026-01-01T09:00:00', '2026-01-01T23:59:59'))
+        ->and($due('$lt', '2026-01-01'))->toBe($on('2025-12-31T23:59:00'))
+        ->and($due('$gte', '2026-01-01'))->toBe($on('2026-01-01T00:00:00', '2026-01-01T09:00:00', '2026-01-01T23:59:59', '2026-01-02T00:00:00'))
+        ->and($due('$gt', '2026-01-01'))->toBe($on('2026-01-02T00:00:00'))
+        ->and($due('$lte', '2026-01-01T09:00:00'))->toBe($on('2025-12-31T23:59:00', '2026-01-01T00:00:00', '2026-01-01T09:00:00'));
+});
+
 it('filters creation_source with $in and $not_in', function (): void {
     $api = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::API]);
     $web = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::WEB]);
@@ -157,7 +206,7 @@ it('rejects a stale_days value outside the supported range', function (int $days
 it('names the field in an operand error', function (): void {
     $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['created_at' => ['$gte' => 'notadate']]]))
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['filter.created_at.$gte' => 'created_at $gte must be a date or date-time.']);
+        ->assertJsonValidationErrors(['filter.created_at.$gte' => 'created_at $gte must be a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z.']);
 });
 
 it('rejects a native operand that holds a NUL or is not valid utf-8', function (string $query, string $key): void {

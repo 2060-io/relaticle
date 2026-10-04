@@ -47,7 +47,6 @@ return [
         'expected' => [
             'string_list' => 'an array of strings',
             'integer' => 'an integer',
-            'format' => 'a :format',
             'type' => 'a :type',
             'domains' => 'a list of domains such as acme.com',
         ],
@@ -79,7 +78,7 @@ return [
         'phone_country_code' => ':name needs a country code, for example +1 415 555 0100.',
         'expected' => [
             'string' => 'a string',
-            'date' => 'a date or date-time',
+            'date' => 'a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z',
             'boolean' => 'true or false',
             'record_ids' => 'a list of record IDs',
             'one_of' => 'one of: :values',

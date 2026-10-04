@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Validator;
 
 final readonly class Operand
 {
+    private const string DATE_FORMATS = '/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})?)?$/';
+
     /** @return list<string>|null */
     public static function stringList(mixed $operand, bool $splitsStrings): ?array
     {
@@ -63,12 +65,11 @@ final readonly class Operand
 
     public static function date(mixed $operand): ?CarbonImmutable
     {
-        if (! is_string($operand) || Validator::make(['date' => $operand], ['date' => ['date']])->fails()) {
+        if (! is_string($operand) || preg_match(self::DATE_FORMATS, $operand) !== 1) {
             return null;
         }
 
-        // Postgres rejects some strings PHP parses ("Jan 1st 2026"), so only Carbon's canonical form reaches the query.
-        return Date::parse($operand);
+        return Validator::make(['date' => $operand], ['date' => ['date']])->passes() ? Date::parse($operand) : null;
     }
 
     public static function isBareDate(string $operand): bool

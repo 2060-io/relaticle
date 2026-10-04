@@ -137,7 +137,7 @@ final readonly class CustomFieldFilter implements Filter
         $expected = match (true) {
             $type === 'array' => __('validation.custom_field.expected.string_list'),
             $type === 'integer' => __('validation.custom_field.expected.integer'),
-            isset($operatorSchema['format']) => __('validation.custom_field.expected.format', ['format' => $operatorSchema['format']]),
+            isset($operatorSchema['format']) => __('validation.filter.expected.date'),
             default => __('validation.custom_field.expected.type', ['type' => $type]),
         };
         throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.operand_type', [
@@ -189,7 +189,7 @@ final readonly class CustomFieldFilter implements Filter
     {
         return match ($format) {
             'date' => Operand::date($operand)?->toDateString(),
-            'date-time' => Operand::date($operand)?->toDateTimeString(),
+            'date-time' => is_string($operand) && Operand::isBareDate($operand) ? Operand::date($operand)?->toDateString() : Operand::date($operand)?->toDateTimeString(),
             default => Operand::string($operand),
         };
     }
@@ -217,7 +217,9 @@ final readonly class CustomFieldFilter implements Filter
                 $q->where('custom_field_id', $field->getKey());
 
                 match ($operator) {
-                    '$eq', '$gt', '$gte', '$lt', '$lte' => $q->where($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand),
+                    '$eq', '$gt', '$gte', '$lt', '$lte' => $this->coversTheWholeDay($field, $operand)
+                        ? $q->whereDate($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand)
+                        : $q->where($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand),
                     '$contains' => $q->where($valueColumn, 'ILIKE', '%'.LikePattern::escape((string) $operand).'%'),
                     '$in' => $q->whereIn($valueColumn, $operand),
                     '$has_any' => $this->containsAny($q, $field, $operand),
@@ -225,6 +227,11 @@ final readonly class CustomFieldFilter implements Filter
                 };
             }),
         };
+    }
+
+    private function coversTheWholeDay(CustomField $field, mixed $operand): bool
+    {
+        return $field->type === CustomFieldType::DATE_TIME->value && is_string($operand) && Operand::isBareDate($operand);
     }
 
     /**
