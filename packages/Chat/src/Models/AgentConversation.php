@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\File;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 /**
@@ -46,7 +47,10 @@ final class AgentConversation extends Model implements HasMedia
     public const string ATTACHMENTS_MEDIA_COLLECTION = MediaCollection::ChatAttachments->value;
 
     /** @var list<string> */
-    public const array ATTACHMENT_MIME_TYPES = ['text/csv', 'text/plain', 'application/csv'];
+    private const array ATTACHMENT_MIME_TYPES = ['text/csv', 'text/plain', 'application/csv'];
+
+    /** @var list<string> */
+    private const array TEXT_ATTACHMENT_MIME_TYPES = ['message/rfc822', 'application/json', 'application/xml'];
 
     protected $guarded = [];
 
@@ -90,7 +94,18 @@ final class AgentConversation extends Model implements HasMedia
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection(self::ATTACHMENTS_MEDIA_COLLECTION)
-            ->acceptsMimeTypes(self::ATTACHMENT_MIME_TYPES);
+            ->acceptsFile(fn (File $file): bool => self::acceptsAttachmentMime($file->mimeType, namedAsText: true));
+    }
+
+    // finfo reads prose as mail, json or a script as easily as plain text, so a text name takes any text type.
+    public static function acceptsAttachmentMime(string $mimeType, bool $namedAsText): bool
+    {
+        if (in_array($mimeType, self::ATTACHMENT_MIME_TYPES, true)) {
+            return true;
+        }
+
+        return $namedAsText
+            && (str_starts_with($mimeType, 'text/') || in_array($mimeType, self::TEXT_ATTACHMENT_MIME_TYPES, true));
     }
 
     /** @param Builder<self> $query */

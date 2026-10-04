@@ -66,7 +66,7 @@ trait HasWorkspaceSettingsNavigation
 
             NavigationItem::make()
                 ->label(__('workspaces.tabs.custom_fields'))
-                ->icon(Heroicon::OutlinedCube)
+                ->icon(CustomFields::NAVIGATION_ICON)
                 ->url(fn (): string => CustomFields::getUrl())
                 ->isActiveWhen($this->isCurrentPage(CustomFields::class))
                 ->visible(fn (): bool => CustomFields::canAccess()),

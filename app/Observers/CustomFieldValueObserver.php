@@ -8,6 +8,7 @@ use App\Actions\CustomFields\EnsureTagOptionsExist;
 use App\Models\CustomFieldValue;
 use App\Support\ActivityLog\CustomFieldChangeLog;
 use App\Support\Media\UploadClaims;
+use Illuminate\Database\Eloquent\Model;
 use Relaticle\CustomFields\Models\CustomField;
 
 final readonly class CustomFieldValueObserver
@@ -48,7 +49,7 @@ final readonly class CustomFieldValueObserver
 
     public function created(CustomFieldValue $value): void
     {
-        $this->changeLog->record($value->entity, $value->customField, null, $value->getValue());
+        $this->log($value, null);
     }
 
     public function updated(CustomFieldValue $value): void
@@ -59,6 +60,17 @@ final readonly class CustomFieldValueObserver
             return;
         }
 
-        $this->changeLog->record($value->entity, $value->customField, $value->getOriginal($column), $value->getValue());
+        $this->log($value, $value->getOriginal($column));
+    }
+
+    private function log(CustomFieldValue $value, mixed $old): void
+    {
+        $entity = $value->getRelationValue('entity');
+
+        if (! $entity instanceof Model) {
+            return;
+        }
+
+        $this->changeLog->record($entity, $value->customField, $old, $value->getValue());
     }
 }

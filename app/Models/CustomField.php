@@ -36,6 +36,12 @@ final class CustomField extends BaseCustomField
         return $this->typeData->acceptsArbitraryValues && ! $this->typeData->withoutUserOptions;
     }
 
+    // Saving a record writes a row for every field, so a row alone does not mean a value.
+    public function hasValues(): bool
+    {
+        return CustomFieldValue::query()->holdingAValue($this)->exists();
+    }
+
     /** @return CustomFieldFactory */
     protected static function newFactory(): Factory
     {

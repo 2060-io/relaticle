@@ -20,6 +20,10 @@ use Relaticle\Chat\Services\ProposalPlanService;
 use Relaticle\Chat\Services\Tools\PlanReferenceValidator;
 use Relaticle\Chat\Support\PlanReference;
 use Relaticle\Chat\Tools\Company\CreateCompanyTool;
+use Relaticle\Chat\Tools\CustomField\CreateCustomFieldTool;
+use Relaticle\Chat\Tools\CustomField\DeleteCustomFieldTool;
+use Relaticle\Chat\Tools\CustomField\SetCustomFieldOptionsTool;
+use Relaticle\Chat\Tools\CustomField\UpdateCustomFieldTool;
 use Relaticle\Chat\Tools\People\CreatePersonTool;
 use Relaticle\Chat\Tools\Task\CreateTaskTool;
 
@@ -428,6 +432,24 @@ describe('reference validation', function (): void {
         expect($result)->toContain('maximum for one approval')
             ->and(PendingAction::query()->where('entity_type', 'company')->count())->toBe(2);
     });
+
+    it('stops a custom field tool chaining past the step limit', function (string $toolClass): void {
+        config()->set('chat.max_plan_steps', 1);
+
+        ($this->tool)(CreateCompanyTool::class)->handle(new Request(['records' => [['name' => 'One']]]));
+
+        $result = ($this->tool)($toolClass)->handle(new Request([
+            'records' => [['entity_type' => 'company', 'name' => 'Tier', 'type' => 'text']],
+        ]));
+
+        expect($result)->toContain('maximum for one approval')
+            ->and(PendingAction::query()->count())->toBe(1);
+    })->with([
+        CreateCustomFieldTool::class,
+        UpdateCustomFieldTool::class,
+        DeleteCustomFieldTool::class,
+        SetCustomFieldOptionsTool::class,
+    ]);
 });
 
 it('does not surface driver detail when a plan step hits a database error', function (): void {

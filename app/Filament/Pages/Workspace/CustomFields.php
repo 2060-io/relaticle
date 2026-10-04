@@ -6,6 +6,7 @@ namespace App\Filament\Pages\Workspace;
 
 use App\Filament\Pages\Concerns\HasWorkspaceSettingsNavigation;
 use Filament\Panel;
+use Filament\Support\Icons\Heroicon;
 use Relaticle\CustomFields\Filament\Management\Pages\CustomFieldsManagementPage;
 
 /**
@@ -18,6 +19,8 @@ use Relaticle\CustomFields\Filament\Management\Pages\CustomFieldsManagementPage;
 final class CustomFields extends CustomFieldsManagementPage
 {
     use HasWorkspaceSettingsNavigation;
+
+    public const Heroicon NAVIGATION_ICON = Heroicon::OutlinedCube;
 
     public static function getSlug(?Panel $panel = null): string
     {

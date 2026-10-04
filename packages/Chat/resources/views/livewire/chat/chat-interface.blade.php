@@ -154,7 +154,8 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             'remove_sample_data' => __('Preparing sample data removal…'),
             'create_custom_field' => __('Drafting a custom field…'),
             'update_custom_field' => __('Preparing custom field changes…'),
-            'add_custom_field_options' => __('Preparing new field options…'),
+            'set_custom_field_options' => __('Preparing field option changes…'),
+            'delete_custom_field' => __('Preparing custom field deletion…'),
         ]),
     }),
 
@@ -438,6 +439,11 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             window.Livewire.on('proposal:resolved', (payload) => {
                 if ((payload?.context ?? 'conversation') !== this.context) return;
                 this.applyProposalResolution(payload);
+            }),
+            window.Livewire.on('proposal:lapsed', (payload) => {
+                if ((payload?.context ?? 'conversation') !== this.context) return;
+                const action = this.findPendingAction(payload?.pendingActionId);
+                if (action?.status === 'pending') action.status = 'expired';
             }),
             // The dock queued a resumed turn (TurnContinuationService). Nothing
             // streams for a second or two while the job picks it up, and without

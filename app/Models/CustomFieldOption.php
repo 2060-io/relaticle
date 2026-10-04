@@ -8,7 +8,9 @@ use App\Models\ActivityLog\Activity;
 use App\Support\ActivityLog\ActivityValue;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Relaticle\CustomFields\Models\CustomFieldOption as BaseCustomFieldOption;
+use Relaticle\CustomFields\Models\Scopes\CustomFieldsActivableScope;
 use Relaticle\CustomFields\Models\Scopes\SortOrderScope;
 use Relaticle\CustomFields\Models\Scopes\TenantScope;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
@@ -19,6 +21,11 @@ final class CustomFieldOption extends BaseCustomFieldOption
 {
     use HasUlids;
     use LogsActivity;
+
+    public function customField(): BelongsTo
+    {
+        return parent::customField()->withoutGlobalScope(CustomFieldsActivableScope::class);
+    }
 
     public function beforeActivityLogged(Activity $activity, string $eventName): void
     {

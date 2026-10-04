@@ -9,8 +9,10 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\UserDeletionReminderNotification;
 use App\Notifications\WorkspaceDeletionReminderNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBody;
@@ -121,6 +123,40 @@ test('expired workspaces are permanently deleted', function () {
         ->assertExitCode(0);
 
     expect(Workspace::query()->find($workspaceId))->toBeNull();
+});
+
+it('removes a purged workspace\'s custom fields, options and values, and leaves other workspaces alone', function (): void {
+    $doomed = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $kept = User::factory()->withWorkspace()->create()->currentWorkspace;
+
+    $rows = fn (Workspace $workspace): array => [
+        DB::table('custom_fields')->where('tenant_id', $workspace->getKey())->count(),
+        DB::table('custom_field_options')->where('tenant_id', $workspace->getKey())->count(),
+        DB::table('custom_field_values')->where('tenant_id', $workspace->getKey())->count(),
+    ];
+
+    foreach ([$doomed, $kept] as $workspace) {
+        $field = DB::table('custom_fields')->where('tenant_id', $workspace->getKey())->where('code', 'status')->first();
+
+        DB::table('custom_field_values')->insert([
+            'id' => (string) Str::ulid(),
+            'tenant_id' => $workspace->getKey(),
+            'entity_type' => 'task',
+            'entity_id' => (string) Str::ulid(),
+            'custom_field_id' => $field->id,
+            'string_value' => 'orphan',
+        ]);
+    }
+
+    $keptBefore = $rows($kept);
+
+    expect($rows($doomed)[0])->toBeGreaterThan(0)
+        ->and($rows($doomed)[1])->toBeGreaterThan(0);
+
+    resolve(DeleteWorkspace::class)->delete($doomed);
+
+    expect($rows($doomed))->toBe([0, 0, 0])
+        ->and($rows($kept))->toBe($keptBefore);
 });
 
 test('day 25 reminder is sent for users', function () {

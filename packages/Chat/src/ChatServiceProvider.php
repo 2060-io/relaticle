@@ -18,6 +18,7 @@ use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -44,6 +45,7 @@ use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Settings\ChatSettings;
 use Relaticle\Chat\Storage\SupersededAwareConversationStore;
 use Relaticle\Chat\Support\AgentRunTelemetry;
+use Relaticle\Chat\Support\RecordChipRenderer;
 
 final class ChatServiceProvider extends ServiceProvider
 {
@@ -194,14 +196,11 @@ final class ChatServiceProvider extends ServiceProvider
      */
     private function recordChipIconScript(): string
     {
-        $icons = [];
-
-        foreach (CrmEntity::cases() as $case) {
-            $icons[$case->value] = $case->iconPath();
-        }
+        $icons = RecordChipRenderer::icons();
 
         return sprintf(
-            '<script>window.RECORD_CHIP_ICONS = %s;</script>',
+            '<script>window.RECORD_CHIP_ICONS = %s; window.PROPOSAL_ICONS = %s;</script>',
+            Js::from(Arr::only($icons, array_column(CrmEntity::cases(), 'value')))->toHtml(),
             Js::from($icons)->toHtml(),
         );
     }

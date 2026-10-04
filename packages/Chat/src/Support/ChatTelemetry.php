@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Support;
 
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Laravel\Ai\Streaming\Events\Error;
 use Sentry\Breadcrumb;
 use Sentry\State\Scope;
+use Throwable;
 
 final class ChatTelemetry
 {
@@ -21,6 +26,37 @@ final class ChatTelemetry
             message: $stage,
             metadata: $data,
         ));
+    }
+
+    public static function providerRejected(RequestException $e, string $model): void
+    {
+        $type = $e->response->json('error.type');
+        $message = $e->response->json('error.message');
+
+        self::logRejection($model, $e->response->status(), is_string($type) ? $type : null, is_string($message) ? $message : null);
+    }
+
+    public static function streamRejected(Error $error, string $model): void
+    {
+        self::logRejection($model, null, $error->type, $error->message);
+    }
+
+    public static function providerFailed(Throwable $e, string $model): void
+    {
+        self::logRejection($model, null, class_basename($e), Str::limit($e->getMessage(), 500));
+    }
+
+    private static function logRejection(string $model, ?int $status, ?string $type, ?string $message): void
+    {
+        $context = [
+            'model' => $model,
+            'status' => $status,
+            'error_type' => $type,
+            'error_message' => $message,
+        ];
+
+        self::breadcrumb('stream.provider_rejected', $context);
+        Log::warning('Chat provider rejected the turn', $context);
     }
 
     public static function tagCurrentScope(string $conversationId, string $workspaceId, string $model): void

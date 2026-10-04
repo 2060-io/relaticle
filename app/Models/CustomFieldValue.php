@@ -7,7 +7,9 @@ namespace App\Models;
 use App\Observers\CustomFieldValueObserver;
 use Database\Factories\CustomFieldValueFactory;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -35,5 +37,39 @@ final class CustomFieldValue extends BaseCustomFieldValue
 
             return parent::save($options);
         });
+    }
+
+    /** @param Builder<self> $query */
+    #[Scope]
+    protected function holdingAValue(Builder $query, CustomField $field): void
+    {
+        $column = $field->getValueColumn();
+
+        $query->where('custom_field_id', $field->getKey())->whereNotNull($column);
+
+        if ($column === 'json_value') {
+            $query->whereRaw("json_value::text not in ('[]', 'null')");
+        }
+
+        if (in_array($column, ['string_value', 'text_value'], true)) {
+            $query->where($column, '!=', '');
+        }
+    }
+
+    /** @param Builder<self> $query */
+    #[Scope]
+    protected function holdingOption(Builder $query, CustomField $field, string $optionId): void
+    {
+        $query->where('custom_field_id', $field->getKey());
+
+        $column = $field->getValueColumn();
+
+        if ($column === 'json_value') {
+            $query->whereJsonContains($column, $optionId);
+
+            return;
+        }
+
+        $query->where($column, $optionId);
     }
 }

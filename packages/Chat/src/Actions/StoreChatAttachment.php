@@ -7,9 +7,12 @@ namespace Relaticle\Chat\Actions;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Relaticle\Chat\Models\AgentConversation;
+use Relaticle\Chat\Support\AttachedRows;
+use Relaticle\Chat\Support\AttachedText;
 use Relaticle\Chat\Support\ChatAttachment;
 use Relaticle\ImportWizard\Exceptions\ImportFileException;
 use Relaticle\ImportWizard\Support\ImportFileLoader;
@@ -23,6 +26,11 @@ final readonly class StoreChatAttachment
         private ImportFileLoader $loader,
         private CreateConversation $conversations,
     ) {}
+
+    public static function originalName(UploadedFile $file): string
+    {
+        return Str::limit($file->getClientOriginalName(), 255, '');
+    }
 
     public function execute(User $user, UploadedFile $file, ?string $conversationId = null): ChatAttachment
     {
@@ -39,38 +47,62 @@ final readonly class StoreChatAttachment
         }
 
         $path = (string) $file->getRealPath();
+        $originalName = self::originalName($file);
+        $isText = AttachedText::accepts($originalName);
 
-        if (! mb_check_encoding((string) file_get_contents($path), 'UTF-8')) {
+        if ($isText && $this->isBlank($path)) {
+            throw ValidationException::withMessages(['file' => __('The file is empty.')]);
+        }
+
+        if (! $isText && ! mb_check_encoding((string) file_get_contents($path), 'UTF-8')) {
             throw ValidationException::withMessages(['file' => __('The file must be UTF-8 text.')]);
         }
 
-        try {
-            $inspection = $this->loader->inspect($path);
-        } catch (ImportFileException $e) {
-            throw ValidationException::withMessages(['file' => $e->getMessage()]);
+        $rows = $isText ? [] : $this->inspect($path);
+
+        if (! AgentConversation::acceptsAttachmentMime((string) File::mimeType($path), $isText)) {
+            throw ValidationException::withMessages(['file' => __('The file must be a CSV, TXT or MD file.')]);
         }
 
-        $originalName = Str::limit($file->getClientOriginalName(), 255, '');
-
         try {
-            $media = DB::transaction(function () use ($user, $workspace, $file, $conversation, $originalName, $inspection) {
+            $media = DB::transaction(function () use ($user, $workspace, $file, $conversation, $originalName, $rows) {
                 $conversation ??= $this->conversations->execute($user, $workspace, $originalName);
 
                 return $conversation->addMedia($file)
                     ->usingFileName(Str::ulid().'.csv')
                     ->usingName(pathinfo($originalName, PATHINFO_FILENAME))
                     ->withAttributes(['workspace_id' => $workspace->getKey()])
-                    ->withCustomProperties([
-                        'original_name' => $originalName,
-                        'row_count' => $inspection['row_count'],
-                        'header' => $inspection['headers'],
-                    ])
+                    ->addCustomHeaders(['ContentType' => 'text/plain; charset=utf-8'])
+                    ->withCustomProperties(['original_name' => $originalName, ...$rows])
                     ->toMediaCollection(AgentConversation::ATTACHMENTS_MEDIA_COLLECTION);
             });
         } catch (FileUnacceptableForCollection) {
-            throw ValidationException::withMessages(['file' => __('The file must be a CSV or plain text file.')]);
+            throw ValidationException::withMessages(['file' => __('The file must be a CSV, TXT or MD file.')]);
         }
 
         return new ChatAttachment($media);
+    }
+
+    private function isBlank(string $path): bool
+    {
+        $head = (string) file_get_contents($path, length: AttachedRows::INLINE_BYTE_LIMIT);
+
+        if (trim(AttachedText::normalize($head)) !== '') {
+            return false;
+        }
+
+        return trim(AttachedText::normalize((string) file_get_contents($path))) === '';
+    }
+
+    /** @return array{row_count: int, header: list<string>} */
+    private function inspect(string $path): array
+    {
+        try {
+            $inspection = $this->loader->inspect($path);
+        } catch (ImportFileException $e) {
+            throw ValidationException::withMessages(['file' => $e->getMessage()]);
+        }
+
+        return ['row_count' => $inspection['row_count'], 'header' => $inspection['headers']];
     }
 }

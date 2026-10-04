@@ -120,7 +120,7 @@ final readonly class GetCrmSummary
         $row = DB::table('custom_fields as field')
             ->leftJoin('custom_field_options as option', function (JoinClause $join): void {
                 $join->on('option.custom_field_id', '=', 'field.id')
-                    ->where('option.name', 'Done');
+                    ->where('option.name', TaskField::DONE_STATUS);
             })
             ->where('field.tenant_id', $workspaceId)
             ->where('field.entity_type', 'task')
