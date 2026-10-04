@@ -35,8 +35,6 @@
                             {{ $workspace->owner
                                 ? __('billing.paused.member_body', ['owner' => $workspace->owner->name, 'workspace' => $workspace->name])
                                 : __('billing.paused.member_body_ownerless', ['workspace' => $workspace->name]) }}
-                        @elseif($trialAvailable)
-                            {{ __('billing.paused.trial_body', ['workspace' => $workspace->name]) }}
                         @else
                             {{ __('billing.paused.owner_body', ['workspace' => $workspace->name]) }}
                         @endif
@@ -44,19 +42,9 @@
 
                     @if($canManageBilling)
                         <div class="mt-8 flex flex-col gap-3">
-                            @if($trialAvailable)
-                                <x-filament::button size="lg" class="w-full justify-center" wire:click="startTrial" wire:loading.attr="disabled" wire:target="startTrial">
-                                    {{ __('billing.trial.start_button') }}
-                                </x-filament::button>
-
-                                <x-filament::button size="lg" color="gray" class="w-full justify-center" x-on:click="$dispatch('open-modal', { id: {{ \Illuminate\Support\Js::from(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) }} })">
-                                    {{ __('billing.upgrade.now') }}
-                                </x-filament::button>
-                            @else
-                                <x-filament::button size="lg" icon="ri-arrow-up-circle-line" class="w-full justify-center" x-on:click="$dispatch('open-modal', { id: {{ \Illuminate\Support\Js::from(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) }} })">
-                                    {{ __('billing.paused.continue') }}
-                                </x-filament::button>
-                            @endif
+                            <x-filament::button size="lg" icon="ri-arrow-up-circle-line" class="w-full justify-center" x-on:click="$dispatch('open-modal', { id: {{ \Illuminate\Support\Js::from(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID) }} })">
+                                {{ __('billing.paused.continue') }}
+                            </x-filament::button>
                         </div>
                     @endif
 

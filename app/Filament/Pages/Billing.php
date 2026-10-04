@@ -99,8 +99,6 @@ final class Billing extends Page
             return;
         }
 
-        $wasPaused = $this->isPaused();
-
         try {
             $started = $startProTrial->execute($this->user(), $this->workspace());
         } catch (AuthorizationException $exception) {
@@ -116,10 +114,6 @@ final class Billing extends Page
         }
 
         Notification::make()->title(__('billing.trial.started'))->success()->send();
-
-        if ($wasPaused) {
-            $this->reopenWhenActive();
-        }
     }
 
     public function managePortal(): void
@@ -207,15 +201,15 @@ final class Billing extends Page
     }
 
     /**
-     * A manual trial start is the escape hatch for a workspace that never
-     * received its automatic creation-time trial: grandfathered pre-billing
-     * workspaces and workspaces created while trials were per-user.
+     * A manual trial start exists for grandfathered pre-billing workspaces,
+     * which never received the automatic creation-time trial.
      */
     private function trialAvailable(): bool
     {
         $workspace = $this->workspace();
 
-        return $workspace->plan === Plan::Free
+        return ! $this->isPaused()
+            && $workspace->plan === Plan::Free
             && $workspace->pro_trial_used_at === null
             && ! $workspace->subscriptions()->exists();
     }

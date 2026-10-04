@@ -68,7 +68,7 @@ it('hides the trial CTA once the workspace used its trial', function (): void {
         ->assertDontSee('@js(', false);
 });
 
-it('offers the trial on the paused screen to a hosted workspace that never received one', function (): void {
+it('asks a paused workspace that never trialed to subscribe, without offering a trial', function (): void {
     config()->set('services.stripe.credit_packs.small', ['price' => 'price_credits_1k_test', 'credits' => 1000]);
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null])->save();
@@ -76,19 +76,23 @@ it('offers the trial on the paused screen to a hosted workspace that never recei
     livewire(Billing::class)
         ->assertSee(__('billing.paused.heading.free', ['workspace' => $workspace->name]))
         ->assertDontSee('billing.paused.heading.', false)
-        ->assertSee(__('billing.paused.trial_body', ['workspace' => $workspace->name]))
-        ->assertSee(__('billing.trial.start_button'))
-        ->assertSee(__('billing.upgrade.now'))
+        ->assertSee(__('billing.paused.owner_body', ['workspace' => $workspace->name]))
+        ->assertSee(__('billing.paused.continue'))
+        ->assertDontSee(__('billing.trial.start_button'))
+        ->assertDontSee(__('billing.upgrade.now'))
         ->assertDontSee(__('billing.packs.buy', ['credits' => number_format(1000)]));
 });
 
-it('opens the workspace once the trial starts from the paused screen', function (): void {
+it('refuses to start a trial on a paused workspace', function (): void {
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null])->save();
 
     livewire(Billing::class)
         ->call('startTrial')
-        ->assertRedirect(Filament::getUrl($workspace));
+        ->assertNotified(__('billing.trial.not_available'))
+        ->assertNoRedirect();
+
+    expect($workspace->refresh()->pro_trial_used_at)->toBeNull();
 });
 
 it('replaces the app shell with a standalone paused screen when the trial ends', function (): void {
