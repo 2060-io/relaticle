@@ -50,6 +50,33 @@ final readonly class FilterTree
     }
 
     /**
+     * @param  array<array-key, mixed>  $filter
+     * @return list<string>
+     */
+    public static function customFieldCodes(array $filter): array
+    {
+        // A relation key is not walked: its custom_fields name another entity's codes.
+        $customFields = $filter['custom_fields'] ?? null;
+        $codes = is_array($customFields) ? array_map(strval(...), array_keys($customFields)) : [];
+
+        foreach (LogicFilter::KEYWORDS as $keyword) {
+            $value = $filter[$keyword] ?? null;
+
+            if (! is_array($value)) {
+                continue;
+            }
+
+            foreach (array_is_list($value) ? $value : [$value] as $branch) {
+                if (is_array($branch)) {
+                    array_push($codes, ...self::customFieldCodes($branch));
+                }
+            }
+        }
+
+        return $codes;
+    }
+
+    /**
      * @param  array<array-key, mixed>  $node
      */
     private static function hasInvalidKey(array $node): bool
