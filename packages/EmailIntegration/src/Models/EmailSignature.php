@@ -7,11 +7,20 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\User;
 use Database\Factories\EmailSignatureFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+#[Fillable([
+    'workspace_id',
+    'connected_account_id',
+    'user_id',
+    'name',
+    'content_html',
+    'is_default',
+])]
 final class EmailSignature extends Model
 {
     /**
@@ -23,15 +32,6 @@ final class EmailSignature extends Model
     {
         return EmailSignatureFactory::new();
     }
-
-    protected $fillable = [
-        'workspace_id',
-        'connected_account_id',
-        'user_id',
-        'name',
-        'content_html',
-        'is_default',
-    ];
 
     /**
      * @return BelongsTo<ConnectedAccount, $this>

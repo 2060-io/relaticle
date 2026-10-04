@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\SystemAdmin\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Passkeys\Passkey;
@@ -13,11 +14,10 @@ use Laravel\Passkeys\Passkeys;
  * @property string $user_id
  * @property-read SystemAdministrator $user
  */
+#[Table(name: 'system_administrator_passkeys')]
 final class SystemAdministratorPasskey extends Passkey
 {
     use HasFactory;
-
-    protected $table = 'system_administrator_passkeys';
 
     /**
      * The host staff credentials bind to, and the only place it is decided. It

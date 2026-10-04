@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\User;
 use Database\Factories\EmailBlocklistFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,14 @@ use Relaticle\EmailIntegration\Enums\EmailBlocklistType;
  * @property string $value
  * @property bool $include_subdomains
  */
+#[Fillable([
+    'user_id',
+    'workspace_id',
+    'connected_account_id',
+    'type',
+    'value',
+    'include_subdomains',
+])]
 final class EmailBlocklist extends Model
 {
     /**
@@ -29,15 +38,6 @@ final class EmailBlocklist extends Model
     {
         return EmailBlocklistFactory::new();
     }
-
-    protected $fillable = [
-        'user_id',
-        'workspace_id',
-        'connected_account_id',
-        'type',
-        'value',
-        'include_subdomains',
-    ];
 
     protected function casts(): array
     {

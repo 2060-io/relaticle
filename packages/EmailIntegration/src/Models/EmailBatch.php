@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\User;
 use Database\Factories\EmailBatchFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,16 @@ use Relaticle\EmailIntegration\Enums\EmailBatchStatus;
  * @property int $failed_count
  * @property EmailBatchStatus $status
  */
+#[Fillable([
+    'workspace_id',
+    'user_id',
+    'connected_account_id',
+    'subject',
+    'total_recipients',
+    'sent_count',
+    'failed_count',
+    'status',
+])]
 final class EmailBatch extends Model
 {
     /**
@@ -38,17 +49,6 @@ final class EmailBatch extends Model
     {
         return EmailBatchFactory::new();
     }
-
-    protected $fillable = [
-        'workspace_id',
-        'user_id',
-        'connected_account_id',
-        'subject',
-        'total_recipients',
-        'sent_count',
-        'failed_count',
-        'status',
-    ];
 
     protected function casts(): array
     {

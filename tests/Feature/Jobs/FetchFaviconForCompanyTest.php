@@ -10,6 +10,9 @@ use App\Models\CustomFieldValue;
 use App\Models\User;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
 use Filament\Facades\Filament;
+use Illuminate\Queue\Attributes\Timeout;
+use Illuminate\Queue\Attributes\Tries;
+use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Spatie\MediaLibrary\MediaCollections\Exceptions\FileUnacceptableForCollection;
@@ -23,11 +26,11 @@ beforeEach(function (): void {
 });
 
 test('job declares timeout, tries, uniqueFor consistent with horizon worker timeout', function (): void {
-    $job = new FetchFaviconForCompany(Company::factory()->for($this->user->currentWorkspace)->create());
+    $job = new ReflectionClass(FetchFaviconForCompany::class);
 
-    expect($job->tries)->toBe(1)
-        ->and($job->timeout)->toBe(30)
-        ->and($job->uniqueFor)->toBe(600);
+    expect($job->getAttributes(Tries::class)[0]->newInstance()->tries)->toBe(1)
+        ->and($job->getAttributes(Timeout::class)[0]->newInstance()->timeout)->toBe(30)
+        ->and($job->getAttributes(UniqueFor::class)[0]->newInstance()->uniqueFor)->toBe(600);
 });
 
 test('job swallows throwable from favicon driver instead of letting it escape', function (): void {

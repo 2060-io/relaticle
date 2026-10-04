@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models\Passport;
 
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Support\Facades\DB;
 use Laravel\Passport\AuthCode as BaseAuthCode;
 
@@ -13,18 +14,17 @@ use Laravel\Passport\AuthCode as BaseAuthCode;
  * The workspace_id is stashed in the session by the custom ApproveAuthorizationController
  * (POST /oauth/authorize) and read here when Passport persists the auth code row.
  */
+#[Fillable([
+    'id',
+    'user_id',
+    'client_id',
+    'scopes',
+    'revoked',
+    'expires_at',
+    'workspace_id',
+])]
 final class AuthCode extends BaseAuthCode
 {
-    protected $fillable = [
-        'id',
-        'user_id',
-        'client_id',
-        'scopes',
-        'revoked',
-        'expires_at',
-        'workspace_id',
-    ];
-
     protected static function booted(): void
     {
         self::creating(function (self $code): void {

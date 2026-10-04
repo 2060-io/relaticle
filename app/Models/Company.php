@@ -22,6 +22,7 @@ use Filament\Models\Contracts\HasAvatar;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -110,12 +111,16 @@ final class Company extends Model implements HasAvatar, HasCustomFields, HasMedi
      * the shared entity icon (App\Enums\CrmEntity), not a generated initials
      * tile: 57% of companies carry a real logo, so colour in a company column
      * should only ever mean "this is the brand's own mark".
+     *
+     * @return Attribute<non-falsy-string|null, never>
      */
-    protected function getLogoAttribute(): ?string
+    protected function logo(): Attribute
     {
-        $logo = $this->getFirstMediaUrl(self::LOGO_MEDIA_COLLECTION);
+        return Attribute::get(function (): ?string {
+            $logo = $this->getFirstMediaUrl(self::LOGO_MEDIA_COLLECTION);
 
-        return $logo === '' || $logo === '0' ? null : $logo;
+            return $logo === '' || $logo === '0' ? null : $logo;
+        });
     }
 
     public function getFilamentAvatarUrl(): ?string

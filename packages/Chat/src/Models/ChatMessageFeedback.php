@@ -7,7 +7,9 @@ namespace Relaticle\Chat\Models;
 use App\Models\User;
 use App\Models\Workspace;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -28,6 +30,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property ?string $comment
  * @property ?string $model
  */
+#[Fillable([
+    'workspace_id',
+    'user_id',
+    'conversation_id',
+    'message_id',
+    'rating',
+    'category',
+    'comment',
+    'model',
+])]
+#[Table(name: 'chat_message_feedback')]
 final class ChatMessageFeedback extends Model
 {
     /** @use HasFactory<Factory<static>> */
@@ -40,19 +53,6 @@ final class ChatMessageFeedback extends Model
     public const string RATING_DOWN = 'down';
 
     public const array CATEGORIES = ['inaccurate', 'did_not_follow', 'too_slow', 'other'];
-
-    protected $table = 'chat_message_feedback';
-
-    protected $fillable = [
-        'workspace_id',
-        'user_id',
-        'conversation_id',
-        'message_id',
-        'rating',
-        'category',
-        'comment',
-        'model',
-    ];
 
     /** @param Builder<self> $query */
     #[Scope]

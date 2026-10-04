@@ -6,6 +6,9 @@ namespace Relaticle\EmailIntegration\Jobs;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Attributes\Backoff;
+use Illuminate\Queue\Attributes\Timeout;
+use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -19,15 +22,14 @@ use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 use Relaticle\EmailIntegration\Services\EmailSendingService;
 use Throwable;
 
+#[Backoff(30)]
+#[Timeout(self::TIMEOUT_SECONDS)]
+#[Tries(3)]
 final class SendEmailJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
-
-    public int $backoff = 30;
-
-    public int $timeout = 120;
+    private const int TIMEOUT_SECONDS = 120;
 
     public function __construct(
         public readonly string $emailId,
@@ -41,13 +43,13 @@ final class SendEmailJob implements ShouldQueue
         return [
             new WithoutOverlapping($this->emailId)
                 ->dontRelease()
-                ->expireAfter($this->timeout + 60),
+                ->expireAfter(self::TIMEOUT_SECONDS + 60),
         ];
     }
 
     public function handle(EmailSendingService $sendingService, LinkEmailAction $linkEmailAction): void
     {
-        $lock = Cache::lock($this->deliveryLockKey(), $this->timeout + 60);
+        $lock = Cache::lock($this->deliveryLockKey(), self::TIMEOUT_SECONDS + 60);
 
         if (! $lock->get()) {
             return;

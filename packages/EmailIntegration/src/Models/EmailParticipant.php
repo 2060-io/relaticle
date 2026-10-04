@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Models;
 use App\Models\Company;
 use App\Models\People;
 use Database\Factories\EmailParticipantFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,14 @@ use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
  * @property string|null $name
  * @property EmailParticipantRole $role
  */
+#[Fillable([
+    'email_id',
+    'email_address',
+    'name',
+    'role',
+    'contact_id',
+    'company_id',
+])]
 final class EmailParticipant extends Model
 {
     /**
@@ -29,15 +38,6 @@ final class EmailParticipant extends Model
     {
         return EmailParticipantFactory::new();
     }
-
-    protected $fillable = [
-        'email_id',
-        'email_address',
-        'name',
-        'role',
-        'contact_id',
-        'company_id',
-    ];
 
     /**
      * @return BelongsTo<Email, $this>

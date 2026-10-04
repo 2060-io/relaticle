@@ -6,6 +6,7 @@ namespace Relaticle\EmailIntegration\Models;
 
 use App\Models\User;
 use Database\Factories\EmailAccessRequestFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -18,6 +19,15 @@ use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 /**
  * @property EmailAccessRequestStatus $status
  */
+#[Fillable([
+    'requester_id',
+    'owner_id',
+    'email_id',
+    'emailable_type',
+    'emailable_id',
+    'tier_requested',
+    'status',
+])]
 final class EmailAccessRequest extends Model
 {
     /**
@@ -29,16 +39,6 @@ final class EmailAccessRequest extends Model
     {
         return EmailAccessRequestFactory::new();
     }
-
-    protected $fillable = [
-        'requester_id',
-        'owner_id',
-        'email_id',
-        'emailable_type',
-        'emailable_id',
-        'tier_requested',
-        'status',
-    ];
 
     protected function casts(): array
     {
