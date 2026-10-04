@@ -113,6 +113,8 @@ One word per business concept. The model class owns the word, and code, tests an
 |---|---|---|
 | The tenant | workspace (`App\Models\Workspace`) | team |
 | A user's place in a workspace | member (`App\Models\Membership`, `WorkspaceRole`) | the `editor` role key |
+| A human the workspace tracks | person, people (`App\Models\People`) | contact as the record's name |
+| A sale in progress | opportunity (`App\Models\Opportunity`) | deal as a label or as the record's name |
 
 `team` survives in three places. Jetstream's own contract and event names keep it
 (`AddsTeamMembers`, `TeamMemberAdded`). `teammate` is a person, not the tenant. A company's
@@ -121,8 +123,18 @@ the custom-fields package's word and stays at that boundary: `TenantContextServi
 `team` relation name the package registers. Stripe objects already carry a `team_id` metadata
 key, so billing still writes and reads it.
 
+The model is `People` and the singular is person. `contact` survives where it names something
+else. The opportunity's `contact` relation carries the "Point of Contact" label. "Contact us"
+and the contact form are a verb and a page. On the email privacy page, contacts are addresses
+and domains. `deal` stays the plain word in prose ("track a deal through the pipeline") and
+never labels the record. Agent-facing text keeps both retired words as synonyms, so a model
+maps the user's word to the right tool: tool descriptions, prompts and schema resources.
+
 `tests/Arch/ConventionsTest.php` fails an identifier that uses `team` for the tenant, and any
-use of the retired `editor` role key.
+use of the retired `editor` role key. It fails a bare `Contact` or `Deal` label anywhere in
+source. It fails `contacts` and `a contact` in published copy: `lang/`, `resources/views/`,
+`resources/js/` and each package's `resources/`. The gate reads no other form of the two
+words, so a reviewer does.
 
 ## i18n enforcement
 
