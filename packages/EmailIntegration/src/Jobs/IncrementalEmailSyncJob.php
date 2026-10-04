@@ -14,6 +14,7 @@ use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\MaxExceptions;
 use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Queue\Middleware\Skip;
 use Illuminate\Support\Facades\Bus;
 use Relaticle\EmailIntegration\Actions\StartMailboxHistoryImportAction;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
@@ -44,6 +45,14 @@ final class IncrementalEmailSyncJob implements ShouldBeUnique, ShouldQueue
     public function retryUntil(): CarbonImmutable
     {
         return now()->addDay();
+    }
+
+    /**
+     * @return list<Skip>
+     */
+    public function middleware(): array
+    {
+        return [Skip::when($this->connectedAccount->trashed())];
     }
 
     public function handle(MailServiceFactoryInterface $mailFactory): void

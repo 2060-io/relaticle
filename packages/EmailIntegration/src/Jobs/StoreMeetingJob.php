@@ -11,6 +11,7 @@ use Illuminate\Queue\Attributes\Backoff;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\Tries;
+use Illuminate\Queue\Middleware\Skip;
 use Relaticle\EmailIntegration\Actions\StoreMeetingAction;
 use Relaticle\EmailIntegration\Data\CalendarEventData;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -32,6 +33,14 @@ final class StoreMeetingJob implements ShouldQueue
         public readonly CalendarEventData $event,
         public readonly ?int $calendarSyncGeneration = null,
     ) {}
+
+    /**
+     * @return list<Skip>
+     */
+    public function middleware(): array
+    {
+        return [Skip::when($this->connectedAccount->trashed())];
+    }
 
     public function handle(
         StoreMeetingAction $store,

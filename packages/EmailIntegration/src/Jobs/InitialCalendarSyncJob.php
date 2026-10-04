@@ -12,6 +12,7 @@ use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Queue\Middleware\Skip;
 use Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction;
 use Relaticle\EmailIntegration\Actions\ReconcileCalendarMeetingsAction;
 use Relaticle\EmailIntegration\Data\CalendarEventData;
@@ -41,6 +42,14 @@ final class InitialCalendarSyncJob implements ShouldBeUnique, ShouldQueue
         public readonly ?string $pageToken = null,
         public readonly bool $reconcileAfter = false,
     ) {}
+
+    /**
+     * @return list<Skip>
+     */
+    public function middleware(): array
+    {
+        return [Skip::when($this->connectedAccount->trashed())];
+    }
 
     public function handle(CalendarServiceFactoryInterface $serviceFactory): void
     {
