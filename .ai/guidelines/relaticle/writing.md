@@ -34,6 +34,23 @@ inside an unquoted YAML front-matter value in
 `packages/Documentation/resources/content` throws a ParseException that 500s
 every help and docs page, not just that file. Use a period or a comma there.
 
+## Record names
+
+Copy calls a record what the product calls it: company, person, opportunity, task, note.
+The glossary and the words it retired are in `architecture.md`, under Business language.
+
+"People" is also the plain word for humans. A possessive in front of it reads as the
+reader's own staff.
+
+    Bad:  Relaticle brings your people, companies and sales pipeline together.
+    Good: Relaticle keeps the people and companies you sell to in one CRM.
+
+Say whose they are after the noun, or use the singular: "every company, person, and
+opportunity". `tests/Arch/ConventionsTest.php` fails `your people` in published copy.
+
+Give "people" one meaning per sentence. When the record and the humans who use the
+product meet, the humans are "you" or "your team". No test reads for this.
+
 ## House style
 
 - One idea per sentence. 25 words maximum. Active voice.

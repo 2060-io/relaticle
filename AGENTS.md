@@ -116,6 +116,9 @@ One word per business concept. The model class owns the word, and code, tests an
 |---|---|---|
 | The tenant | workspace (`App\Models\Workspace`) | team |
 | A user's place in a workspace | member (`App\Models\Membership`, `WorkspaceRole`) | the `editor` role key |
+| A business the workspace tracks | company (`App\Models\Company`) | account as the record's name |
+| A human the workspace tracks | person, people (`App\Models\People`) | contact as the record's name |
+| A sale in progress | opportunity (`App\Models\Opportunity`) | deal as a label or as the record's name |
 
 `team` survives in three places. Jetstream's own contract and event names keep it
 (`AddsTeamMembers`, `TeamMemberAdded`). `teammate` is a person, not the tenant. A company's
@@ -124,8 +127,22 @@ the custom-fields package's word and stays at that boundary: `TenantContextServi
 `team` relation name the package registers. Stripe objects already carry a `team_id` metadata
 key, so billing still writes and reads it.
 
+The model is `People` and the singular is person. `contact` survives where it names something
+else. The opportunity's `contact` relation carries the "Point of Contact" label. "Contact us"
+and the contact form are a verb and a page. On the email privacy page, contacts are addresses
+and domains. `deal` stays the plain word in prose ("track a deal through the pipeline") and
+never labels the record. Agent-facing text keeps both retired words as synonyms, so a model
+maps the user's word to the right tool: tool descriptions, prompts and schema resources.
+
 `tests/Arch/ConventionsTest.php` fails an identifier that uses `team` for the tenant, and any
-use of the retired `editor` role key.
+use of the retired `editor` role key. It fails a bare `Contact` or `Deal` label anywhere in
+source. It fails `contacts` and `a contact` in published copy: `lang/`, `resources/views/`,
+`resources/js/` and each package's `resources/`. The gate reads no other form of the two
+words, so a reviewer does.
+
+`account` names the sign-in and a connected mailbox, never a company. The company's
+"Account Owner" field keeps the word, and so does its `account_owner_id` column. No test can
+tell these senses apart, so a reviewer reads for a company called an account.
 
 ## i18n enforcement
 
@@ -622,6 +639,23 @@ One trap when rewriting: a colon is the natural replacement, but a bare `: `
 inside an unquoted YAML front-matter value in
 `packages/Documentation/resources/content` throws a ParseException that 500s
 every help and docs page, not just that file. Use a period or a comma there.
+
+## Record names
+
+Copy calls a record what the product calls it: company, person, opportunity, task, note.
+The glossary and the words it retired are in `architecture.md`, under Business language.
+
+"People" is also the plain word for humans. A possessive in front of it reads as the
+reader's own staff.
+
+    Bad:  Relaticle brings your people, companies and sales pipeline together.
+    Good: Relaticle keeps the people and companies you sell to in one CRM.
+
+Say whose they are after the noun, or use the singular: "every company, person, and
+opportunity". `tests/Arch/ConventionsTest.php` fails `your people` in published copy.
+
+Give "people" one meaning per sentence. When the record and the humans who use the
+product meet, the humans are "you" or "your team". No test reads for this.
 
 ## House style
 

@@ -629,6 +629,64 @@ it('keeps the retired team word out of identifiers', function (): void {
     );
 });
 
+it('keeps the retired contact and deal words out of record copy', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $labelPathsNamingSomethingElse = [
+        'app/Support/MarketingNavigation.php',
+        'resources/views/alternatives/',
+    ];
+
+    $emailParticipantPaths = [
+        'lang/en/filament/pages/email-privacy-settings.php',
+    ];
+
+    $offenders = [];
+
+    foreach (['app', 'config', 'database/factories', 'database/seeders', 'lang', 'packages', 'resources', 'routes'] as $directory) {
+        $files = new RegexIterator(
+            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory)),
+            '/\.(php|md|js|json)$/',
+        );
+
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $relativePath = str_replace($root.'/', '', $file->getPathname());
+
+            $checksLabels = ! array_any($labelPathsNamingSomethingElse, fn (string $path): bool => str_starts_with($relativePath, $path));
+            $checksProse = preg_match('#^(lang|resources/views|resources/js|packages/\w+/resources)/#', $relativePath) === 1
+                && ! in_array($relativePath, $emailParticipantPaths, true);
+
+            foreach (explode("\n", (string) file_get_contents($file->getPathname())) as $index => $line) {
+                $retired = [];
+
+                if ($checksLabels && preg_match('/([\'"])(?:Contacts?|Deals?)\1/', $line, $label) === 1) {
+                    $retired[] = $label[0];
+                }
+
+                if ($checksProse && preg_match('/\bcontacts\b|\ba contact\b(?! form)/i', $line, $recordNoun) === 1) {
+                    $retired[] = $recordNoun[0];
+                }
+
+                if ($checksProse && preg_match('/\b[Yy]our people\b(?! export)/', $line, $possessive) === 1) {
+                    $retired[] = $possessive[0];
+                }
+
+                foreach ($retired as $word) {
+                    $offenders[] = $relativePath.':'.($index + 1).' '.$word;
+                }
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'A person record is a person or people, and Opportunity labels the record (.ai/guidelines/relaticle/architecture.md, '.
+        'Business language). "Your people" reads as the reader\'s staff (.ai/guidelines/relaticle/writing.md). '.
+        'Offending lines: '.implode(', ', array_slice($offenders, 0, 40)),
+    );
+});
+
 it('keeps published copy and source free of em-dashes', function (): void {
     $root = dirname(__DIR__, 2);
     $emDash = "\u{2014}";
