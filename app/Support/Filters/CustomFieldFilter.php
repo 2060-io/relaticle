@@ -44,13 +44,13 @@ final readonly class CustomFieldFilter implements Filter
         }
 
         if (! is_array($value)) {
-            $this->invalid(__('validation.custom_field.filter_not_object'));
+            throw FilterErrors::at('', __('validation.custom_field.filter_not_object'));
         }
 
         $fieldCodes = array_keys($value);
 
         if (! array_all($fieldCodes, static fn (mixed $fieldCode): bool => is_string($fieldCode))) {
-            $this->invalid(__('validation.custom_field.filter_code_not_string'));
+            throw FilterErrors::at('', __('validation.custom_field.filter_code_not_string'));
         }
 
         $fields = $this->filterableFields();
@@ -58,11 +58,11 @@ final readonly class CustomFieldFilter implements Filter
         $unknownFieldCode = array_first(array_diff($fieldCodes, $fields->keys()->all()));
 
         if ($unknownFieldCode !== null) {
-            $this->invalid(__('validation.custom_field.unknown_filter_field', [
+            throw FilterErrors::at((string) $unknownFieldCode, __('validation.custom_field.unknown_filter_field', [
                 'field' => $unknownFieldCode,
                 'entity' => $this->entityType,
                 'available' => $fields->isEmpty() ? 'none' : $fields->keys()->implode(', '),
-            ]), (string) $unknownFieldCode);
+            ]));
         }
 
         $options = $this->optionMap->fromFields(
@@ -71,7 +71,7 @@ final readonly class CustomFieldFilter implements Filter
 
         foreach ($value as $fieldCode => $operators) {
             if (! is_array($operators) || $operators === []) {
-                $this->invalid(__('validation.custom_field.operator_object', ['field' => $fieldCode]), (string) $fieldCode);
+                throw FilterErrors::at((string) $fieldCode, __('validation.custom_field.operator_object', ['field' => $fieldCode]));
             }
 
             $field = $fields[$fieldCode];
@@ -120,10 +120,10 @@ final readonly class CustomFieldFilter implements Filter
         };
 
         if (is_array($normalized) && count($normalized) > CustomFieldFilterSchema::MAX_LIST_VALUES) {
-            $this->invalid(__('validation.custom_field.too_many_values', [
+            throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.too_many_values', [
                 'field' => $fieldCode,
                 'max' => CustomFieldFilterSchema::MAX_LIST_VALUES,
-            ]), "{$fieldCode}.{$operator}");
+            ]));
         }
 
         if ($normalized !== null) {
@@ -136,11 +136,11 @@ final readonly class CustomFieldFilter implements Filter
             isset($operatorSchema['format']) => "a {$operatorSchema['format']}",
             default => "a {$type}",
         };
-        $this->invalid(__('validation.custom_field.operand_type', [
+        throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.operand_type', [
             'field' => $fieldCode,
             'operator' => $operator,
             'expected' => $expected,
-        ]), "{$fieldCode}.{$operator}");
+        ]));
     }
 
     /**
@@ -171,14 +171,14 @@ final readonly class CustomFieldFilter implements Filter
         }
 
         if ($this->optionMap->isAmbiguous($entry, $value)) {
-            $this->invalid(__('validation.custom_field.ambiguous_option', ['field' => $fieldCode, 'value' => $value]), "{$fieldCode}.{$operator}");
+            throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.ambiguous_option', ['field' => $fieldCode, 'value' => $value]));
         }
 
-        $this->invalid(__('validation.custom_field.unknown_option', [
+        throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.unknown_option', [
             'field' => $fieldCode,
             'value' => $value,
             'labels' => $entry['labels'] === [] ? 'none' : implode(', ', $entry['labels']),
-        ]), "{$fieldCode}.{$operator}");
+        ]));
     }
 
     private function formattedString(mixed $operand, ?string $format): ?string
@@ -188,11 +188,6 @@ final readonly class CustomFieldFilter implements Filter
             'date-time' => Operand::date($operand)?->toDateTimeString(),
             default => Operand::string($operand),
         };
-    }
-
-    private function invalid(string $message, string $path = ''): never
-    {
-        throw FilterErrors::at($path, $message);
     }
 
     /**
@@ -276,7 +271,7 @@ final readonly class CustomFieldFilter implements Filter
         $path = "{$field->code}.domain";
 
         if (! is_array($operators) || $operators === [] || array_is_list($operators)) {
-            $this->invalid(__('validation.filter.operator_object', ['name' => 'domain', 'operator' => '$in']), $path);
+            throw FilterErrors::at($path, __('validation.filter.operator_object', ['name' => 'domain', 'operator' => '$in']));
         }
 
         $expression = self::DOMAIN_OF[$field->type] ?? throw new \LogicException("Field type [{$field->type}] has no domain.");
@@ -296,11 +291,11 @@ final readonly class CustomFieldFilter implements Filter
             }
 
             if (array_any($domains, static fn (string $domain): bool => preg_match('/^[^\s\p{Cc}\/@:?#]+$/u', $domain) !== 1)) {
-                $this->invalid(__('validation.custom_field.operand_type', [
+                throw FilterErrors::at("{$path}.{$operator}", __('validation.custom_field.operand_type', [
                     'field' => $path,
                     'operator' => $operator,
                     'expected' => 'a list of domains such as acme.com',
-                ]), "{$path}.{$operator}");
+                ]));
             }
 
             $matching = fn (Builder $values): Builder => $values
@@ -321,15 +316,15 @@ final readonly class CustomFieldFilter implements Filter
     private function assertSupported(string $path, string $operator, array $supported): void
     {
         if (! str_starts_with($operator, '$') && isset($supported['$'.$operator])) {
-            $this->invalid(__('validation.filter.operator_sigil', ['operator' => '$'.$operator]), "{$path}.{$operator}");
+            throw FilterErrors::at("{$path}.{$operator}", __('validation.filter.operator_sigil', ['operator' => '$'.$operator]));
         }
 
         if (! isset($supported[$operator])) {
-            $this->invalid(__('validation.custom_field.unsupported_filter_operator', [
+            throw FilterErrors::at("{$path}.{$operator}", __('validation.custom_field.unsupported_filter_operator', [
                 'operator' => $operator,
                 'field' => $path,
                 'supported' => implode(', ', array_keys($supported)),
-            ]), "{$path}.{$operator}");
+            ]));
         }
     }
 
@@ -345,11 +340,11 @@ final readonly class CustomFieldFilter implements Filter
             $canonical = CanonicalValue::of($field, $value);
 
             if ($field->type === 'phone' && ! str_starts_with($canonical, '+')) {
-                $this->invalid(__('validation.filter.phone_country_code', ['name' => $field->code]), "{$field->code}.{$operator}.{$index}");
+                throw FilterErrors::at("{$field->code}.{$operator}.{$index}", __('validation.filter.phone_country_code', ['name' => $field->code]));
             }
 
             if ($field->type === 'phone' && preg_match('/^\+\d{1,15}(;ext=\d+)?$/', $canonical) !== 1) {
-                $this->invalid(__('validation.filter.phone_invalid', ['name' => $field->code, 'value' => $value]), "{$field->code}.{$operator}.{$index}");
+                throw FilterErrors::at("{$field->code}.{$operator}.{$index}", __('validation.filter.phone_invalid', ['name' => $field->code, 'value' => $value]));
             }
 
             $spellings[] = $canonical;
