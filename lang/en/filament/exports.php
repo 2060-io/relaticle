@@ -17,7 +17,7 @@ return [
         'opportunities_count' => 'Number of Opportunities',
         'opportunity_name' => 'Opportunity Name',
         'company' => 'Company',
-        'contact_person' => 'Contact Person',
+        'contact_person' => 'Point of Contact',
         'notes_count' => 'Number of Notes',
         'tasks_count' => 'Number of Tasks',
     ],
