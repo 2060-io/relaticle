@@ -6,7 +6,6 @@ namespace App\Http\Requests\Api\V1;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
-use stdClass;
 
 final class IndexRequest extends FormRequest
 {
@@ -59,8 +58,11 @@ final class IndexRequest extends FormRequest
             return false;
         }
 
-        $decoded = json_decode($content);
-
-        return $decoded instanceof stdClass || $decoded === [];
+        // json() casts its decode to an array, so an empty result cannot tell {} from truncated json.
+        return match ($content[0]) {
+            '{' => $this->json()->count() > 0 || json_validate($content),
+            '[' => $this->json()->count() === 0 && json_validate($content),
+            default => false,
+        };
     }
 }

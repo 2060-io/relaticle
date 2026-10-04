@@ -38,7 +38,7 @@ final readonly class FilterTree
             throw FilterErrors::at('filter', __('validation.filter.not_object'));
         }
 
-        $conditions = self::walk($filter, $entity, 'filter', 0, 0);
+        $conditions = self::walk($filter, EntityFilters::definitions($entity), 'filter', 0, 0);
 
         if ($conditions > self::MAX_CONDITIONS) {
             throw FilterErrors::at('filter', __('validation.filter.too_many_conditions', ['max' => self::MAX_CONDITIONS, 'count' => $conditions]));
@@ -47,14 +47,14 @@ final readonly class FilterTree
 
     /**
      * @param  array<array-key, mixed>  $node
+     * @param  array<string, FilterDefinition>  $definitions
      */
-    private static function walk(array $node, CrmEntity $entity, string $path, int $depth, int $hops): int
+    private static function walk(array $node, array $definitions, string $path, int $depth, int $hops): int
     {
         if ($node === []) {
             throw FilterErrors::at($path, __('validation.filter.empty_node', ['name' => $path]));
         }
 
-        $definitions = EntityFilters::definitions($entity);
         $conditions = 0;
 
         foreach ($node as $name => $value) {
@@ -62,7 +62,7 @@ final readonly class FilterTree
             $child = "{$path}.{$name}";
 
             if (in_array($name, LogicFilter::KEYWORDS, true)) {
-                $conditions += self::walkLogic($name, $value, $entity, $child, $depth, $hops);
+                $conditions += self::walkLogic($name, $value, $definitions, $child, $depth, $hops);
 
                 continue;
             }
@@ -98,7 +98,10 @@ final readonly class FilterTree
         return $conditions;
     }
 
-    private static function walkLogic(string $keyword, mixed $value, CrmEntity $entity, string $path, int $depth, int $hops): int
+    /**
+     * @param  array<string, FilterDefinition>  $definitions
+     */
+    private static function walkLogic(string $keyword, mixed $value, array $definitions, string $path, int $depth, int $hops): int
     {
         if ($depth + 1 > self::MAX_LOGIC_DEPTH) {
             throw FilterErrors::at($path, __('validation.filter.too_deep', ['max' => self::MAX_LOGIC_DEPTH]));
@@ -113,7 +116,7 @@ final readonly class FilterTree
         $conditions = 0;
 
         foreach ($branches as $index => $branch) {
-            $conditions += self::walk(is_array($branch) ? $branch : [], $entity, $keyword === '$not' ? $path : "{$path}.{$index}", $depth + 1, $hops);
+            $conditions += self::walk(is_array($branch) ? $branch : [], $definitions, $keyword === '$not' ? $path : "{$path}.{$index}", $depth + 1, $hops);
         }
 
         return $conditions;
@@ -153,7 +156,7 @@ final readonly class FilterTree
             return $conditions;
         }
 
-        return $conditions + self::walk($nested, $definition->related, $path, $depth, $hops + 1);
+        return $conditions + self::walk($nested, EntityFilters::definitions($definition->related), $path, $depth, $hops + 1);
     }
 
     private static function walkCustomFields(mixed $value, string $path, bool $topLevel): int
