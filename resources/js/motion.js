@@ -22,17 +22,17 @@ reveal("#features > div > .grid", 0.1, () => {
     animate(".feat-card", from("translateY(32px)"), { delay: stagger(0.07), duration: 0.6, ease: EASE })
 })
 reveal("#card-builtin-ai", 0.4, () => {
-    animate("#card-builtin-ai .ai-fill", { width: ["0%", "100%"] }, { delay: stagger(0.18), duration: 0.6, ease: EASE })
+    animate("#card-builtin-ai .ai-fill", { width: ["0%", "100%"] }, { delay: stagger(0.18, { startDelay: 0.3 }), duration: 0.6, ease: EASE })
     animate("#ai-sparkle", { transform: ["scale(1)", "scale(1.2)", "none"] }, { duration: 0.5, delay: 0.2, ease: EASE })
 })
 reveal("#card-data", 0.4, () => {
-    animate("#card-data .field-row", from("translateX(-16px)"), { delay: stagger(0.1), duration: 0.4, ease: EASE })
+    animate("#card-data .field-row", from("translateX(-16px)"), { delay: stagger(0.1, { startDelay: 0.3 }), duration: 0.4, ease: EASE })
 })
 reveal("#card-sales", 0.4, () => {
-    animate(".pipe-seg", from("scaleX(0)"), { delay: stagger(0.12), duration: 0.6, ease: EASE })
+    animate(".pipe-seg", from("scaleX(0)"), { delay: stagger(0.12, { startDelay: 0.3 }), duration: 0.6, ease: EASE })
 })
 reveal("#card-tasks", 0.3, () => {
-    animate(".task-row", from("translateX(20px)"), { delay: stagger(0.15), duration: 0.45, ease: EASE })
+    animate(".task-row", from("translateX(20px)"), { delay: stagger(0.15, { startDelay: 0.2 }), duration: 0.45, ease: EASE })
 })
 reveal("#faq .divide-y", 0.15, () => {
     animate(".faq-item", from("translateY(20px)"), { delay: stagger(0.08), duration: 0.5, ease: EASE })
