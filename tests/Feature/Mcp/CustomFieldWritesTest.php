@@ -614,6 +614,14 @@ it('accepts a company resubmitting its own legacy domain while another company h
     RelaticleServer::actingAs($this->user)
         ->tool(UpdateCompanyTool::class, ['id' => $own->getKey(), 'custom_fields' => ['domains' => ['https://acme.com']]])
         ->assertOk();
+
+    $domains = CustomField::query()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', 'domains')
+        ->firstOrFail();
+
+    expect(collect($own->fresh('customFieldValues.customField')->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
 });
 
 it('rejects a domain another company holds in a different spelling', function (): void {
@@ -621,5 +629,5 @@ it('rejects a domain another company holds in a different spelling', function ()
 
     RelaticleServer::actingAs($this->user)
         ->tool(UpdateCompanyTool::class, ['id' => $own->getKey(), 'custom_fields' => ['domains' => ['https://acme.com', 'www.other.com']]])
-        ->assertHasErrors();
+        ->assertHasErrors(['The value "www.other.com" is already assigned to another record.']);
 });

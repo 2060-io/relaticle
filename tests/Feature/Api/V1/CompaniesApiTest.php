@@ -734,7 +734,8 @@ describe('custom fields', function (): void {
         $this->postJson('/api/v1/companies', ['name' => 'Acme', 'custom_fields' => ['domains' => ['acme.com']]])->assertCreated();
 
         $this->postJson('/api/v1/companies', ['name' => 'Acme 2', 'custom_fields' => ['domains' => ['https://www.acme.com/']]])
-            ->assertUnprocessable();
+            ->assertUnprocessable()
+            ->assertInvalid(['custom_fields.domains']);
     });
 
     it('accepts a company resubmitting its own legacy domain while another company holds the canonical form', function (): void {
@@ -744,6 +745,15 @@ describe('custom fields', function (): void {
 
         $this->putJson("/api/v1/companies/{$own->id}", ['custom_fields' => ['domains' => ['https://acme.com']]])
             ->assertOk();
+
+        $domains = CustomField::query()
+            ->withoutGlobalScopes()
+            ->where('tenant_id', $this->workspace->id)
+            ->where('entity_type', 'company')
+            ->where('code', 'domains')
+            ->firstOrFail();
+
+        expect(collect(Company::query()->with('customFieldValues.customField')->findOrFail($own->id)->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
     });
 
     it('rejects a domain another company holds in a different spelling', function (): void {

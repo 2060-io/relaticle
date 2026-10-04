@@ -435,7 +435,7 @@ it('caps logic depth at three and relation hops at two', function (): void {
 });
 
 it('rejects an empty $or and an empty relation node', function (): void {
-    $this->getJson('/api/v1/companies?filter[$or]=')->assertUnprocessable();
+    $this->getJson('/api/v1/companies?filter[$or]=')->assertUnprocessable()->assertJsonValidationErrors(['filter.$or' => '$or takes a non-empty list of condition objects.']);
 
     RelaticleServer::actingAs($this->user)
         ->tool(ListOpportunitiesTool::class, ['filter' => ['$or' => [['company' => []]]]])

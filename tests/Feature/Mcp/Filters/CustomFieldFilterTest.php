@@ -897,5 +897,5 @@ it('filters a person by the domain of a field on their company', function (): vo
 
 it('offers the domain sub-field only on email and link fields', function (): void {
     expect(fn () => peopleNamesMatching($this->user, ['custom_fields' => ['job_title' => ['domain' => ['$in' => ['x']]]]]))
-        ->toThrow(ValidationException::class);
+        ->toThrow(ValidationException::class, 'Operator "domain" is not supported for "job_title".');
 });
