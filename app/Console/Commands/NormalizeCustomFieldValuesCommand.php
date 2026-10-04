@@ -36,7 +36,6 @@ final class NormalizeCustomFieldValuesCommand extends Command
         $this->changed = 0;
         $this->national = 0;
         $this->malformed = 0;
-        $this->domainOwners = [];
 
         CustomField::query()
             ->withoutGlobalScopes()
@@ -81,7 +80,6 @@ final class NormalizeCustomFieldValuesCommand extends Command
             });
 
         $this->reportCollisions($field);
-        $this->domainOwners = [];
 
         if ($this->national > $nationalBefore) {
             $this->comment('Workspace '.$field->tenant_id.': '.($this->national - $nationalBefore)." national phone number(s) in {$field->entity_type}.{$field->code}.");
