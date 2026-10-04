@@ -90,16 +90,13 @@ html.fi:has(body.fi-panel-app) {
 
 /* Sidebar Enhancements */
 .fi-sidebar {
-    /* Lighter than gray-50: the canvas tint stays fainter than the hairline that edges it. */
-    --sidebar-bg: color-mix(in oklab, var(--color-gray-50) 80%, white);
-
-    @apply h-full border-r border-gray-200/60 bg-(--sidebar-bg) dark:border-white/10 dark:bg-gray-950;
+    @apply h-full border-r border-gray-200/60 bg-(--surface-sidebar-bg) dark:border-white/10;
 }
 
 /* Heroicons draw a 1.5 stroke on a 24 grid, a 1px line at the sidebar's 16px,
    too faint beside a medium-weight label. Menus keep the panel-wide weight. */
 .fi-sidebar svg[stroke-width]:not(.fi-dropdown-panel *) {
-    stroke-width: 2;
+    stroke-width: 1.75;
 }
 
 .fi-sidebar .fi-dropdown-list-item-image,
@@ -265,12 +262,13 @@ html.fi-chat-docked .fi-app-main-wrapper {
     @apply transition-colors duration-200 ease-in-out;
 
     .fi-sidebar-item-btn {
-        @apply hover:bg-gray-200/25 dark:text-gray-300 dark:hover:bg-white/5;
+        @apply hover:bg-(--surface-sidebar-hover-bg) focus-visible:bg-(--surface-sidebar-hover-bg);
         padding-block: calc(var(--spacing) * 1.5);
     }
 
+    /* A resting row sits one step under the text colour; hover and the active row reach it. */
     .fi-sidebar-item-label {
-        @apply text-sm font-medium text-gray-950 dark:text-gray-200;
+        @apply text-sm font-medium text-gray-700 dark:text-gray-300;
     }
 
     .fi-sidebar-item-icon {
@@ -279,7 +277,17 @@ html.fi-chat-docked .fi-app-main-wrapper {
     }
 
     &:not(.fi-active) .fi-sidebar-item-icon {
-        @apply text-gray-600 dark:text-gray-400;
+        @apply text-gray-500 dark:text-gray-400;
+    }
+
+    &:not(.fi-active) .fi-sidebar-item-btn:is(:hover, :focus-visible) {
+        .fi-sidebar-item-label {
+            @apply text-gray-950 dark:text-white;
+        }
+
+        .fi-sidebar-item-icon {
+            @apply text-gray-700 dark:text-gray-200;
+        }
     }
 
     .fi-sidebar-item-grouped-border {
@@ -288,12 +296,23 @@ html.fi-chat-docked .fi-app-main-wrapper {
     }
 }
 
-/* The active row is marked by its fill and icon; the label stays the text colour. */
+/* Chat history reads a step quieter than the navigation above it. */
+.fi-sidebar-chats {
+    .fi-sidebar-item-label {
+        @apply font-normal text-gray-600 dark:text-gray-400;
+    }
+
+    .fi-sidebar-item:not(.fi-active) .fi-sidebar-item-icon {
+        @apply text-gray-400 dark:text-gray-500;
+    }
+}
+
 .fi-sidebar-item.fi-active {
     > .fi-sidebar-item-btn {
-        @apply bg-gray-200/40 dark:bg-white/10;
+        @apply bg-(--surface-sidebar-active-bg);
 
-        .fi-sidebar-item-label {
+        .fi-sidebar-item-label,
+        .fi-sidebar-item-icon {
             @apply text-gray-950 dark:text-white;
         }
     }
@@ -309,7 +328,7 @@ html.fi-chat-docked .fi-app-main-wrapper {
     @apply py-1;
 
     .fi-sidebar-group-label {
-        @apply text-xs leading-5 text-gray-600 dark:text-gray-400;
+        @apply text-xs leading-5;
     }
 
     .fi-sidebar-group-collapse-btn {
@@ -456,7 +475,7 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
 }
 
 .fi-sidebar-toggle-btn {
-    @apply absolute top-2 z-20 hidden h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 lg:flex dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200;
+    @apply absolute top-2 z-20 hidden h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-(--surface-sidebar-hover-bg) hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 lg:flex dark:text-gray-500 dark:hover:text-gray-200;
 
     /* 4.5 spacing from the trailing edge is also the centre of the collapsed
        rail, so this one value serves both states and the button never moves
@@ -884,7 +903,7 @@ html.fi-record-stacked .fi-record-layout {
     }
 
     .fi-header:not(.fi-header-page-heading-only) {
-        @apply flex-row items-center justify-between gap-3 border-b border-gray-200/60 px-4 py-2 lg:px-6 dark:border-white/10;
+        @apply flex-row items-center justify-between gap-3 border-b border-gray-200/60 px-4 py-3 lg:px-6 dark:border-white/10;
     }
 
     .fi-page-content .fi-ta-ctn:not(.fi-modal *) {

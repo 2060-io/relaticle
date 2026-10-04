@@ -43,7 +43,7 @@
     {{-- -ml-2 matches Filament's .fi-sidebar-nav-groups list which has margin-left: -8px;
          this hook renders as a sibling of that list inside .fi-sidebar-nav, so without
          the offset our chat icons sit 8px to the right of Home/People/Companies/etc. --}}
-    class="fi-sidebar-group fi-collapsible -ml-2"
+    class="fi-sidebar-group fi-sidebar-chats fi-collapsible -ml-2"
 >
     {{-- Group header --}}
     <div
@@ -170,7 +170,7 @@
                         <a
                             href="{{ $chatUrl }}"
                             wire:navigate
-                            class="fi-sidebar-item-btn pe-8 group-hover/chat-item:bg-gray-200/25 dark:group-hover/chat-item:bg-white/5"
+                            class="fi-sidebar-item-btn pe-8 group-hover/chat-item:bg-(--surface-sidebar-hover-bg)"
                         >
                             <x-heroicon-o-chat-bubble-left class="fi-icon fi-size-lg fi-sidebar-item-icon" />
                             <span
@@ -252,7 +252,7 @@
                     <button
                         type="button"
                         @click="window.dispatchEvent(new CustomEvent('chat:open-all-chats'))"
-                        class="fi-sidebar-item-btn w-full text-start opacity-60 transition hover:opacity-100"
+                        class="fi-sidebar-item-btn w-full text-start"
                         aria-label="{{ __('Open all chats') }}"
                     >
                         <x-heroicon-o-ellipsis-horizontal class="fi-icon fi-size-lg fi-sidebar-item-icon" />

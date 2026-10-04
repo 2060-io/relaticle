@@ -66,6 +66,9 @@
     --surface-shell-divider: rgb(229 231 235 / 0.6);      /* gray-200/60 */
     --surface-input-bg: rgb(249 250 251 / 0.8);           /* gray-50/80 */
     --surface-input-border: rgb(229 231 235 / 0.8);       /* gray-200/80 */
+    --surface-sidebar-bg: rgb(251 251 251);               /* a step lighter than zinc-50 */
+    --surface-sidebar-hover-bg: rgb(9 9 11 / 0.025);      /* zinc-950/2.5 */
+    --surface-sidebar-active-bg: rgb(9 9 11 / 0.04);      /* zinc-950/4 */
 }
 
 .dark {
@@ -78,6 +81,9 @@
     --surface-shell-divider: rgb(255 255 255 / 0.06);
     --surface-input-bg: rgb(255 255 255 / 0.03);
     --surface-input-border: rgb(255 255 255 / 0.06);
+    --surface-sidebar-bg: rgb(9 9 11);                     /* zinc-950 */
+    --surface-sidebar-hover-bg: rgb(255 255 255 / 0.05);
+    --surface-sidebar-active-bg: rgb(255 255 255 / 0.1);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
