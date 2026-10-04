@@ -113,6 +113,7 @@ One word per business concept. The model class owns the word, and code, tests an
 |---|---|---|
 | The tenant | workspace (`App\Models\Workspace`) | team |
 | A user's place in a workspace | member (`App\Models\Membership`, `WorkspaceRole`) | the `editor` role key |
+| A business the workspace tracks | company (`App\Models\Company`) | account as the record's name |
 | A human the workspace tracks | person, people (`App\Models\People`) | contact as the record's name |
 | A sale in progress | opportunity (`App\Models\Opportunity`) | deal as a label or as the record's name |
 
@@ -135,6 +136,10 @@ use of the retired `editor` role key. It fails a bare `Contact` or `Deal` label 
 source. It fails `contacts` and `a contact` in published copy: `lang/`, `resources/views/`,
 `resources/js/` and each package's `resources/`. The gate reads no other form of the two
 words, so a reviewer does.
+
+`account` names the sign-in and a connected mailbox, never a company. The company's
+"Account Owner" field keeps the word, and so does its `account_owner_id` column. No test can
+tell these senses apart, so a reviewer reads for a company called an account.
 
 ## i18n enforcement
 
