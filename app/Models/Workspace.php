@@ -494,6 +494,11 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
 
         $this->users()->detach();
 
+        // The custom field tables key on a tenant id with no foreign key, so nothing cascades to them.
+        foreach ([CustomFieldValue::class, CustomFieldOption::class, CustomField::class] as $model) {
+            $model::query()->withoutGlobalScopes()->where('tenant_id', $this->getKey())->delete();
+        }
+
         $this->delete();
     }
 
