@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Actions\CustomFields\CreateCustomField;
 use App\Actions\CustomFields\SetCustomFieldOptions;
 use App\Actions\CustomFields\UpdateCustomField;
+use App\Actions\People\CreatePeople;
 use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
@@ -27,6 +28,7 @@ use Relaticle\Chat\Tools\Note\ListNotesTool;
 use Relaticle\Chat\Tools\Opportunity\ListOpportunitiesTool;
 use Relaticle\Chat\Tools\People\ListPeopleTool;
 use Relaticle\Chat\Tools\Task\ListTasksTool;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
 
 mutates(BaseReadListTool::class);
@@ -666,4 +668,57 @@ it('renders the related entity and the field type on chat and states emptiness o
 
     expect($opportunities)->toContain('- contact (relation to people;', '- amount (Amount, currency)', '- close_date (Close Date, date)')
         ->and(resolve(CustomFieldsFilterDescriber::class)->describe($user, 'note'))->toContain('No filterable custom fields are defined');
+});
+
+function hideLinkedinFromPeopleList(User $user): void
+{
+    $field = CustomField::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $user->currentWorkspace->getKey())
+        ->where('entity_type', 'people')
+        ->where('code', 'linkedin')
+        ->firstOrFail();
+
+    $field->settings = CustomFieldSettingsData::from(['visible_in_list' => false, 'list_toggleable_hidden' => false, 'visible_in_view' => true]);
+    $field->save();
+}
+
+/**
+ * @param  array<string, mixed>  $filter
+ * @return list<string>
+ */
+function peopleListColumnKeys(User $user, array $filter): array
+{
+    app(CreatePeople::class)->execute($user, [
+        'name' => 'Ada Lovelace',
+        'custom_fields' => ['linkedin' => ['linkedin.com/in/ada'], 'job_title' => 'Engineer'],
+    ]);
+
+    $block = json_decode((new ListPeopleTool)->handle(new Request(['filter' => $filter])), true)['display_block'];
+
+    return array_column($block['columns'], 'key');
+}
+
+it('shows a filtered custom field as a column wherever the filter places it', function (array $filter): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    hideLinkedinFromPeopleList($user);
+
+    expect(peopleListColumnKeys($user, $filter))->toContain('linkedin');
+})->with([
+    'at the root' => [['custom_fields' => ['linkedin' => ['$is_empty' => false]]]],
+    'under $or' => [['$or' => [['custom_fields' => ['linkedin' => ['$is_empty' => false]]], ['custom_fields' => ['job_title' => ['$is_empty' => false]]]]]],
+    'under $and' => [['$and' => [['custom_fields' => ['linkedin' => ['$is_empty' => false]]], ['custom_fields' => ['job_title' => ['$is_empty' => false]]]]]],
+    'under $not' => [['$not' => ['custom_fields' => ['linkedin' => ['$is_empty' => true]]]]],
+    'under $and then $or' => [['$and' => [['$or' => [['custom_fields' => ['linkedin' => ['$is_empty' => false]]], ['custom_fields' => ['job_title' => ['$is_empty' => false]]]]]]]],
+]);
+
+it('leaves a column out when the filtered code belongs to a related record', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    hideLinkedinFromPeopleList($user);
+
+    $filter = ['$or' => [['company' => ['custom_fields' => ['linkedin' => ['$is_empty' => false]]]], ['custom_fields' => ['job_title' => ['$is_empty' => false]]]]];
+
+    expect(peopleListColumnKeys($user, $filter))->not->toContain('linkedin');
 });

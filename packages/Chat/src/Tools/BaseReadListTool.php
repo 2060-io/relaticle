@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\LogicFilter;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -580,9 +581,8 @@ abstract class BaseReadListTool implements Tool
     private function promotedCodes(Request $request): array
     {
         $filter = $request['filter'] ?? null;
-        $customFields = is_array($filter) ? ($filter['custom_fields'] ?? null) : null;
 
-        $codes = is_array($customFields) ? array_map(strval(...), array_keys($customFields)) : [];
+        $codes = is_array($filter) ? $this->filteredCodes($filter) : [];
 
         $sort = $request['sort'] ?? null;
 
@@ -591,6 +591,34 @@ abstract class BaseReadListTool implements Tool
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * A relation key is not walked: its custom_fields name another entity's codes.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @return list<string>
+     */
+    private function filteredCodes(array $node): array
+    {
+        $customFields = $node['custom_fields'] ?? null;
+        $codes = is_array($customFields) ? array_map(strval(...), array_keys($customFields)) : [];
+
+        foreach (LogicFilter::KEYWORDS as $keyword) {
+            $value = $node[$keyword] ?? null;
+
+            if (! is_array($value)) {
+                continue;
+            }
+
+            foreach (array_is_list($value) ? $value : [$value] as $branch) {
+                if (is_array($branch)) {
+                    array_push($codes, ...$this->filteredCodes($branch));
+                }
+            }
+        }
+
+        return $codes;
     }
 
     /**
