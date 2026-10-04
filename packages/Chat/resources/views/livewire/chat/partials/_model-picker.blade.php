@@ -16,7 +16,7 @@
         aria-label="{{ __('Select AI model') }}"
     >
         <span
-            x-show="modelProvider(selectedModel)"
+            x-show="providerIconHtml(modelProvider(selectedModel))"
             x-html="providerIconHtml(modelProvider(selectedModel))"
             :class="providerIconColor(modelProvider(selectedModel)) + ' inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center'"
             aria-hidden="true"

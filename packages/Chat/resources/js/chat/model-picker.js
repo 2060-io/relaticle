@@ -27,18 +27,19 @@ export function modelPickerModule({ providerIcons, persistSelection = false }) {
             }
         },
 
+        // Auto has no provider, so it reads its icon and colour from the `auto` key.
         providerIconHtml(provider) {
-            if (!provider) return '';
-            return this.providerIcons[provider] || '';
+            return this.providerIcons[provider ?? 'auto'] || '';
         },
 
         providerIconColor(provider) {
             return ({
+                auto: 'text-primary-600 dark:text-primary-400',
                 anthropic: 'text-anthropic',
                 openai: 'text-gray-900 dark:text-gray-200',
                 ollama: 'text-gray-500 dark:text-gray-400',
                 selfhosted: 'text-gray-500 dark:text-gray-400',
-            })[provider] || '';
+            })[provider ?? 'auto'] || '';
         },
 
         modelLabel(value) {
