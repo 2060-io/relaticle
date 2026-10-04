@@ -8,6 +8,7 @@ use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
+use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterVocabulary;
 use Relaticle\Chat\Support\PromptText;
@@ -78,8 +79,8 @@ final readonly class CustomFieldsFilterDescriber
         $lines = [];
 
         $lines[] = '';
-        $lines[] = 'Custom field conditions go under custom_fields. Their keys MUST be one of the codes below; each value is an object of operator => operand, as its type allows.';
-        $lines[] = 'For choice fields pass the option label as listed; an option ID also works.';
+        $lines[] = EntityFilters::CUSTOM_FIELDS_RULE.' The keys MUST be one of the codes below, and each type allows only the operators listed under Field types.';
+        $lines[] = CustomFieldOptionMap::choiceRule().' Pass the label as listed.';
         $lines[] = '';
         $lines[] = 'Field types:';
 

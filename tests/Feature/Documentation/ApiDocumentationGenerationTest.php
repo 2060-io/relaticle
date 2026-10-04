@@ -9,6 +9,7 @@ use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Scribe\Strategies\GetFromSpatieQueryBuilder;
+use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\Filters\EntityFilters;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -91,7 +92,7 @@ it('generates the complete API documentation with company ownership fields', fun
 
     expect($customFieldFilter)->not->toBeNull()
         ->and(array_diff($publishedOperators, str($customFieldFilter['description'])->matchAll('/\$[a-z_]+/')->all()))->toBe([])
-        ->and($customFieldFilter['description'])->toContain(CustomFieldFilterSchema::valueRules(), EntityFilters::limits(), CustomFieldType::PHONE->filterMatching(), CustomFieldType::TAGS_INPUT->filterMatching(), 'domain sub-field with $in or $not_in');
+        ->and($customFieldFilter['description'])->toContain(CustomFieldFilterSchema::valueRules(), EntityFilters::limits(), CustomFieldOptionMap::choiceRule(), CustomFieldType::PHONE->filterMatching(), CustomFieldType::TAGS_INPUT->filterMatching(), 'domain sub-field with $in or $not_in');
 });
 
 it('generates the API documentation before the database is migrated', function (): void {

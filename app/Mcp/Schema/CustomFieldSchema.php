@@ -9,6 +9,7 @@ use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\User;
+use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterVocabulary;
 use Illuminate\Support\Collection;
@@ -24,21 +25,25 @@ use stdClass;
  */
 final readonly class CustomFieldSchema
 {
-    private const string WRITE_USAGE = 'Pass custom field values in the "custom_fields" object using field codes as keys. Select, radio, toggle-buttons, multi-select and checkbox-list values take an option label or ID.';
-
-    private const string FILTER_USAGE = 'Filter list tools with the "filter" param: native fields and relations sit at the top level, and custom field codes go under "filter.custom_fields", each value an operator object. Names, operands and options are listed in filterable_fields, and the operators, matching rule and example of each field type under filterable_fields.types.';
-
     public function __construct(private FilterVocabulary $vocabulary) {}
 
     public static function usage(CrmEntity $entity): string
     {
         return implode(' ', [
-            self::WRITE_USAGE,
-            self::FILTER_USAGE,
+            'Pass custom field values in the "custom_fields" object using field codes as keys.',
+            CustomFieldOptionMap::choiceRule(),
+            'Filter list tools with the "filter" param. Names, operands and options are listed in filterable_fields.',
+            EntityFilters::CUSTOM_FIELDS_RULE,
+            self::filterGuide('This schema'),
             EntityFilters::limits(),
             CustomFieldFilterSchema::generalRules(),
             'Filter example: '.CustomFieldFilterSchema::json(EntityFilters::example($entity)).'.',
         ]);
+    }
+
+    public static function filterGuide(string $source): string
+    {
+        return "Native fields and relations sit at the top level of filter. {$source} lists those codes with their type and options under filterable_fields.custom_fields, and the operators, matching rule and example of each type under filterable_fields.types.";
     }
 
     public function fields(User $user, CrmEntity $entity): stdClass

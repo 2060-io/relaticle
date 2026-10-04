@@ -6,6 +6,7 @@ namespace App\Scribe\Strategies;
 
 use App\Enums\CrmEntity;
 use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\Filters\EntityFilters;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
@@ -72,7 +73,9 @@ final class GetFromSpatieQueryBuilder extends Strategy
         return implode(' ', [
             'Filter by a custom field value.',
             CustomFieldFilterSchema::operatorSummary(),
-            'In a query string $is_empty also takes 1 or 0. Select, radio, toggle-buttons, multi-select and checkbox-list values take an option label or ID; an unknown one returns 422. Choice lists split on commas, so repeat the parameter with [] when a label contains a comma.',
+            'In a query string $is_empty also takes 1 or 0.',
+            CustomFieldOptionMap::choiceRule(),
+            'An unknown one returns 422. Choice lists split on commas, so repeat the parameter with [] when a label contains a comma.',
             CustomFieldFilterSchema::valueRules(),
             'Repeat [] to send several values.',
             EntityFilters::limits(),

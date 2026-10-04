@@ -60,12 +60,20 @@ final readonly class CustomFieldOptionMap
 
     public function translates(CustomField $field): bool
     {
-        if (CustomFieldType::tryFrom($field->type)?->isChoice() !== true) {
-            return false;
-        }
+        $type = CustomFieldType::tryFrom($field->type);
 
-        $typeData = CustomFieldsType::getFieldType($field->type);
+        return $type !== null && self::picksFromOptions($type) && $field->lookup_type === null;
+    }
 
-        return $typeData !== null && ! $typeData->acceptsArbitraryValues && $field->lookup_type === null;
+    public static function choiceRule(): string
+    {
+        $types = array_filter(CustomFieldType::cases(), self::picksFromOptions(...));
+
+        return ucfirst(Arr::join(array_map(static fn (CustomFieldType $type): string => $type->value, $types), ', ', ' and ')).' values take an option label or ID.';
+    }
+
+    private static function picksFromOptions(CustomFieldType $type): bool
+    {
+        return $type->isChoice() && CustomFieldsType::getFieldType($type->value)?->acceptsArbitraryValues === false;
     }
 }

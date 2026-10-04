@@ -13,6 +13,8 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 final readonly class EntityFilters
 {
+    public const string CUSTOM_FIELDS_RULE = 'custom_fields takes an object keyed by custom field code, each value an operator object.';
+
     public function __construct(private User $user) {}
 
     public static function grammar(CrmEntity $entity): string
@@ -55,7 +57,7 @@ final readonly class EntityFilters
             $sentences[] = "{$name} takes {$definitions[$name]->operand()}, for example ".CustomFieldFilterSchema::json([$name => $definitions[$name]->example()]).'.';
         }
 
-        $sentences[] = 'custom_fields takes an object keyed by custom field code, each value an operator object.';
+        $sentences[] = self::CUSTOM_FIELDS_RULE;
 
         return implode(' ', $sentences);
     }

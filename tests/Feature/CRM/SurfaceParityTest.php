@@ -38,6 +38,7 @@ use App\Mcp\Tools\Task\ListTasksTool as McpListTasks;
 use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\User;
+use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterDefinition;
 use App\Support\Filters\FilterTree;
@@ -446,6 +447,29 @@ it('states the matching, emptiness and operand rules on every surface', function
         ->and((new CrmAssistant)->staticInstructions())->toContain(...$rules)
         ->and($usage)->toContain(CustomFieldFilterSchema::EMPTINESS_RULE, CustomFieldFilterSchema::EMPTY_MATCH_RULE, EntityFilters::limits())
         ->and($usage)->not->toContain(CustomFieldType::PHONE->filterMatching(), CustomFieldType::TAGS_INPUT->filterMatching());
+})->with(array_map(fn (array $row): array => [$row[0], $row[6], $row[7], $row[8]], crmSurfaces()));
+
+it('states the custom_fields rule and the choice rule once on every surface that carries them', function (CrmEntity $entity, string $chatTool, string $schemaResource, string $mcpTool): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    app(CreateCustomField::class)->execute($user, [
+        'entity_type' => $entity->value,
+        'name' => 'Segment',
+        'code' => 'segment',
+        'type' => 'select',
+        'options' => ['Enterprise'],
+    ]);
+
+    $usage = resolve($schemaResource)->toSchema($user)['usage'];
+    $choiceRule = CustomFieldOptionMap::choiceRule();
+
+    expect(substr_count(filterDescription($mcpTool), EntityFilters::CUSTOM_FIELDS_RULE))->toBe(1)
+        ->and(substr_count(filterDescription($chatTool), EntityFilters::CUSTOM_FIELDS_RULE))->toBe(1)
+        ->and(substr_count($usage, EntityFilters::CUSTOM_FIELDS_RULE))->toBe(1)
+        ->and(substr_count(filterDescription($chatTool), $choiceRule))->toBe(1)
+        ->and(substr_count($usage, $choiceRule))->toBe(1)
+        ->and($choiceRule)->toBe('Checkbox-list, radio, toggle-buttons, select and multi-select values take an option label or ID.');
 })->with(array_map(fn (array $row): array => [$row[0], $row[6], $row[7], $row[8]], crmSurfaces()));
 
 it('publishes filter examples the list action accepts on every surface', function (CrmEntity $entity, string $chatTool, string $schemaResource, string $mcpTool): void {
