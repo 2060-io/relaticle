@@ -113,7 +113,10 @@ final class NormalizeCustomFieldValuesCommand extends Command
         $this->changed++;
 
         if ($write) {
-            DB::table('custom_field_values')->where('id', $row->id)->update(['json_value' => json_encode($normalized)]);
+            DB::table('custom_field_values')
+                ->where('custom_field_id', $field->getKey())
+                ->where('id', $row->id)
+                ->update(['json_value' => json_encode($normalized)]);
         }
     }
 
