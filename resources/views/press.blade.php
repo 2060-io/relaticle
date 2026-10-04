@@ -169,7 +169,7 @@
                 <div class="grid gap-8 lg:grid-cols-3 lg:gap-12">
                     <div>
                         <h2 id="facts-title" class="font-display text-2xl font-bold tracking-tight sm:text-3xl">{{ __('About Relaticle') }}</h2>
-                        <p class="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{{ __('Relaticle is an open-source CRM for managing contacts, companies, deals, and tasks. Its built-in AI assistant proposes changes for you to review and approve.') }}</p>
+                        <p class="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{{ __('Relaticle is an open-source CRM for managing people, companies, opportunities, and tasks. Its built-in AI assistant proposes changes for you to review and approve.') }}</p>
                         <p class="mt-3 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{{ __('Choose Relaticle Cloud or run it on your own server.') }}</p>
                         <div class="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium">
                             <a href="{{ $facts['source_urls']['repository'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2 rounded-sm text-primary focus-visible:outline-2 focus-visible:outline-primary dark:text-primary-400"><x-ri-github-fill class="size-4" aria-hidden="true"/>{{ __('GitHub') }}</a>

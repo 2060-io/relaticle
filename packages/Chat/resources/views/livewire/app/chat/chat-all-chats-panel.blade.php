@@ -113,7 +113,7 @@
                         @if($isSearching)
                             {{ __('No matches.') }}
                         @else
-                            {{ __("No chats yet. Ask about a deal, a contact, or what's overdue.") }}
+                            {{ __("No chats yet. Ask about a deal, a person, or what's overdue.") }}
                         @endif
                     </li>
                 @else

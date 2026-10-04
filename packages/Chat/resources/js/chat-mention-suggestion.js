@@ -9,7 +9,7 @@ export function createMentionSuggestion({ texts = {} } = {}) {
         searching: 'Searching…',
         loadFailed: "Couldn't load suggestions.",
         noMatches: 'No matches for ":query".',
-        typeLabels: { company: 'Company', people: 'Person', opportunity: 'Deal', task: 'Task', note: 'Note' },
+        typeLabels: { company: 'Company', people: 'Person', opportunity: 'Opportunity', task: 'Task', note: 'Note' },
         ...texts,
     };
     // Token-based supersede: each fetchResults call increments fetchToken; only

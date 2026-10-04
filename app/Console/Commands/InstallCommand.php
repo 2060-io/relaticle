@@ -89,7 +89,7 @@ final class InstallCommand extends Command
         $installDemoData = confirm(
             label: 'Install demo data?',
             default: true,
-            hint: 'Includes sample companies, contacts, and more'
+            hint: 'Includes sample companies, people, and more'
         );
 
         $createSysAdmin = confirm(
@@ -434,7 +434,7 @@ final class InstallCommand extends Command
         if ($config['demo_data']) {
             $this->newLine();
             $this->line('  <options=bold>Demo data included:</>');
-            $this->line('  • Sample companies and contacts');
+            $this->line('  • Sample companies and people');
             $this->line('  • Example opportunities and tasks');
             $this->line('  • Pre-configured custom fields');
         }

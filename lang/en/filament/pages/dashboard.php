@@ -16,7 +16,7 @@ return [
         'remove_sample_data_confirm' => 'Delete every sample record? Your own records stay.',
         'steps' => [
             'first_record' => [
-                'label' => 'Add your first contact',
+                'label' => 'Add your first person',
                 'description' => 'Put one real person in the CRM and the rest follows',
             ],
             'sync_email' => [
@@ -26,7 +26,7 @@ return [
                 'syncing_percent' => 'Syncing email (:percent%)',
             ],
             'import' => [
-                'label' => 'Import your existing contacts',
+                'label' => 'Import your existing records',
                 'description' => 'Bring a CSV from your spreadsheet or old CRM',
             ],
             'invite' => [

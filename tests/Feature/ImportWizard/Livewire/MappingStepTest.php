@@ -113,6 +113,22 @@ it('auto-maps Company header to company entity link', function (): void {
         ->and($columns['Company']['entityLink'])->toBe('company');
 });
 
+it('auto-maps the person column of an opportunity export to the contact link', function (string $header): void {
+    $this->import->update(['entity_type' => ImportEntityType::Opportunity]);
+
+    createStoreWithHeaders($this, ['Name', $header], [
+        ['Name' => 'Renewal', $header => 'Jane Roe'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Opportunity,
+    ])->get('columns');
+
+    expect($columns)->toHaveKey($header)
+        ->and($columns[$header]['entityLink'])->toBe('contact');
+})->with(['Point of Contact', 'Contact Person']);
+
 it('mapToField updates column mapping', function (): void {
     createStoreWithHeaders($this, ['Full Name', 'Notes']);
 

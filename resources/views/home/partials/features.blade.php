@@ -104,7 +104,7 @@
                         <x-ri-building-2-line class="w-3.5 h-3.5 text-primary dark:text-primary-400"/>
                         Company profiles
                     </h3>
-                    <p class="{{ $cardDesc }}">See every account in context. Keep company details, people, and deals together so your team can prepare for the next conversation.</p>
+                    <p class="{{ $cardDesc }}">See every company in context. Keep its details, people, and deals together so your team can prepare for the next conversation.</p>
                 </div>
             </div>
 
@@ -148,7 +148,7 @@
                             Task management
                         </h3>
                         <p class="{{ $cardDesc }}">
-                            Turn follow-ups into clear next steps. Assign tasks, set due dates, and link them to people, companies, or deals.
+                            Turn follow-ups into clear next steps. Assign tasks, set due dates, and link them to people, companies, or opportunities.
                         </p>
                     </div>
                     <div class="mt-4 md:mt-0 md:flex-1 rounded-lg bg-gray-50 dark:bg-gray-800 p-4 space-y-3">

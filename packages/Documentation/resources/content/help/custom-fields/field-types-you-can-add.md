@@ -44,7 +44,7 @@ type is locked once it's created.
 | Radio | One value, all options visible at once |
 | Checkbox | A single yes/no tick |
 | Checkbox List | Several ticks from a fixed list |
-| Toggle | An on/off switch, e.g. "is this an ICP account?" |
+| Toggle | An on/off switch, e.g. "is this an ICP company?" |
 | Toggle Buttons | One value, shown as buttons |
 | Tags Input | Free-form tags, typed and reusable |
 

@@ -20,12 +20,12 @@ it('renders the nudge naming the unfinished step', function (): void {
 
     $mail->assertHasSubject(__('mail.setup_nudge.subject'));
     $mail->assertSeeInHtml(__('mail.setup_nudge.heading', ['name' => 'Dana', 'workspace' => $owner->currentWorkspace->name]), escape: false);
-    $mail->assertSeeInHtml('Add your first contact');
+    $mail->assertSeeInHtml('Add your first person');
     $mail->assertSeeInHtml('Put one real person in the CRM and the rest follows');
     $mail->assertSeeInHtml(__('mail.setup_nudge.cta', ['assistant' => config('chat.assistant_name')]));
     $mail->assertSeeInHtml('https://example.test/chat');
     $mail->assertSeeInHtml(__('mail.footer.reason.onboarding', ['company' => config('relaticle.company.name')]));
-    $mail->assertSeeInHtml(__('mail.setup_nudge.preheader', ['workspace' => $owner->currentWorkspace->name, 'step' => 'Add your first contact']), escape: false);
+    $mail->assertSeeInHtml(__('mail.setup_nudge.preheader', ['workspace' => $owner->currentWorkspace->name, 'step' => 'Add your first person']), escape: false);
     $mail->assertSeeInText(__('mail.setup_nudge.cta', ['assistant' => config('chat.assistant_name')]).': https://example.test/chat');
     $mail->assertDontSeeInHtml('filament/pages/dashboard.');
     $mail->assertDontSeeInHtml('mail.setup_nudge.');

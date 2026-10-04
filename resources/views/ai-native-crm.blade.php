@@ -141,7 +141,7 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 @foreach([
-                    ['ri-database-2-line', __('The AI reads the same records you do'), __('Companies, people, deals, notes, and every custom field are one data model that people and agents share. No export, no sidecar copy.')],
+                    ['ri-database-2-line', __('The AI reads the same records you do'), __('Companies, people, opportunities, notes, and every custom field are one data model that your team and your agents share. No export, no sidecar copy.')],
                     ['ri-door-open-line', __('Agents get a door, and the door has a lock'), __('A standard tool interface lets any agent work in the CRM, and every write passes through the same authorization a person would.')],
                     ['ri-cpu-line', __('You choose the model'), __('Cloud or local, today or next year. A CRM that only works with one vendor\'s AI has made the choice for you.')],
                 ] as [$icon, $cardTitle, $cardDesc])

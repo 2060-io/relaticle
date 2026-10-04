@@ -78,7 +78,7 @@ final class CreateOpportunityTool extends BaseWriteCreateTool
         $contactId = is_string($contactId) && $contactId !== '' ? $contactId : null;
         $contactName = $this->recordNames()->name($contactId, People::class, $workspace);
         if ($contactName !== '') {
-            $fields[] = ['label' => 'Contact', 'value' => $contactName];
+            $fields[] = ['label' => 'Point of Contact', 'value' => $contactName];
         }
 
         return [

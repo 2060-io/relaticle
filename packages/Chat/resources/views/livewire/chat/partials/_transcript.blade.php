@@ -34,7 +34,7 @@
                     </p>
                 @else
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {{ __("Ask about a deal, a contact, or what's overdue.") }}
+                        {{ __("Ask about a deal, a person, or what's overdue.") }}
                     </p>
                 @endif
             </div>

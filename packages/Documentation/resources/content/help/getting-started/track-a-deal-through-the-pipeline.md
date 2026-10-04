@@ -13,7 +13,7 @@ column as the deal advances, right through to Closed Won or Closed Lost.
 1. Click **Opportunities** in the sidebar.
 2. Click **New opportunity**.
 3. Type the deal's name into **Name**. This is the only required field.
-4. Select a **Company** and **Contact** if this deal is tied to one.
+4. Select a **Company** and **Point of Contact** if this deal is tied to one.
 5. Fill in **Amount**, **Close Date**, or **Stage** if you know them. You can
    set these later.
 6. Click **Create**.

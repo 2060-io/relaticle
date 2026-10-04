@@ -53,7 +53,7 @@ it('renders the persisted next steps inside the transcript, in order', function 
 
     seedNextStepTurn($conversationId, $user, 'Your workspace is empty.', [
         ['label' => 'Import your companies', 'prompt' => 'Help me import my companies from a file'],
-        ['label' => 'Add your first contact', 'prompt' => 'Create a person called Dana Reed'],
+        ['label' => 'Add your first person', 'prompt' => 'Create a person called Dana Reed'],
         ['label' => 'Invite a teammate', 'prompt' => 'Invite a teammate to this workspace'],
     ]);
 
@@ -80,7 +80,7 @@ it('renders the persisted next steps inside the transcript, in order', function 
 
     expect($placement['labels'])->toBe([
         'Import your companies',
-        'Add your first contact',
+        'Add your first person',
         'Invite a teammate',
     ])
         ->and($placement['insideTranscript'])->toBeTrue()

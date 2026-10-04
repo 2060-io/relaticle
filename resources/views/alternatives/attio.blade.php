@@ -52,7 +52,7 @@
                         <span class="block text-primary dark:text-primary-400">{{ __('Attio alternative.') }}</span>
                     </h1>
                     <p class="mt-6 max-w-xl text-lg leading-relaxed text-gray-600 dark:text-gray-400">
-                        {{ __('Relaticle brings your contacts, companies and sales pipeline together in a CRM you can self-host and modify. Choose our cloud for flat workspace pricing and unlimited users.') }}
+                        {{ __('Relaticle keeps the people and companies you sell to, and your sales pipeline, in a CRM you can self-host and modify. Choose our cloud for flat workspace pricing and unlimited users.') }}
                     </p>
                     <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
                         <x-marketing.button :href="route('login')" icon-trailing="ri-arrow-right-line">
@@ -186,7 +186,7 @@
                 <ol class="space-y-8 lg:col-span-3">
                     @foreach ([
                         [__('Export the fields you need'), __('In Attio, include the columns you need and review the view filters. Click Save for everyone, then export the view as CSV.')],
-                        [__('Prepare your fields and relationships'), __('Create matching custom fields in Relaticle. Start with companies, then people, then deals. Use company domains and contact emails to link related records.')],
+                        [__('Prepare your fields and relationships'), __('Create matching custom fields in Relaticle. Start with companies, then people, then deals. Use company domains and people\'s email addresses to link related records.')],
                         [__('Map columns and review a sample'), __('Import five to ten rows first. Attio deals become Relaticle opportunities. Keep Attio record IDs out of Relaticle\'s Record ID mapping.')],
                         [__('Check the result before importing more'), __('Review which records will be created, updated or skipped. Check the imported relationships and field values. Then repeat with your remaining records.')],
                     ] as [$heading, $body])
