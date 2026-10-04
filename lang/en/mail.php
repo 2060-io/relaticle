@@ -65,7 +65,7 @@ return [
     'setup_nudge' => [
         'subject' => 'Your workspace is waiting',
         'preheader' => 'One step gets :workspace working: :step',
-        'heading' => ':name, :workspace is ready for your own contacts',
+        'heading' => ':name, :workspace is ready for your own records',
         'step' => 'Next step: :step.',
         'cta' => 'Continue in :assistant',
     ],
@@ -105,7 +105,7 @@ return [
         'subject' => ':workspace is scheduled for deletion',
         'preheader' => 'Deletes on :date. Cancel any time before then',
         'heading' => ':workspace will be deleted on :date',
-        'removes' => 'Contacts, companies, tasks, opportunities, notes, and every other record in :workspace are removed after that date.',
+        'removes' => 'People, companies, tasks, opportunities, notes, and every other record in :workspace are removed after that date.',
         'cancel' => 'You can cancel from the workspace settings at any time before then.',
         'cta' => 'Cancel deletion',
     ],

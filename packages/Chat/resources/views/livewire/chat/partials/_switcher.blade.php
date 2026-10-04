@@ -58,7 +58,7 @@
             <template x-if="!switcherLoading && !switcherError && filteredSwitcherItems().length === 0">
                 <p class="px-3 py-3 text-xs text-gray-500 dark:text-gray-400" role="status">
                     <span x-show="switcherQuery.trim()">{{ __('No matches.') }}</span>
-                    <span x-show="!switcherQuery.trim()">{{ __("No chats yet. Ask about a deal, a contact, or what's overdue.") }}</span>
+                    <span x-show="!switcherQuery.trim()">{{ __("No chats yet. Ask about a deal, a person, or what's overdue.") }}</span>
                 </p>
             </template>
 

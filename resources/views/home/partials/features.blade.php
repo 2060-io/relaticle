@@ -148,7 +148,7 @@
                             Task management
                         </h3>
                         <p class="{{ $cardDesc }}">
-                            Turn follow-ups into clear next steps. Assign tasks, set due dates, and link them to people, companies, or deals.
+                            Turn follow-ups into clear next steps. Assign tasks, set due dates, and link them to people, companies, or opportunities.
                         </p>
                     </div>
                     <div class="mt-4 md:mt-0 md:flex-1 rounded-lg bg-gray-50 dark:bg-gray-800 p-4 space-y-3">

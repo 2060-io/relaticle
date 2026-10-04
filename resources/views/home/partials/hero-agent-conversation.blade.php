@@ -170,13 +170,13 @@
     </div>
 </div>
 
-{{-- ── Exchange 3: create a contact, also gated by review ──
+{{-- ── Exchange 3: create a person, also gated by review ──
      Creates are proposals too (CreatePersonTool returns a proposal for
      approval), so this exchange must NOT show a write landing unattended. It
      resolves into the same decided row + record card the real transcript renders. --}}
 <div class="mcp-el mcp-user mcp-user-3 flex justify-end">
     <div class="max-w-[85%] [overflow-wrap:anywhere] break-words rounded-2xl rounded-br-md bg-gray-100 px-4 py-2.5 text-sm leading-relaxed text-gray-900 dark:bg-white/10 dark:text-gray-100">
-        Add Sarah Chen as a contact at <span class="chat-chip" data-record-type="company"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $heroChipIcons['company'] }}"/></svg><span class="chat-chip-label">Kovra Systems</span></span>. She's VP of Engineering.
+        Add Sarah Chen at <span class="chat-chip" data-record-type="company"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $heroChipIcons['company'] }}"/></svg><span class="chat-chip-label">Kovra Systems</span></span>. She's VP of Engineering.
     </div>
 </div>
 

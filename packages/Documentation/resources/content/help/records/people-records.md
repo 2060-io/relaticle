@@ -1,12 +1,12 @@
 ---
 title: People records
-description: Contacts with unique emails, phone, job title, and a company link, created standalone or from the account.
+description: People with unique emails, phone, job title, and a company link, created standalone or from the account.
 order: 2
 updated: "2026-08-13"
 related: [help/records/company-records, help/getting-started/add-your-first-person]
 ---
 
-A person is a contact: their emails, phone, role, and the company they belong
+A person is someone you work with: their emails, phone, role, and the company they belong
 to. Add people from the **People** list, from a company's **People** tab, or
 in bulk [by import](/help/import/what-each-record-type-needs).
 
@@ -29,4 +29,4 @@ create records pre-linked to this person, and **Activity log** shows the
 change history.
 
 In the **People** list the company column links to the account too, so you
-can move between a contact and their company from anywhere.
+can move between a person and their company from anywhere.

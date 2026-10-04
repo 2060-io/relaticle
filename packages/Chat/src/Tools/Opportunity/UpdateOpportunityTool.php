@@ -94,7 +94,7 @@ final class UpdateOpportunityTool extends BaseWriteUpdateTool
         if (array_key_exists('contact_id', $request->all())) {
             $newContactId = $this->stringOrNull($request, 'contact_id');
             $fields[] = [
-                'label' => 'Contact',
+                'label' => 'Point of Contact',
                 'old' => $this->recordNames()->name($model->getAttribute('contact_id'), People::class, $workspace),
                 'new' => $newContactId === null ? __('(none)') : $this->recordNames()->name($newContactId, People::class, $workspace),
                 '_oldValue' => $model->getAttribute('contact_id'),

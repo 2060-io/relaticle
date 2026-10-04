@@ -159,10 +159,10 @@ it('UpdateOpportunityTool renders linked names in the update proposal display da
     $labels = $fields->pluck('label')->all();
 
     expect($labels)->toContain('Company');
-    expect($labels)->toContain('Contact');
+    expect($labels)->toContain('Point of Contact');
 
     $companyField = $fields->firstWhere('label', 'Company');
-    $contactField = $fields->firstWhere('label', 'Contact');
+    $contactField = $fields->firstWhere('label', 'Point of Contact');
 
     expect($companyField['old'] ?? '')->toBe('Old Co');
     expect($companyField['new'] ?? '')->toBe('New Co');

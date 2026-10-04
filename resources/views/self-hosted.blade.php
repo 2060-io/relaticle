@@ -166,7 +166,7 @@
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 @foreach([
-                    ['ri-database-2-line', __('Your data stays yours'), __('Every company, contact, opportunity, task, and uploaded file lives on infrastructure you control. Nothing is copied anywhere unless you choose to.')],
+                    ['ri-database-2-line', __('Your data stays yours'), __('Every company, person, opportunity, task, and uploaded file lives on infrastructure you control. Nothing is copied anywhere unless you choose to.')],
                     ['ri-scales-line', __('Source you can read and change'), __('Relaticle is licensed AGPL-3.0. The full application is on GitHub, not a stripped-down edition, so you can audit it, modify it, and redeploy your fork.')],
                     ['ri-hard-drive-line', __('One flat cost: your server'), __('Unlimited users and unlimited records on every self-hosted install. There is no per-seat pricing and no user-count paywall to hit.')],
                 ] as [$icon, $cardTitle, $cardDesc])

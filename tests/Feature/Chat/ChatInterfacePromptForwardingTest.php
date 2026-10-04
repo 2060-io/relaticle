@@ -64,6 +64,6 @@ it('keeps the side panel empty state to its record-aware greeting', function ():
 
 it('keeps the full-page empty state to its greeting, with no starter chips', function (): void {
     Livewire::test(ChatInterface::class)
-        ->assertSee("Ask about a deal, a contact, or what's overdue.")
+        ->assertSee("Ask about a deal, a person, or what's overdue.")
         ->assertDontSee('Try one of these');
 });

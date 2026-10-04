@@ -8,7 +8,7 @@
     $records = [
         ['people', 'ri-user-line', 'People'],
         ['companies', 'ri-building-2-line', 'Companies'],
-        ['deals', 'ri-funds-line', 'Deals'],
+        ['deals', 'ri-funds-line', 'Opportunities'],
         ['tasks', 'ri-checkbox-circle-line', 'Tasks'],
         ['notes', 'ri-file-text-line', 'Notes'],
     ];

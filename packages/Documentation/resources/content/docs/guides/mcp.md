@@ -5,7 +5,7 @@ order: 2
 updated: "2026-09-15"
 ---
 
-MCP (Model Context Protocol) lets AI assistants like Claude work directly with your Relaticle CRM data. Instead of copy-pasting between tools, your AI assistant can list companies, create tasks, update contacts, and more -- all from a natural conversation.
+MCP (Model Context Protocol) lets AI assistants like Claude work directly with your Relaticle CRM data. Instead of copy-pasting between tools, your AI assistant can list companies, create tasks, update people, and more -- all from a natural conversation.
 
 ---
 
@@ -193,21 +193,21 @@ The server provides 39 tools. They cover account context, cross-entity discovery
 
 | Tool | Description |
 |------|-------------|
-| `list-people-tool` | List contacts with optional search, filter by company |
+| `list-people-tool` | List people with optional search, filter by company |
 | `get-people-tool` | Get a single person by ID with full details and relationships |
-| `create-people-tool` | Create a new contact (requires `name`, optional `company_id`) |
-| `update-people-tool` | Update a contact by ID |
-| `delete-people-tool` | Soft-delete a contact by ID |
+| `create-people-tool` | Create a new person (requires `name`, optional `company_id`) |
+| `update-people-tool` | Update a person by ID |
+| `delete-people-tool` | Soft-delete a person by ID |
 
 ### Opportunities
 
 | Tool | Description |
 |------|-------------|
-| `list-opportunities-tool` | List deals with optional search, filter by company |
+| `list-opportunities-tool` | List opportunities with optional search, filter by company |
 | `get-opportunity-tool` | Get a single opportunity by ID with full details and relationships |
-| `create-opportunity-tool` | Create a new deal (requires `name`, optional `company_id`, `contact_id`) |
-| `update-opportunity-tool` | Update a deal by ID |
-| `delete-opportunity-tool` | Soft-delete a deal by ID |
+| `create-opportunity-tool` | Create a new opportunity (requires `name`, optional `company_id`, `contact_id`) |
+| `update-opportunity-tool` | Update an opportunity by ID |
+| `delete-opportunity-tool` | Soft-delete an opportunity by ID |
 
 ### Tasks
 
@@ -255,8 +255,8 @@ The server exposes five schema resources that describe each entity's fields, inc
 | Resource URI | Description |
 |---|---|
 | `relaticle://schema/company` | Company fields and custom fields |
-| `relaticle://schema/people` | People (contact) fields and custom fields |
-| `relaticle://schema/opportunity` | Opportunity (deal) fields and custom fields |
+| `relaticle://schema/people` | People fields and custom fields |
+| `relaticle://schema/opportunity` | Opportunity fields and custom fields |
 | `relaticle://schema/task` | Task fields and custom fields |
 | `relaticle://schema/note` | Note fields and custom fields |
 

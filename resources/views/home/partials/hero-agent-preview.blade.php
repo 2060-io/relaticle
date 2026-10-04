@@ -86,7 +86,7 @@
             prompts: [
                 { text: "What's overdue this week?", charMs: 55 },
                 { text: 'Mark the Kovra demo as done.', charMs: 38 },
-                { text: "Add Sarah Chen as a contact at @Kovra Systems. She's VP of Engineering.", charMs: 28 }
+                { text: "Add Sarah Chen at @Kovra Systems. She's VP of Engineering.", charMs: 28 }
             ],
             // Entry phase budget. The first prompt is typed into the centered
             // dashboard composer (mirrors app /), then the screen transitions
@@ -564,7 +564,7 @@
                 animate(root.querySelector('.mcp-approve-done'), { opacity: [0, 1], transform: ['translateY(4px)', 'translateY(0px)'] }, { delay: (approveAt + 750) / 1000, duration: 0.3, ease: ease });
                 this.pendingTimers.push(setTimeout(function() { self.scrollToShow('.mcp-approve-done'); }, approveAt + 780));
 
-                // ── Exchange 3: create contact (longest prompt) ──
+                // ── Exchange 3: create person (longest prompt) ──
                 var p3 = this.prompts[2];
                 var typeStart3 = approveAt + 2100;
                 this.pendingTimers.push(setTimeout(function() { self.typeIntoComposer(p3.text, p3.charMs); }, typeStart3));

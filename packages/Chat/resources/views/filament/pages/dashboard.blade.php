@@ -34,7 +34,7 @@
                         typeLabels: @js([
                             'company' => __('Company'),
                             'people' => __('Person'),
-                            'opportunity' => __('Deal'),
+                            'opportunity' => __('Opportunity'),
                             'task' => __('Task'),
                             'note' => __('Note'),
                         ]),

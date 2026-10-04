@@ -18,7 +18,7 @@ return [
         ],
         'filters' => [
             'company' => 'Company',
-            'contact' => 'Contact',
+            'contact' => 'Point of Contact',
         ],
         'form' => [
             'name_placeholder' => 'Enter opportunity title',

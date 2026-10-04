@@ -6,7 +6,7 @@ updated: "2026-08-12"
 related: [help/getting-started/create-your-first-company, help/getting-started/track-a-deal-through-the-pipeline]
 ---
 
-A person record is someone you're in touch with: a contact at a company you
+A person record is anyone you're in touch with: someone at a company you
 sell to, a candidate, or anyone else you want to track. You only need a name
 to create one.
 
