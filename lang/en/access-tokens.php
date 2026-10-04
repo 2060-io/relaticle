@@ -78,7 +78,7 @@ return [
 
     'connectors' => [
         'title' => 'AI Connectors',
-        'description' => 'Assistants such as Claude and ChatGPT that you connected through the consent screen. Revoking one immediately invalidates its access.',
+        'description' => 'Assistants and apps, such as Claude, ChatGPT and Maxforms, that you connected through the consent screen. Revoking one immediately invalidates its access.',
         'columns' => [
             'name' => 'Connector',
             'workspace' => 'Workspace',
@@ -108,6 +108,8 @@ return [
         'api_description' => 'Manage CRM data programmatically.',
         'mcp_link' => 'MCP Server',
         'mcp_description' => 'Connect AI assistants like Claude.',
+        'forms_link' => 'Web forms',
+        'forms_description' => 'Turn form submissions into records with Maxforms.',
     ],
 
     'user_menu' => 'Access Tokens',

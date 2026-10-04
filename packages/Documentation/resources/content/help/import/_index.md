@@ -10,3 +10,6 @@ sorting out the values it flags along the way.
 
 If you've never run an import, start with the walkthrough:
 [Import your existing data](/help/getting-started/import-your-existing-data).
+
+To bring in new leads as they arrive, see
+[Capture leads from a web form](/help/import/capture-leads-from-a-web-form).
