@@ -1,5 +1,7 @@
 # Custom Field Filter Contract Implementation Plan
 
+**Status:** Superseded by `docs/superpowers/specs/2026-10-02-crm-filter-language-design.md` for operators, limits, class location and the contract test.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use sdd-lean (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Custom-field filters return the same correct rows on the REST API, MCP, chat and the Filament list tables, accept choice labels or IDs, and gain `not_in`, `has_none` and `is_empty`.

@@ -256,7 +256,7 @@ The package work is merged on `3.x` (PR #244). The app requires it as `3.x-dev a
    - Every phone and link value is re-run through its field type's `normalize()`; a value already in canonical form is left alone, so a second run changes nothing.
    - Phones: converts the 111 international values stored with formatting. Report the 8,505 national numbers by workspace and leave them as they are: 7,839 from the old onboarding seed (6 distinct values), 665 typed before the E.164 picker, 1 imported. No country is guessed.
    - Links: strips schemes stored by API, MCP, chat and import. Domain-variant links also lose `www.` and paths, collapse duplicates within a record, and cross-record collisions are reported by workspace.
-4. Migration queues it: `Artisan::queue('custom-fields:normalize-values', ['--force' => true])->onQueue('imports')->afterCommit()`, after the settings migration. Self-hosted installs run it the same way.
+4. Migration queues it: `Artisan::queue('custom-fields:normalize-values', ['--force' => true])->onQueue('imports')->delay(now()->addMinutes(5))->afterCommit()`, after the settings migration. Self-hosted installs run it the same way.
 5. Release note: the v1 filter shape is replaced; old shapes return 422s naming the replacement. Tell the paying API customer before the release.
 
 ## Testing

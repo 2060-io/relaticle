@@ -1,5 +1,7 @@
 # Custom field filter contract
 
+Status: superseded by `docs/superpowers/specs/2026-10-02-crm-filter-language-design.md` for operators, limits, class location and the contract test.
+
 Status: draft for review, 2026-10-01. Verified against `origin/main` at `15eb516c3`.
 
 ## Goal
