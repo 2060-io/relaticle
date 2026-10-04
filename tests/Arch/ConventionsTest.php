@@ -75,6 +75,19 @@ it('queues only commands that exist from migrations', function (): void {
     );
 });
 
+it('delays every command a migration queues', function (): void {
+    $offenders = array_values(array_filter(
+        migrationFiles(),
+        fn (string $file): bool => str_contains((string) file_get_contents($file), 'Artisan::queue(')
+            && ! str_contains((string) file_get_contents($file), '->delay('),
+    ));
+
+    expect(array_map(basename(...), $offenders))->toBe(
+        [],
+        'A worker booted before the deploy does not know a new command and fails the job (.ai/guidelines/relaticle/core.md). Add ->delay(now()->addMinutes(5)).',
+    );
+});
+
 it('keeps migrations off the database clock (no useCurrent, CURRENT_TIMESTAMP, or raw now())', function (): void {
     $grandfathered = [
         '0001_01_01_000002_create_jobs_table.php',

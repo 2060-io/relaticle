@@ -11,6 +11,7 @@ return new class extends Migration
     {
         Artisan::queue('media:purge-unsafe-images', ['--force' => true])
             ->onQueue('imports')
+            ->delay(now()->addMinutes(5))
             ->afterCommit();
     }
 };
