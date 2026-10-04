@@ -345,21 +345,27 @@ final readonly class CustomFieldFilter implements Filter
         $spellings = [];
 
         foreach ($operand as $index => $value) {
-            $canonical = CanonicalValue::of($field, $value);
-
-            if ($field->type === CustomFieldType::PHONE->value && ! str_starts_with($canonical, '+')) {
-                throw FilterErrors::at("{$field->code}.{$operator}.{$index}", __('validation.filter.phone_country_code', ['name' => $field->code]));
+            if ($field->type === CustomFieldType::PHONE->value) {
+                $this->assertPhone($field, "{$field->code}.{$operator}.{$index}", $value);
             }
 
-            if ($field->type === CustomFieldType::PHONE->value && preg_match('/^\+\d{1,15}(;ext=\d+)?$/', $canonical) !== 1) {
-                throw FilterErrors::at("{$field->code}.{$operator}.{$index}", __('validation.filter.phone_invalid', ['name' => $field->code, 'value' => $value]));
-            }
-
-            $spellings[] = $canonical;
-            $spellings[] = $value;
+            array_push($spellings, ...CanonicalValue::spellings($field, $value));
         }
 
         return array_values(array_unique($spellings));
+    }
+
+    private function assertPhone(CustomField $field, string $path, string $value): void
+    {
+        $canonical = CanonicalValue::of($field, $value);
+
+        if (! str_starts_with($canonical, '+')) {
+            throw FilterErrors::at($path, __('validation.filter.phone_country_code', ['name' => $field->code]));
+        }
+
+        if (preg_match('/^\+\d{1,15}(;ext=\d+)?$/', $canonical) !== 1) {
+            throw FilterErrors::at($path, __('validation.filter.phone_invalid', ['name' => $field->code, 'value' => $value]));
+        }
     }
 
     /**
