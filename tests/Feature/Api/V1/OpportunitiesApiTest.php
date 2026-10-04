@@ -563,7 +563,7 @@ describe('filtering and sorting', function (): void {
         'relative word' => ['tomorrow'],
     ]);
 
-    it('matches a date operand written in any absolute date format', function (): void {
+    it('matches a date field against the day of an iso date-time operand', function (): void {
         Sanctum::actingAs($this->user);
 
         $closeDate = WorkspaceCustomField::byCode($this->workspace->id, 'opportunity', 'close_date');
@@ -572,7 +572,7 @@ describe('filtering and sorting', function (): void {
         $newYear->saveCustomFieldValue($closeDate, '2026-01-01');
         $spring->saveCustomFieldValue($closeDate, '2026-04-01');
 
-        $ids = collect($this->getJson('/api/v1/opportunities?filter[custom_fields][close_date][$eq]='.urlencode('Jan 1st 2026'))->assertOk()->json('data'))->pluck('id');
+        $ids = collect($this->getJson('/api/v1/opportunities?filter[custom_fields][close_date][$eq]='.urlencode('2026-01-01T15:00:00Z'))->assertOk()->json('data'))->pluck('id');
 
         expect($ids)->toContain($newYear->id)->not->toContain($spring->id);
     });
