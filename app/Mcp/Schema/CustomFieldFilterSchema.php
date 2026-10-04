@@ -154,16 +154,23 @@ final readonly class CustomFieldFilterSchema
     /**
      * @return list<string>
      */
+    public static function operatorKeys(string $type): array
+    {
+        return array_values(array_filter(
+            array_keys(self::operatorsForType($type)),
+            static fn (string $key): bool => str_starts_with($key, '$'),
+        ));
+    }
+
+    /**
+     * @return list<string>
+     */
     public static function operatorNames(): array
     {
         $names = [];
 
         foreach (CustomFieldType::cases() as $type) {
-            foreach (array_keys(self::operatorsForType($type->value)) as $operator) {
-                if (str_starts_with($operator, '$')) {
-                    $names[] = $operator;
-                }
-            }
+            array_push($names, ...self::operatorKeys($type->value));
         }
 
         return array_values(array_unique($names));
@@ -175,8 +182,8 @@ final readonly class CustomFieldFilterSchema
 
         foreach (CustomFieldType::cases() as $type) {
             $operators = array_filter(
-                array_keys(self::operatorsForType($type->value)),
-                static fn (string $operator): bool => str_starts_with($operator, '$') && $operator !== '$is_empty',
+                self::operatorKeys($type->value),
+                static fn (string $operator): bool => $operator !== '$is_empty',
             );
 
             if ($operators !== []) {

@@ -147,7 +147,7 @@ final readonly class FilterVocabulary
      */
     private function typeEntry(CustomField $field, array $properties): array
     {
-        $entry = ['operators' => array_values(array_filter(array_keys($properties), static fn (string $key): bool => str_starts_with($key, '$')))];
+        $entry = ['operators' => CustomFieldFilterSchema::operatorKeys($field->type)];
         $matching = CustomFieldType::tryFrom($field->type)?->filterMatching();
 
         if ($matching !== null) {

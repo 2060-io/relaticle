@@ -73,9 +73,9 @@ final readonly class FilterDefinition
     public function operators(): array
     {
         return match ($this->kind) {
-            FilterKind::Text => array_keys(CustomFieldFilterSchema::operatorsForType(CustomFieldType::TEXT->value)),
-            FilterKind::DateTime => array_keys(CustomFieldFilterSchema::operatorsForType(CustomFieldType::DATE_TIME->value)),
-            FilterKind::Enum => array_keys(CustomFieldFilterSchema::operatorsForType(CustomFieldType::SELECT->value)),
+            FilterKind::Text => CustomFieldFilterSchema::operatorKeys(CustomFieldType::TEXT->value),
+            FilterKind::DateTime => CustomFieldFilterSchema::operatorKeys(CustomFieldType::DATE_TIME->value),
+            FilterKind::Enum => CustomFieldFilterSchema::operatorKeys(CustomFieldType::SELECT->value),
             FilterKind::Members, FilterKind::Relation => self::LINK_OPERATORS,
             FilterKind::Computed => array_keys($this->computedExample),
         };
