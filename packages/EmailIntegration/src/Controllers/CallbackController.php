@@ -104,10 +104,7 @@ final readonly class CallbackController
             return $this->redirectWithError($user, 'Your sign-in session expired. Please reconnect the account.');
         }
 
-        /** @var array<int, string> $grantedScopes */
-        $grantedScopes = $socialUser->approvedScopes;
-
-        if (! $this->grantsMailRead($provider, $grantedScopes)) {
+        if (! $this->grantsMailRead($provider, $socialUser->approvedScopes)) {
             return $this->redirectWithError($user, 'Relaticle needs permission to read your mail. Reconnect and allow every permission.', $team);
         }
 
