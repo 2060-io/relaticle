@@ -132,6 +132,8 @@ never labels the record. Tool descriptions and schema resources keep both retire
 synonyms, so a model maps the user's word to the right tool. What the assistant itself says is
 rule 11 of the `CrmAssistant` prompt: the app's names, or the word the user chose.
 `tests/Feature/Chat/CrmAssistantInstructionsTest.php` fails when that rule changes.
+`NextStepSuggester` writes the chips above the message box and copies the reply's nouns, so
+its prompt carries the same rule. `tests/Feature/Chat/NextStepSuggestionTest.php` pins it.
 
 `tests/Arch/ConventionsTest.php` fails an identifier that uses `team` for the tenant, and any
 use of the retired `editor` role key. It fails a bare `Contact` or `Deal` label anywhere in
