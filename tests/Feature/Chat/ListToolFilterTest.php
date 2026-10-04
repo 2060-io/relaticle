@@ -16,7 +16,10 @@ use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\CurrentWorkspace;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Tools\BaseReadListTool;
 use Relaticle\Chat\Tools\Company\ListCompaniesTool;
@@ -691,4 +694,20 @@ it('ignores a second-hop record from another workspace when no workspace is ambi
     expect(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['name' => ['$eq' => 'Foreign Deal']]]]))->toBe([])
         ->and(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['$in' => [$foreignDeal->id]]]]))->toBe([])
         ->and(peopleIdsWithoutWorkspaceContext(['company' => ['opportunities' => ['$is_empty' => true]]]))->toBe([$person->id]);
+});
+
+it('bounds the $not complement to the acting workspace when no workspace is ambient', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    People::factory()->recycle([$user, $user->personalWorkspace()])->create(['name' => 'Ana Reyes']);
+    $statements = [];
+    DB::listen(function (QueryExecuted $query) use (&$statements): void {
+        $statements[] = $query->sql;
+    });
+
+    peopleIdsWithoutWorkspaceContext(['$not' => ['name' => ['$contains' => 'ana']]]);
+
+    $filtered = (string) Arr::first($statements, fn (string $sql): bool => str_contains($sql, 'not exists'));
+
+    expect(Str::after($filtered, 'not exists'))->toContain('"people"."workspace_id"');
 });

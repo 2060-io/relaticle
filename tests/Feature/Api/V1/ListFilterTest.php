@@ -62,6 +62,13 @@ it('filters a native text field by an operator object', function (): void {
     expect(listIds($this, 'companies', ['name' => ['$contains' => 'acme']]))->toBe([$acme->id]);
 });
 
+it('matches a percent sign in a text filter literally', function (): void {
+    $literal = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => '100% Organic']);
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => '100 Acres Organic']);
+
+    expect(listIds($this, 'companies', ['name' => ['$contains' => '100%']]))->toBe([$literal->id]);
+});
+
 it('filters created_at by a calendar date', function (): void {
     $this->travelTo('2026-09-01 10:00:00');
     $early = Company::factory()->recycle([$this->user, $this->workspace])->create();
