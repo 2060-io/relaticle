@@ -61,7 +61,7 @@ it('strips the related-articles nav from the markdown response but keeps the bod
         ->assertOk()
         ->getContent();
 
-    expect($markdown)->toContain('A company record tracks an account')
+    expect($markdown)->toContain('A company record tracks a business')
         ->and($markdown)->not->toContain('Add your first person');
 });
 
@@ -97,7 +97,7 @@ it('keeps the shell chrome out of the markdown variant', function (): void {
     expect($markdown)->not->toContain('Searching help and developer docs')
         ->and($markdown)->not->toContain('Browse the docs')
         ->and($markdown)->not->toContain('Skip to content')
-        ->and($markdown)->toContain('A company record tracks an account');
+        ->and($markdown)->toContain('A company record tracks a business');
 });
 
 it('links to help and developers from the marketing header, mobile nav, and footer', function (): void {
