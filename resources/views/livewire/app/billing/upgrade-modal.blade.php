@@ -1,304 +1,109 @@
 @php
-    $workspace = \Filament\Facades\Filament::getTenant();
-    $trialEndsAt = $workspace instanceof \App\Models\Workspace && $workspace->onGenericTrial()
-        ? $workspace->trial_ends_at
-        : null;
+    $trialEndsAt = $workspace?->onGenericTrial() ? $workspace->trial_ends_at : null;
 @endphp
 
 <div>
-    @if($this->canUpgrade() || $paid)
+    @if($this->canUpgrade())
         <x-filament::modal
             :id="\App\Livewire\App\Billing\UpgradeModal::MODAL_ID"
             width="3xl"
-            :close-by-clicking-away="false"
-            icon="heroicon-o-arrow-up-circle"
+            icon="ri-flashlight-line"
+            :heading="__('billing.plans.cloud_pro')"
+            :description="__('billing.pro_plan.tagline')"
         >
-            <x-slot name="heading">{{ __('billing.upgrade.modal_heading') }}</x-slot>
-
-            @if($paid)
-                <div class="space-y-4">
-                    <h3 class="font-display text-lg font-semibold text-gray-900 dark:text-white">
-                        {{ __('billing.upgrade.paid_title') }}
+            <div
+                x-data="{
+                    yearly: true,
+                    get amount() { return this.yearly ? @js(__('billing.upgrade.review.amount_yearly')) : @js(__('billing.upgrade.review.amount_monthly')) },
+                }"
+                x-on:upgrade-interval-changed.window="yearly = $event.detail.interval === 'yearly'"
+                class="grid gap-6 md:grid-cols-2"
+            >
+                <div>
+                    <h3 id="upgrade-billing-period" class="flex items-center gap-2 text-sm font-semibold text-gray-950 dark:text-white">
+                        <x-ri-calendar-line class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                        {{ __('billing.upgrade.review.billing_period') }}
                     </h3>
 
-                    @if($this->activated())
-                        @php($subscription = $workspace?->subscription())
-                        @php($trialUntil = $subscription?->onTrial() === true ? $subscription->trial_ends_at : null)
-                        <p class="text-sm text-gray-600 dark:text-gray-300">
-                            {{ $trialUntil !== null
-                                ? __('billing.manage.first_charge', ['date' => $trialUntil->toFormattedDateString()])
-                                : __('billing.manage.auto_renews') }}
-                        </p>
-                        <x-filament::button x-on:click="window.location.reload()">
-                            {{ __('billing.upgrade.close') }}
-                        </x-filament::button>
-                    @else
-                        <x-billing.activating />
-                    @endif
-                </div>
-            @else
-                <div class="space-y-5">
-                    <div class="flex items-center justify-between gap-4">
-                        <h3 class="font-display text-lg font-semibold text-gray-900 dark:text-white">
-                            {{ __('billing.upgrade.modal_plan_title') }}
-                        </h3>
-
-                        <div class="flex rounded-lg border border-gray-200 p-0.5 dark:border-white/10" role="group" aria-label="{{ __('billing.upgrade.billing_period') }}">
-                            @foreach(['yearly' => __('billing.pro_plan.yearly'), 'monthly' => __('billing.pro_plan.monthly')] as $value => $label)
-                                <button
-                                    type="button"
-                                    wire:key="interval-{{ $value }}"
-                                    x-on:click="$dispatch('upgrade-interval-changed', { interval: @js($value) })"
-                                    @class([
-                                        'rounded-md px-3 py-1 text-sm font-medium transition',
-                                        'bg-primary-600 text-white' => $interval === $value,
-                                        'text-gray-600 dark:text-gray-300' => $interval !== $value,
-                                    ])
-                                >{{ $label }}</button>
-                            @endforeach
-                        </div>
+                    <div class="mt-4 space-y-2.5" role="radiogroup" aria-labelledby="upgrade-billing-period">
+                        @foreach([true, false] as $isYearly)
+                            <label
+                                class="flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 transition"
+                                :class="yearly === @js($isYearly)
+                                    ? 'border-primary-500 bg-primary-50/60 ring-1 ring-primary-500 dark:border-primary-400 dark:bg-primary-400/10 dark:ring-primary-400'
+                                    : 'border-gray-200 hover:border-gray-300 dark:border-white/10 dark:hover:border-white/20'"
+                            >
+                                <input type="radio" name="upgrade-interval" class="h-4 w-4 accent-primary-600" x-model.boolean="yearly" value="{{ $isYearly ? 'true' : 'false' }}" @checked($isYearly)>
+                                <span class="text-sm font-medium text-gray-950 dark:text-white">
+                                    {{ $isYearly ? __('billing.pro_plan.yearly') : __('billing.pro_plan.monthly') }}
+                                </span>
+                                @if($isYearly)
+                                    <span class="rounded-full bg-primary/[0.1] px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-700 dark:bg-primary/[0.25] dark:text-primary-300">{{ __('billing.pro_plan.yearly_save') }}</span>
+                                @endif
+                                <span class="ms-auto rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-white/[0.06] dark:text-gray-300">
+                                    {{ $isYearly ? __('billing.upgrade.review.rate_yearly') : __('billing.upgrade.review.rate_monthly') }}
+                                </span>
+                            </label>
+                        @endforeach
                     </div>
+
+                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('billing.pro_plan.per_workspace') }}</p>
+                </div>
+
+                <aside class="rounded-xl bg-gray-50 p-5 dark:bg-white/[0.03]">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ __('billing.upgrade.review.summary') }}</h3>
+                        <span class="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-xs text-gray-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-gray-300"
+                            x-text="yearly ? @js(__('billing.upgrade.review.per_year')) : @js(__('billing.upgrade.review.per_month'))">{{ __('billing.upgrade.review.per_year') }}</span>
+                    </div>
+
+                    <dl class="mt-5 space-y-3 text-sm">
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-gray-950 dark:text-white">{{ __('billing.upgrade.review.line_item', ['workspace' => $workspace->name]) }}</dt>
+                            <dd class="text-gray-700 tabular-nums dark:text-gray-300" x-text="amount">{{ __('billing.upgrade.review.amount_yearly') }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-gray-950 dark:text-white">{{ __('billing.upgrade.review.credits', ['credits' => number_format(\App\Enums\Plan::Pro->credits())]) }}</dt>
+                            <dd class="text-gray-700 dark:text-gray-300">{{ __('billing.upgrade.review.credits_included') }}</dd>
+                        </div>
+
+                        <div class="border-t border-gray-200 dark:border-white/10"></div>
+
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-gray-600 dark:text-gray-400">{{ __('billing.upgrade.review.subtotal') }}</dt>
+                            <dd class="text-gray-700 tabular-nums dark:text-gray-300" x-text="amount">{{ __('billing.upgrade.review.amount_yearly') }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-gray-600 dark:text-gray-400">{{ __('billing.upgrade.review.tax') }}</dt>
+                            <dd class="text-gray-500 dark:text-gray-400">{{ __('billing.upgrade.review.tax_at_checkout') }}</dd>
+                        </div>
+
+                        <div class="border-t border-gray-200 dark:border-white/10"></div>
+
+                        <div class="flex items-baseline justify-between gap-4">
+                            <dt class="font-medium text-gray-950 dark:text-white" x-text="yearly ? @js(__('billing.upgrade.review.total_yearly')) : @js(__('billing.upgrade.review.total_monthly'))">{{ __('billing.upgrade.review.total_yearly') }}</dt>
+                            <dd class="font-display text-2xl font-semibold tracking-tight text-gray-950 tabular-nums dark:text-white" x-text="amount">{{ __('billing.upgrade.review.amount_yearly') }}</dd>
+                        </div>
+                    </dl>
 
                     @if($trialEndsAt !== null)
-                        <div class="rounded-xl bg-primary/[0.06] p-3 text-sm text-primary-700 dark:text-primary-300">
+                        <p class="mt-4 rounded-lg bg-primary/[0.06] p-3 text-xs text-primary-700 dark:text-primary-300">
                             {{ __('billing.upgrade.trial_notice', ['date' => $trialEndsAt->toFormattedDateString()]) }}
-                        </div>
+                        </p>
                     @endif
 
-                    @if($error !== null)
-                        <div class="rounded-xl bg-danger-50 p-3 text-sm text-danger-700 dark:bg-danger-400/10 dark:text-danger-400">
-                            {{ $error }}
-                        </div>
-                    @endif
+                    <x-filament::button size="lg" class="mt-6 w-full justify-center"
+                        wire:loading.attr="disabled" wire:target="checkout"
+                        x-on:click="$wire.checkout(yearly ? 'yearly' : 'monthly')">
+                        {{ __('billing.upgrade.review.proceed') }}
+                    </x-filament::button>
 
-                    {{-- Alpine removes x-on:...window on teardown; a raw
-                         addEventListener would outlive every wire:navigate. --}}
-                    <div
-                        wire:ignore
-                        x-data="upgradeCheckout({
-                            publishableKey: @js(config('cashier.key')),
-                            modalId: @js(\App\Livewire\App\Billing\UpgradeModal::MODAL_ID),
-                        })"
-                        x-on:open-modal.window="opened($event)"
-                        x-on:close-modal.window="closed($event)"
-                        x-on:upgrade-interval-changed.window="intervalChanged($event)"
-                    >
-                        <div x-ref="frame" class="min-h-96"></div>
-
-                        <div x-show="failed" x-cloak class="rounded-xl bg-danger-50 p-3 text-sm text-danger-700 dark:bg-danger-400/10 dark:text-danger-400">
-                            <p>{{ __('billing.errors.frame_failed') }}</p>
-                            <button type="button" x-on:click="retry()" class="mt-2 font-medium underline">
-                                {{ __('billing.errors.retry') }}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            @endif
+                    <p class="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <x-ri-lock-line class="h-3.5 w-3.5" />
+                        {{ __('billing.upgrade.review.secure') }}
+                    </p>
+                </aside>
+            </div>
         </x-filament::modal>
     @endif
-
-    @script
-    <script>
-        Alpine.data('upgradeCheckout', (config) => ({
-            checkout: null,
-            busy: false,
-            restartQueued: false,
-            failed: false,
-            generation: 0,
-
-            init() {
-                this.$watch('$store.theme', () => this.reprice());
-            },
-
-            opened(event) {
-                // Filament renders modal content eagerly (x-show, not x-if), so
-                // mounting on init would open a Stripe session per page load.
-                if (event.detail?.id === config.modalId) {
-                    this.boot();
-                }
-            },
-
-            closed(event) {
-                // A frame left live while closed would let a theme change, including
-                // an unattended OS dark-mode switch, silently buy another session.
-                if (event.detail?.id === config.modalId) {
-                    this.teardown();
-                }
-            },
-
-            intervalChanged(event) {
-                this.$wire.interval = event.detail.interval;
-                this.reprice();
-            },
-
-            retry() {
-                this.failed = false;
-                this.boot();
-            },
-
-            async boot() {
-                if (this.checkout || this.busy) {
-                    return;
-                }
-
-                const era = this.generation;
-
-                this.busy = true;
-
-                try {
-                    await this.loadStripeJs();
-
-                    if (this.stale(era)) {
-                        return;
-                    }
-
-                    await this.open(await this.secret(), era);
-                } catch (error) {
-                    this.fail(error, era);
-                } finally {
-                    this.busy = false;
-                }
-
-                await this.drainQueued();
-            },
-
-            loadStripeJs() {
-                if (window.Stripe) {
-                    return Promise.resolve();
-                }
-
-                return new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.id = 'stripe-js';
-                    script.src = 'https://js.stripe.com/dahlia/stripe.js';
-                    script.onload = resolve;
-                    // Dropped on failure so a retry re-adds it. A dead tag left in
-                    // place would make every later load await a load event never fired.
-                    script.onerror = () => {
-                        script.remove();
-                        reject(new Error('Stripe.js failed to load.'));
-                    };
-                    document.head.appendChild(script);
-                });
-            },
-
-            async secret() {
-                const secret = await this.$wire.createSession(
-                    this.$wire.interval,
-                    Alpine.store('theme'),
-                );
-
-                if (! secret) {
-                    // The component already rendered why; a second banner would
-                    // give the same failure two different explanations.
-                    throw Object.assign(new Error('No checkout session.'), { reported: true });
-                }
-
-                return secret;
-            },
-
-            async open(secret, era) {
-                if (this.stale(era)) {
-                    return;
-                }
-
-                const stripe = window.Stripe(config.publishableKey);
-
-                const checkout = await stripe.createEmbeddedCheckoutPage({
-                    fetchClientSecret: () => Promise.resolve(secret),
-                    onComplete: () => this.$wire.markPaid(),
-                });
-
-                // Closing the modal or navigating away during the round trip must not
-                // leave a frame mounted behind it, priced and billable.
-                if (this.stale(era) || ! this.$el.isConnected) {
-                    checkout.destroy();
-
-                    return;
-                }
-
-                this.checkout = checkout;
-                this.checkout.mount(this.$refs.frame);
-                this.failed = false;
-            },
-
-            async reprice() {
-                if (this.busy) {
-                    this.restartQueued = true;
-
-                    return;
-                }
-
-                // Nothing to re-price until the modal has actually been opened.
-                if (! this.checkout) {
-                    return;
-                }
-
-                const era = this.generation;
-
-                this.busy = true;
-
-                try {
-                    // The new session is bought before the working frame is discarded,
-                    // so a refusal leaves the customer with the one they already had.
-                    const secret = await this.secret();
-
-                    if (this.stale(era)) {
-                        return;
-                    }
-
-                    this.checkout.destroy();
-                    this.checkout = null;
-
-                    await this.open(secret, era);
-                } catch (error) {
-                    this.fail(error, era);
-                } finally {
-                    this.busy = false;
-                }
-
-                await this.drainQueued();
-            },
-
-            async drainQueued() {
-                if (! this.restartQueued) {
-                    return;
-                }
-
-                this.restartQueued = false;
-
-                await (this.checkout ? this.reprice() : this.boot());
-            },
-
-            stale(era) {
-                return era !== this.generation;
-            },
-
-            fail(error, era) {
-                console.error(error);
-
-                if (this.stale(era) || error?.reported) {
-                    return;
-                }
-
-                this.failed = this.checkout === null;
-            },
-
-            teardown() {
-                // Bumped so any in-flight request resolves into a no-op instead of
-                // mounting or reporting against a modal the user already closed.
-                this.generation++;
-                this.checkout?.destroy();
-                this.checkout = null;
-                this.restartQueued = false;
-                this.failed = false;
-                this.busy = false;
-            },
-
-            destroy() {
-                this.teardown();
-            },
-        }))
-    </script>
-    @endscript
 </div>

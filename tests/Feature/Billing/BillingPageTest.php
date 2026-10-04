@@ -107,7 +107,6 @@ it('replaces the app shell with a standalone paused screen when the trial ends',
         ->assertDontSee('billing.paused.heading.', false)
         ->assertSee(__('billing.paused.owner_body', ['workspace' => $workspace->name]))
         ->assertSee(__('billing.paused.continue'))
-        ->assertDontSee(__('billing.paused.review.proceed'))
         ->assertSee('href="https://marketing.test/contact"', false)
         ->assertSee(__('billing.paused.sign_out'))
         ->assertDontSee('Delete workspace')
@@ -115,33 +114,38 @@ it('replaces the app shell with a standalone paused screen when the trial ends',
         ->assertDontSee(__('billing.usage.title'));
 });
 
-it('reviews the plan and totals on a second step before sending the owner to checkout', function (): void {
+it('opens the upgrade modal from the paused screen instead of a review page', function (): void {
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null, 'pro_trial_used_at' => now()->subDays(20)])->save();
 
     livewire(Billing::class)
-        ->call('$set', 'step', 'plan')
-        ->assertSee(__('billing.paused.review.summary'))
-        ->assertSee(__('billing.paused.review.line_item', ['workspace' => $workspace->name]))
-        ->assertSee(__('billing.paused.review.amount_yearly'))
-        ->assertSee(__('billing.paused.review.credits', ['credits' => number_format(Plan::Pro->credits())]))
-        ->assertSee(__('billing.paused.review.proceed'))
-        ->assertDontSee('@js(', false)
-        ->assertDontSee(__('billing.paused.continue'));
+        ->assertSee(__('billing.paused.continue'))
+        ->assertSeeHtml("open-modal', { id: 'upgrade-plan' }")
+        ->assertDontSee(__('billing.upgrade.review.proceed'))
+        ->assertDontSee('Js::from', false);
 });
 
-it('keeps a member on the paused screen when they open the plan review step', function (): void {
+it('opens the dashboard when a reopening checkout returns after the subscription landed', function (): void {
+    [, $workspace] = billingPageOwner();
+
+    livewire(Billing::class, ['checkout' => Billing::CHECKOUT_REOPENED])
+        ->assertRedirect(Filament::getUrl($workspace));
+});
+
+it('keeps an ordinary upgrade on the billing page when checkout returns', function (): void {
+    billingPageOwner();
+
+    livewire(Billing::class, ['checkout' => Billing::CHECKOUT_SUCCESS])
+        ->assertNoRedirect();
+});
+
+it('waits on the paused screen while a reopening checkout is still activating', function (): void {
     [, $workspace] = billingPageOwner();
     $workspace->forceFill(['hosted_free_grandfathered_at' => null, 'pro_trial_used_at' => now()->subDays(20)])->save();
-    $member = User::factory()->create();
-    $workspace->users()->attach($member, ['role' => 'member']);
 
-    test()->actingAs($member);
-    Filament::setTenant($workspace->refresh());
-
-    livewire(Billing::class, ['step' => 'plan'])
-        ->assertSee(__('billing.paused.heading.trial_ended'))
-        ->assertDontSee(__('billing.paused.review.proceed'));
+    livewire(Billing::class, ['checkout' => Billing::CHECKOUT_REOPENED])
+        ->assertNoRedirect()
+        ->assertSee(__('billing.upgrade.activating'));
 });
 
 it('names the ended subscription on the paused screen', function (): void {

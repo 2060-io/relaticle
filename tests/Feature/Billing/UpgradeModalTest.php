@@ -11,6 +11,7 @@ use App\Livewire\App\Billing\UpgradeModal;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Exceptions;
 use Laravel\Pennant\Feature;
 use Tests\Helpers\StripeRecorder;
@@ -42,30 +43,34 @@ afterEach(function (): void {
     StripeRecorder::uninstall();
 });
 
-it('gives the owner a client secret', function (): void {
-    StripeRecorder::install();
+it('sends the owner to hosted Stripe checkout for the chosen period', function (): void {
+    $recorder = StripeRecorder::install();
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'dark')
-        ->assertReturned('cs_test_fake_secret');
+        ->call('checkout', 'monthly')
+        ->assertRedirect('https://checkout.stripe.com/c/pay/cs_test_fake')
+        ->assertNotNotified();
+
+    expect($recorder->paramsFor('/checkout/sessions')['line_items'][0]['price'])->toBe('price_pro_monthly_test');
 });
 
-it('passes the requested theme to the session', function (): void {
-    $recorder = StripeRecorder::install();
-
-    livewire(UpgradeModal::class)->call('createSession', 'yearly', 'dark');
-
-    expect($recorder->paramsFor('/checkout/sessions')['branding_settings']['background_color'])
-        ->toBe('#111827');
+it('reviews the plan, the period and the totals before checkout', function (): void {
+    livewire(UpgradeModal::class)
+        ->assertSee(__('billing.upgrade.review.billing_period'))
+        ->assertSee(__('billing.upgrade.review.summary'))
+        ->assertSee(__('billing.upgrade.review.line_item', ['workspace' => $this->workspace->name]))
+        ->assertSee(__('billing.upgrade.review.amount_yearly'))
+        ->assertSee(__('billing.upgrade.review.credits', ['credits' => number_format(Plan::Pro->credits())]))
+        ->assertSee(__('billing.upgrade.review.proceed'))
+        ->assertDontSee(__('billing.upgrade.trial_notice', ['date' => '']))
+        ->assertDontSee('@js(', false);
 });
 
-it('falls back to the light frame for an unknown theme', function (): void {
-    $recorder = StripeRecorder::install();
+it('tells a workspace on trial that the card is not charged until the trial ends', function (): void {
+    $this->workspace->forceFill(['trial_ends_at' => now()->addDays(9)])->save();
 
-    livewire(UpgradeModal::class)->call('createSession', 'yearly', 'sepia');
-
-    expect($recorder->paramsFor('/checkout/sessions')['branding_settings']['background_color'])
-        ->toBe('#ffffff');
+    livewire(UpgradeModal::class)
+        ->assertSee(__('billing.upgrade.trial_notice', ['date' => now()->addDays(9)->toFormattedDateString()]));
 });
 
 it('refuses a member who does not own the workspace', function (): void {
@@ -76,8 +81,9 @@ it('refuses a member who does not own the workspace', function (): void {
     $this->actingAs($member);
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'light')
-        ->assertReturned(null);
+        ->assertDontSee(__('billing.upgrade.review.proceed'))
+        ->call('checkout', 'yearly')
+        ->assertNoRedirect();
 });
 
 it('refuses a workspace that already subscribes', function (): void {
@@ -92,8 +98,8 @@ it('refuses a workspace that already subscribes', function (): void {
     ]);
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'light')
-        ->assertReturned(null);
+        ->call('checkout', 'yearly')
+        ->assertNoRedirect();
 });
 
 it('refuses an enterprise workspace', function (): void {
@@ -101,8 +107,8 @@ it('refuses an enterprise workspace', function (): void {
     $this->workspace->forceFill(['plan' => Plan::Enterprise])->save();
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'light')
-        ->assertReturned(null);
+        ->call('checkout', 'yearly')
+        ->assertNoRedirect();
 });
 
 it('refuses when billing is switched off', function (): void {
@@ -110,18 +116,18 @@ it('refuses when billing is switched off', function (): void {
     Feature::define(BillingFeature::class, false);
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'light')
-        ->assertReturned(null);
+        ->call('checkout', 'yearly')
+        ->assertNoRedirect();
 });
 
-it('surfaces an error instead of throwing when the interval is unknown', function (): void {
+it('notifies instead of throwing when the interval is unknown', function (): void {
     Exceptions::fake();
     StripeRecorder::install();
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'weekly', 'light')
-        ->assertReturned(null)
-        ->assertSet('error', __('billing.errors.checkout_failed'));
+        ->call('checkout', 'weekly')
+        ->assertNoRedirect()
+        ->assertNotified(Notification::make()->title(__('billing.errors.checkout_failed'))->danger());
 
     Exceptions::assertNotReported(InvalidArgumentException::class);
 });
@@ -134,9 +140,9 @@ it('reports an unexpected checkout failure instead of swallowing it', function (
     });
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'light')
-        ->assertReturned(null)
-        ->assertSet('error', __('billing.errors.checkout_failed'));
+        ->call('checkout', 'yearly')
+        ->assertNoRedirect()
+        ->assertNotified(Notification::make()->title(__('billing.errors.checkout_failed'))->danger());
 
     Exceptions::assertReported(RuntimeException::class);
 });
@@ -147,82 +153,30 @@ it('reports a missing price configuration instead of blaming the browser', funct
     config()->set('services.stripe.prices.pro_yearly', null);
 
     livewire(UpgradeModal::class)
-        ->call('createSession', 'yearly', 'light')
-        ->assertReturned(null)
-        ->assertSet('error', __('billing.errors.checkout_failed'));
+        ->call('checkout', 'yearly')
+        ->assertNoRedirect()
+        ->assertNotified(Notification::make()->title(__('billing.errors.checkout_failed'))->danger());
 
     Exceptions::assertReported(InvalidArgumentException::class);
-});
-
-it('clears a previous error once a session is created successfully', function (): void {
-    StripeRecorder::install();
-
-    $component = livewire(UpgradeModal::class)
-        ->call('createSession', 'weekly', 'light')
-        ->assertSet('error', __('billing.errors.checkout_failed'));
-
-    $component->call('createSession', 'yearly', 'light')
-        ->assertSet('error', null);
-});
-
-it('flips paid when the frame completes', function (): void {
-    livewire(UpgradeModal::class)
-        ->call('markPaid')
-        ->assertSet('paid', true);
-});
-
-it('keeps the successful interval on the component', function (): void {
-    StripeRecorder::install();
-
-    livewire(UpgradeModal::class)
-        ->call('createSession', 'monthly', 'light')
-        ->assertSet('interval', 'monthly');
-});
-
-it('creates sessions up to the limit then throttles with a wait message', function (): void {
-    StripeRecorder::install();
-    $this->travelTo(now());
-
-    $component = livewire(UpgradeModal::class);
-
-    foreach (range(1, 10) as $ignored) {
-        $component->call('createSession', 'yearly', 'light')
-            ->assertReturned('cs_test_fake_secret');
-    }
-
-    $component->call('createSession', 'yearly', 'light')
-        ->assertReturned(null)
-        ->assertSet('error', __('billing.upgrade.rate_limited', ['seconds' => 600]));
-});
-
-it('reports the workspace as activated once the subscription lands', function (): void {
-    StripeRecorder::install();
-
-    $component = livewire(UpgradeModal::class);
-
-    expect($component->instance()->activated())->toBeFalse();
-
-    $this->workspace->subscriptions()->create([
-        'type' => 'default',
-        'stripe_id' => 'sub_test_fake',
-        'stripe_status' => 'active',
-        'stripe_price' => 'price_pro_yearly_test',
-        'quantity' => 1,
-    ]);
-
-    $this->workspace->refresh();
-
-    expect($component->instance()->activated())->toBeTrue();
-});
-
-it('no longer exposes the redirect upgrade method on the billing page', function (): void {
-    expect(method_exists(Billing::class, 'upgrade'))->toBeFalse();
 });
 
 it('mounts the modal for an owner who can upgrade', function (): void {
     $this->get(Billing::getUrl(panel: 'app', tenant: $this->workspace))
         ->assertOk()
         ->assertSeeLivewire(UpgradeModal::class);
+});
+
+it('mounts the modal on the paused screen so its buttons have something to open', function (): void {
+    $this->workspace->forceFill([
+        'hosted_free_grandfathered_at' => null,
+        'pro_trial_used_at' => now()->subDays(20),
+    ])->save();
+
+    $this->get(Billing::getUrl(panel: 'app', tenant: $this->workspace))
+        ->assertOk()
+        ->assertSee(__('billing.paused.continue'))
+        ->assertSeeLivewire(UpgradeModal::class)
+        ->assertSee(__('billing.upgrade.review.proceed'));
 });
 
 it('does not mount the modal for a member who cannot upgrade', function (): void {
@@ -241,20 +195,4 @@ it('does not mount the modal anywhere in the panel when billing is switched off'
     $this->get(Dashboard::getUrl(panel: 'app', tenant: $this->workspace))
         ->assertOk()
         ->assertDontSeeLivewire(UpgradeModal::class);
-});
-
-it('tells a carried-trial customer when the first charge lands', function (): void {
-    $this->workspace->subscriptions()->create([
-        'type' => 'default',
-        'stripe_id' => 'sub_test_trialing',
-        'stripe_status' => 'trialing',
-        'stripe_price' => 'price_pro_yearly_test',
-        'quantity' => 1,
-        'trial_ends_at' => now()->addDays(9),
-    ]);
-
-    livewire(UpgradeModal::class)
-        ->call('markPaid')
-        ->assertSee(__('billing.manage.first_charge', ['date' => now()->addDays(9)->toFormattedDateString()]))
-        ->assertDontSee(__('billing.manage.auto_renews'));
 });

@@ -59,22 +59,32 @@ it('redirects the owner to the Stripe billing portal', function (): void {
         ->assertNotNotified();
 });
 
-it('builds an embedded checkout session that keeps managed payments', function (): void {
+it('builds a hosted checkout session that keeps managed payments', function (): void {
     $recorder = StripeRecorder::install();
     config()->set('services.stripe.managed_payments', true);
 
-    $secret = resolve(CreateProCheckout::class)->execute($this->workspace, 'monthly');
+    $url = resolve(CreateProCheckout::class)->execute($this->workspace, 'monthly');
 
-    expect($secret)->toBe('cs_test_fake_secret');
+    expect($url)->toBe('https://checkout.stripe.com/c/pay/cs_test_fake');
 
     $params = $recorder->paramsFor('/checkout/sessions');
 
-    expect($params['ui_mode'])->toBe('embedded_page')
-        ->and($params['redirect_on_completion'])->toBe('if_required')
-        ->and($params['managed_payments'])->toBe(['enabled' => 'true'])
-        ->and($params['return_url'])->toContain('checkout=success')
-        ->and($params)->not->toHaveKey('success_url')
-        ->and($params)->not->toHaveKey('cancel_url');
+    expect($params['managed_payments'])->toBe(['enabled' => 'true'])
+        ->and($params['success_url'])->toEndWith('/billing?checkout=success')
+        ->and($params['cancel_url'])->toEndWith('/billing')
+        ->and($params)->not->toHaveKey('ui_mode');
+});
+
+it('returns a paused workspace to a checkout result that reopens it', function (): void {
+    $recorder = StripeRecorder::install();
+    $this->workspace->forceFill([
+        'hosted_free_grandfathered_at' => null,
+        'pro_trial_used_at' => now()->subDays(20),
+    ])->save();
+
+    resolve(CreateProCheckout::class)->execute($this->workspace->refresh(), 'yearly');
+
+    expect($recorder->paramsFor('/checkout/sessions')['success_url'])->toEndWith('/billing?checkout=reopened');
 });
 
 it('carries a running trial into the subscription', function (): void {

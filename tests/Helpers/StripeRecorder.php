@@ -47,7 +47,6 @@ final class StripeRecorder implements ClientInterface
             str_contains((string) $absUrl, '/checkout/sessions') => [
                 'id' => 'cs_test_fake',
                 'object' => 'checkout.session',
-                'client_secret' => 'cs_test_fake_secret',
                 'url' => 'https://checkout.stripe.com/c/pay/cs_test_fake',
             ],
             str_contains((string) $absUrl, '/billing_portal/sessions') => [

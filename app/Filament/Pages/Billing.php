@@ -37,14 +37,15 @@ final class Billing extends Page
 
     protected string $view = 'filament.pages.billing';
 
+    public const string CHECKOUT_SUCCESS = 'success';
+
+    public const string CHECKOUT_REOPENED = 'reopened';
+
     #[Url]
     public ?string $checkout = null;
 
     #[Url]
     public ?string $credits = null;
-
-    #[Url(history: true)]
-    public ?string $step = null;
 
     #[Override]
     public static function shouldRegisterNavigation(): bool
@@ -60,6 +61,10 @@ final class Billing extends Page
     public function mount(): void
     {
         abort_unless(Feature::active(BillingFeature::class), 403);
+
+        if ($this->checkout === self::CHECKOUT_REOPENED && ! $this->isPaused()) {
+            $this->redirect(Filament::getUrl($this->workspace()));
+        }
     }
 
     #[Override]
@@ -178,21 +183,18 @@ final class Billing extends Page
             'onStripeTrial' => $subscription?->onTrial() ?? false,
             'isGrandfathered' => $isGrandfathered,
             'balance' => AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->first(),
-            'activating' => $this->checkout === 'success' && ! $workspace->subscribed() && $workspace->plan !== Plan::Enterprise,
+            'activating' => in_array($this->checkout, [self::CHECKOUT_SUCCESS, self::CHECKOUT_REOPENED], true) && ! $workspace->subscribed() && $workspace->plan !== Plan::Enterprise,
             'creditsFulfilling' => $this->credits === 'success',
             'availablePacks' => resolve(CreditPackCatalog::class)->purchasable(),
             ...($hasHostedAccess ? [] : $this->pausedViewData($workspace)),
         ];
     }
 
-    /** @return array{billingStatus: BillingStatus, reviewingPlan: bool, otherWorkspaces: Collection<int, Workspace>} */
+    /** @return array{billingStatus: BillingStatus, otherWorkspaces: Collection<int, Workspace>} */
     private function pausedViewData(Workspace $workspace): array
     {
         return [
             'billingStatus' => $workspace->billingStatus(),
-            'reviewingPlan' => $this->step === 'plan'
-                && $this->user()->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)
-                && $this->checkout !== 'success',
             'otherWorkspaces' => $this->user()->allWorkspaces()
                 ->reject(fn (Workspace $other): bool => $other->is($workspace))
                 ->values(),
