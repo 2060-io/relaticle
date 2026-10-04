@@ -6,11 +6,14 @@ use App\Actions\CustomFields\CreateCustomField;
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
 use App\Features\OnboardSeed;
+use App\Mcp\Resources\PeopleSchemaResource;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\User;
 use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterDefinition;
+use App\Support\Filters\FilterVocabulary;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
@@ -18,8 +21,12 @@ use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Services\Tools\CustomFieldsSchemaDescriber;
 use Relaticle\Chat\Tools\Company\ListCompaniesTool;
+use Relaticle\Chat\Tools\Note\ListNotesTool;
+use Relaticle\Chat\Tools\Opportunity\ListOpportunitiesTool;
 use Relaticle\Chat\Tools\People\ListPeopleTool;
+use Relaticle\Chat\Tools\Task\ListTasksTool;
 use Relaticle\CustomFields\Services\TenantContextService;
+use Tests\Helpers\FilterDescription;
 
 mutates(CustomFieldsSchemaDescriber::class, CustomFieldsFilterDescriber::class, WorkspaceCustomFields::class);
 
@@ -276,3 +283,150 @@ it('renders the related entity and the field type on chat and states emptiness o
     expect($opportunities)->toContain('- contact (relation to people;', '- amount (Amount, currency)', '- close_date (Close Date, date)')
         ->and(resolve(CustomFieldsFilterDescriber::class)->describe($user, 'note'))->toContain('No filterable custom fields are defined');
 });
+
+dataset('chat list tools', [
+    'company' => [CrmEntity::Company, ListCompaniesTool::class],
+    'people' => [CrmEntity::People, ListPeopleTool::class],
+    'opportunity' => [CrmEntity::Opportunity, ListOpportunitiesTool::class],
+    'task' => [CrmEntity::Task, ListTasksTool::class],
+    'note' => [CrmEntity::Note, ListNotesTool::class],
+]);
+
+it('words each name, type and field as the vocabulary publishes it', function (CrmEntity $entity, string $chatTool): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    $published = resolve(FilterVocabulary::class)->for($user, $entity);
+    $customFields = $published['custom_fields'];
+    $types = $published['types'];
+    unset($published['custom_fields'], $published['types']);
+
+    $chatDescription = FilterDescription::of($chatTool);
+    $lines = FilterDescription::lines($chatDescription);
+
+    foreach ($published as $name => $entry) {
+        expect($lines['names'][$name])->toContain("({$entry['type']}", 'operators: '.implode(', ', $entry['operators']), 'example: '.CustomFieldFilterSchema::json($entry['example']));
+
+        if (isset($entry['entity'])) {
+            expect($lines['names'][$name])->toContain("{$entry['type']} to {$entry['entity']};");
+        }
+
+        if (isset($entry['values'])) {
+            expect($lines['names'][$name])->toContain('one of: '.implode(', ', $entry['values']));
+        }
+
+        if (isset($entry['nested_example'])) {
+            expect($lines['names'][$name])->toContain('; nested example: '.CustomFieldFilterSchema::json($entry['nested_example']));
+        } else {
+            expect($lines['names'][$name])->not->toContain('nested example');
+        }
+
+        if (isset($entry['operand'])) {
+            $carrier = $entry['type'] === 'computed' ? $lines['names'][$name] : $lines['rules'][$entry['type']];
+
+            expect($carrier)->toContain("takes {$entry['operand']}");
+        }
+    }
+
+    $nestedCustom = array_filter($published, fn (array $entry): bool => isset($entry['nested_custom_field_example']));
+
+    if ($nestedCustom !== []) {
+        $name = array_key_first($nestedCustom);
+
+        expect($lines['rules']['relation'])->toContain('nested custom field example '.CustomFieldFilterSchema::json([$name => $nestedCustom[$name]['nested_custom_field_example']]));
+    } else {
+        expect($chatDescription)->not->toContain('nested custom field example');
+    }
+
+    foreach ($types as $type => $entry) {
+        expect($lines['types'][$type])->toContain("- {$type}: operators ".implode(', ', $entry['operators']));
+
+        if (isset($entry['example'])) {
+            expect($lines['types'][$type])->toContain('; example '.CustomFieldFilterSchema::json($entry['example']));
+        }
+
+        if (isset($entry['sub_fields'])) {
+            $domain = $entry['sub_fields']['domain'];
+
+            expect($lines['types'][$type])->toContain('sub-field domain takes '.implode(', ', $domain['operators'])." and matches {$domain['matches']}", CustomFieldFilterSchema::json($domain['example']));
+        }
+
+        if (isset($entry['matching'])) {
+            expect($lines['types'][$type])->toContain("values match {$entry['matching']}");
+        }
+    }
+
+    foreach ($customFields as $code => $entry) {
+        expect($lines['fields'][$code])->toContain("({$entry['name']}, {$entry['type']}")
+            ->and(array_keys($entry))->each->toBeIn(['name', 'type', 'options', 'example']);
+
+        if (isset($entry['options'])) {
+            expect($lines['fields'][$code])->toContain('one of: "'.implode('", "', $entry['options']).'"');
+        }
+
+        isset($entry['example'])
+            ? expect($lines['fields'][$code])->toContain('; example '.CustomFieldFilterSchema::json($entry['example']))
+            : expect($lines['fields'][$code])->not->toContain('example');
+    }
+})->with('chat list tools');
+
+it('states each per-type filter rule once however many fields share the type', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    $create = fn (string $code) => app(CreateCustomField::class)->execute($user, [
+        'entity_type' => 'people',
+        'name' => "Field {$code}",
+        'code' => $code,
+        'type' => 'text',
+    ]);
+    $resource = fn (): array => resolve(PeopleSchemaResource::class)->toSchema($user);
+
+    $create('probe');
+    $baseChat = FilterDescription::of(ListPeopleTool::class);
+    $baseResource = json_encode($resource()['filterable_fields'], JSON_THROW_ON_ERROR);
+
+    $lines = [];
+
+    foreach (range(1, 30) as $number) {
+        $create("field_{$number}");
+        $lines[] = "- field_{$number} (Field field_{$number}, text)\n";
+    }
+
+    $chat = FilterDescription::of(ListPeopleTool::class);
+    $schema = $resource();
+    $encoded = json_encode($schema['filterable_fields'], JSON_THROW_ON_ERROR);
+    $phone = CustomFieldType::PHONE->filterMatching();
+
+    expect(substr_count($chat, '- text: '))->toBe(1)
+        ->and(substr_count($chat, $phone))->toBe(1)
+        ->and(strlen($chat) - strlen($baseChat))->toBe(array_sum(array_map(strlen(...), $lines)))
+        ->and(substr_count($encoded, '"text":{"operators"'))->toBe(1)
+        ->and(substr_count(json_encode($schema, JSON_THROW_ON_ERROR), $phone))->toBe(1)
+        ->and(strlen($encoded) - strlen($baseResource))->toBe(array_sum(array_map(fn (int $number): int => strlen(json_encode(["field_{$number}" => ['name' => "Field field_{$number}", 'type' => 'text']], JSON_THROW_ON_ERROR)) - 1, range(1, 30))))
+        ->and(array_keys($vocabularyField = (array) $schema['filterable_fields']->custom_fields->field_1))->toBe(['name', 'type'])
+        ->and($vocabularyField)->not->toHaveKey('example');
+});
+
+it('names each filter and each rule once in a chat tool description', function (CrmEntity $entity, string $chatTool): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    $chat = FilterDescription::of($chatTool);
+    $definitions = EntityFilters::definitions($entity);
+
+    foreach (array_keys($definitions) as $name) {
+        expect(substr_count($chat, "- {$name} ("))->toBe(1, "{$entity->value}: {$name}");
+    }
+
+    $kinds = array_unique(array_map(fn (FilterDefinition $definition): string => $definition->kind->value, $definitions));
+    $hasNestedCustom = array_any(
+        resolve(FilterVocabulary::class)->for($user, $entity),
+        fn (mixed $entry): bool => is_array($entry) && isset($entry['nested_custom_field_example']),
+    );
+
+    expect($chat)->not->toContain('Native fields:')
+        ->and(substr_count($chat, FilterDefinition::MEMBER_OPERAND))->toBe(in_array('members', $kinds, true) ? 1 : 0)
+        ->and(substr_count($chat, FilterDefinition::RELATION_OPERAND))->toBe(in_array('relation', $kinds, true) ? 1 : 0)
+        ->and(substr_count($chat, 'nested custom field example'))->toBe($hasNestedCustom ? 1 : 0);
+})->with('chat list tools');
