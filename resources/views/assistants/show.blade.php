@@ -101,11 +101,11 @@
                 </div>
             </div>
 
-            <h1 class="font-display text-4xl sm:text-5xl font-bold text-gray-950 dark:text-white tracking-[-0.03em] leading-[1.1]">
+            <h1 class="text-balance font-display text-4xl sm:text-5xl font-bold text-gray-950 dark:text-white tracking-[-0.03em] leading-[1.1]">
                 {{ __('The CRM you run from :name', ['name' => $name]) }}
             </h1>
 
-            <p class="mt-5 text-base md:text-lg text-gray-500 dark:text-gray-400 leading-relaxed max-w-2xl mx-auto">
+            <p class="mt-5 text-balance text-base md:text-lg text-gray-500 dark:text-gray-400 leading-relaxed max-w-2xl mx-auto">
                 {{ __('For founders who sell to a named list of companies. Ask about your pipeline, add the people you met, and log the next step from the chat you already have open.') }}
             </p>
 
@@ -194,10 +194,10 @@
     <section class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
         <div class="max-w-5xl mx-auto px-6 lg:px-8">
             <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
+                <h2 class="text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
                     {{ __('What you can ask :name', ['name' => $name]) }}
                 </h2>
-                <p class="mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed">
+                <p class="mt-4 text-balance text-base text-gray-500 dark:text-gray-400 leading-relaxed">
                     {{ __('Plain requests, answered from your own records and written back to them.') }}
                 </p>
             </div>
@@ -224,10 +224,10 @@
     <section id="connect" class="py-20 md:py-28 bg-white dark:bg-gray-950">
         <div class="max-w-3xl mx-auto px-6 lg:px-8">
             <div class="text-center mb-14">
-                <h2 class="font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
+                <h2 class="text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
                     {{ __('Connect :name in three steps', ['name' => $name]) }}
                 </h2>
-                <p class="mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl mx-auto">
+                <p class="mt-4 text-balance text-base text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl mx-auto">
                     {{ __('The whole setup is a consent screen. No code and no API keys.') }}
                 </p>
             </div>
@@ -292,10 +292,10 @@
     <section class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
         <div class="max-w-5xl mx-auto px-6 lg:px-8">
             <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
+                <h2 class="text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
                     {{ __('Built for founder-led sales') }}
                 </h2>
-                <p class="mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed">
+                <p class="mt-4 text-balance text-base text-gray-500 dark:text-gray-400 leading-relaxed">
                     {{ __('You know every company on your list and you run the deals yourself. The CRM should keep up without a sales ops person.') }}
                 </p>
             </div>
@@ -322,7 +322,7 @@
     <section class="py-20 md:py-28 bg-white dark:bg-gray-950">
         <div class="max-w-4xl mx-auto px-6 lg:px-8">
             <div class="max-w-2xl mx-auto text-center mb-14">
-                <h2 class="font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
+                <h2 class="text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
                     {{ __('What to know before you connect') }}
                 </h2>
             </div>
@@ -360,7 +360,7 @@
     <section class="py-20 md:py-28 bg-gray-50 dark:bg-gray-950">
         <div class="max-w-3xl mx-auto px-6 lg:px-8">
             <div class="text-center mb-10">
-                <h2 class="font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
+                <h2 class="text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
                     {{ __('Questions about Relaticle and :name', ['name' => $name]) }}
                 </h2>
             </div>
@@ -372,10 +372,10 @@
     {{-- CTA --}}
     <section class="py-20 md:py-28 bg-white dark:bg-gray-950">
         <div class="max-w-xl mx-auto px-6 lg:px-8 text-center">
-            <h2 class="font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
+            <h2 class="text-balance font-display text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white">
                 {{ __('Put your company list where :name can reach it', ['name' => $name]) }}
             </h2>
-            <p class="mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed">
+            <p class="mt-4 text-balance text-base text-gray-500 dark:text-gray-400 leading-relaxed">
                 {{ __('Free to start, no credit card required. Self-host it yourself whenever you want.') }}
             </p>
             <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
