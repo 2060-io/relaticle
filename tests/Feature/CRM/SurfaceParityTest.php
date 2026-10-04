@@ -416,7 +416,7 @@ it('publishes exactly the filter names the list action accepts for each entity',
     }
 })->with(array_map(fn (array $row): array => [$row[0], $row[6]], crmSurfaces()));
 
-it('states every filter limit from the constants on every surface', function (CrmEntity $entity, string $chatTool, string $mcpTool): void {
+it('states every filter limit from the constants on every surface', function (CrmEntity $entity, string $mcpTool): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
 
@@ -430,9 +430,9 @@ it('states every filter limit from the constants on every surface', function (Cr
     expect(EntityFilters::grammar($entity))->toContain(...$limits)
         ->and(filterDescription($mcpTool))->toContain(...$limits)
         ->and((new CrmAssistant)->staticInstructions())->toContain(...$limits);
-})->with(array_map(fn (array $row): array => [$row[0], $row[6], $row[8]], crmSurfaces()));
+})->with(array_map(fn (array $row): array => [$row[0], $row[8]], crmSurfaces()));
 
-it('states the matching, emptiness and operand rules on every surface', function (CrmEntity $entity, string $chatTool, string $schemaResource, string $mcpTool): void {
+it('states the matching, emptiness and operand rules on every surface', function (string $schemaResource, string $mcpTool): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
 
@@ -449,7 +449,7 @@ it('states the matching, emptiness and operand rules on every surface', function
         ->and((new CrmAssistant)->staticInstructions())->toContain(...$rules)
         ->and($usage)->toContain(CustomFieldFilterSchema::EMPTINESS_RULE, CustomFieldFilterSchema::EMPTY_MATCH_RULE, EntityFilters::limits())
         ->and($usage)->not->toContain(CustomFieldType::PHONE->filterMatching(), CustomFieldType::TAGS_INPUT->filterMatching());
-})->with(array_map(fn (array $row): array => [$row[0], $row[6], $row[7], $row[8]], crmSurfaces()));
+})->with(array_map(fn (array $row): array => [$row[7], $row[8]], crmSurfaces()));
 
 it('states the custom_fields rule and the choice rule once on every surface that carries them', function (CrmEntity $entity, string $chatTool, string $schemaResource, string $mcpTool): void {
     $user = User::factory()->withPersonalWorkspace()->create();
@@ -635,9 +635,9 @@ it('names each filter and each rule once in a chat tool description', function (
         ->and(substr_count($chat, 'nested custom field example'))->toBe($hasNestedCustom ? 1 : 0);
 })->with(array_map(fn (array $row): array => [$row[0], $row[6]], crmSurfaces()));
 
-it('describes the real shape of filterable_fields in the mcp list tool', function (CrmEntity $entity, string $mcpTool): void {
+it('describes the real shape of filterable_fields in the mcp list tool', function (string $mcpTool): void {
     $description = filterDescription($mcpTool);
 
     expect($description)->toContain('filterable_fields.custom_fields', 'filterable_fields.types')
         ->and($description)->not->toContain('with their operators and options');
-})->with(array_map(fn (array $row): array => [$row[0], $row[8]], crmSurfaces()));
+})->with(array_map(fn (array $row): array => [$row[8]], crmSurfaces()));

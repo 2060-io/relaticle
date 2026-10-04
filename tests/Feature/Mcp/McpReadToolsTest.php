@@ -218,11 +218,11 @@ it('publishes one filter object and no flat filter params on every list tool', f
 
     expect(array_keys($properties))->toBe(['filter', 'sort', 'include', 'per_page', 'page']);
 })->with([
-    ListCompaniesTool::class,
-    ListPeopleTool::class,
-    ListOpportunitiesTool::class,
-    ListTasksTool::class,
-    ListNotesTool::class,
+    'companies' => ListCompaniesTool::class,
+    'people' => ListPeopleTool::class,
+    'opportunities' => ListOpportunitiesTool::class,
+    'tasks' => ListTasksTool::class,
+    'notes' => ListNotesTool::class,
 ]);
 
 it('names a registered tool as the source of the filter codes on every list tool', function (string $toolClass): void {
@@ -236,11 +236,11 @@ it('names a registered tool as the source of the filter codes on every list tool
 
     expect($registeredNames)->toContain($matches[1] ?? null);
 })->with([
-    ListCompaniesTool::class,
-    ListPeopleTool::class,
-    ListOpportunitiesTool::class,
-    ListTasksTool::class,
-    ListNotesTool::class,
+    'companies' => ListCompaniesTool::class,
+    'people' => ListPeopleTool::class,
+    'opportunities' => ListOpportunitiesTool::class,
+    'tasks' => ListTasksTool::class,
+    'notes' => ListNotesTool::class,
 ]);
 
 it('rejects malformed list tool inputs before building the database query', function (string $toolClass, array $input, string $error): void {

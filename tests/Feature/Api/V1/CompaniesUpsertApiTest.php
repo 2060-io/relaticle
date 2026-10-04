@@ -254,7 +254,11 @@ it('answers 503 without writing when a concurrent upsert of the same domain hold
     $this->assertDatabaseMissing('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id]);
 
     $lock->release();
-})->with(['Acme.com', 'https://ACME.com', 'https://www.acme.com/about']);
+})->with([
+    'capitalised host' => ['Acme.com'],
+    'url with an upper case host' => ['https://ACME.com'],
+    'url with www and a path' => ['https://www.acme.com/about'],
+]);
 
 it('matches an existing company on a second domain', function (): void {
     Sanctum::actingAs($this->user);

@@ -766,21 +766,21 @@ it('asks for a country code on a national phone operand', function (): void {
         ->assertHasErrors(['mobile needs a country code']);
 });
 
-it('rejects an operand that holds a NUL or is not valid utf-8', function (string $type, array $conditions): void {
+it('rejects an operand that holds a NUL or is not valid utf-8', function (string $type, array $conditions, string $message): void {
     filterTestField($this->workspace, 'people', 'contact', $type, new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
 
     RelaticleServer::actingAs($this->user)
         ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['contact' => $conditions]]])
-        ->assertHasErrors();
+        ->assertHasErrors([$message]);
 })->with([
-    'email with a NUL' => ['email', ['$has_any' => ["a\0@x.com"]]],
-    'email with an invalid byte' => ['email', ['$has_none' => ["a\xFF@x.com"]]],
-    'email domain with a NUL' => ['email', ['domain' => ['$in' => ["a\0b.com"]]]],
-    'phone with a NUL' => ['phone', ['$has_any' => ["+14155550100\0"]]],
-    'link with a NUL' => ['link', ['$has_any' => ["acme\0.com"]]],
-    'tag with a NUL' => ['tags-input', ['$has_any' => ["a\0b"]]],
-    'text pattern with a NUL' => ['text', ['$contains' => "a\0b"]],
-    'text pattern with an invalid byte' => ['text', ['$contains' => "a\xFFb"]],
+    'email with a NUL' => ['email', ['$has_any' => ["a\0@x.com"]], 'must be an array of strings'],
+    'email with an invalid byte' => ['email', ['$has_none' => ["a\xFF@x.com"]], 'must be an array of strings'],
+    'email domain with a NUL' => ['email', ['domain' => ['$in' => ["a\0b.com"]]], 'must be an array of strings'],
+    'phone with a NUL' => ['phone', ['$has_any' => ["+14155550100\0"]], 'must be an array of strings'],
+    'link with a NUL' => ['link', ['$has_any' => ["acme\0.com"]], 'must be an array of strings'],
+    'tag with a NUL' => ['tags-input', ['$has_any' => ["a\0b"]], 'must be an array of strings'],
+    'text pattern with a NUL' => ['text', ['$contains' => "a\0b"], 'must be a string'],
+    'text pattern with an invalid byte' => ['text', ['$contains' => "a\xFFb"], 'must be a string'],
 ]);
 
 it('treats array literal characters in a domain operand as plain text', function (): void {

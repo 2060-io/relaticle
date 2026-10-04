@@ -132,7 +132,10 @@ it('proposes no change for a domain that only differs by spelling', function (st
     expect($response['error'])->toContain('Nothing to update')
         ->and($response['skipped'][0]['reason'])->toContain('Already up to date')
         ->and(PendingAction::query()->count())->toBe(0);
-})->with(['https://www.acme.com', 'ACME.com/about']);
+})->with([
+    'url with www' => ['https://www.acme.com'],
+    'upper case host with a path' => ['ACME.com/about'],
+]);
 
 it('proposes no change for a list repeating the stored value in another spelling', function (): void {
     $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme']);

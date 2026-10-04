@@ -475,7 +475,7 @@ describe('filtering and sorting', function (): void {
         expect($ids->all())->toBe([$tagged->id]);
     });
 
-    it('reads is_empty from a query string boolean', function (string $raw, bool $expectsEmpty): void {
+    it('reads is_empty from a query string boolean', function (string $raw, string $shown, string $hidden): void {
         Sanctum::actingAs($this->user);
 
         $stage = WorkspaceCustomField::byCode($this->workspace->id, 'opportunity', 'stage');
@@ -484,15 +484,14 @@ describe('filtering and sorting', function (): void {
         $staged->saveCustomFieldValue($stage, (string) $stage->options->firstWhere('name', 'Qualification')->getKey());
 
         $ids = collect($this->getJson('/api/v1/opportunities?filter[custom_fields][stage][$is_empty]='.$raw)->assertOk()->json('data'))->pluck('id');
+        $deals = ['staged' => $staged->id, 'unstaged' => $unstaged->id];
 
-        $expectsEmpty
-            ? expect($ids)->toContain($unstaged->id)->not->toContain($staged->id)
-            : expect($ids)->toContain($staged->id)->not->toContain($unstaged->id);
+        expect($ids)->toContain($deals[$shown])->not->toContain($deals[$hidden]);
     })->with([
-        'one' => ['1', true],
-        'true' => ['true', true],
-        'zero' => ['0', false],
-        'false' => ['false', false],
+        'one' => ['1', 'unstaged', 'staged'],
+        'true' => ['true', 'unstaged', 'staged'],
+        'zero' => ['0', 'staged', 'unstaged'],
+        'false' => ['false', 'staged', 'unstaged'],
     ]);
 
     it('rejects an empty exclusion list sent as a query string', function (string $query): void {
@@ -557,7 +556,12 @@ describe('filtering and sorting', function (): void {
         $this->getJson('/api/v1/opportunities?filter[custom_fields][close_date][$gt]='.urlencode($operand))
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['filter.custom_fields.close_date.$gt' => 'close_date.$gt']);
-    })->with(['notadate', '2026-13-45', '2026-02-30', 'tomorrow']);
+    })->with([
+        'not a date' => ['notadate'],
+        'month thirteen' => ['2026-13-45'],
+        'day that does not exist' => ['2026-02-30'],
+        'relative word' => ['tomorrow'],
+    ]);
 
     it('matches a date operand written in any absolute date format', function (): void {
         Sanctum::actingAs($this->user);

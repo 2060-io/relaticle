@@ -142,7 +142,10 @@ it('rejects a stale_days value outside the supported range', function (int $days
     $this->getJson('/api/v1/opportunities?'.http_build_query(['filter' => ['stale_days' => ['$gte' => $days]]]))
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['filter.stale_days']);
-})->with([0, 3651]);
+})->with([
+    'below the one day minimum' => [0],
+    'above the 3650 day maximum' => [3651],
+]);
 
 it('names the field in an operand error', function (): void {
     $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['created_at' => ['$gte' => 'notadate']]]))
@@ -160,20 +163,22 @@ it('rejects a native operand that holds a NUL or is not valid utf-8', function (
     'enum with an invalid byte' => ['filter[creation_source][$eq]=%FF', 'filter.creation_source.$eq'],
 ]);
 
-it('takes one creation_source value for $eq and a list for $in', function (): void {
+it('takes a comma list of creation_source values for $in', function (): void {
     $api = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::API]);
     $web = Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::WEB]);
     Company::factory()->recycle([$this->user, $this->workspace])->create(['creation_source' => CreationSource::MCP]);
 
     expect(listIds($this, 'companies', ['creation_source' => ['$in' => 'api,web']]))->toBe(collect([$api->id, $web->id])->sort()->values()->all());
-
-    foreach (['api,web', ['api', 'web']] as $operand) {
-        $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['creation_source' => ['$eq' => $operand]]]))
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['filter.creation_source.$eq' => 'creation_source $eq must be one of:']);
-    }
 });
 
+it('takes one creation_source value for $eq and rejects a list', function (string|array $operand): void {
+    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['creation_source' => ['$eq' => $operand]]]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['filter.creation_source.$eq' => 'creation_source $eq must be one of:']);
+})->with([
+    'comma separated string' => ['api,web'],
+    'array' => [['api', 'web']],
+]);
 it('rejects a relation id that is not a ULID', function (): void {
     $this->getJson('/api/v1/tasks?'.http_build_query(['filter' => ['assignees' => ['$in' => ['abc']]]]))
         ->assertUnprocessable()
@@ -368,9 +373,9 @@ it('names the replacement of a removed param', function (string $param, string $
         ->assertUnprocessable()
         ->assertJsonValidationErrors(["filter.{$param}" => "{$param} was replaced. Use {$replacement}."]);
 })->with([
-    ['created_after', 'created_at with $gte'],
-    ['company_id', 'company (or companies) with $in'],
-    ['search', 'name or title with $contains'],
+    'created_after' => ['created_after', 'created_at with $gte'],
+    'company_id' => ['company_id', 'company (or companies) with $in'],
+    'search' => ['search', 'name or title with $contains'],
 ]);
 
 it('caps a filter at twenty conditions', function (): void {
@@ -382,13 +387,24 @@ it('caps a filter at twenty conditions', function (): void {
 });
 
 it('counts every operator in the tree toward the twenty-condition cap', function (): void {
-    $conditions = array_fill(0, 21, ['name' => ['$eq' => 'x']]);
+    $dates = ['$eq' => '2026-01-01', '$gt' => '2025-12-31', '$gte' => '2026-01-01', '$lt' => '2027-01-01', '$lte' => '2026-12-31'];
+    $source = ['$eq' => 'api', '$in' => ['api', 'web'], '$not_in' => ['mcp'], '$is_empty' => false];
+    $name = ['$eq' => 'Acme', '$contains' => 'Ac', '$is_empty' => false];
+    $atCap = [
+        'name' => $name,
+        '$and' => [
+            ['$or' => [['created_at' => $dates], ['creation_source' => $source]]],
+            ['$not' => ['$or' => [['name' => $name], ['created_at' => $dates]]]],
+        ],
+    ];
+    $overCap = $atCap;
+    $overCap['$and'][1]['$not']['$or'][1]['created_at']['$is_empty'] = false;
 
-    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['$or' => $conditions]]))
+    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => $overCap]))
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['filter' => 'A filter holds at most 20 conditions. This one has 21.']);
 
-    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['$or' => array_slice($conditions, 0, 20)]]))
+    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => $atCap]))
         ->assertOk();
 });
 
@@ -542,7 +558,13 @@ it('refuses a query from a token without the read ability', function (): void {
 
 it('queries every entity through its own route', function (string $entity): void {
     $this->postJson("/api/v1/{$entity}/query", ['filter' => []])->assertOk()->assertJsonStructure(['data', 'links', 'meta']);
-})->with(['companies', 'people', 'opportunities', 'tasks', 'notes']);
+})->with([
+    'companies' => ['companies'],
+    'people' => ['people'],
+    'opportunities' => ['opportunities'],
+    'tasks' => ['tasks'],
+    'notes' => ['notes'],
+]);
 
 it('sorts, includes and paginates a query body like the query string', function (): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Zulu']);
