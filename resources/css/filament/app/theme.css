@@ -711,6 +711,14 @@ body:has(.fi-record-page) {
         @apply border-t border-gray-200 pt-4 dark:border-white/10;
     }
 
+    .fi-sc-actions .fi-ac {
+        @apply items-stretch;
+
+        & > .fi-dropdown {
+            @apply flex;
+        }
+    }
+
     .fi-section-header-heading {
         @apply text-sm font-medium text-gray-500 dark:text-gray-400;
     }
@@ -998,7 +1006,7 @@ body:has(.fi-record-page) {
     @apply rounded-xl;
 }
 
-/* Onboarding Wizard - Attio-style split-screen layout overrides */
+/* Onboarding Wizard - split-screen layout overrides */
 .fi-body.fi-onboarding-wizard {
     @apply bg-white dark:bg-gray-950;
 }

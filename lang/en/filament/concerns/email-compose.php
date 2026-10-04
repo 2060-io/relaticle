@@ -6,7 +6,10 @@ return [
     'actions' => [
         'compose' => [
             'label' => 'Compose',
-            'tooltip' => 'c',
+            'tooltip' => 'Keyboard shortcut: C',
+        ],
+        'compose_email' => [
+            'label' => 'Compose email',
         ],
         'undo' => [
             'label' => 'Undo',
@@ -25,34 +28,12 @@ return [
         ],
     ],
     'fields' => [
-        'from' => [
-            'label' => 'From',
-        ],
         'template' => [
             'label' => 'Template',
             'placeholder' => 'Apply a template…',
         ],
-        'to' => [
-            'label' => 'To',
-            'placeholder' => 'email@example.com',
-        ],
-        'cc' => [
-            'label' => 'CC',
-            'placeholder' => 'email@example.com',
-        ],
-        'bcc' => [
-            'label' => 'BCC',
-            'placeholder' => 'email@example.com',
-        ],
         'body' => [
             'label' => 'Body',
-        ],
-        'message' => [
-            'label' => 'Message',
-        ],
-        'privacy_tier' => [
-            'label' => 'Who can see this email?',
-            'helper_text' => 'Defaults to your team or personal sharing setting.',
         ],
         'scheduled_for' => [
             'label' => 'Send at',
