@@ -49,7 +49,7 @@ trait ResolvesUpsertMatch
     public function whileHoldingMatch(Closure $callback): mixed
     {
         $field = $this->matchField();
-        $value = $field instanceof CustomField ? $this->matchValues($field, $this->string('match.value')->toString())[0] : '';
+        $value = $field instanceof CustomField ? CanonicalValue::spellings($field, $this->string('match.value')->toString())[0] : '';
         $key = implode(':', ['upsert', $this->workspaceId(), $this->entity()->value, $this->input('match.field'), mb_strtolower($value)]);
 
         try {
@@ -111,7 +111,7 @@ trait ResolvesUpsertMatch
         }
 
         $matches = resolve(FindEntitiesByFieldValue::class)
-            ->execute($this->entity()->model(), $field, $this->matchValues($field, $value), self::REPORTED_MATCH_LIMIT);
+            ->execute($this->entity()->model(), $field, CanonicalValue::spellings($field, $value), self::REPORTED_MATCH_LIMIT);
 
         // Uniqueness is checked on write only, case-sensitively and from the moment it is switched on,
         // so several records can still share a value.
@@ -175,13 +175,6 @@ trait ResolvesUpsertMatch
         $value = $this->input('match.value');
 
         return is_string($value) && mb_strlen($value) <= self::MAX_MATCH_VALUE_LENGTH ? $value : null;
-    }
-
-    // Rows written before values were normalized on every write can still hold the spelling as sent.
-    /** @return array<int, string> */
-    private function matchValues(CustomField $field, string $value): array
-    {
-        return CanonicalValue::spellings($field, $value);
     }
 
     /** @return Collection<string, CustomField> */
