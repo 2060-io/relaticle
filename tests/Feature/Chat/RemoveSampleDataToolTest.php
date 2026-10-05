@@ -199,11 +199,11 @@ it('points a partial removal at the filter tree form that lists only sample reco
     ]);
 
     $rows = json_decode(resolve(ListCompaniesTool::class)->handle(new Request([
-        'filter' => ['creation_source' => ['$eq' => 'system']],
+        'filter' => ['creation_source' => ['$eq' => 'sample']],
     ])), true)['data'];
 
     expect(resolve(RemoveSampleDataTool::class)->description())
-        ->toContain('use the list tool with filter {"creation_source": {"$eq": "system"}}')
+        ->toContain('use the list tool with filter {"creation_source": {"$eq": "sample"}}')
         ->and(array_column($rows, 'id'))->not->toContain($own->getKey())
         ->and($rows)->toHaveCount(2);
 });

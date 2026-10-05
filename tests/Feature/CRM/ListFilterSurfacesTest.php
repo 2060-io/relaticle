@@ -316,9 +316,9 @@ it('rejects a native operand of the wrong type on the api and mcp', function (ar
     'text given a list' => [['name' => ['Acme', 'Globex']], 'filter.name', '{"$eq": ...}'],
     'text given an empty object' => [['name' => []], 'filter.name', '{"$eq": ...}'],
     'operator of another kind' => [['name' => ['$gt' => 'a']], 'filter.name.$gt', 'Use $eq, $contains, $is_empty.'],
-    'enum $eq given a list' => [['creation_source' => ['$eq' => ['api', 'web']]], 'filter.creation_source.$eq', 'must be one of: web, system, import, api, mcp, chat, mailbox'],
-    'enum $eq given a comma list' => [['creation_source' => ['$eq' => 'api,web']], 'filter.creation_source.$eq', 'must be one of: web, system, import, api, mcp, chat, mailbox'],
-    'unknown enum value' => [['creation_source' => ['$eq' => 'fax']], 'filter.creation_source.$eq', 'fax is not one of: web, system, import, api, mcp, chat, mailbox'],
+    'enum $eq given a list' => [['creation_source' => ['$eq' => ['api', 'web']]], 'filter.creation_source.$eq', 'must be one of: web, sample, import, api, mcp, chat, mailbox'],
+    'enum $eq given a comma list' => [['creation_source' => ['$eq' => 'api,web']], 'filter.creation_source.$eq', 'must be one of: web, sample, import, api, mcp, chat, mailbox'],
+    'unknown enum value' => [['creation_source' => ['$eq' => 'fax']], 'filter.creation_source.$eq', 'fax is not one of: web, sample, import, api, mcp, chat, mailbox'],
     'unknown enum value in a list' => [['creation_source' => ['$in' => ['api', 'fax']]], 'filter.creation_source.$in', 'fax is not one of'],
 ]);
 
