@@ -212,7 +212,7 @@ final readonly class EntityFilters
 
 ### Components
 
-All in `app/Support/Filters/`, moved from `app/Mcp/Filters/` because REST, MCP and chat share them:
+All in `app/Queries/`, because REST, MCP and chat share them. Filter classes sit in `app/Queries/Filters/` and the sort in `app/Queries/Sorts/`. They were first built under `app/Support/Filters/`, and `docs/superpowers/plans/2026-10-05-queries-namespace.md` moved them before this shipped:
 
 | Class | Role |
 |---|---|
@@ -224,7 +224,7 @@ All in `app/Support/Filters/`, moved from `app/Mcp/Filters/` because REST, MCP a
 | `CustomFieldFilter` | today's engine, with `$` operators, the `domain` sub-field, case-insensitive email and link matching, and phone operand normalization |
 | `CustomFieldSort` | moved, unchanged |
 
-`App\Mcp\Schema\CustomFieldFilterSchema` stays the owner of operators per type, as the architecture rules name it.
+`App\Queries\CustomFieldFilterSchema` stays the owner of operators per type, as the architecture rules name it.
 
 `ConventionsTest` fails a public method outside a model, enum or `Scope` that takes a query builder, unless the method implements an interface or overrides a parent (`hasPrototype()`). So builder-taking code lives only in Spatie `Filter::__invoke()` implementations, `applyTo()` overrides and private helpers. `FilterTree` takes arrays, never a builder.
 

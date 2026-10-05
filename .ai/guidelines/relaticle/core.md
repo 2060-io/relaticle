@@ -158,8 +158,8 @@ are under about 50. Each rule below names what fails when it is broken.
   only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
   that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
 - A class is named for its role where its directory carries one: `Command`, `Controller`,
-  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
-  fails a class there without the suffix.
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`, and `Filter` and `Sort` under
+  `app/Queries`. `tests/Arch/ConventionsTest.php` fails a class there without the suffix.
 - Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
   can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
   direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.
