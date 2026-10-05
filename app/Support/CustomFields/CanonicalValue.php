@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Support\CustomFields;
 
+use App\Models\CustomField;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
 use Relaticle\CustomFields\FieldTypeSystem\BaseFieldType;
-use Relaticle\CustomFields\Models\CustomField;
 
 final readonly class CanonicalValue
 {

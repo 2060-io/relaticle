@@ -2,7 +2,7 @@
 title: REST API
 description: Connect to the Relaticle REST API with a personal access token, scoped permissions, rate limits, upserts and the full endpoint reference.
 order: 3
-updated: "2026-10-04"
+updated: "2026-10-05"
 ---
 
 Relaticle has a REST API for companies, people, opportunities, tasks, notes and custom fields. Use it to sync records with another system or to build your own integration. The [API reference](/developers/api) lists every endpoint, parameter and response, and the OpenAPI spec is at [/openapi.json](/openapi.json).

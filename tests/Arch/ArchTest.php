@@ -431,7 +431,6 @@ foreach (['App', 'Relaticle\ImportWizard', 'Relaticle\OnboardSeed', 'Relaticle\D
             'App\Filament\CustomFields\RichContentEntry',
             'App\Filament\CustomFields\RichEditorFieldType',
             'App\Http\Resources\V1\Concerns\FormatsCustomFields',
-            'App\Mcp\Filters\CustomFieldSort',
             'App\Observers\CustomFieldValueObserver',
             'App\Rules\ValidCustomFields',
             'App\Support\ActivityLog\CustomFieldChangeLog',

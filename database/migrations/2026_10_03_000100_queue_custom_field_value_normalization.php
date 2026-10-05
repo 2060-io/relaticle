@@ -11,6 +11,7 @@ return new class extends Migration
     {
         Artisan::queue('custom-fields:normalize-values', ['--force' => true])
             ->onQueue('imports')
+            ->delay(now()->addMinutes(5))
             ->afterCommit();
     }
 };
