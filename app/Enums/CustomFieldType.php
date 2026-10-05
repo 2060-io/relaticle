@@ -51,7 +51,7 @@ enum CustomFieldType: string
             self::RICH_EDITOR => 'markdown, or HTML when the value starts with <; stored and returned as HTML',
             self::COLOR_PICKER => 'hex color string',
             self::DATE => 'ISO 8601 date',
-            self::DATE_TIME => 'ISO 8601 datetime string',
+            self::DATE_TIME => 'ISO 8601 datetime string; an offset is converted to UTC',
             self::RECORD => 'array of record IDs of the lookup entity; records must belong to this workspace',
             self::FILE_UPLOAD => 'read-only; the file-upload field type is no longer supported and cannot be written',
         };
@@ -110,7 +110,8 @@ enum CustomFieldType: string
     public function filterMatching(): ?string
     {
         return match ($this) {
-            self::EMAIL, self::LINK => 'in any letter case',
+            self::EMAIL => 'in any letter case',
+            self::LINK => 'in any letter case, with or without the scheme',
             self::PHONE => 'in any format, and the operand needs a country code such as +1 415 555 0100',
             self::TAGS_INPUT => 'the exact stored value',
             self::DATE_TIME => 'a date without a time, such as 2026-10-01, as that whole day',

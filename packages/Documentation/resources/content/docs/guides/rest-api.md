@@ -57,7 +57,7 @@ Each record resource supports list, create, read, update and delete. Responses f
 
 ## Filter a list
 
-The list endpoints for companies, people, opportunities, tasks and notes take a `filter` object. It can combine native fields, custom fields and linked records with `$and`, `$or` and `$not`. The [MCP guide](/developers/mcp) describes the full grammar, and the MCP server and the in-app assistant read the same filter.
+The list endpoints for companies, people, opportunities, tasks and notes take a `filter` object. It can combine native fields, custom fields and linked records with `$and`, `$or` and `$not`. The [MCP guide](/developers/mcp) describes the full grammar, and the MCP server and Rela, the built-in AI assistant, read the same filter.
 
 `GET /v1/companies?filter[name][$contains]=Acme` sends a filter in the query string, as nested brackets. The query string carries every value as text, and Relaticle converts it to the type of the field.
 
@@ -93,9 +93,24 @@ The response has the same shape as the matching `GET` list. To fetch the next pa
 
 For a long result, page with a cursor. Send `"cursor": true` for the first page, then send the same body with `cursor` set to `meta.next_cursor` from the previous response. The last page has a `next_cursor` of `null`. Cursor paging sorts by `name` (`title` on tasks and notes), `created_at` or `updated_at`. A custom field sort needs `page`, and asking for one with a cursor returns `400`. A cursor that is neither `true` nor a value from a previous page returns `422`. `GET` lists take the same values as `?cursor=true`.
 
-A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`. Any other format returns `422`. A date without a time covers that whole UTC day.
+A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`. Any other format returns `422`. A date-time with an offset, such as `2026-10-01T13:00:00+05:00`, is read as the same instant in UTC. A date without a time covers that whole UTC day.
 
 A body that is not a JSON object returns `422`. That includes truncated JSON, a bare string or number, and a body sent without the `application/json` content type. An empty body counts as no filter.
+
+`sort` takes a native field or a custom field that holds one value. A field that holds a list, such as email, phone, link or tags, returns `400` as a sort.
+
+## Value formats
+
+Relaticle stores some custom field values in one form, whatever spelling a request sends. A read returns the stored form.
+
+| Field | Stored as |
+|---|---|
+| Phone | E.164, such as `+14155550100`. An extension is kept as `;ext=12` |
+| A link that holds domains, such as a company's `domains` | The bare host in lower case, with no scheme, `www.` or path |
+| Other links | The URL, with its host in lower case |
+| Date and time | The UTC instant. `2026-10-01T13:00:00+05:00` is stored as 08:00 UTC |
+
+A phone needs a country code. A phone without one returns `422`.
 
 ## Upsert: find or create a record
 
@@ -108,7 +123,7 @@ A body that is not a JSON object returns `422`. That includes truncated JSON, a 
 }
 ```
 
-The value matches case-insensitively, including inside multi-value fields. The API returns `201` when it creates a record and `200` when it updates one. When more than one record holds the value, it writes nothing and returns `409` with the matching IDs. An upsert needs both the `create` and `update` permissions.
+The value matches case-insensitively, including inside multi-value fields. A domain matches with or without a scheme or `www.`. The API returns `201` when it creates a record and `200` when it updates one. When more than one record holds the value, it writes nothing and returns `409` with the matching IDs. An upsert needs both the `create` and `update` permissions.
 
 ## API rate limits
 

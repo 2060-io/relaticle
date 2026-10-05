@@ -51,6 +51,6 @@ Follow these steps to check it.
 The **Searchable** setting has no effect on the filter panel. See
 [Use custom fields](/help/getting-started/use-custom-fields) for every field setting.
 
-## Filter through the API, MCP or the assistant
+## Filter through the API, MCP or Rela
 
-The filter panel is one way to narrow a list. The REST API, the MCP server and the in-app assistant use a `filter` object instead. It filters by native fields and custom fields, combines conditions with AND, OR and NOT, and follows links between records. Read [the MCP guide](/developers/mcp) for the full grammar.
+The filter panel is one way to narrow a list. The REST API, the MCP server and Rela, the built-in AI assistant, use a `filter` object instead. It filters by native fields and custom fields, combines conditions with AND, OR and NOT, and follows links between records. Read [the MCP guide](/developers/mcp) for the full grammar.

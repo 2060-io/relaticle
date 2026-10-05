@@ -177,7 +177,7 @@ The server provides 39 tools. They cover account context, cross-entity discovery
 | `get-crm-schema-tool` | Get the active schema, custom fields, filters, and relationships for one entity type |
 | `get-crm-summary-tool` | Get record counts, pipeline totals by stage, and task due status in your timezone |
 | `aggregate-opportunities-tool` | Group opportunity counts and amounts by stage or company, with optional date bounds |
-| `list-activity-tool` | List recent CRM changes with actors, record links, and field-level differences |
+| `list-activity-tool` | List recent CRM changes with actors, record links, and field-level differences. A deleted account shows as `Former member` |
 | `list-custom-fields-tool` | List active and inactive custom-field definitions, including choice options |
 
 ### Companies
@@ -243,13 +243,15 @@ The server provides 39 tools. They cover account context, cross-entity discovery
 
 Uploads stay pending for 24 hours. Saving a record whose rich-editor body embeds the file claims it; unclaimed files are purged.
 
-Entity list tools take `filter`, `sort`, `include`, `per_page` (default 15, maximum 25) and `page`. `sort` is an object with `field` and `direction` (`asc` or `desc`). `include` is a list of singular relationships or relationship counts. To find records by words across every entity, use the `search` tool.
+Entity list tools take `filter`, `sort`, `include`, `per_page` (default 15, maximum 25) and `page`. `sort` is an object with `field` and `direction` (`asc` or `desc`). `include` is a list of singular relationships or relationship counts. A list tool refuses any other argument. To find records by words across every entity, use the `search` tool.
 
-List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs.
+`sort` takes a native field or a custom field that holds one value. A field that holds a list, such as email, phone, link or tags, cannot be sorted.
+
+List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs. A write stores a phone in E.164 form, a domain link as a bare host, and a date-time as its UTC instant.
 
 ### Filter records
 
-Pass `filter` to a list tool to narrow the records it returns. A filter is a JSON object. The [REST API](/developers/rest-api) and the in-app assistant read the same filter.
+Pass `filter` to a list tool to narrow the records it returns. A filter is a JSON object. The [REST API](/developers/rest-api) and Rela, the built-in AI assistant, read the same filter.
 
 Every key in a filter is one of these:
 
@@ -276,7 +278,7 @@ Native fields and relations sit at the top level. Custom fields sit under `custo
 | Tasks | Native fields `title`, `created_at`, `updated_at`, `creation_source`, `assigned_to_me`. Record relations `companies`, `people`, `opportunities`. Member relations `creator`, `assignees`. |
 | Notes | Native fields `title`, `created_at`, `updated_at`, `creation_source`. Record relations `companies`, `people`, `opportunities`. Member relation `creator`. |
 
-`name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators. A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`, and any other format is an error. A date without a time covers that whole UTC day, on these fields and on a custom date and time field. `creation_source` is a single choice with the values `web`, `system`, `import`, `api`, `mcp`, `chat` and `mailbox`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
+`name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators. A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`, and any other format is an error. A date-time with an offset, such as `2026-10-01T13:00:00+05:00`, is read as the same instant in UTC. A date without a time covers that whole UTC day, on these fields and on a custom date and time field. `creation_source` is a single choice with the values `web`, `system`, `import`, `api`, `mcp`, `chat` and `mailbox`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
 
 #### Combine conditions
 
@@ -309,10 +311,12 @@ Native fields take the operators of the field type they match. `$is_empty` takes
 
 Email and link fields also take a `domain` sub-field with `$in` and `$not_in`. It matches the domain of each value, so `{"domain": {"$in": ["canva.com"]}}` finds every address at `canva.com`. A domain is a bare host. A path, user or port is an error.
 
+Record, text area, rich text and color fields take no filter. Neither does an encrypted or inactive field.
+
 #### How values match
 
 - Choice values take the option label or its ID. An unknown label returns an error listing the valid labels. An ambiguous label asks for the option ID.
-- Email and link values match in any letter case.
+- Email and link values match in any letter case. A link also matches with or without its scheme, so `acme.com/team` finds `https://acme.com/team`.
 - Phone values match in any format. A phone operand needs a country code, such as `+1 415 555 0100`. An operand without one returns the error `phone_number needs a country code, for example +1 415 555 0100.`
 - Tags match the exact stored value.
 - `$not_in` and `$has_none` also match records where the field is empty.
@@ -323,7 +327,7 @@ A filter holds at most 20 conditions, counted as every operator at any depth. It
 
 #### Examples
 
-Deals worth at least 10,000 that sit in Proposal/Price Quote or Negotiation/Review. The condition outside `$or` combines with it by AND.
+Opportunities worth at least 10,000 that sit in Proposal/Price Quote or Negotiation/Review. The condition outside `$or` combines with it by AND.
 
 ```json
 {
@@ -335,7 +339,7 @@ Deals worth at least 10,000 that sit in Proposal/Price Quote or Negotiation/Revi
 }
 ```
 
-Deals at companies with the `icp` toggle on. `company` is a relation, so its node holds conditions on the company, including its custom fields.
+Opportunities at companies with the `icp` toggle on. `company` is a relation, so its node holds conditions on the company, including its custom fields.
 
 ```json
 {"company": {"custom_fields": {"icp": {"$eq": true}}}}
@@ -361,7 +365,7 @@ Stage labels and field codes belong to your workspace. Call `get-crm-schema-tool
 
 An invalid filter returns an error that names the part to fix. For example, an unknown custom field code returns `"stagee" is not a filterable custom field on opportunity. Available: amount, close_date, stage.` A bare operator returns `Operators start with $. Use $eq.`
 
-The flat names of the earlier filter no longer exist. Inside `filter`, keys such as `search`, `created_after`, `company_id` and `assignee_ids` return an error that names the replacement, for example `company_id was replaced. Use company (or companies) with $in.`
+The flat names of the earlier filter no longer exist. Inside `filter`, keys such as `search`, `created_after`, `company_id` and `assignee_ids` return an error that names the replacement, for example `company_id was replaced. Use company (or companies) with $in.` The same names sent beside `filter` return that error too.
 
 ---
 
