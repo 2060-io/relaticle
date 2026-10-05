@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Actions\Company\CreateCompany;
 use App\Actions\Company\DeleteCompany;
-use App\Actions\Company\ListCompanies;
 use App\Actions\Company\UpdateCompany;
 use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\CompaniesController;
@@ -15,6 +14,8 @@ use App\Models\CustomFieldSection;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\Companies\CompaniesQuery;
+use App\Queries\Concerns\ListsEntity;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Sanctum\Sanctum;
@@ -28,7 +29,8 @@ mutates(
     CreateCompany::class,
     UpdateCompany::class,
     DeleteCompany::class,
-    ListCompanies::class,
+    CompaniesQuery::class,
+    ListsEntity::class,
     CompanyResource::class,
 );
 
