@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "57088112b22a837ea17b32b6a8222674",
+    "content-hash": "c6a62cf743fc837f931057e9467de645",
     "packages": [
         {
             "name": "andreiio/blade-remix-icon",
@@ -10529,16 +10529,16 @@
         },
         {
             "name": "relaticle/custom-fields",
-            "version": "3.x-dev",
+            "version": "v3.13.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/relaticle/custom-fields.git",
-                "reference": "484eb342219255da24776ca342cebfc7f32b7593"
+                "reference": "00f9ee38ae3b18ffc4ce1bfff9088cb455f421de"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/484eb342219255da24776ca342cebfc7f32b7593",
-                "reference": "484eb342219255da24776ca342cebfc7f32b7593",
+                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/00f9ee38ae3b18ffc4ce1bfff9088cb455f421de",
+                "reference": "00f9ee38ae3b18ffc4ce1bfff9088cb455f421de",
                 "shasum": ""
             },
             "require": {
@@ -10564,7 +10564,6 @@
                 "rector/rector": "^2.6",
                 "spatie/laravel-ray": "^1.26"
             },
-            "default-branch": true,
             "bin": [
                 "bin/custom-fields-upgrade"
             ],
@@ -10625,7 +10624,7 @@
                 "issues": "https://github.com/relaticle/custom-fields/issues",
                 "source": "https://github.com/relaticle/custom-fields"
             },
-            "time": "2026-10-05T12:03:45+00:00"
+            "time": "2026-10-05T12:45:34+00:00"
         },
         {
             "name": "relaticle/flowforge",
@@ -25188,17 +25187,9 @@
             "time": "2026-10-03T05:13:37+00:00"
         }
     ],
-    "aliases": [
-        {
-            "package": "relaticle/custom-fields",
-            "version": "3.9999999.9999999.9999999-dev",
-            "alias": "3.12.0",
-            "alias_normalized": "3.12.0.0"
-        }
-    ],
+    "aliases": [],
     "minimum-stability": "beta",
     "stability-flags": {
-        "relaticle/custom-fields": 20,
         "spatie/guidelines-skills": 20
     },
     "prefer-stable": true,
