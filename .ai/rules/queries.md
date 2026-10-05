@@ -40,10 +40,12 @@ fails a `List*`, `Find*`, `Search*`, `Get*` or `Aggregate*` class anywhere under
 ("keeps reads out of the Actions folders"). That gate reads names, so a reviewer reads for a
 read named otherwise, such as `ResolveX` or `FetchX`.
 
-`tests/Arch/ArchTest.php` fails a class under `app/Queries` that is not `readonly` ("query
-classes are readonly"), and "avoid open for extension" already makes every `App` class
-`final`. A package's `Queries` folder gets both from "holds final readonly query classes".
-Each gate reads the folders, so a new one is covered without an edit.
+`tests/Arch/ArchTest.php` already makes every `App` class `final` and `readonly` ("avoid open
+for extension" and "avoid mutation"), so `app/Queries` needs no gate of its own. A package's
+`Queries` folder joins the package service layers ("package service layers avoid mutation"
+and "package service layers avoid inheritance"), and Pint's `final_class` keeps it `final`.
+The arch test finds each package's `Queries` folder itself, so a new one is covered without
+an edit.
 
 The folders name roles, not layers. `EntityFilters` builds the classes in `Filters`, and they
 use `Operand` and `FilterErrors` from the root.
