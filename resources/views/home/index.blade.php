@@ -22,7 +22,7 @@
 
 <x-guest-layout
     :title="config('app.name') . ' - ' . __('CRM Built for People and AI-Powered Work')"
-    :description="'Open-source, self-hosted CRM. Ask '.$assistantName.', the built-in AI assistant, or connect Claude and ChatGPT to your records. Unlimited users. Free forever.'"
+    :description="'Open-source, self-hosted CRM. Ask '.$assistantName.', the built-in AI assistant, or connect Claude and ChatGPT to your records. Unlimited users. Free to self-host.'"
     :ogTitle="config('app.name') . ' - ' . __('CRM Built for People and AI-Powered Work')"
     :ogDescription="'Open-source CRM for teams and AI-powered work. Use the app, ask '.$assistantName.', or work from Claude and ChatGPT over MCP. Self-hosted, you own your data.'">
     @push('header')
