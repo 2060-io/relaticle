@@ -927,6 +927,20 @@ it('takes sort as a list and fields as a string, a list or a map', function (arr
     'empty include list' => [['sort' => 'name', 'include' => []]],
 ]);
 
+it('returns only the fields a list request asks for by record type', function (): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme']);
+
+    $this->getJson('/api/v1/companies?fields[companies]=id,name')
+        ->assertOk()
+        ->assertJsonPath('data.0.attributes', ['name' => 'Acme']);
+});
+
+it('rejects a field a record does not publish', function (): void {
+    $this->getJson('/api/v1/companies?fields[companies]=id,workspace_id')
+        ->assertBadRequest()
+        ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'workspace_id'));
+});
+
 it('refuses a sort by a custom field that holds a list instead of failing', function (): void {
     $this->getJson('/api/v1/people?sort=emails')
         ->assertBadRequest()
