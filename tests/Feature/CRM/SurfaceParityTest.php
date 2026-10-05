@@ -310,7 +310,7 @@ it('publishes the same names, types and fields on the registry, mcp and chat', f
         ->and($chatDescription)->not->toContain(EntityFilters::rules());
 })->with(array_map(fn (array $row): array => [$row[0], $row[6], $row[8]], crmSurfaces()));
 
-it('publishes exactly the filter names the list action accepts for each entity', function (CrmEntity $entity, string $chatTool): void {
+it('publishes exactly the filter names the list query accepts for each entity', function (CrmEntity $entity, string $chatTool): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
 
@@ -389,7 +389,7 @@ it('states the custom_fields rule and the choice rule once on every surface that
         ->and($choiceRule)->toBe('Checkbox-list, radio, toggle-buttons, select and multi-select values take an option label or ID.');
 })->with(array_map(fn (array $row): array => [$row[0], $row[6], $row[7], $row[8]], crmSurfaces()));
 
-it('publishes filter examples the list action accepts on every surface', function (CrmEntity $entity, string $chatTool, string $schemaResource, string $mcpTool): void {
+it('publishes filter examples the list query accepts on every surface', function (CrmEntity $entity, string $chatTool, string $schemaResource, string $mcpTool): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
     Sanctum::actingAs($user);

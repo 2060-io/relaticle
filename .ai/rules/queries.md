@@ -95,7 +95,7 @@ imports `App\Queries`.
 - `EntityFilters::definitions()` owns the filter names each entity accepts. A list query never
   registers an `AllowedFilter` of its own. `ListsEntity::for()` is the one place that does.
   `tests/Feature/CRM/SurfaceParityTest.php` fails a surface that publishes other names
-  ("publishes the same names, types and fields on the registry, mcp and chat").
+  ("publishes exactly the filter names the list query accepts for each entity").
 - `CustomFieldFilterSchema::operatorsForType()` owns the operators per field type. A native
   field takes the operators of the custom field type it maps to.
 - `FilterTree` owns the tree limits: `MAX_CONDITIONS`, `MAX_LOGIC_DEPTH`, `MAX_HOPS`.
@@ -105,9 +105,9 @@ imports `App\Queries`.
   API docs render `EntityFilters::grammar()`, which needs no workspace.
 
 Never write a filter name, an operator or a limit by hand in a tool description.
-`tests/Feature/CRM/SurfaceParityTest.php` fails a surface that drifts: "states every filter
-limit from the constants on every surface" and "publishes the same names, types and fields on
-the registry, mcp and chat".
+`tests/Feature/CRM/SurfaceParityTest.php` fails a surface that drifts: "publishes exactly
+the filter names the list query accepts for each entity" and "states every filter limit
+from the constants on every surface".
 
 The MCP guide is the exception. `packages/Documentation/resources/content/docs/guides/mcp.md`
 lists the names, the operators and the limits by hand.
