@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Data\ListQuery;
 use App\Queries\FilterTree;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -57,6 +58,22 @@ final class IndexRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    public function toListQuery(): ListQuery
+    {
+        $sort = $this->input('sort');
+        $include = $this->input('include');
+        $fields = $this->input('fields');
+
+        return new ListQuery(
+            filter: $this->input('filter'),
+            sort: is_string($sort) ? $sort : null,
+            include: is_string($include) ? $include : null,
+            fields: is_array($fields) || is_string($fields) ? $fields : null,
+            perPage: $this->safe()->integer('per_page', 15),
+            cursor: $this->safe()->has('cursor'),
+        );
     }
 
     protected function prepareForValidation(): void
