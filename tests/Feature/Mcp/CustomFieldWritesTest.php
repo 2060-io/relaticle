@@ -528,7 +528,7 @@ it('sets then clears a value for every writable custom field type', function (st
     'currency' => ['currency', 1500.5, 1500.5],
     'email' => ['email', ['ada@example.com'], ['ada@example.com']],
     'phone' => ['phone', ['+14155552671'], ['+14155552671']],
-    'link' => ['link', ['https://example.com'], ['example.com']],
+    'link' => ['link', ['https://Example.com/Pricing/'], ['https://example.com/Pricing']],
     'checkbox' => ['checkbox', true, true],
     'toggle' => ['toggle', true, true],
     'tags-input' => ['tags-input', ['priority', 'customer'], ['priority', 'customer']],

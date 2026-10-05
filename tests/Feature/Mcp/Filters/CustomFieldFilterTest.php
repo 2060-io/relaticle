@@ -764,6 +764,19 @@ it('finds a stored link by a raw url operand', function (): void {
     expect(peopleNamesMatching($this->user, ['custom_fields' => ['homepage' => ['$has_any' => ['HTTPS://acme.com/team, hiring']]]]))->toBe(['Ana']);
 });
 
+it('matches a url link typed with or without its scheme', function (string $operand, array $names): void {
+    $site = filterTestField($this->workspace, 'people', 'homepage', 'link', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana'])->saveCustomFieldValue($site, ['https://acme.com/team']);
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Bob'])->saveCustomFieldValue($site, ['acme.com/jobs']);
+
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['homepage' => ['$has_any' => [$operand]]]]))->toBe($names);
+})->with([
+    'no scheme against a stored scheme' => ['acme.com/team', ['Ana']],
+    'other scheme, uppercase host and trailing slash' => ['HTTP://ACME.com/team/', ['Ana']],
+    'scheme against a value stored without one' => ['https://acme.com/jobs', ['Bob']],
+    'another path' => ['acme.com/pricing', []],
+]);
+
 it('never matches a link operand that stacks more than one scheme', function (): void {
     $site = filterTestField($this->workspace, 'people', 'site', 'link', new CustomFieldSettingsData(allow_multiple: true, max_values: 5, additional: ['link_variant' => 'domain']));
     $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);

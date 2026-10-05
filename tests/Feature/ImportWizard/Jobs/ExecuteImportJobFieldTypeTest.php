@@ -73,7 +73,7 @@ it('imports link custom field with URL value', function (): void {
     expect($cfv)->not->toBeNull();
 
     $jsonValue = collect($cfv->json_value)->all();
-    expect($jsonValue)->toContain('example.com');
+    expect($jsonValue)->toBe(['https://example.com']);
 });
 
 it('imports toggle custom field with truthy values', function (): void {

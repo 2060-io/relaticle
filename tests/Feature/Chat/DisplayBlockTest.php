@@ -499,11 +499,11 @@ it('keeps a long link value whole so a card href cannot break', function (): voi
 
     forceDisplaySettings($user, 'company', 'linkedin');
 
-    $long = 'example.com/?ref='.str_repeat('a', 600);
+    $long = 'https://example.com/?ref='.str_repeat('a', 600);
 
     $company = app(CreateCompany::class)->execute($user, [
         'name' => 'Acme',
-        'custom_fields' => ['linkedin' => ["https://{$long}"]],
+        'custom_fields' => ['linkedin' => [$long]],
     ]);
 
     $card = displayBlockOf(app(GetCompanyTool::class)->handle(new Request(['id' => (string) $company->getKey()])));

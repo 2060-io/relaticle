@@ -94,7 +94,7 @@ it('renders link-field values as plain URLs, not escaped JSON', function (): voi
     $change = $activity->properties['custom_field_changes'][0];
 
     expect($change['code'])->toBe('website')
-        ->and($change['new']['label'])->toBe('www.linkedin.com/company/airbnb')
+        ->and($change['new']['label'])->toBe('https://www.linkedin.com/company/airbnb')
         ->and($change['new']['label'])->not->toContain('\\/')
         ->and($change['new']['label'])->not->toContain('[');
 });
@@ -108,7 +108,7 @@ it('does not log when saving an empty value for a previously empty field', funct
     expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
 });
 
-it('does not log a link change that is only a URL-scheme normalization', function (): void {
+it('does not log a link change that is only a host-case and trailing-slash normalization', function (): void {
     $linkField = CustomField::query()->create([
         'tenant_id' => $this->workspace->getKey(),
         'custom_field_section_id' => $this->field->custom_field_section_id,
@@ -125,7 +125,7 @@ it('does not log a link change that is only a URL-scheme normalization', functio
     $company->saveCustomFields(['website' => ['https://airbnb.com']]);
     Activity::withoutGlobalScopes()->delete();
 
-    $company->saveCustomFields(['website' => ['airbnb.com']]);
+    $company->saveCustomFields(['website' => ['HTTPS://Airbnb.com/']]);
 
     expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
 });

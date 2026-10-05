@@ -140,16 +140,16 @@ it('leaves values that are not a list of strings untouched and reports them', fu
     }
 });
 
-it('keeps the host and path of a url link and strips only the scheme', function (): void {
+it('keeps the scheme and path of a url link and lowercases only its host', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
     $linkedin = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'linkedin');
-    writeRawJsonValue($person->getKey(), $linkedin, ['https://www.linkedin.com/in/jane-doe', 'www.linkedin.com/in/jane-doe']);
+    writeRawJsonValue($person->getKey(), $linkedin, ['HTTPS://www.LinkedIn.com/in/Jane-Doe/', 'www.linkedin.com/in/jane-doe']);
 
     $this->artisan('custom-fields:normalize-values', ['--force' => true])
         ->expectsOutputToContain('1 value(s) changed.')
         ->assertSuccessful();
 
-    expect(readRawJsonValue($person->getKey(), $linkedin))->toBe(['www.linkedin.com/in/jane-doe']);
+    expect(readRawJsonValue($person->getKey(), $linkedin))->toBe(['https://www.linkedin.com/in/Jane-Doe', 'www.linkedin.com/in/jane-doe']);
 });
 
 it('counts only phone-shaped values as national numbers', function (): void {

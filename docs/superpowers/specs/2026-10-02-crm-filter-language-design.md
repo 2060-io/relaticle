@@ -115,14 +115,14 @@ Normalize on write where a lossless canonical form exists; compute at query time
 |---|---|---|
 | Phone | E.164, with an extension kept as `;ext=12` (`+14155550100;ext=12`) | operand normalized the same way, exact match |
 | Email | stored as typed | `$has_any` case-insensitive; `domain` is the lowercased part after `@` |
-| Link, URL variant (default) | scheme stripped, as the panel already does through `LinkFieldType::setValue()` | operand normalized the same way, `$has_any` case-insensitive; `domain` extracts the host: lowercase, no `www.`, no path |
+| Link, URL variant (default) | kept as typed, with the scheme and host lowercased and trailing slashes dropped. A value typed without a scheme gets none | `$has_any` case-insensitive and scheme-insensitive: `acme.com/x`, `https://acme.com/x` and `http://acme.com/x` match each other; `domain` extracts the host: lowercase, no `www.`, no path |
 | Link, domain variant | trimmed, lowercased; scheme, userinfo, port, path, query, fragment, leading `www.` and trailing dot removed | exact match |
 
 Reasons, from the sources checked:
 
 - Phones: the phone field type already promises E.164. The panel's `PhoneInputComponent` stores it, and every path validates `phone:AUTO`, which requires a country code. `CustomFieldInput::normalizeValue()` passes phones through as typed, so API, MCP, chat and import store `+1 415-555-0100` style values: 55 of 60 MCP writes, 11 of 18 chat writes, 29 import writes. E.164 alone drops extensions; libphonenumber's RFC 3966 form keeps them and parses back.
 - Emails: RFC 5321 section 2.4 requires the local part to keep its case, and the app sends mail. 62 stored emails have an uppercase local part.
-- Links: RFC 3986 section 6.2.2.1 makes scheme and host case-insensitive. Dropping `www.` is a product convention, not a standard. The `link` type also holds LinkedIn URLs, whose paths matter, so only a field set to the domain variant loses its path. The package already strips the scheme of every link in `LinkFieldType::setValue()`, documented as "Normalize a value before storage and comparison", but only the panel's `LinkComponent` and `UniqueCustomFieldValue` call it, so API, MCP, chat and import store schemes.
+- Links: RFC 3986 section 6.2.2.1 makes scheme and host case-insensitive. Dropping `www.` is a product convention, not a standard. The `link` type also holds LinkedIn URLs, whose paths matter, so only a field set to the domain variant loses its path. A URL keeps its scheme, because `http://` and `https://` can be different pages and the stored value is what a click opens. `LinkFieldType::equivalentValues()` lists the spellings that count as the same link, and uniqueness and filters both compare through it.
 - Company `domains` declares `unique_per_entity_type`, but `UniqueCustomFieldValue` compares exact strings, so `https://acme.com` and `acme.com` both pass. 70% of stored values carry a scheme, and 144 hosts are shared by 426 companies through format differences alone.
 
 Every place the app stores, matches or compares a custom field value uses the canonical form through one owner, `App\Support\CustomFields\CanonicalValue`: writes, API upsert matching, CSV import matching, the activity log's no-op check and chat's proposal diff. Matching also tries the raw spelling, so rows written before the backfill still match.
@@ -255,7 +255,7 @@ The package work is merged on `3.x` (PR #244). The app requires it as `3.x-dev a
 3. Command `custom-fields:normalize-values {--force}`: reports by default, writes on `--force`, idempotent, chunked, query builder only.
    - Every phone and link value is re-run through its field type's `normalize()`; a value already in canonical form is left alone, so a second run changes nothing.
    - Phones: converts the 111 international values stored with formatting. Report the 8,505 national numbers by workspace and leave them as they are: 7,839 from the old onboarding seed (6 distinct values), 665 typed before the E.164 picker, 1 imported. No country is guessed.
-   - Links: strips schemes stored by API, MCP, chat and import. Domain-variant links also lose `www.` and paths, collapse duplicates within a record, and cross-record collisions are reported by workspace.
+   - Links: lowercases the scheme and host and drops trailing slashes. A value stored without a scheme stays without one. Domain-variant links also lose the scheme, `www.` and paths, collapse duplicates within a record, and cross-record collisions are reported by workspace.
 4. Migration queues it: `Artisan::queue('custom-fields:normalize-values', ['--force' => true])->onQueue('imports')->delay(now()->addMinutes(5))->afterCommit()`, after the settings migration. Self-hosted installs run it the same way.
 5. Release note: the v1 filter shape is replaced; old shapes return 422s naming the replacement. Tell the paying API customer before the release.
 
