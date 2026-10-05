@@ -220,3 +220,50 @@ test('the company logo collection refuses svg content from any writer', function
         ->toMediaCollection(Company::LOGO_MEDIA_COLLECTION))
         ->toThrow(FileUnacceptableForCollection::class);
 });
+
+test('replaces the logo fetched for a previous domain', function (): void {
+    Storage::fake('public');
+
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['new-domain.com']],
+    ]);
+
+    $company->addMediaFromString(onePixelPng())
+        ->usingFileName('logo.png')
+        ->withCustomProperties(['domain' => 'https://old-domain.com'])
+        ->toMediaCollection('logo');
+
+    $favicon = Mockery::mock(AshAllenDesign\FaviconFetcher\Favicon::class);
+    $favicon->shouldReceive('getFaviconUrl')->andReturn('https://1.1.1.1/favicon.png');
+    $favicon->shouldReceive('getIconSize')->andReturn(180);
+    $favicon->shouldReceive('getIconType')->andReturn('apple-touch-icon');
+
+    Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
+    Http::fake(['https://1.1.1.1/favicon.png' => Http::response(onePixelPng(), 200)]);
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    $logos = $company->fresh()->getMedia('logo');
+
+    expect($logos)->toHaveCount(1)
+        ->and($logos->first()->getCustomProperty('domain'))->toBe('https://new-domain.com');
+});
+
+test('drops the logo of a previous domain when the new domain has no favicon', function (): void {
+    Storage::fake('public');
+
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['new-domain.com']],
+    ]);
+
+    $company->addMediaFromString(onePixelPng())
+        ->usingFileName('logo.png')
+        ->withCustomProperties(['domain' => 'https://old-domain.com'])
+        ->toMediaCollection('logo');
+
+    Favicon::shouldReceive('driver->fetch')->andReturn(null);
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    expect($company->fresh()->getMedia('logo'))->toBeEmpty();
+});

@@ -19,6 +19,7 @@ use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Throwable;
 
 #[DeleteWhenMissingModels]
@@ -35,27 +36,16 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
     public function handle(): void
     {
         try {
-            // The custom-fields package registers the tenant relation under the name
-            // `team`, so the relation has to be named rather than guessed.
-            $customFieldDomain = $this->company->customFields()
-                ->whereBelongsTo($this->company->workspace, 'team')
-                ->where('code', CompanyField::DOMAINS->value)
-                ->first();
+            $domainName = self::sourceUrl($this->company);
 
-            // Reading a value walks every custom field value on the company, and a company
-            // with more than one of them trips strict lazy loading outside production.
-            $this->company->load('customFieldValues.customField.options');
-
-            $domains = $this->company->getCustomFieldValue($customFieldDomain);
-            $domainName = is_array($domains) ? ($domains[0] ?? null) : $domains;
-
-            if ($domainName === null || $domainName === '') {
+            if ($domainName === null) {
                 return;
             }
 
-            if (! Str::startsWith($domainName, ['http://', 'https://'])) {
-                $domainName = 'https://'.$domainName;
-            }
+            $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
+                ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $domainName))
+                ->each
+                ->delete();
 
             $favicon = Favicon::driver('high-quality')->fetch($domainName);
             $url = $favicon?->getFaviconUrl();
@@ -101,6 +91,38 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
         } catch (Throwable $exception) {
             report($exception);
         }
+    }
+
+    public static function sourceUrl(Company $company): ?string
+    {
+        // The custom-fields package registers the tenant relation under the name
+        // `team`, so the relation has to be named rather than guessed.
+        $domainsField = $company->customFields()
+            ->whereBelongsTo($company->workspace, 'team')
+            ->where('code', CompanyField::DOMAINS->value)
+            ->first();
+
+        if ($domainsField === null) {
+            return null;
+        }
+
+        // Reading a value walks every custom field value on the company, and a company
+        // with more than one of them trips strict lazy loading outside production.
+        $company->load('customFieldValues.customField.options');
+
+        $domains = $company->getCustomFieldValue($domainsField);
+        $domain = is_array($domains) ? ($domains[0] ?? null) : $domains;
+
+        if (blank($domain)) {
+            return null;
+        }
+
+        return Str::startsWith($domain, ['http://', 'https://']) ? $domain : "https://{$domain}";
+    }
+
+    public static function fetchedFrom(Media $logo, string $sourceUrl): bool
+    {
+        return $logo->getCustomProperty('domain', $sourceUrl) === $sourceUrl;
     }
 
     public function uniqueId(): string
