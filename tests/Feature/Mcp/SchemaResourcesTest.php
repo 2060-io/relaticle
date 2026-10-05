@@ -8,9 +8,7 @@ use App\Mcp\Resources\NoteSchemaResource;
 use App\Mcp\Resources\OpportunitySchemaResource;
 use App\Mcp\Resources\PeopleSchemaResource;
 use App\Mcp\Resources\TaskSchemaResource;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Mcp\Schema\CustomFieldSchema;
-use App\Mcp\Schema\McpSchemaCache;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\GetCrmSchemaTool;
 use App\Models\CustomField;
@@ -18,6 +16,8 @@ use App\Models\CustomFieldOption;
 use App\Models\CustomFieldSection;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
+use App\Queries\CustomFieldFilterSchema;
+use App\Support\CustomFields\CustomFieldSchemaCache;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
@@ -93,7 +93,7 @@ it('lets a client cache an entity schema privately for as long as the server doe
         'params' => ['uri' => $uri],
     ])
         ->assertOk()
-        ->assertJsonPath('result.ttlMs', McpSchemaCache::TTL * 1000)
+        ->assertJsonPath('result.ttlMs', CustomFieldSchemaCache::TTL * 1000)
         ->assertJsonPath('result.cacheScope', 'private');
 })->with([
     'relaticle://schema/company',

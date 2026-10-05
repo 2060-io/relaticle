@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 use App\Actions\CustomFields\CreateCustomField;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\Opportunity\ListOpportunitiesTool;
 use App\Mcp\Tools\People\ListPeopleTool;
 use App\Models\Opportunity;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\Sorts\CustomFieldSort;
 use App\Support\CurrentWorkspace;
 use Illuminate\Testing\Fluent\AssertableJson;

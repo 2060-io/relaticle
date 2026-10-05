@@ -6,9 +6,9 @@ namespace App\Actions\Note;
 
 use App\Concerns\PaginatesListQuery;
 use App\Enums\CrmEntity;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\Note;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;

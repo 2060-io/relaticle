@@ -9,9 +9,11 @@ use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterVocabulary;
 use App\Support\CustomFields\CustomFieldOptionMap;
+use App\Support\CustomFields\CustomFieldSchemaCache;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Relaticle\CustomFields\Services\ValidationService;
@@ -49,9 +51,9 @@ final readonly class CustomFieldSchema
     public function fields(User $user, CrmEntity $entity): stdClass
     {
         $workspaceId = $user->currentWorkspace->getKey();
-        $cacheKey = McpSchemaCache::entitySchemaKey($workspaceId, $entity->value);
+        $cacheKey = CustomFieldSchemaCache::entitySchemaKey($workspaceId, $entity->value);
 
-        return (object) Cache::remember($cacheKey, McpSchemaCache::TTL, function () use ($workspaceId, $entity): array {
+        return (object) Cache::remember($cacheKey, CustomFieldSchemaCache::TTL, function () use ($workspaceId, $entity): array {
             $fields = CustomField::query()
                 ->withoutGlobalScopes()
                 ->where('tenant_id', $workspaceId)

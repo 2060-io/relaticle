@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Queries;
 
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Validator;

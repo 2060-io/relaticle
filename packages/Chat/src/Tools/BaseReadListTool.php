@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools;
 
 use App\Enums\CrmEntity;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterErrors;
 use App\Queries\FilterTree;

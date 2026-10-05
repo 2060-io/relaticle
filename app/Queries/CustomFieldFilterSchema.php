@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Schema;
+namespace App\Queries;
 
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\User;
 use App\Queries\Sorts\CustomFieldSort;
+use App\Support\CustomFields\CustomFieldSchemaCache;
 use App\Support\CustomFields\WorkspaceCustomFields;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -221,10 +222,10 @@ final readonly class CustomFieldFilterSchema
     private function resolveFilterableFields(User $user, string $entityType): Collection
     {
         $workspace = $user->currentWorkspace;
-        $cacheKey = McpSchemaCache::filterSchemaKey($workspace->getKey(), $entityType);
+        $cacheKey = CustomFieldSchemaCache::filterSchemaKey($workspace->getKey(), $entityType);
 
         /** @var Collection<int, CustomField> */
-        return Cache::remember($cacheKey, McpSchemaCache::TTL, fn (): Collection => resolve(WorkspaceCustomFields::class)
+        return Cache::remember($cacheKey, CustomFieldSchemaCache::TTL, fn (): Collection => resolve(WorkspaceCustomFields::class)
             ->forEntity($workspace, $entityType)
             ->filter(self::isFilterable(...))
             ->map(fn (CustomField $field): CustomField => $field->withoutRelations())

@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Enums\CrmEntity;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Mcp\Schema\CustomFieldSchema;
 use App\Mcp\Tools\Concerns\BoundsToManyIncludes;
 use App\Mcp\Tools\Concerns\ChecksTokenAbility;
 use App\Mcp\Tools\Concerns\HasReadOnlyToolAnnotations;
 use App\Mcp\Tools\Concerns\SerializesRelatedModels;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterErrors;
 use App\Queries\FilterTree;

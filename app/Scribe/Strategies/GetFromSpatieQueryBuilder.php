@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Scribe\Strategies;
 
 use App\Enums\CrmEntity;
-use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Support\CustomFields\CustomFieldOptionMap;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;

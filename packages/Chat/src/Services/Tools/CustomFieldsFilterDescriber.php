@@ -6,8 +6,8 @@ namespace Relaticle\Chat\Services\Tools;
 
 use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterVocabulary;
 use App\Support\CustomFields\CustomFieldOptionMap;

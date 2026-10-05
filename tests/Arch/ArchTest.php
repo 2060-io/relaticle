@@ -344,6 +344,11 @@ arch('a query sort lives in the sorts folder')
     ->toImplement(Sort::class)
     ->ignoring('App\Queries\Sorts\\');
 
+arch('the query language uses no transport')
+    ->expect('App\Queries')
+    ->not
+    ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
+
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
     ->classes()

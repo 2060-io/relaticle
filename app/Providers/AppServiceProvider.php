@@ -22,7 +22,6 @@ use App\Listeners\Email\WorkspaceMemberAddedListener;
 use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
 use App\Listeners\SeedWorkspaceCreditBalanceListener;
 use App\Livewire\FilamentNotifications;
-use App\Mcp\Schema\McpSchemaCache;
 use App\Models\ActivityLog\Activity as ActivityModel;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
@@ -47,6 +46,7 @@ use App\Support\BrandColors;
 use App\Support\CurrentSource;
 use App\Support\CurrentWorkspace;
 use App\Support\CustomFields\CustomFieldInput;
+use App\Support\CustomFields\CustomFieldSchemaCache;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\CustomFields\RestoreConflictMessage;
 use App\Support\CustomFields\WorkspaceCustomFields;
@@ -657,7 +657,7 @@ final class AppServiceProvider extends ServiceProvider
             $entityType = $field->getAttribute('entity_type');
 
             if ((is_string($tenantId) || is_int($tenantId)) && is_string($entityType)) {
-                McpSchemaCache::forget($tenantId, $entityType);
+                CustomFieldSchemaCache::forget($tenantId, $entityType);
                 resolve(WorkspaceCustomFields::class)->forget($tenantId);
             }
         };
@@ -672,7 +672,7 @@ final class AppServiceProvider extends ServiceProvider
             $tenantId = $option->getAttribute('tenant_id');
 
             if (is_string($tenantId) || is_int($tenantId)) {
-                McpSchemaCache::forgetTenant($tenantId);
+                CustomFieldSchemaCache::forgetTenant($tenantId);
                 resolve(WorkspaceCustomFields::class)->forget($tenantId);
             }
         };

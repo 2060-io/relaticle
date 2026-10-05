@@ -7,7 +7,6 @@ namespace App\Queries;
 use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
 use App\Queries\Filters\AssignedToMeFilter;
 use App\Queries\Filters\CustomFieldFilter;

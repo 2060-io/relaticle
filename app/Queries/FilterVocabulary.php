@@ -6,7 +6,6 @@ namespace App\Queries;
 
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
-use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\User;
 use App\Support\CustomFields\CustomFieldOptionMap;

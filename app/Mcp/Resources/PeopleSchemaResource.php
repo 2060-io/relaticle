@@ -7,9 +7,9 @@ namespace App\Mcp\Resources;
 use App\Enums\CrmEntity;
 use App\Mcp\Resources\Contracts\ProvidesEntitySchema;
 use App\Mcp\Schema\CustomFieldSchema;
-use App\Mcp\Schema\McpSchemaCache;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use App\Support\CustomFields\CustomFieldSchemaCache;
 use Laravel\Mcp\Enums\CacheScope;
 use Laravel\Mcp\Enums\Role;
 use Laravel\Mcp\Request;
@@ -25,7 +25,7 @@ use Laravel\Mcp\Server\Resource;
 #[Description('Schema for people (contacts) including available custom fields. Read this before creating or updating people.')]
 #[Uri('relaticle://schema/people')]
 #[MimeType('application/json')]
-#[Cacheable(ttlMs: McpSchemaCache::TTL * 1000, scope: CacheScope::Private)]
+#[Cacheable(ttlMs: CustomFieldSchemaCache::TTL * 1000, scope: CacheScope::Private)]
 #[Audience(Role::Assistant)]
 #[Priority(0.8)]
 final class PeopleSchemaResource extends Resource implements ProvidesEntitySchema
