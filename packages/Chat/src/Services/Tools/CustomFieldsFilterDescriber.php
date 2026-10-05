@@ -8,9 +8,9 @@ use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
+use App\Queries\EntityFilters;
+use App\Queries\FilterVocabulary;
 use App\Support\CustomFields\CustomFieldOptionMap;
-use App\Support\Filters\EntityFilters;
-use App\Support\Filters\FilterVocabulary;
 use Relaticle\Chat\Support\PromptText;
 
 final readonly class CustomFieldsFilterDescriber

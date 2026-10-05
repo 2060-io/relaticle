@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Scribe\Strategies;
 
-use App\Support\Filters\EntityFilters;
+use App\Queries\EntityFilters;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
 

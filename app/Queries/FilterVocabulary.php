@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries;
 
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;

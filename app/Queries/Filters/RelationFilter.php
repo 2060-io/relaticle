@@ -2,10 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries\Filters;
 
 use App\Enums\CrmEntity;
 use App\Models\User;
+use App\Queries\Concerns\AppliesFilterNodes;
+use App\Queries\EntityFilters;
+use App\Queries\FilterDefinition;
+use App\Queries\FilterErrors;
+use App\Queries\Operand;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;

@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries;
 
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
 use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Queries\Filters\AssignedToMeFilter;
+use App\Queries\Filters\StaleDaysFilter;
 use BackedEnum;
 use Spatie\QueryBuilder\Filters\Filter;
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;

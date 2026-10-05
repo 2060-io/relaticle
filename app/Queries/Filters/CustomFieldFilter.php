@@ -2,13 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries\Filters;
 
 use App\Enums\CustomFieldType;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\User;
+use App\Queries\FilterErrors;
+use App\Queries\Operand;
 use App\Support\CustomFields\CanonicalValue;
 use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\CustomFields\WorkspaceCustomFields;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries\Sorts;
 
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;

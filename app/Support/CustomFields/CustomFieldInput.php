@@ -6,7 +6,7 @@ namespace App\Support\CustomFields;
 
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
-use App\Support\Filters\Operand;
+use App\Queries\Operand;
 use App\Support\Media\RichContentAttachments;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Validator;

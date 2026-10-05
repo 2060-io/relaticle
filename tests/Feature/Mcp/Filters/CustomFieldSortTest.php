@@ -9,8 +9,8 @@ use App\Mcp\Tools\Opportunity\ListOpportunitiesTool;
 use App\Mcp\Tools\People\ListPeopleTool;
 use App\Models\Opportunity;
 use App\Models\User;
+use App\Queries\Sorts\CustomFieldSort;
 use App\Support\CurrentWorkspace;
-use App\Support\Filters\CustomFieldSort;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Tests\Helpers\WorkspaceCustomField;
 

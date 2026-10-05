@@ -2,13 +2,19 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries;
 
 use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\User;
+use App\Queries\Filters\AssignedToMeFilter;
+use App\Queries\Filters\CustomFieldFilter;
+use App\Queries\Filters\LogicFilter;
+use App\Queries\Filters\NativeFilter;
+use App\Queries\Filters\RelationFilter;
+use App\Queries\Filters\StaleDaysFilter;
 use Spatie\QueryBuilder\AllowedFilter;
 
 final readonly class EntityFilters

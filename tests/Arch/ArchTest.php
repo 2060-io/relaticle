@@ -141,7 +141,7 @@ arch('avoid mutation')
         'App\Support\ActivityLog\CleanActivityLogAction',
         // Extends spatie's AllowedFilter; PHP forbids a readonly class extending a
         // non-readonly one.
-        'App\Support\Filters\TreeAllowedFilter',
+        'App\Queries\TreeAllowedFilter',
         // Request-scoped batch_uuid holder, mutable by design (lazily caches the
         // per-request id), like a value cache rather than a service.
         'App\Support\ActivityLog\RequestActivityBatch',
@@ -213,7 +213,7 @@ arch('avoid inheritance')
         'App\View',
         'App\Support\ActivityLog\CleanActivityLogAction',
         // Subclasses spatie's AllowedFilter, the query builder's extension point.
-        'App\Support\Filters\TreeAllowedFilter',
+        'App\Queries\TreeAllowedFilter',
         // Hooks slug uniqueness by extending sluggable's GenerateSlugAction,
         // which is the package's documented extension point.
         'App\Support\ReservedSlugAwareGenerateSlugAction',

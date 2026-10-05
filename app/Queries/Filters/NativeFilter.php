@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries\Filters;
 
 use App\Enums\FilterKind;
 use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Queries\FilterDefinition;
+use App\Queries\FilterErrors;
+use App\Queries\Operand;
 use App\Support\LikePattern;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;

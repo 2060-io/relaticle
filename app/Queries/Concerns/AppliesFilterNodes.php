@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries\Concerns;
 
+use App\Queries\FilterErrors;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\QueryBuilder\AllowedFilter;

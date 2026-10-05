@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries;
 
 use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
+use App\Queries\Filters\LogicFilter;
 use Illuminate\Support\Str;
 
 final readonly class FilterTree

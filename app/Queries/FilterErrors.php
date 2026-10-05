@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Support\Filters;
+namespace App\Queries;
 
 use Illuminate\Validation\ValidationException;
 
