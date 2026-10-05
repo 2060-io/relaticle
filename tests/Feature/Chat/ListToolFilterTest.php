@@ -621,7 +621,7 @@ it('rejects an argument a list tool does not take instead of listing every recor
     $result = json_decode((new ListTasksTool)->handle(new Request([$argument => $value])), true);
 
     expect($result)->toHaveKey('error')
-        ->and($result['error'])->toContain("{$argument} is not an argument of this tool");
+        ->and($result['error'])->toContain("{$argument} is not accepted here");
 })->with([
     'the custom_fields object this tool took before' => ['custom_fields', ['status' => ['$eq' => 'Done']]],
     'a filter name sent beside filter' => ['assigned_to_me', true],

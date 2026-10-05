@@ -710,6 +710,17 @@ it('returns every record for an empty query body', function (): void {
     $this->postJson('/api/v1/companies/query', [])->assertOk()->assertJsonCount(2, 'data');
 });
 
+it('rejects a query body key the endpoint does not take', function (string $key, string $message): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $this->postJson('/api/v1/companies/query', [$key => ['name' => ['$eq' => 'Acme']]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([$key => $message]);
+})->with([
+    'a misspelled key' => ['filters', 'filters is not accepted here. Put conditions inside filter. Accepted: filter, per_page, cursor, page, include, sort, fields.'],
+    'a removed param' => ['search', 'search was replaced. Use name or title with $contains.'],
+]);
+
 it('rejects a query body the pre-pass rejects, under the same keys', function (array $filter, string $key, string $message): void {
     $this->postJson('/api/v1/companies/query', ['filter' => $filter])
         ->assertUnprocessable()
@@ -912,7 +923,7 @@ it('refuses a query body larger than 256 KB before reading the filter', function
 })->with(['companies', 'people', 'opportunities', 'tasks', 'notes']);
 
 it('accepts a query body just under 256 KB', function (): void {
-    $body = (string) json_encode(['filter' => ['name' => ['$eq' => 'Acme']], 'padding' => str_repeat('a', 262000)]);
+    $body = (string) json_encode(['filter' => ['name' => ['$eq' => str_repeat('a', 262000)]]]);
 
     $this->call('POST', '/api/v1/companies/query', [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'], $body)->assertOk();
 });

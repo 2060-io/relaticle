@@ -74,7 +74,7 @@ return [
         'field_names' => 'The fields field must be a list of field names, or a map of record type to field names.',
         'empty_node' => ':name needs at least one condition.',
         'replaced' => ':name was replaced. Use :replacement.',
-        'unknown_argument' => ':name is not an argument of this tool. Put conditions inside filter. Arguments: :accepted.',
+        'unknown_argument' => ':name is not accepted here. Put conditions inside filter. Accepted: :accepted.',
         'too_many_conditions' => 'A filter holds at most :max conditions. This one has :count.',
         'too_deep' => '$and, $or and $not nest at most :max levels.',
         'too_many_hops' => 'Relations nest at most :max levels.',

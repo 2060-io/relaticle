@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Filters\FilterTree;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Pagination\Cursor;
@@ -77,6 +78,13 @@ final class IndexRequest extends FormRequest
 
         if ($this->input('cursor') === true) {
             $this->merge(['cursor' => self::FIRST_CURSOR]);
+        }
+    }
+
+    protected function passedValidation(): void
+    {
+        if ($this->isMethod('POST')) {
+            FilterTree::rejectUnknownArguments($this->json()->all(), ['filter', ...array_keys($this->rules())]);
         }
     }
 

@@ -272,7 +272,7 @@ it('names the replacement for an argument a list tool no longer takes', function
 it('rejects an argument a list tool does not take instead of listing every record', function (string $toolClass, string $argument): void {
     RelaticleServer::actingAs($this->user)
         ->tool($toolClass, [$argument => true])
-        ->assertHasErrors(["{$argument} is not an argument of this tool"]);
+        ->assertHasErrors(["{$argument} is not accepted here"]);
 })->with([
     'a filter name sent beside filter' => [ListTasksTool::class, 'assigned_to_me'],
     'creation_source beside filter' => [ListCompaniesTool::class, 'creation_source'],
