@@ -24,14 +24,18 @@ final readonly class CustomFieldSort implements Sort
     {
         $model = $query->getModel();
 
-        $query->orderBy(
-            CustomFieldValue::query()
-                ->select($this->field->getValueColumn())
-                ->whereColumn('entity_id', $model->getTable().'.id')
-                ->where('entity_type', $model->getMorphClass())
-                ->where('custom_field_id', $this->field->getKey())
-                ->limit(1),
-            $descending ? 'desc' : 'asc',
-        );
+        $column = $this->field->getValueColumn();
+        $value = CustomFieldValue::query()
+            ->whereColumn('entity_id', $model->getTable().'.id')
+            ->where('entity_type', $model->getMorphClass())
+            ->where('custom_field_id', $this->field->getKey())
+            ->limit(1);
+
+        // Postgres sorts null first when descending, so records holding a value are ranked ahead.
+        if ($descending) {
+            $query->orderBy($value->clone()->selectRaw('1')->whereNotNull($column));
+        }
+
+        $query->orderBy($value->select($column), $descending ? 'desc' : 'asc');
     }
 }

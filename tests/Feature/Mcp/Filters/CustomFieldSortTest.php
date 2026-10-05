@@ -50,6 +50,18 @@ it('sorts opportunities by a custom field in each direction', function (string $
     'descending' => ['desc', ['High', 'Mid', 'Low']],
 ]);
 
+it('puts an opportunity without a value last in each direction', function (string $direction, array $expected): void {
+    $amount = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'amount');
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Empty']);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'High'])->saveCustomFieldValue($amount, 100000);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Low'])->saveCustomFieldValue($amount, 1000);
+
+    expect(opportunityNamesSortedBy($this->user, 'amount', $direction))->toBe($expected);
+})->with([
+    'ascending' => ['asc', ['Low', 'High', 'Empty']],
+    'descending' => ['desc', ['High', 'Low', 'Empty']],
+]);
+
 it('sorts by a custom field created after an earlier sort', function (): void {
     $high = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'High']);
     $low = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Low']);
