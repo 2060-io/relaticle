@@ -16,6 +16,8 @@ final readonly class ConversationsQuery
 {
     private const array COLUMNS = ['id', 'title', 'created_at', 'updated_at'];
 
+    private const int LIMIT = 50;
+
     public function find(User $user, string $conversationId): ?stdClass
     {
         return AgentConversation::query()
@@ -26,7 +28,7 @@ final readonly class ConversationsQuery
     }
 
     /** @return Collection<int, stdClass> */
-    public function recent(User $user, int $limit = 50): Collection
+    public function recent(User $user, int $limit = self::LIMIT): Collection
     {
         return $this->withCleanTitles(
             AgentConversation::query()
@@ -57,7 +59,7 @@ final readonly class ConversationsQuery
                         ->orWhereHas('messages', fn (Builder $message): Builder => $message->withoutSynthetic()->where('content', 'ilike', $needle));
                 })
                 ->latest('updated_at')
-                ->limit(50)
+                ->limit(self::LIMIT)
                 ->toBase()
                 ->get(self::COLUMNS),
         );

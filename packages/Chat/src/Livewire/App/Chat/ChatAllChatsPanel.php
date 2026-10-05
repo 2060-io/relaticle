@@ -66,7 +66,7 @@ final class ChatAllChatsPanel extends BaseLivewireComponent
 
         /** @var Collection<int, \stdClass> $conversations */
         $conversations = $query === ''
-            ? new ConversationsQuery()->recent($user, 50)
+            ? new ConversationsQuery()->recent($user)
             : new ConversationsQuery()->search($user, $query);
 
         return view('chat::livewire.app.chat.chat-all-chats-panel', [
