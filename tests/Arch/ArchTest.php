@@ -349,6 +349,42 @@ arch('the query language uses no transport')
     ->not
     ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
 
+$queryLayers = [
+    'App\Queries\Companies',
+    'App\Queries\Crm',
+    'App\Queries\CustomFields',
+    'App\Queries\Notes',
+    'App\Queries\Opportunities',
+    'App\Queries\People',
+    'App\Queries\Tasks',
+    'Relaticle\Chat\Queries',
+];
+
+foreach ($queryLayers as $queryLayer) {
+    arch("{$queryLayer} holds final readonly query classes")
+        ->expect($queryLayer)
+        ->classes()
+        ->toBeFinal()
+        ->toBeReadonly();
+}
+
+foreach (['App\Queries', 'Relaticle\Chat\Queries'] as $queryRoot) {
+    arch("{$queryRoot} takes the acting user and reads no ambient request")
+        ->expect($queryRoot)
+        ->not
+        ->toUse(['auth', 'request']);
+}
+
+arch('actions build no list query')
+    ->expect('App\Actions')
+    ->not
+    ->toUse('Spatie\QueryBuilder');
+
+arch('chat queries use no chat transport')
+    ->expect('Relaticle\Chat\Queries')
+    ->not
+    ->toUse(['Relaticle\Chat\Http', 'Relaticle\Chat\Livewire', 'Relaticle\Chat\Tools', 'Relaticle\Chat\Jobs']);
+
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
     ->classes()

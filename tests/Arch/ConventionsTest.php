@@ -966,6 +966,54 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
     );
 });
 
+it('names a class in a domain folder of Queries with the Query suffix', function (): void {
+    $root = dirname(__DIR__, 2);
+    $grammarFolders = ['Filters', 'Sorts', 'Concerns', 'Contracts'];
+
+    $files = [
+        ...glob($root.'/app/Queries/*/*.php') ?: [],
+        ...glob($root.'/packages/*/src/Queries/*.php') ?: [],
+        ...glob($root.'/packages/*/src/Queries/*/*.php') ?: [],
+    ];
+
+    $offenders = array_values(array_map(
+        static fn (string $file): string => str_replace($root.'/', '', $file),
+        array_filter(
+            $files,
+            static fn (string $file): bool => ! in_array(basename(dirname($file)), $grammarFolders, true)
+                && ! str_ends_with(basename($file, '.php'), 'Query'),
+        ),
+    ));
+
+    expect($offenders)->toBe(
+        [],
+        'A reusable read is a *Query class (.ai/rules/queries.md): '.implode(', ', $offenders),
+    );
+});
+
+it('keeps reads out of the Actions folders', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $files = [
+        ...glob($root.'/app/Actions/*/*.php') ?: [],
+        ...glob($root.'/packages/*/src/Actions/*.php') ?: [],
+        ...glob($root.'/packages/*/src/Actions/*/*.php') ?: [],
+    ];
+
+    $offenders = array_values(array_map(
+        static fn (string $file): string => str_replace($root.'/', '', $file),
+        array_filter(
+            $files,
+            static fn (string $file): bool => preg_match('/^(List|Find|Search|Get|Aggregate)[A-Z]/', basename($file, '.php')) === 1,
+        ),
+    ));
+
+    expect($offenders)->toBe(
+        [],
+        'An action is a write. A reusable read is a *Query class under Queries (.ai/rules/queries.md): '.implode(', ', $offenders),
+    );
+});
+
 it('keeps each negated arch expectation to one layer', function (): void {
     $root = dirname(__DIR__, 2);
     $offenders = [];
