@@ -104,7 +104,7 @@ final class IndexRequest extends FormRequest
         $content = trim($this->getContent());
 
         if ($content === '') {
-            return true;
+            return $this->request->count() === 0;
         }
 
         if (! $this->isJson()) {

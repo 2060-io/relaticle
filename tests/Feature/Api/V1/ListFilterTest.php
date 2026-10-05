@@ -914,6 +914,14 @@ it('rejects a query body that is not a json object', function (string $content, 
     'form encoded' => ['filter%5Bname%5D%5B%24eq%5D=zzzz-nope', 'application/x-www-form-urlencoded'],
 ]);
 
+it('rejects a query sent as multipart form fields', function (): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme']);
+
+    $this->call('POST', '/api/v1/companies/query', ['filter' => ['name' => ['$eq' => 'zzzz-nope']]], [], [], ['CONTENT_TYPE' => 'multipart/form-data; boundary=x', 'HTTP_ACCEPT' => 'application/json'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['body' => 'The request body must be a JSON object.']);
+});
+
 it('caps a filter sent in the body of a GET request', function (): void {
     $body = (string) json_encode(['filter' => ['name' => ['$contains' => str_repeat('a', 257 * 1024)]]]);
 
