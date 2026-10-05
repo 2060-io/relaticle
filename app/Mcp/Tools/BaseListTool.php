@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Data\ListQuery;
 use App\Enums\CrmEntity;
 use App\Mcp\Schema\CustomFieldSchema;
 use App\Mcp\Tools\Concerns\BoundsToManyIncludes;
@@ -19,7 +20,6 @@ use Closure;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -42,9 +42,6 @@ abstract class BaseListTool extends Tool
 
     /** @var list<string> */
     private const array ARGUMENTS = ['filter', 'sort', 'include', 'per_page', 'page'];
-
-    /** @return class-string */
-    abstract protected function actionClass(): string;
 
     abstract protected function entity(): CrmEntity;
 
@@ -107,12 +104,7 @@ abstract class BaseListTool extends Tool
         FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
 
         try {
-            $results = app()->make($this->actionClass())->execute(
-                user: $user,
-                perPage: (int) ($validated['per_page'] ?? 15),
-                page: (int) ($validated['page'] ?? 1),
-                request: $this->buildHttpRequest($request),
-            );
+            $results = resolve($this->entity()->query())->paginate($user, $this->listQuery($request, $validated));
         } catch (ValidationException $exception) {
             return Response::error(FilterErrors::located($exception));
         } catch (InvalidQuery $e) {
@@ -180,29 +172,21 @@ abstract class BaseListTool extends Tool
         };
     }
 
-    private function buildHttpRequest(Request $mcpRequest): HttpRequest
+    /** @param  array<string, mixed>  $validated */
+    private function listQuery(Request $request, array $validated): ListQuery
     {
-        $input = [];
+        $filter = $request->get('filter');
+        $sort = $request->get('sort');
+        $include = $request->get('include');
 
-        $filter = $mcpRequest->get('filter');
-
-        if (is_array($filter) && $filter !== []) {
-            $input['filter'] = FilterTree::trimmed($filter);
-        }
-
-        $sort = $mcpRequest->get('sort');
-
-        if (is_array($sort) && isset($sort['field'])) {
-            $direction = ($sort['direction'] ?? 'asc') === 'desc' ? '-' : '';
-            $input['sort'] = $direction.$sort['field'];
-        }
-
-        $include = $mcpRequest->get('include');
-
-        if (is_array($include) && $include !== []) {
-            $input['include'] = $include;
-        }
-
-        return new HttpRequest($input);
+        return new ListQuery(
+            filter: is_array($filter) && $filter !== [] ? FilterTree::trimmed($filter) : null,
+            sort: is_array($sort) && isset($sort['field'])
+                ? (($sort['direction'] ?? 'asc') === 'desc' ? '-' : '').$sort['field']
+                : null,
+            include: is_array($include) && $include !== [] ? $include : null,
+            perPage: (int) ($validated['per_page'] ?? 15),
+            page: (int) ($validated['page'] ?? 1),
+        );
     }
 }

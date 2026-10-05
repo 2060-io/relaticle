@@ -29,7 +29,7 @@ return [
                 'App\Livewire\App\AccessTokens\ManageAccessTokens::table' => 87,
                 'App\Livewire\App\AccessTokens\ManageOAuthConnectors::table' => 65,
                 'App\Livewire\App\Workspaces\InviteWorkspaceMembers::manageInviteLinkAction' => 84,
-                'App\Mcp\Tools\BaseListTool::handle' => 94,
+                'App\Mcp\Tools\BaseListTool::handle' => 89,
                 'App\Mcp\Tools\BaseShowTool::handle' => 119,
                 'App\Mcp\Tools\ListActivityTool::handle' => 66,
                 'App\Mcp\Tools\ListCustomFieldsTool::handle' => 64,
