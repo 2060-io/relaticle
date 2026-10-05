@@ -1,6 +1,5 @@
 @php
     $assistantName = (string) config('chat.assistant_name');
-    $mcpToolCount = \App\Support\CompetitorFacts::mcpToolCount();
     $billingActive = \Laravel\Pennant\Feature::active(\App\Features\Billing::class);
     $freeCredits = number_format(\App\Enums\Plan::Free->credits());
     $proCredits = number_format(\App\Enums\Plan::Pro->credits());
@@ -26,7 +25,7 @@
             'ri-plug-line',
             __('Can an outside agent work in it?'),
             __('Claude, ChatGPT, or an agent you wrote should get first-class access to records, not a screen-scraper.'),
-            __('A first-party :count-tool MCP server and a REST API. Agents connected over MCP write directly, under the same permissions as the user whose token they use.', ['count' => $mcpToolCount]),
+            __('A first-party MCP server and a REST API. Agents connected over MCP write directly, under the same permissions as the user whose token they use.'),
         ],
         [
             'ri-stack-line',

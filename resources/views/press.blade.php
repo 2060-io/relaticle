@@ -1,6 +1,5 @@
 @php
     $facts = \App\Support\CompetitorFacts::all()['relaticle'];
-    $mcpToolCount = \App\Support\CompetitorFacts::mcpToolCount();
     $starsLabel = $githubStars > 0
         ? __(':stars stars', ['stars' => number_format($githubStars)])
         : __(':stars stars as of :date', ['stars' => number_format($facts['stars']), 'date' => \Illuminate\Support\Facades\Date::parse($facts['stars_verified'])->format('F j, Y')]);
@@ -179,7 +178,7 @@
                     </div>
                     <div class="lg:col-span-2">
                         <ul class="grid gap-px overflow-hidden rounded-2xl border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2">
-                            @foreach ([__('Founded') => '2024', __('License') => $facts['license'], __('Tech stack') => $facts['stack'], __('GitHub stars') => $starsLabel, __('Pricing') => $facts['pricing'], __('AI & MCP') => __(':name, a built-in AI assistant, and a :count-tool MCP server. Both support self-hosting.', ['count' => $mcpToolCount, 'name' => config('chat.assistant_name')])] as $label => $value)
+                            @foreach ([__('Founded') => '2024', __('License') => $facts['license'], __('Tech stack') => $facts['stack'], __('GitHub stars') => $starsLabel, __('Pricing') => $facts['pricing'], __('AI & MCP') => __(':name, a built-in AI assistant, and an MCP server. Both support self-hosting.', ['name' => config('chat.assistant_name')])] as $label => $value)
                                 <li class="bg-white p-5 dark:bg-gray-950"><p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ $label }}</p><p class="mt-2 text-sm leading-relaxed text-gray-800 dark:text-gray-200">{{ $value }}</p></li>
                             @endforeach
                         </ul>

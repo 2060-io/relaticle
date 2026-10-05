@@ -2,7 +2,6 @@
     $cardBase = 'group feat-card rounded-xl border border-gray-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] transition-all duration-300 hover:border-gray-300 dark:hover:border-white/[0.10] hover:shadow-sm';
     $cardTitle = 'font-display text-lg font-medium text-gray-900 dark:text-white mb-2';
     $cardDesc = 'text-[13px] leading-relaxed text-gray-500 dark:text-gray-400';
-    $mcpToolCount = \App\Support\CompetitorFacts::mcpToolCount();
 @endphp
 
 <section id="features" class="py-24 md:py-32 bg-gray-50 dark:bg-gray-950 relative overflow-hidden">
@@ -29,7 +28,7 @@
                     Connect your AI agents
                 </h3>
                 <p class="{{ $cardDesc }} max-w-md">
-                    Give MCP-compatible agents access to your CRM through a {{ $mcpToolCount }}-tool MCP server. Build custom integrations with the REST API.
+                    Connect Claude, ChatGPT, or your own agent. They work from the same records your team does.
                 </p>
 
                 @include('home.partials.agent-network')
@@ -75,7 +74,7 @@
                     Custom fields
                 </h3>
                 <p class="{{ $cardDesc }}">
-                    Capture the details that matter to your business. Add custom fields, connect related records, and encrypt sensitive values.
+                    Capture the details that matter to your business. Add custom fields and connect related records.
                 </p>
                 <div class="mt-4 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
                     @foreach([['Text', 'Company name...', false], ['Select', 'Industry', true]] as [$label, $placeholder, $hasArrow])
@@ -204,7 +203,7 @@
                         Start for free
                     </x-marketing.button>
                     <div class="mt-3 flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-500">
-                        <span>No credit card</span><span>&middot;</span><span>6,000+ tests</span><span>&middot;</span><span>AGPL-3.0</span>
+                        <span>No credit card</span><span>&middot;</span><span>Unlimited users</span><span>&middot;</span><span>Open source</span>
                     </div>
                 </div>
             </div>

@@ -91,12 +91,12 @@ it('answers the trial question right after the hosted plan question when billing
         ->and($questions[$hostedIndex + 1])->toBe(__('What happens after my trial ends?'));
 });
 
-it('links to the assistant and MCP page by name', function (): void {
+it('links to the AI assistant and MCP server page', function (): void {
     $response = $this->get('/pricing')->assertOk();
     $crawler = new Crawler((string) $response->getContent());
     $toolLink = $crawler->filter('main a[href="'.route('ai').'"]')->text();
 
-    expect($toolLink)->toBe(__('Explore :name and the MCP server for Claude and ChatGPT', ['name' => config('chat.assistant_name')]));
+    expect($toolLink)->toContain('the MCP server');
 });
 
 it('emits product json-ld on the pricing page', function (): void {

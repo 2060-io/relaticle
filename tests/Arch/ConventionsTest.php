@@ -688,7 +688,7 @@ it('keeps the retired contact and deal words out of record copy', function (): v
     );
 });
 
-it('names the assistant one way and states the MCP tool count the server registers', function (): void {
+it('names the assistant one way and keeps the documented MCP tool count true', function (): void {
     $root = dirname(__DIR__, 2);
     $registered = count((new ReflectionClass(RelaticleServer::class))->getProperty('tools')->getDefaultValue());
 
@@ -722,24 +722,16 @@ it('names the assistant one way and states the MCP tool count the server registe
                 $offenders[] = $location.$retiredName[0];
             }
 
-            if (preg_match('/MCP server with \d+ tools|\b\d+ (?:first-party )?MCP tools\b/', $line, $retiredForm) === 1) {
-                $offenders[] = $location.$retiredForm[0];
-            }
-
-            preg_match_all('/\b(\d+)-tool MCP server|provides (\d+) tools|MCP_Tools-(\d+)|\b(\d+) MCP Tools\b/', $line, $counts, PREG_SET_ORDER);
-
-            foreach ($counts as $count) {
-                if ((int) implode('', array_slice($count, 1)) !== $registered) {
-                    $offenders[] = $location.$count[0];
-                }
+            if (preg_match('/provides (\d+) tools/', $line, $count) === 1 && (int) $count[1] !== $registered) {
+                $offenders[] = $location.$count[0];
             }
         }
     }
 
     expect($offenders)->toBe(
         [],
-        'The assistant is named by chat.assistant_name, never "AI chat", and a tool count reads "N-tool MCP server" '.
-        "with N = {$registered}, the tools RelaticleServer registers (.ai/guidelines/relaticle/writing.md). ".
+        'The assistant is named by chat.assistant_name, never "AI chat", and the MCP guide counts '.
+        "{$registered} tools, the number RelaticleServer registers (.ai/guidelines/relaticle/writing.md). ".
         'Offending lines: '.implode(', ', array_slice($offenders, 0, 40)),
     );
 });

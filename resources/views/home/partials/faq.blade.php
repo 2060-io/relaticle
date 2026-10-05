@@ -10,7 +10,7 @@
                 Frequently Asked Questions
             </h2>
             <p class="mt-5 text-base md:text-lg text-gray-500 dark:text-gray-400 max-w-lg mx-auto leading-relaxed">
-                Everything you need to know about Relaticle, from deployment to AI agent integration.
+                Everything you need to know about Relaticle, from getting started to working with AI.
             </p>
         </div>
 

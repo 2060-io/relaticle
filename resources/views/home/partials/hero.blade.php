@@ -47,7 +47,7 @@
 
                 <p class="mt-6 sm:mt-7 text-[15px] sm:text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto leading-relaxed tracking-[-0.01em]">
                     Open-source, self-hosted, and human-first.<br class="hidden sm:block"/>
-                    {{ config('chat.assistant_name') }}, the built-in AI assistant, plus an MCP server for Claude, ChatGPT, and your own agents.
+                    Ask {{ config('chat.assistant_name') }}, the built-in AI assistant, or work from Claude and ChatGPT.
                 </p>
             </div>
 

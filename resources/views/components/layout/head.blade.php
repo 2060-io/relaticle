@@ -13,7 +13,7 @@
     // Coalesced rather than defaulted through @props: callers pass the prop
     // through explicitly, so a null from an inner layout must still fall back
     // here instead of emitting an empty description.
-    $description ??= 'Relaticle - The open-source CRM built for people and AI-powered work. Self-hosted with MCP server, REST API, and 20 custom field types.';
+    $description ??= 'Relaticle - The open-source CRM built for people and AI-powered work. Self-hosted, with a built-in AI assistant and custom fields.';
     $ogType ??= 'website';
 @endphp
 

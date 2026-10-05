@@ -50,8 +50,8 @@ return [
         'pricing_verified' => '2026-08-13',
         'stack' => 'Laravel 13 + Filament 5, single-server deploy',
         'self_host' => 'Self-host free under AGPL-3.0, no feature gating',
-        'ai' => 'a 39-tool MCP server plus a built-in AI assistant; MCP, the assistant, and Ollama all work self-hosted',
-        'extensibility' => 'REST API plus a 39-tool MCP server; the entire codebase is AGPL-3.0, so any part can be forked and extended directly',
+        'ai' => 'A first-party MCP server plus a built-in AI assistant; MCP, the assistant, and Ollama all work self-hosted',
+        'extensibility' => 'REST API plus a first-party MCP server; the entire codebase is AGPL-3.0, so any part can be forked and extended directly',
         'source_urls' => [
             'website' => 'https://relaticle.com',
             'pricing' => 'https://relaticle.com/pricing',

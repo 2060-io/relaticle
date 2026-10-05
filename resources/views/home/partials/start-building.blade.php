@@ -26,7 +26,7 @@
                 Your CRM, Your Rules
             </h2>
             <p class="text-base md:text-lg text-gray-500 dark:text-gray-400 mb-8 max-w-sm mx-auto leading-relaxed">
-                Self-hosted. Agent-native. Full control over your data and your AI.
+                Self-host it or let us run it. Either way, your data stays yours.
             </p>
 
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">

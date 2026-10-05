@@ -5,9 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PrivacyPolicyController;
 use App\Http\Controllers\TermsOfServiceController;
-use App\Mcp\Servers\RelaticleServer;
 use App\Models\User;
-use App\Support\CompetitorFacts;
 use App\Support\DetectsPublicMarkdownRequest;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
@@ -220,22 +218,13 @@ describe('Pricing page', function () {
     });
 });
 
-describe('MCP tool count', function () {
-    it('quotes the registered tool count on every marketing page that claims one', function (): void {
-        $registered = new ReflectionClass(RelaticleServer::class)->getDefaultProperties()['tools'];
-        $count = CompetitorFacts::mcpToolCount();
+describe('Feature counts', function () {
+    it('quotes no tool or field type count on a marketing page', function (string $path): void {
+        $text = preg_replace('/\s+/', ' ', strip_tags($this->get($path)->assertOk()->getContent()));
 
-        expect($count)->toBe(count($registered));
-
-        foreach (['/', '/pricing', '/press'] as $path) {
-            $text = preg_replace('/\s+/', ' ', strip_tags($this->get($path)->assertOk()->getContent()));
-
-            preg_match_all('/(\d+)[ -](?:first-party )?(?:MCP )?tools?\b/i', (string) $text, $matches);
-
-            expect($matches[1])->not->toBeEmpty()
-                ->and(array_values(array_unique($matches[1])))->toBe([(string) $count]);
-        }
-    });
+        expect($text)->not->toMatch('/\d+[ -](?:first-party )?(?:MCP )?tools?\b/i')
+            ->not->toMatch('/\d+ (?:custom )?field types\b/i');
+    })->with(['/', '/pricing', '/press', '/ai-native-crm', '/crm-for-claude', '/crm-for-chatgpt', '/alternatives/hubspot', '/compare/relaticle-vs-espocrm']);
 });
 
 describe('Authentication redirects', function () {

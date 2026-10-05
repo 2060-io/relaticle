@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Features\Billing as BillingFeature;
-use App\Support\CompetitorFacts;
 use Laravel\Pennant\Feature;
 
 function aiNativeCrmPageText(string $html): string
@@ -22,12 +21,6 @@ it('renders the AI-native CRM page with its structured data', function (): void 
         ->and($html)->toContain('"FAQPage"')
         ->and($html)->toContain('"BreadcrumbList"')
         ->and($html)->toContain(route('aiNativeCrm'));
-});
-
-it('reads the MCP tool count from the competitor facts rather than a literal', function (): void {
-    $html = $this->get('/ai-native-crm')->assertOk()->getContent();
-
-    expect($html)->toContain(__('A first-party :count-tool MCP server and a REST API.', ['count' => CompetitorFacts::mcpToolCount()]));
 });
 
 it('scopes the approval promise to the assistant and says MCP writes commit directly', function (): void {

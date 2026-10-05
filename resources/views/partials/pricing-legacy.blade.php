@@ -39,9 +39,9 @@
             <ul class="space-y-3">
                 @foreach([
                     'Unlimited users and data',
-                    \App\Support\CompetitorFacts::mcpToolCount().'-tool MCP server',
+                    'MCP server for AI agents',
                     'REST API with full CRUD',
-                    '20 custom field types',
+                    'Custom fields',
                     'Multiple workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">
@@ -104,9 +104,9 @@
             <ul class="space-y-3">
                 @foreach([
                     'Unlimited users and data',
-                    \App\Support\CompetitorFacts::mcpToolCount().'-tool MCP server',
+                    'MCP server for AI agents',
                     'REST API with full CRUD',
-                    '20 custom field types',
+                    'Custom fields',
                     'Multiple workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">

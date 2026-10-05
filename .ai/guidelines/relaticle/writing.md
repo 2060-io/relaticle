@@ -58,14 +58,15 @@ page is "Rela, the built-in AI assistant". After that it is "Rela". "AI chat" is
 for it. External agents reach Relaticle through "the MCP server", and copy names Claude and
 ChatGPT where there is room, because a buyer knows those and may not know MCP.
 
-A tool count is proof, so it stays out of headlines and links. Where it appears it reads
-"39-tool MCP server". Views take the number from `CompetitorFacts::mcpToolCount()`.
+Pitch copy states no tool count and no field type count. It says what an agent or a team
+can do. The MCP guide's tool reference is the one place that counts tools.
 
     Bad:  Explore the AI assistant and 39 MCP tools
     Good: Explore Rela and the MCP server for Claude and ChatGPT
 
-`tests/Arch/ConventionsTest.php` fails "AI chat" in published copy, the retired count forms,
-and any literal count that differs from the tools `RelaticleServer` registers.
+`tests/Arch/ConventionsTest.php` fails "AI chat" in published copy, and fails the MCP guide
+when its count differs from the tools `RelaticleServer` registers.
+`tests/Feature/Public/PublicPagesTest.php` fails a marketing page that quotes a count.
 
 ## House style
 

@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/Relaticle/relaticle/actions/workflows/tests.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/Relaticle/relaticle/tests.yml?branch=main&style=for-the-badge&label=tests" alt="Tests"></a>
-  <a href="https://relaticle.com/docs/mcp"><img src="https://img.shields.io/badge/MCP_Tools-39-8A2BE2?style=for-the-badge" alt="39 MCP Tools"></a>
+  <a href="https://relaticle.com/docs/mcp"><img src="https://img.shields.io/badge/MCP-Server-8A2BE2?style=for-the-badge" alt="MCP Server"></a>
   <a href="https://laravel.com/docs/13.x"><img src="https://img.shields.io/badge/Laravel-13.x-FF2D20?style=for-the-badge&logo=laravel" alt="Laravel 13"></a>
   <a href="https://php.net"><img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=for-the-badge&logo=php" alt="PHP 8.5"></a>
   <a href="https://github.com/Relaticle/relaticle/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
@@ -32,16 +32,16 @@
 
 # About Relaticle
 
-Relaticle is a self-hosted CRM with a production-grade MCP server. Connect any AI agent -- Claude, GPT, or open-source models -- through a 39-tool MCP server for CRM operations and analysis. 20 custom field types, REST API, and multi-workspace isolation.
+Relaticle is a self-hosted CRM your AI agents can work in. Connect Claude, ChatGPT, or an open-source model over MCP to read, write, and analyze your CRM data. Custom fields, REST API, and multi-workspace isolation.
 
 **Perfect for:** Developer-led teams, AI-forward startups, and SMBs who want AI agent integration without vendor lock-in.
 
 **Core Strengths:**
 
-- **Agent-Native Infrastructure** - 39-tool MCP server, REST API with full CRUD, schema access, activity history, and pipeline analysis
-- **Customizable Data Model** - 20 field types including entity relationships and per-field encryption. No migrations needed.
+- **Agent-Native Infrastructure** - MCP server and REST API with full CRUD, schema access, activity history, and pipeline analysis
+- **Customizable Data Model** - Custom fields for text, dates, currency, selects, and links between records, with per-field encryption. No migrations needed.
 - **Multi-Workspace Isolation** - Workspace-scoped data with role-based permissions
-- **Modern Tech Stack** - Laravel 13, Filament 5, PHP 8.5, 6,000+ automated tests
+- **Modern Tech Stack** - Laravel 13, Filament 5, PHP 8.5, with an automated test suite on every change
 - **Privacy-First** - Self-hosted, AGPL-3.0, your data stays on your server
 
 # Requirements

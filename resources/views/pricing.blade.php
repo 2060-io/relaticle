@@ -1,6 +1,5 @@
 @php
     $billingActive = \Laravel\Pennant\Feature::active(\App\Features\Billing::class);
-    $mcpToolCount = \App\Support\CompetitorFacts::mcpToolCount();
     $enterprisePrice = number_format(config('relaticle.enterprise.starting_price_yearly'));
 @endphp
 
@@ -106,7 +105,7 @@
                     $hostedPriceCell = __('$19/mo per workspace ($228 billed yearly, or $24/mo billed monthly)');
                     $hostedUpdatesCell = __('Managed by Relaticle. No self-hosted maintenance required');
                     $hostedPlanAnswer = __(
-                        'Cloud Pro is :price and includes unlimited users and records, every supported AI model from :cheapestModel up to :dearestModel, the REST API, the :toolCount-tool MCP server, and email support. Each workspace gets a :credits-credit monthly AI allowance; how far it goes depends on the model and how many tool calls each reply makes (see "What counts as an AI credit?" below). As a reference point, :credits credits covers roughly :credits simple :cheapestModel replies, or around :dearestReplies :dearestModel replies before tool calls. New workspaces start on a :days-day trial automatically, with no card required.',
+                        'Cloud Pro is :price and includes unlimited users and records, every supported AI model from :cheapestModel up to :dearestModel, the REST API, the MCP server, and email support. Each workspace gets a :credits-credit monthly AI allowance; how far it goes depends on the model and how many tool calls each reply makes (see "What counts as an AI credit?" below). As a reference point, :credits credits covers roughly :credits simple :cheapestModel replies, or around :dearestReplies :dearestModel replies before tool calls. New workspaces start on a :days-day trial automatically, with no card required.',
                         [
                             'price' => '$19/mo per workspace ($228 billed yearly, or $24/mo billed monthly)',
                             'credits' => $proCredits,
@@ -114,7 +113,6 @@
                             'dearestModel' => $dearestEntry['label'],
                             'dearestReplies' => number_format(intdiv((int) \App\Enums\Plan::Pro->credits(), max(1, (int) ceil($dearestEntry['credit_multiplier'])))),
                             'days' => $trialDays,
-                            'toolCount' => $mcpToolCount,
                         ]
                     );
                     $planLimitAnswer = __(
@@ -124,7 +122,7 @@
                 } else {
                     $hostedPriceCell = __('$0/mo per workspace');
                     $hostedUpdatesCell = __('Zero-downtime updates and automatic daily backups, handled for you');
-                    $hostedPlanAnswer = __('The hosted Cloud plan is $0/mo and includes unlimited users and data, the :toolCount-tool MCP server, the REST API, all 20 custom field types, multiple workspaces, zero-downtime updates, automatic daily backups, and email support. No credit card is required.', ['toolCount' => $mcpToolCount]);
+                    $hostedPlanAnswer = __('The hosted Cloud plan is $0/mo and includes unlimited users and data, the MCP server, the REST API, custom fields, multiple workspaces, zero-downtime updates, automatic daily backups, and email support. No credit card is required.');
                     $planLimitAnswer = __(
                         'CRM data itself is never capped on any plan. Every workspace supports unlimited users, companies, people, opportunities, tasks, and notes, whether you\'re self-hosting or on the hosted Cloud plan. :name, the AI assistant, is metered, though: every workspace defaults to the Free plan\'s :credits credits a month, resetting every calendar month. That includes self-hosted installs; see "Are self-hosted installs exempt from AI credit limits?" below. Once they are used up, the assistant declines new chat requests until the reset; nothing else in the CRM is affected.',
                         ['credits' => $freeCredits, 'name' => config('chat.assistant_name')]
@@ -252,7 +250,7 @@
                     [__('Are self-hosted installs exempt from AI credit limits?'), $selfHostedCreditAnswer],
                     [
                         __('Can I switch between self-hosted and cloud?'),
-                        __('Yes. Both options run the identical open-source codebase against the same PostgreSQL schema, so neither locks you in. Companies, people, opportunities, tasks, and notes each have a built-in CSV export, and the import wizard on the other side accepts CSV. Moving between a self-hosted install and the hosted plan is a standard export and re-import, not a proprietary migration.'),
+                        __('Yes. Both options run the same open-source code and store your records the same way, so neither locks you in. Companies, people, opportunities, tasks, and notes each have a built-in CSV export, and the import wizard on the other side accepts CSV. Moving between a self-hosted install and the hosted plan is a standard export and re-import, not a proprietary migration.'),
                     ],
                 ];
 
