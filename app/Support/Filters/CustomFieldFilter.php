@@ -102,11 +102,6 @@ final readonly class CustomFieldFilter implements Filter
     }
 
     /**
-     * Coerce an operand to the type its schema declares. MCP and chat clients send
-     * typed JSON, but the REST API receives the same filters as query strings where
-     * every operand arrives as a string, so a strict type check alone would reject
-     * every REST request.
-     *
      * @param  array<string, mixed>  $operatorSchema
      */
     private function normalizeOperand(string $fieldCode, string $operator, mixed $operand, array $operatorSchema, bool $splitsStrings): mixed
