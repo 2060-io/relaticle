@@ -10,7 +10,6 @@ use App\Support\CustomFields\CanonicalValue;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use stdClass;
@@ -80,17 +79,15 @@ final class NormalizeCustomFieldValuesCommand extends Command
         DB::table('custom_field_values')
             ->where('custom_field_id', $field->getKey())
             ->whereNotNull('json_value')
-            ->chunkById(500, function (Collection $rows) use ($field, $isDomain, $write): void {
-                foreach ($rows as $row) {
-                    try {
-                        $this->normalizeRow($field, $row, $isDomain, $write);
-                    } catch (Throwable $exception) {
-                        $reason = class_basename($exception);
-                        $this->warn("Value {$row->id}: {$reason}, skipped.");
-                        $this->logSkipped($field, $row, $reason);
-                    }
+            ->eachById(function (stdClass $row) use ($field, $isDomain, $write): void {
+                try {
+                    $this->normalizeRow($field, $row, $isDomain, $write);
+                } catch (Throwable $exception) {
+                    $reason = class_basename($exception);
+                    $this->warn("Value {$row->id}: {$reason}, skipped.");
+                    $this->logSkipped($field, $row, $reason);
                 }
-            });
+            }, 500);
 
         $this->reportCollisions($field);
 
