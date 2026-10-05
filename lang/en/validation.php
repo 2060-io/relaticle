@@ -70,6 +70,7 @@ return [
         'not_utf8' => 'The filter must be valid UTF-8.',
         'body_not_object' => 'The request body must be a JSON object.',
         'body_too_large' => 'A query body holds at most :max KB.',
+        'page_with_cursor' => 'Send page or cursor, not both.',
         'cursor' => 'The cursor must be true for the first page or the meta.next_cursor value of the previous page.',
         'field_names' => 'The fields field must be a list of field names, or a map of record type to field names.',
         'empty_node' => ':name needs at least one condition.',

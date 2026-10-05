@@ -736,6 +736,17 @@ it('keeps the filter, sort and page size in the next link of a list', function (
     'by cursor' => 'cursor=true',
 ]);
 
+it('rejects a query body that sends page beside cursor', function (): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->count(3)->create();
+    $next = $this->postJson('/api/v1/companies/query', ['cursor' => true, 'per_page' => 1])->assertOk()->json('meta.next_cursor');
+
+    foreach ([true, $next] as $cursor) {
+        $this->postJson('/api/v1/companies/query', ['cursor' => $cursor, 'page' => 3])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['page' => 'Send page or cursor, not both.']);
+    }
+});
+
 it('rejects a query body key the endpoint does not take', function (string $key, string $message): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create();
 
