@@ -7,7 +7,7 @@ return [
         'methodLength' => [
             'grandfathered' => [
                 'App\Actions\CustomFields\CreateCustomField::execute' => 67,
-                'App\Actions\Opportunity\AggregateOpportunities::byStage' => 63,
+                'App\Queries\Opportunities\OpportunityAggregatesQuery::byStage' => 63,
                 'App\Console\Commands\BackfillCustomFieldColorsCommand::handle' => 93,
                 'App\Console\Commands\BackfillRichEditorAttachmentsCommand::migrateValue' => 76,
                 'App\Console\Commands\CreateSystemAdminCommand::handle' => 135,
