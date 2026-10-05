@@ -672,6 +672,17 @@ it('sorts, includes and paginates a query body like the query string', function 
         ->and(Arr::except($body->json('meta'), ['links', 'path']))->toEqual(Arr::except($query->json('meta'), ['links', 'path']));
 });
 
+it('keeps a lone true in a list operand as text over the query string', function (): void {
+    $labels = app(CreateCustomField::class)->execute($this->user, ['entity_type' => 'company', 'name' => 'Labels', 'code' => 'labels', 'type' => 'tags-input']);
+    $tagged = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    Company::factory()->recycle([$this->user, $this->workspace])->create()->saveCustomFieldValue($labels, ['false']);
+    $tagged->saveCustomFieldValue($labels, ['true']);
+
+    $ids = $this->getJson('/api/v1/companies?filter[custom_fields][labels][$has_any]=true')->assertOk()->json('data.*.id');
+
+    expect($ids)->toBe([$tagged->id]);
+});
+
 it('keeps a boolean true boolean and a text true text in a query body', function (): void {
     $toggle = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'icp');
     $motto = app(CreateCustomField::class)->execute($this->user, ['entity_type' => 'company', 'name' => 'Motto', 'code' => 'motto', 'type' => 'text']);

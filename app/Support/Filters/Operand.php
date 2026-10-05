@@ -16,6 +16,10 @@ final readonly class Operand
     /** @return list<string>|null */
     public static function stringList(mixed $operand, bool $splitsStrings): ?array
     {
+        if (is_bool($operand)) {
+            $operand = self::string($operand);
+        }
+
         if (is_string($operand)) {
             if (! self::isCleanString($operand)) {
                 return null;
