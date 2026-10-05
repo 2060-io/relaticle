@@ -1,5 +1,11 @@
 <div class="space-y-4">
-    @if ($summary === null)
+    @if ($failed ?? false)
+        <div class="rounded-lg bg-danger-50 dark:bg-danger-500/10 p-4">
+            <p class="text-sm text-danger-700 dark:text-danger-400 leading-relaxed">
+                {{ __('filament/pages/record-emails.actions.summarize_thread.failed') }}
+            </p>
+        </div>
+    @elseif ($summary === null)
         <div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
             <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
                 {{ __('filament/pages/record-emails.actions.summarize_thread.empty') }}

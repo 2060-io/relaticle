@@ -14,7 +14,9 @@ use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Section;
 use Filament\Support\Enums\Width;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Collection;
+use Laravel\Ai\Exceptions\AiException;
 use Relaticle\EmailIntegration\Actions\ApproveEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\MarkEmailAsReadAction;
@@ -407,8 +409,14 @@ trait HasEmailReaderActions
             return view('email-integration::filament.actions.ai-summary', ['summary' => null]);
         }
 
-        $summary = resolve(EmailThreadSummaryService::class)
-            ->getSummary($thread, $this->readerUser());
+        try {
+            $summary = resolve(EmailThreadSummaryService::class)
+                ->getSummary($thread, $this->readerUser());
+        } catch (AiException|RequestException $exception) {
+            report($exception);
+
+            return view('email-integration::filament.actions.ai-summary', ['summary' => null, 'failed' => true]);
+        }
 
         return view('email-integration::filament.actions.ai-summary', ['summary' => $summary]);
     }

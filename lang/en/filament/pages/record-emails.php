@@ -13,6 +13,7 @@ return [
             'label' => 'Summarize thread',
             'modal_heading' => 'AI thread summary',
             'empty' => 'No summary is available for this thread.',
+            'failed' => 'The summary could not be generated right now. Try again in a few minutes.',
             'generated' => 'Generated :time',
             'copy' => 'Copy',
             'copied' => 'Copied',
