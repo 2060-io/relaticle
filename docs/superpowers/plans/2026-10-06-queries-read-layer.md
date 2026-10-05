@@ -89,7 +89,7 @@ Expected: both copies exist and `git status` prints nothing (both paths are giti
 
 - [ ] **Step 3: Record the list tests as green**
 
-Run: `php artisan test --compact tests/Feature/Api/V1/ListFilterTest.php tests/Feature/Api/V1/ListFilterSurfacesTest.php tests/Feature/CRM/SurfaceParityTest.php`
+Run: `php artisan test --compact tests/Feature/Api/V1/ListFilterTest.php tests/Feature/CRM/ListFilterSurfacesTest.php tests/Feature/CRM/SurfaceParityTest.php`
 Expected: all pass. A failure here is a fault of the base branch. Stop and report it. Do not fix it in this plan.
 
 ---
@@ -444,7 +444,7 @@ git commit -m "refactor(queries): list crm records through query classes on the 
 
 **Files:**
 - Modify: `app/Mcp/Tools/BaseListTool.php`, `app/Mcp/Tools/{Company/ListCompaniesTool,People/ListPeopleTool,Opportunity/ListOpportunitiesTool,Task/ListTasksTool,Note/ListNotesTool}.php`, `phpstan-method-length.php`
-- Test: `tests/Feature/Mcp/McpReadToolsTest.php`, `tests/Feature/Api/V1/ListFilterSurfacesTest.php`
+- Test: `tests/Feature/Mcp/McpReadToolsTest.php`, `tests/Feature/CRM/ListFilterSurfacesTest.php`
 
 **Interfaces:**
 - Consumes: `CrmEntity::query()`, `EntityQuery::paginate(User, ListQuery)`, `new ListQuery(...)` from Task 2.
@@ -488,7 +488,7 @@ In each of the five MCP list tools, delete the `actionClass()` method and its `u
 
 - [ ] **Step 3: Run the MCP tests**
 
-Run: `php artisan test --compact tests/Feature/Mcp tests/Feature/Api/V1/ListFilterSurfacesTest.php tests/Feature/CRM/SurfaceParityTest.php`
+Run: `php artisan test --compact tests/Feature/Mcp tests/Feature/CRM/ListFilterSurfacesTest.php tests/Feature/CRM/SurfaceParityTest.php`
 Expected: all pass, with no assertion edited.
 
 - [ ] **Step 4: Lower the method length entry**
