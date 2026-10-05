@@ -297,3 +297,25 @@ test('ignores a domain stored against another workspace field', function (): voi
 
     (new FetchFaviconForCompany($company->fresh()))->handle();
 });
+
+test('keeps the logo of a previous domain when the fetch for the new domain throws', function (): void {
+    Storage::fake('public');
+
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['new-domain.com']],
+    ]);
+
+    $company->addMediaFromString(onePixelPng())
+        ->usingFileName('logo.png')
+        ->withCustomProperties(['domain' => 'https://old-domain.com'])
+        ->toMediaCollection('logo');
+
+    Favicon::shouldReceive('driver->fetch')->andThrow(new RuntimeException('Could not resolve host'));
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    $logos = $company->fresh()->getMedia('logo');
+
+    expect($logos)->toHaveCount(1)
+        ->and($logos->first()->getCustomProperty('domain'))->toBe('https://old-domain.com');
+});

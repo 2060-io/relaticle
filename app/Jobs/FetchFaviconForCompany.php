@@ -44,15 +44,15 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
-                ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $sourceUrl))
-                ->each
-                ->delete();
-
             $favicon = Favicon::driver('high-quality')->fetch($sourceUrl);
             $url = $favicon?->getFaviconUrl();
 
             if ($url === null) {
+                $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
+                    ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $sourceUrl))
+                    ->each
+                    ->delete();
+
                 return;
             }
 
