@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Opportunity;
 
+use App\Concerns\PaginatesListQuery;
 use App\Enums\CrmEntity;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\Opportunity;
@@ -18,6 +19,8 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 final readonly class ListOpportunities
 {
+    use PaginatesListQuery;
+
     /**
      * @param  array<string, mixed>  $filters
      * @return CursorPaginator<int, Opportunity>|LengthAwarePaginator<int, Opportunity>
@@ -51,13 +54,8 @@ final readonly class ListOpportunities
                 'name', 'created_at', 'updated_at',
                 ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'opportunity')),
             )
-            ->defaultSort('-created_at')
-            ->orderBy('id');
+            ->defaultSort('-created_at');
 
-        if ($useCursor) {
-            return $query->cursorPaginate($perPage);
-        }
-
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $this->paginateList($query, $perPage, $useCursor, $page);
     }
 }

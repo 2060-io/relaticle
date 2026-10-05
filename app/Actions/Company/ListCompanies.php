@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Company;
 
+use App\Concerns\PaginatesListQuery;
 use App\Enums\CrmEntity;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\Company;
@@ -18,6 +19,8 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 final readonly class ListCompanies
 {
+    use PaginatesListQuery;
+
     /**
      * @param  array<string, mixed>  $filters
      * @return CursorPaginator<int, Company>|LengthAwarePaginator<int, Company>
@@ -53,13 +56,8 @@ final readonly class ListCompanies
                 'name', 'created_at', 'updated_at',
                 ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'company')),
             )
-            ->defaultSort('-created_at')
-            ->orderBy('id');
+            ->defaultSort('-created_at');
 
-        if ($useCursor) {
-            return $query->cursorPaginate($perPage);
-        }
-
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $this->paginateList($query, $perPage, $useCursor, $page);
     }
 }

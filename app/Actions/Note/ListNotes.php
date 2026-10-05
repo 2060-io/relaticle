@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Note;
 
+use App\Concerns\PaginatesListQuery;
 use App\Enums\CrmEntity;
 use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\Note;
@@ -18,6 +19,8 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 final readonly class ListNotes
 {
+    use PaginatesListQuery;
+
     /**
      * @param  array<string, mixed>  $filters
      * @return CursorPaginator<int, Note>|LengthAwarePaginator<int, Note>
@@ -52,13 +55,8 @@ final readonly class ListNotes
                 'title', 'created_at', 'updated_at',
                 ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'note')),
             )
-            ->defaultSort('-created_at')
-            ->orderBy('id');
+            ->defaultSort('-created_at');
 
-        if ($useCursor) {
-            return $query->cursorPaginate($perPage);
-        }
-
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $this->paginateList($query, $perPage, $useCursor, $page);
     }
 }

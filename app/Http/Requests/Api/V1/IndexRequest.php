@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Pagination\Cursor;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Validator;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -15,7 +17,9 @@ final class IndexRequest extends FormRequest
 
     public const int MAX_BODY_KILOBYTES = 256;
 
-    private const array OPTIONAL = ['per_page', 'cursor', 'page', 'include'];
+    private const array OPTIONAL = ['per_page', 'cursor', 'page', 'include', 'sort', 'fields'];
+
+    private const array NAME_LISTS = ['include', 'sort'];
 
     /**
      * @return array<string, array<int, mixed>>
@@ -27,6 +31,8 @@ final class IndexRequest extends FormRequest
             'cursor' => ['sometimes'],
             'page' => ['sometimes', 'integer', 'min:1'],
             'include' => ['sometimes', 'string'],
+            'sort' => ['sometimes', 'string'],
+            'fields' => ['sometimes', $this->fieldNames(...)],
         ];
     }
 
@@ -58,19 +64,31 @@ final class IndexRequest extends FormRequest
         );
 
         foreach (self::OPTIONAL as $key) {
-            if ($this->input($key) === null || $this->input($key) === '') {
+            if (in_array($this->input($key), [null, '', []], true)) {
                 $this->getInputSource()->remove($key);
             }
         }
 
-        $include = $this->input('include');
+        foreach (self::NAME_LISTS as $key) {
+            $names = $this->input($key);
 
-        if (is_array($include) && $include !== [] && array_is_list($include) && array_all($include, static fn (mixed $name): bool => is_string($name))) {
-            $this->merge(['include' => implode(',', $include)]);
+            if (is_array($names) && array_is_list($names) && array_all($names, static fn (mixed $name): bool => is_string($name))) {
+                $this->merge([$key => implode(',', $names)]);
+            }
         }
 
         if ($this->input('cursor') === true) {
             $this->merge(['cursor' => self::FIRST_CURSOR]);
+        }
+    }
+
+    private function fieldNames(string $attribute, mixed $value, Closure $fail): void
+    {
+        $isNameList = static fn (mixed $names, int|string $recordType): bool => is_string($names)
+            || (is_string($recordType) && is_array($names) && array_all($names, static fn (mixed $name): bool => is_string($name)));
+
+        if (! array_all(Arr::wrap($value), $isNameList)) {
+            $fail(__('validation.filter.field_names'));
         }
     }
 

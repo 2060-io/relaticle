@@ -796,6 +796,52 @@ it('rejects a cursor that is neither true nor a token from a previous page', fun
     'query string, made up token' => ['GET', 'abc'],
 ]);
 
+it('rejects a cursor from another sort order instead of failing', function (): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->count(3)->create();
+
+    $byName = $this->postJson('/api/v1/companies/query', ['sort' => 'name', 'cursor' => true, 'per_page' => 1])->assertOk()->json('meta.next_cursor');
+
+    $this->postJson('/api/v1/companies/query', ['cursor' => $byName, 'per_page' => 1])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['cursor' => 'The cursor must be true for the first page or the meta.next_cursor value of the previous page.']);
+    $this->getJson('/api/v1/companies?'.http_build_query(['cursor' => $byName, 'sort' => '-updated_at']))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['cursor']);
+});
+
+it('rejects a cursor that decodes but names no column', function (): void {
+    $this->postJson('/api/v1/companies/query', ['cursor' => base64_encode((string) json_encode(['_pointsToNextItems' => true]))])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['cursor']);
+});
+
+it('rejects a sort or a field list that is not made of names', function (array $body, string $key): void {
+    $this->postJson('/api/v1/companies/query', $body)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([$key]);
+})->with([
+    'nested sort list' => [['sort' => [['name']]], 'sort'],
+    'sort object' => [['sort' => ['field' => 'name']], 'sort'],
+    'sort number' => [['sort' => 5], 'sort'],
+    'nested field list' => [['fields' => [['id']]], 'fields'],
+    'field list of numbers' => [['fields' => [1, 2]], 'fields'],
+]);
+
+it('takes sort as a list and fields as a string, a list or a map', function (array $body): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Zulu']);
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Alpha']);
+
+    $response = $this->postJson('/api/v1/companies/query', $body)->assertOk();
+
+    expect($response->json('data.*.attributes.name'))->toBe(['Alpha', 'Zulu']);
+})->with([
+    'sort list' => [['sort' => ['name']]],
+    'fields string' => [['sort' => 'name', 'fields' => 'id,name']],
+    'fields list' => [['sort' => 'name', 'fields' => ['id', 'name']]],
+    'fields map' => [['sort' => 'name', 'fields' => ['companies' => 'id,name']]],
+    'empty include list' => [['sort' => 'name', 'include' => []]],
+]);
+
 it('pages with a cursor under a filter and a native sort', function (): void {
     foreach (['Delta', 'Alpha', 'Echo', 'Bravo', 'Charlie'] as $name) {
         $this->postJson('/api/v1/opportunities', ['name' => "Deal {$name}", 'custom_fields' => ['amount' => 20000]])->assertCreated();
