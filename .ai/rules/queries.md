@@ -1,16 +1,17 @@
 ---
 paths:
   - 'app/Queries/**'
-  - 'app/Actions/*/List*.php'
+  - 'app/Data/ListQuery.php'
   - 'app/Mcp/Tools/BaseListTool.php'
   - 'packages/Chat/src/Tools/BaseReadListTool.php'
+  - 'packages/*/src/Queries/**'
 ---
 
-# Queries: the filter and sort language
+# Queries: the read path
 
-One filter language answers a list question the same way on the REST API, MCP and chat.
-It lives in `app/Queries`. The design record is
-`docs/superpowers/specs/2026-10-02-crm-filter-language-design.md`.
+A reusable read is a query class. An action is a write. One filter language answers a list
+question the same way on the REST API, MCP and chat. It lives in `app/Queries`. The design
+record is `docs/superpowers/specs/2026-10-02-crm-filter-language-design.md`.
 
 ## Where a file goes
 
@@ -22,6 +23,9 @@ The layout follows spatie/laravel-query-builder's own `src/`.
 | implements Spatie's `Sort` | `app/Queries/Sorts` |
 | a trait those classes share | `app/Queries/Concerns` |
 | registry, tree validation, vocabulary | `app/Queries` |
+| one entity's list, or a read across models | `app/Queries/<Domain>`, named `*Query` |
+| the contract and the shared body of the five list queries | `app/Queries/Contracts/EntityQuery.php`, `app/Queries/Concerns/ListsEntity.php` |
+| a read only one package calls | `packages/<Name>/src/Queries`, named `*Query` |
 | an enum | `app/Enums` |
 
 `tests/Arch/ArchTest.php` fails a class in `Filters` or `Sorts` without its interface, and a
@@ -29,8 +33,53 @@ The layout follows spatie/laravel-query-builder's own `src/`.
 without the `Filter` or `Sort` suffix. The Pest Laravel preset fails an enum outside
 `app/Enums`.
 
+`tests/Arch/ConventionsTest.php` fails a class in a domain folder of `Queries` without the
+`Query` suffix ("names a class in a domain folder of Queries with the Query suffix"). It also
+fails a `List*`, `Find*`, `Search*`, `Get*` or `Aggregate*` class under `Actions` ("keeps reads
+out of the Actions folders"). `tests/Arch/ArchTest.php` fails a query class that is not `final
+readonly` ("holds final readonly query classes"). A new domain folder joins `$queryLayers` in
+that file, or the gate skips it.
+
 The folders name roles, not layers. `EntityFilters` builds the classes in `Filters`, and they
 use `Operand` and `FilterErrors` from the root.
+
+## When a read becomes a query class
+
+- **One model and one condition.** A `#[Scope]` on the model, such as
+  `AgentConversation::ownedBy()`.
+- **Two callers, a read across models, or a read that carries the filter grammar.** A query
+  class.
+- **One caller.** The read stays inline in that caller.
+- **A read only one package calls.** It lives in that package's `Queries` folder. It moves to
+  `app/Queries` when a second module needs it.
+
+No test tells a one-model predicate from a read that needs a query class, so a reviewer reads
+for a scope written as a query class.
+
+## The shape of a query class
+
+- It is `final readonly`.
+- It takes the acting `User`. `EntitiesByFieldValueQuery` is the one exception, because its
+  callers are write actions that have already authorized.
+- It never reads `auth()` or `request()`, because chat tools run in queued jobs. The
+  `ArchTest` tests "takes the acting user and reads no ambient request" fail it for
+  `App\Queries` and `Relaticle\Chat\Queries`.
+- It never writes. `EloquentWriteOutsideActionRule` (PHPStan) fails an Eloquent write in
+  `App\Queries` or `Relaticle\Chat\Queries`.
+- A list query authorizes with `viewAny` and bounds itself to the workspace inside `for()`, so a
+  transport cannot forget either.
+- `for()` returns a builder a caller may refine. `paginate()` returns a page. `get()`,
+  `find()`, `recent()` and `search()` return results.
+
+The five list queries (`CompaniesQuery`, `PeopleQuery`, `OpportunitiesQuery`, `TasksQuery` and
+`NotesQuery`) implement `App\Queries\Contracts\EntityQuery` and use
+`App\Queries\Concerns\ListsEntity`. The shape is an interface plus a trait, not a base class,
+because three arch tests forbid inheritance in `App` ("avoid open for extension", "ensure no
+extends" and "avoid inheritance" in `tests/Arch/ArchTest.php`).
+
+Each list query declares four facts: `entity()`, `fields()`, `includes()` and
+`countIncludes()`. The trait owns `sorts()`, `for()` and `paginate()`. Each transport maps its
+own input to `App\Data\ListQuery`, a plain readonly class, and calls `paginate()`.
 
 ## The language imports no transport
 
@@ -43,8 +92,10 @@ imports `App\Queries`.
 
 ## One owner per fact
 
-- `EntityFilters::definitions()` owns the filter names each entity accepts. A list action
-  never registers an `AllowedFilter` of its own.
+- `EntityFilters::definitions()` owns the filter names each entity accepts. A list query never
+  registers an `AllowedFilter` of its own. `ListsEntity::for()` is the one place that does.
+  `tests/Feature/CRM/SurfaceParityTest.php` fails a surface that publishes other names
+  ("publishes the same names, types and fields on the registry, mcp and chat").
 - `CustomFieldFilterSchema::operatorsForType()` owns the operators per field type. A native
   field takes the operators of the custom field type it maps to.
 - `FilterTree` owns the tree limits: `MAX_CONDITIONS`, `MAX_LOGIC_DEPTH`, `MAX_HOPS`.
@@ -54,9 +105,9 @@ imports `App\Queries`.
   API docs render `EntityFilters::grammar()`, which needs no workspace.
 
 Never write a filter name, an operator or a limit by hand in a tool description.
-`tests/Feature/CRM/SurfaceParityTest.php` fails a surface that drifts: "publishes exactly
-the filter names the list action accepts for each entity" and "states every filter limit
-from the constants on every surface".
+`tests/Feature/CRM/SurfaceParityTest.php` fails a surface that drifts: "states every filter
+limit from the constants on every surface" and "publishes the same names, types and fields on
+the registry, mcp and chat".
 
 The MCP guide is the exception. `packages/Documentation/resources/content/docs/guides/mcp.md`
 lists the names, the operators and the limits by hand.
@@ -84,14 +135,16 @@ the REST guide. Update those by hand.
   it ("filters every native field of every entity alike on the api and mcp").
   `McpGuideFilterParityTest` fails until a row of the guide's operator table holds the new
   list.
+- **A field, an include or a count include on a list.** Add it to the entity's query class.
+  The API reference reads the class.
 - **A filter parameter on a list tool or endpoint.** Do not add one. A list takes filters only
   as the `filter` tree. `FilterTree::rejectUnknownArguments()` rejects a flat parameter, and
-  `FilterTree::REPLACED` names the tree form of each retired one. `ListToolFilterTest` is the
-  gate ("rejects an argument a list tool does not take instead of listing every record").
-- **A caller that is not a list action.** None exists yet. Give it a `#[Scope]` in
-  `app/Models/Concerns` that runs `FilterTree::validate()` and applies the registry. Never
-  copy `where` clauses into the caller. `tests/Arch/ConventionsTest.php` fails a public
-  method outside a model, enum or `Scope` that takes a query builder.
+  `FilterTree::REPLACED` names the tree form of each retired one.
+  `tests/Feature/Chat/ListToolFilterTest.php` and `tests/Feature/Mcp/McpReadToolsTest.php` are
+  the gate ("rejects an argument a list tool does not take instead of listing every record").
+- **A caller that wants more than a page.** Call `for($user, $list)` on the entity's query
+  class and refine the builder. It is authorized and workspace-bound already. Never rebuild the
+  allowlists in the caller.
 
 ## What the SQL must keep
 

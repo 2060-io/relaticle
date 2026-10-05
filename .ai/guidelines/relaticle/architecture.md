@@ -84,6 +84,48 @@ final readonly class CreateOpportunity
 - Name domain concepts plainly (`Plan`, not `AiPlan`). Context comes from the
   namespace
 
+## Queries (the read path)
+
+A reusable read is a query class. An action is a write. `tests/Arch/ConventionsTest.php` fails a
+class under `Actions` named `List*`, `Find*`, `Search*`, `Get*` or `Aggregate*` ("keeps reads out
+of the Actions folders").
+
+| A read that is | Lives in |
+|---|---|
+| a predicate over one model's columns | a `#[Scope]` on the model |
+| one entity's list, or a read across models | `app/Queries/<Domain>/<Name>Query.php` |
+| a read only one package calls | `packages/<Name>/src/Queries/<Name>Query.php` |
+| a read with one caller | inline in that caller |
+
+A query class is `final readonly`. The five list queries implement
+`App\Queries\Contracts\EntityQuery` and use `App\Queries\Concerns\ListsEntity`. The shape is
+an interface plus a trait, not a base class, because three arch tests forbid inheritance in `App`.
+The trait authorizes and bounds the workspace itself, so a transport cannot forget either:
+
+````php
+final readonly class CompaniesQuery implements EntityQuery
+{
+    use ListsEntity;
+
+    public static function entity(): CrmEntity
+    {
+        return CrmEntity::Company;
+    }
+
+    // fields(), includes(), countIncludes()
+}
+
+$page = $query->paginate($user, $request->toListQuery());
+````
+
+- Each transport maps its own input to `App\Data\ListQuery`. A query class never reads
+  `auth()` or `request()`, because chat tools run in queued jobs. `tests/Arch/ArchTest.php`
+  fails it ("takes the acting user and reads no ambient request")
+- A caller that wants more than a page calls `for($user, $list)` and refines the builder
+- A query class never writes. `EloquentWriteOutsideActionRule` (PHPStan) covers `App\Queries`
+  and `Relaticle\Chat\Queries`
+- `.ai/rules/queries.md` holds the filter grammar and the rest of the rules
+
 ## One fact, one owner
 
 A fact more than one surface publishes gets an owner class, and every surface reads it.
