@@ -628,6 +628,159 @@ it('shows link, location, and description when they are filled', function (): vo
         ->assertMountedActionModalSee(__('filament/resources/meeting.sections.description.heading'));
 });
 
+it('shows the weekday, the viewer offset, and how far away a timed meeting is', function (): void {
+    $this->travelTo(Date::parse('2026-09-28 05:30:00'));
+    $this->user->update(['timezone' => 'Asia/Kathmandu']);
+    $starts = Date::parse('2026-09-30 05:30:00');
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+        'starts_at' => $starts,
+        'ends_at' => $starts->addHour(),
+        'all_day' => false,
+    ]);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalSee('Wed, Sep 30')
+        ->assertMountedActionModalSee('GMT+5:45')
+        ->assertMountedActionModalSee('2 days from now');
+});
+
+it('links a participant and the linked records to their CRM pages', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+    $person = People::factory()->for($this->workspace)->create(['name' => 'Linked Person']);
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Linked Co']);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->id,
+        'contact_id' => $person->id,
+        'email_address' => 'linked@example.test',
+    ]);
+    $meeting->people()->attach($person, ['link_source' => 'manual']);
+    $meeting->companies()->attach($company, ['link_source' => 'manual']);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalSee("/people/{$person->id}\"", escape: false)
+        ->assertMountedActionModalSee("/companies/{$company->id}\"", escape: false);
+});
+
+it('lists the host before the guests', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->id,
+        'name' => 'Early Guest',
+        'email_address' => 'guest@example.test',
+        'is_organizer' => false,
+    ]);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->id,
+        'name' => 'Late Host',
+        'email_address' => 'host@example.test',
+        'is_organizer' => true,
+    ]);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertSeeInOrder(['host@example.test', 'guest@example.test']);
+});
+
+it('keeps the line breaks of a plain-text description and drops divider lines', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+        'description' => "________________\r\nJoin on your computer\r\nMeeting ID: 933 004",
+    ]);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalSee("Join on your computer<br />\nMeeting ID: 933 004", escape: false)
+        ->assertMountedActionModalDontSee('____');
+});
+
+it('offers a join link on an upcoming meeting that has one', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+        'starts_at' => Date::now()->addDay(),
+        'ends_at' => Date::now()->addDay()->addHour(),
+        'join_url' => 'https://teams.live.com/meet/123',
+    ]);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalSee('https://teams.live.com/meet/123')
+        ->assertMountedActionModalSee(__('filament/resources/meeting.actions.join.label'));
+});
+
+it('offers no join link on a past meeting or for a link that is not https', function (string $joinUrl, int $startsInDays): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+        'starts_at' => Date::now()->addDays($startsInDays),
+        'ends_at' => Date::now()->addDays($startsInDays)->addHour(),
+        'join_url' => $joinUrl,
+    ]);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalDontSee($joinUrl);
+})->with([
+    'past meeting' => ['https://teams.live.com/meet/123', -2],
+    'script link' => ['javascript:alert(1)', 1],
+]);
+
+it('unlinks a record from the meeting view modal', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Linked Co']);
+    $meeting->companies()->attach($company, ['link_source' => 'manual']);
+
+    meetingDetailsOnRecord([$meeting])
+        ->callAction([
+            TestAction::make('view')->table($meeting),
+            TestAction::make('unlinkRecord')
+                ->schemaComponent('linked_records')
+                ->arguments(['type' => 'Company', 'id' => $company->getKey(), 'name' => 'Linked Co']),
+        ])
+        ->assertNotified()
+        ->assertMountedActionModalDontSee('Linked Co');
+
+    expect($meeting->companies()->whereKey($company->getKey())->exists())->toBeFalse();
+});
+
+it('hides unlinking a record from a viewer', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+    ]);
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Linked Co']);
+    $meeting->companies()->attach($company, ['link_source' => 'manual']);
+    MeetingAttendee::factory()->create([
+        'meeting_id' => $meeting->getKey(),
+        'email_address' => 'guest@clientcorp.test',
+        'is_self' => false,
+    ]);
+
+    $viewer = User::factory()->create();
+    $viewer->workspaces()->attach($this->workspace, ['role' => 'viewer']);
+    $viewer->forceFill(['current_workspace_id' => $this->workspace->id])->save();
+    $this->actingAs($viewer->fresh());
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalSee('Linked Co')
+        ->assertMountedActionModalDontSee(__('filament/resources/meeting.actions.unlink_record.label', ['name' => 'Linked Co']));
+});
+
 it('shows an empty state when a meeting has no linked records', function (): void {
     $meeting = Meeting::factory()->create([
         'workspace_id' => $this->workspace->id,

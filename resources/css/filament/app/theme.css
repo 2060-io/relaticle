@@ -834,7 +834,8 @@ html.fi-record-stacked .fi-record-layout {
         @apply order-1 border-b-0 p-0;
     }
 
-    .fi-section:not(.fi-section-not-contained) {
+    /* A modal mounted in the pane keeps its sections as cards, as it has them everywhere else. */
+    .fi-section:not(.fi-section-not-contained):not(.fi-modal *) {
         @apply rounded-none bg-transparent shadow-none ring-0 dark:bg-transparent;
 
         & > .fi-section-content-ctn > .fi-section-content {

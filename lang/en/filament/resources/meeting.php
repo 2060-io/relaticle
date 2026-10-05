@@ -36,6 +36,15 @@ return [
         'link_records' => [
             'label' => 'Link records',
         ],
+        'unlink_record' => [
+            'label' => 'Unlink :name',
+            'heading' => 'Unlink :name from this meeting?',
+            'submit' => 'Unlink',
+            'description' => 'The meeting stays on the calendar. It no longer shows on this record.',
+        ],
+        'join' => [
+            'label' => 'Join',
+        ],
         'rsvp' => [
             'label' => 'RSVP',
             'accepted' => [

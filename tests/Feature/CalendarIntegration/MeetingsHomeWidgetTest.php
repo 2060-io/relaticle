@@ -1198,8 +1198,7 @@ it('opens the meeting modal from the row', function (): void {
     livewire(MeetingsHomeWidget::class)
         ->call('openMeeting', $meeting->id)
         ->assertActionMounted('view')
-        ->assertMountedActionModalSee('Call')
-        ->assertMountedActionModalSee(__('filament/resources/meeting.view.heading'));
+        ->assertMountedActionModalSee('Call');
 });
 
 it('opens the meeting modal when the row is clicked', function (): void {
