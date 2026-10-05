@@ -1,22 +1,22 @@
 @php
     $faqs = [
-        ['Is Relaticle production-ready?', 'Yes. Relaticle has 2,000+ automated tests, 5-layer authorization, 56+ MCP-specific tests, and is used in production. The codebase is continuously tested with PHPStan static analysis and Pest mutation testing.'],
+        ['Is Relaticle production-ready?', 'Yes. Teams run Relaticle in production today. Every change passes an automated test suite before it ships, and 5-layer authorization keeps each workspace\'s data separate.'],
         ['What can the built-in AI chat do?', 'Ask anything about your CRM and the chat works on your data: list and search records, draft follow-ups, summarize a deal, create a task, update or delete a record. @-mention any record (people, companies, opportunities, tasks, notes) to scope a question. Voice input, persistent searchable history, and dashboard insight cards are included.'],
         ['Can the AI chat delete or change my CRM data without my approval?', 'No. Destructive operations (delete, update existing records) show an approval card with Approve and Reject buttons. Nothing happens until you click. Approved destructive actions can be undone for 5 seconds via a toast. Read-only and create operations don\'t require approval.'],
         ['Does the built-in chat send my data to OpenAI or Anthropic?', 'Inference runs through whichever AI provider your team configures (Anthropic Claude, Google Gemini, or any OpenAI-compatible endpoint). Conversation history is stored only in your Relaticle database, and Relaticle never trains on your data. Self-hosted teams supply their own provider keys, so the destination is yours to choose.'],
-        ['What AI agents can I connect from outside?', 'Any agent that speaks MCP (Model Context Protocol). Claude, ChatGPT, Gemini, open-source models, or your own custom agents. Relaticle\'s MCP server provides 39 tools for external AI agents to read, create, update, delete, and analyze CRM data.'],
-        ['What is MCP?', 'MCP (Model Context Protocol) is an open standard that lets AI agents interact with tools and data sources. Relaticle\'s MCP server gives external agents 39 tools to list companies, create people, update opportunities, analyze pipelines, and more.'],
-        ['How is Relaticle different from HubSpot or Salesforce?', 'Relaticle is self-hosted (you own your data), open-source (AGPL-3.0), ships with both a built-in AI chat and 39 MCP tools for any external agent, and has no per-seat pricing. It\'s designed for teams who want AI built in and AI integration without vendor lock-in.'],
-        ['How do I deploy Relaticle?', 'Deploy with Docker Compose, Laravel Forge, or any PHP 8.5+ hosting with PostgreSQL. Self-hosted means your data never leaves your server. A managed hosting option is also available at app.relaticle.com.'],
-        ['Can I customize the data model?', 'Yes. Relaticle offers 22 custom field types including text, email, phone, currency, date, select, multiselect, entity relationships, conditional visibility, and per-field encryption. No migrations or code changes needed.'],
+        ['What AI agents can I connect from outside?', 'Claude, ChatGPT, Gemini, open-source models, or your own agent. They connect over MCP (Model Context Protocol), an open standard, and can read, create, update, delete, and analyze your CRM data.'],
+        ['What is MCP?', 'MCP (Model Context Protocol) is an open standard that lets AI agents interact with tools and data sources. Relaticle\'s MCP server lets external agents list companies, create people, update opportunities, analyze pipelines, and more.'],
+        ['How is Relaticle different from HubSpot or Salesforce?', 'Relaticle is self-hosted (you own your data), open-source (AGPL-3.0), ships with a built-in AI chat, lets Claude, ChatGPT, or your own agent work in the same records over MCP, and has no per-seat pricing. It\'s designed for teams who want AI built in and AI integration without vendor lock-in.'],
+        ['How do I deploy Relaticle?', 'The quickest way is the hosted version at app.relaticle.com: sign up and start. To run it yourself, deploy with Docker Compose on your own server, and your data never leaves it.'],
+        ['Can I customize the data model?', 'Yes. Add custom fields to any record: text, email, phone, currency, date, select, multi-select, and links to other records. You can encrypt sensitive fields. No code changes needed.'],
     ];
 @endphp
 
 <x-guest-layout
     :title="config('app.name') . ' - ' . __('CRM Built for People and AI-Powered Work')"
-    description="Open-source, self-hosted CRM with a built-in AI chat and 39 MCP tools for external agents. Safe approvals, custom fields, and a REST API. Free forever."
-    :ogTitle="config('app.name') . ' - Human-First CRM with Agent-Native Infrastructure'"
-    ogDescription="Open-source CRM for teams and AI-powered work. Use the app, ask the built-in chat, or connect external agents through 39 MCP tools. Self-hosted, you own your data.">
+    description="Open-source, self-hosted CRM. Ask the built-in AI chat, or connect Claude and ChatGPT to read and update your records. Unlimited users. Free forever."
+    :ogTitle="config('app.name') . ' - ' . __('CRM Built for People and AI-Powered Work')"
+    ogDescription="Open-source CRM for teams and AI-powered work. Use the app, ask the built-in chat, or work from Claude and ChatGPT over MCP. Self-hosted, you own your data.">
     @push('header')
         @vite('resources/js/motion.js')
     @endpush
@@ -35,19 +35,18 @@
                 ->applicationCategory('BusinessApplication')
                 ->applicationSubCategory('CRM')
                 ->operatingSystem('Linux, macOS, Windows')
-                ->description('The open-source CRM built for people and AI-powered work. Self-hosted with a built-in AI chat (with @-mentions, safe approvals, voice, and persistent history) plus a production-grade MCP server (39 tools), REST API, and 22 custom field types. Connect any external agent -- Claude, GPT, Gemini, or open-source models.')
+                ->description('The open-source CRM built for people and AI-powered work. Self-hosted with a built-in AI chat (with @-mentions, safe approvals, voice, and persistent history) plus a production-grade MCP server, REST API, and custom fields. Connect any external agent -- Claude, GPT, Gemini, or open-source models.')
                 ->url(url('/'))
                 ->offers(\Spatie\SchemaOrg\Schema::offer()->price('0')->priceCurrency('USD'))
                 ->setProperty('featureList', [
                     'Built-in AI chat with @-mentions to records, safe approvals on destructive actions, undo, and voice input',
                     'Persistent searchable conversation history',
                     'Dashboard AI insight cards (overdue tasks, recent wins, pipeline)',
-                    'MCP server with 39 tools for external AI agents',
+                    'MCP server for external AI agents',
                     'REST API with full CRUD operations',
-                    '22 custom field types with conditional visibility and encryption',
+                    'Custom fields with per-field encryption',
                     'Self-hosted with full data ownership',
                     'Multi-workspace isolation with 5-layer authorization',
-                    '2,000+ automated tests',
                     'CSV import and export',
                 ])
                 ->license('https://www.gnu.org/licenses/agpl-3.0.html')

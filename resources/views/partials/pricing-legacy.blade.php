@@ -39,9 +39,9 @@
             <ul class="space-y-3">
                 @foreach([
                     'Unlimited users and data',
-                    'MCP server with 39 tools',
+                    'MCP server for AI agents',
                     'REST API with full CRUD',
-                    '22 custom field types',
+                    'Custom fields',
                     'Multi-team workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">
@@ -104,9 +104,9 @@
             <ul class="space-y-3">
                 @foreach([
                     'Unlimited users and data',
-                    'MCP server with 39 tools',
+                    'MCP server for AI agents',
                     'REST API with full CRUD',
-                    '22 custom field types',
+                    'Custom fields',
                     'Multi-team workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">

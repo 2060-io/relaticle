@@ -77,7 +77,7 @@ return [
             'Unlimited users and records',
             '2,000 AI credits / month',
             'Premium AI models included',
-            'REST API and 39-tool MCP server',
+            'REST API and MCP server',
             'Email support',
         ],
         'monthly' => 'Monthly',
