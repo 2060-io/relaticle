@@ -241,7 +241,19 @@ arch('avoid inheritance')
 // as the App rules above ignore those namespaces.
 // (tests/Arch/ConventionsTest.php forces this list to be revisited when a
 // package is added.)
+$packageRoots = [];
+$packageQueryLayers = [];
+
+foreach (glob(dirname(__DIR__, 2).'/packages/*/src', GLOB_ONLYDIR) ?: [] as $packageSource) {
+    $packageRoots[] = $packageRoot = 'Relaticle\\'.basename(dirname($packageSource));
+
+    if (is_dir($packageSource.'/Queries')) {
+        $packageQueryLayers[$packageRoot] = "{$packageRoot}\Queries";
+    }
+}
+
 $packageServiceLayers = [
+    ...array_values($packageQueryLayers),
     'Relaticle\Chat\Actions',
     'Relaticle\Chat\Agents',
     'Relaticle\Chat\Services',
@@ -349,33 +361,14 @@ arch('the query language uses no transport')
     ->not
     ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
 
-$packageQueryLayers = array_map(
-    static fn (string $directory): string => 'Relaticle\\'.basename(dirname($directory, 2)).'\Queries',
-    glob(dirname(__DIR__, 2).'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
-);
-
-arch('query classes are readonly')
-    ->expect('App\Queries')
-    ->classes()
-    ->toBeReadonly()
-    ->ignoring('App\Queries\TreeAllowedFilter');
-
-foreach ($packageQueryLayers as $packageQueryLayer) {
-    $package = Str::beforeLast($packageQueryLayer, '\Queries');
-
-    arch("{$packageQueryLayer} holds final readonly query classes")
-        ->expect($packageQueryLayer)
-        ->classes()
-        ->toBeFinal()
-        ->toBeReadonly();
-
+foreach ($packageQueryLayers as $packageRoot => $packageQueryLayer) {
     arch("{$packageQueryLayer} uses no transport of its package")
         ->expect($packageQueryLayer)
         ->not
-        ->toUse(["{$package}\Http", "{$package}\Livewire", "{$package}\Tools", "{$package}\Jobs"]);
+        ->toUse(["{$packageRoot}\Http", "{$packageRoot}\Livewire", "{$packageRoot}\Tools", "{$packageRoot}\Jobs"]);
 }
 
-foreach (['App\Queries', ...$packageQueryLayers] as $queryRoot) {
+foreach (['App\Queries', ...array_values($packageQueryLayers)] as $queryRoot) {
     arch("{$queryRoot} takes the acting user and reads no ambient user, request or workspace")
         ->expect($queryRoot)
         ->not
@@ -390,17 +383,12 @@ foreach (['App\Queries', ...$packageQueryLayers] as $queryRoot) {
         ]);
 }
 
-$packageRoots = array_map(
-    static fn (string $directory): string => 'Relaticle\\'.basename(dirname($directory)),
-    glob(dirname(__DIR__, 2).'/packages/*/src', GLOB_ONLYDIR) ?: [],
-);
-
 foreach (['App', ...$packageRoots] as $codeRoot) {
     arch("{$codeRoot} builds a list query only in a query layer")
         ->expect($codeRoot)
         ->not
         ->toUse('Spatie\QueryBuilder\QueryBuilder')
-        ->ignoring(['App\Queries', ...$packageQueryLayers]);
+        ->ignoring(['App\Queries', ...array_values($packageQueryLayers)]);
 }
 
 arch('CRM API write requests share the custom field contract')
