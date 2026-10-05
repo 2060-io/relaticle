@@ -28,10 +28,10 @@
 
 These are the inputs most likely to break without any task's main tests noticing. Each has a pinning step in the task named.
 
-1. A REST filter that is not an object (`?filter=acme`) must still return 422 on `filter`, not a `TypeError`. Pinned in Task 2 (existing test `rejects a filter that is not an object`).
-2. A cursor request sorted by a custom field must still be refused with today's status and error key, because cursor lists drop custom field sorts. Pinned in Task 2, Step 2.
-3. `include` sent as a comma string and as a list must both expand on REST. Pinned in Task 2, Step 2.
-4. A member whose role lacks `RecordsView` must get 403 from the list on REST, MCP and chat, now that the check lives in `EntityQuery::for()`. Pinned in Task 2, Step 2 and Task 3, Step 1.
+1. A REST filter that is not an object (`?filter=acme`) must still return 422 on `filter`, not a `TypeError`. Already pinned by `ListFilterTest` "rejects a filter that is not an object". Task 2, Step 3 keeps it green.
+2. A cursor request sorted by a custom field must still be refused with today's message, because cursor lists drop custom field sorts. Already pinned by `ListFilterTest` "names the sorts cursor paging takes when asked for a custom field sort". Task 2 keeps it green.
+3. `include` sent as a comma string and as a list must both expand on REST. The comma form is pinned in `CompaniesApiTest`. The list form is pinned in Task 2, Step 1.
+4. A user the policy refuses must get 403 from the list, now that the check lives in `EntityQuery::for()`. Every `WorkspaceRole` holds `RecordsView`, so no role reaches that branch. `ApiWorkspaceScopingTest` "returns 403 when user has no workspace" pins the refusal, and Task 2, Step 12 runs it.
 5. A conversation with a null `workspace_id` must still open. This plan leaves the five inline ownership checks alone. Pinned by leaving `ChatController` and `channels.php` ownership code untouched in Tasks 7 and 8, and checked in Task 8, Step 5.
 
 ---
@@ -67,17 +67,25 @@ These are the inputs most likely to break without any task's main tests noticing
 Run: `git branch --show-current && git status --short`
 Expected: `feat/queries-read-layer` and no output after it.
 
-- [ ] **Step 2: Generate the API reference and keep a copy**
+- [ ] **Step 2: Generate the API reference twice and learn what varies**
+
+`config/scribe.php` enables `Strategies\Responses\ResponseCalls`, so example responses come from factory data and can differ between two runs of the same code.
 
 ```bash
 php artisan scribe:generate --no-interaction
-rm -rf /tmp/scribe-before && mkdir /tmp/scribe-before
+rm -rf /tmp/scribe-before /tmp/scribe-again && mkdir /tmp/scribe-before /tmp/scribe-again
 cp -R .scribe /tmp/scribe-before/dot-scribe
 cp -R storage/app/private/scribe /tmp/scribe-before/storage
+php artisan scribe:generate --no-interaction
+cp -R .scribe /tmp/scribe-again/dot-scribe
+cp -R storage/app/private/scribe /tmp/scribe-again/storage
+diff -r /tmp/scribe-before /tmp/scribe-again > /tmp/scribe-noise.diff; wc -l /tmp/scribe-noise.diff
 git status --short
 ```
 
-Expected: the command ends with a success line, both copies exist, and `git status` prints nothing (both paths are gitignored). If `storage/app/private/scribe` does not exist, run `find storage -name 'openapi.yaml'` and copy the directory that holds it. Record the path you used. Task 5 uses the same one.
+Expected: both copies exist and `git status` prints nothing (both paths are gitignored). If `storage/app/private/scribe` does not exist, run `find storage -name 'openapi.yaml'` and copy the directory that holds it. Record the path you used.
+
+`/tmp/scribe-noise.diff` is the noise set: what differs with no code change. Read it and write down which files and which kinds of line vary (ids, timestamps, example values). Task 5 accepts a difference only when it is of a kind listed here. If the noise touches a parameter name, a parameter description or their order, the proof in Task 5 cannot work: stop and report.
 
 - [ ] **Step 3: Record the list tests as green**
 
@@ -91,7 +99,7 @@ Expected: all pass. A failure here is a fault of the base branch. Stop and repor
 **Files:**
 - Create: `app/Data/ListQuery.php`, `app/Queries/EntityQuery.php`, `app/Queries/Companies/CompaniesQuery.php`, `app/Queries/People/PeopleQuery.php`, `app/Queries/Opportunities/OpportunitiesQuery.php`, `app/Queries/Tasks/TasksQuery.php`, `app/Queries/Notes/NotesQuery.php`
 - Modify: `app/Enums/CrmEntity.php`, `app/Http/Requests/Api/V1/IndexRequest.php`, the five controllers in `app/Http/Controllers/Api/V1/` (`CompaniesController`, `PeopleController`, `OpportunitiesController`, `TasksController`, `NotesController`), `tests/Arch/ArchTest.php:369-380`
-- Test: `tests/Feature/Api/V1/ListFilterTest.php`
+- Test: `tests/Feature/Api/V1/CompaniesApiTest.php`, `tests/Feature/Api/V1/ListFilterTest.php`
 
 **Interfaces:**
 - Produces:
@@ -103,61 +111,41 @@ Expected: all pass. A failure here is a fault of the base branch. Stop and repor
   - `IndexRequest::toListQuery(): ListQuery`
 - The five list actions still exist after this task. MCP and chat still call them. Tasks 3 to 5 remove them.
 
-- [ ] **Step 1: Find which Review Focus inputs already have a test**
+- [ ] **Step 1: Pin the list form of `include`**
 
-```bash
-grep -nE "^it\('(rejects a filter that is not an object|.*cursor.*custom|.*custom.*cursor|.*include.*(list|array|comma))" tests/Feature/Api/V1/*.php
-grep -rnE "RecordsView|viewer" tests/Feature/Api/V1/*.php | head
-```
-
-`rejects a filter that is not an object` exists at `ListFilterTest.php:465`. For each of the other three inputs with no match, add its test in Step 2. Skip the ones that exist.
-
-- [ ] **Step 2: Add the missing pinning tests**
-
-Append to `tests/Feature/Api/V1/ListFilterTest.php`. Its `beforeEach` already creates `$this->user`, `$this->workspace` and a Sanctum session.
+`tests/Feature/Api/V1/CompaniesApiTest.php:198` pins `?include=creator` as a comma string. Add its sibling beside that test, inside the same `describe` block if there is one, using the same setup lines the neighbour uses:
 
 ```php
-it('rejects a custom field sort on a cursor list', function (): void {
-    $field = WorkspaceCustomField::for($this->workspace, CrmEntity::Company)->where('active', true)->firstOrFail();
+    it('expands an include sent as a list', function (): void {
+        Sanctum::actingAs($this->user);
 
-    $this->getJson('/api/v1/companies?cursor=true&sort='.$field->code)
-        ->assertStatus(400);
-});
+        Company::factory()->recycle([$this->user, $this->workspace])->create();
 
-it('expands an include sent as a comma string or as a list', function (string $query): void {
-    Company::factory()->for($this->workspace)->create(['creator_id' => $this->user->getKey()]);
-
-    $this->getJson('/api/v1/companies?'.$query)
-        ->assertOk()
-        ->assertJsonPath('data.0.relationships.creator.data.id', (string) $this->user->getKey());
-})->with([
-    'comma string' => ['include=creator,accountOwner'],
-    'list' => ['include[]=creator&include[]=accountOwner'],
-]);
-
-it('refuses the list to a member who cannot view records', function (string $entity): void {
-    $this->user->workspaces()->updateExistingPivot($this->workspace->getKey(), ['role' => 'none']);
-
-    $this->getJson("/api/v1/{$entity}")->assertForbidden();
-})->with(['companies', 'people', 'opportunities', 'tasks', 'notes']);
+        $this->getJson('/api/v1/companies?include[]=creator&include[]=accountOwner')
+            ->assertOk()
+            ->assertJson(fn (AssertableJson $json) => $json
+                ->has('data.0.relationships.creator')
+                ->has('included')
+                ->etc()
+            );
+    });
 ```
 
-These three tests describe today's behavior, so each must pass against the unchanged code. Three details depend on helpers this plan's author did not read. Resolve each by reading, never by loosening the assertion:
+- [ ] **Step 2: Run it against the unchanged code**
 
-- `WorkspaceCustomField`: open `tests/Helpers/WorkspaceCustomField.php` and use the method that returns a sortable active field for an entity. Then run the request once and assert the status and error key the API really returns today (`assertStatus(400)` is Spatie's `InvalidSortQuery` default. If the app maps it to 422, assert 422 and the key).
-- The resource shape: run the request once, read the JSON, and assert the path where the included creator's id really sits.
-- The role without `RecordsView`: `grep -rn "RecordsView" app/Enums app/Models tests/Feature/Workspaces | head`. Use the way `tests/Feature/Workspaces/ViewerRoleTest.php` or `WorkspaceCapabilityTest.php` puts a user in a role without that capability. If every role has `RecordsView`, delete this test and record that in the task report: the 403 branch is then unreachable from a real role and stays covered by `ApiWorkspaceScopingTest`.
+Run: `php artisan test --compact tests/Feature/Api/V1/CompaniesApiTest.php --filter="expands an include sent as a list"`
+Expected: pass. It pins today's behavior. A failure means the test is wrong: read the neighbour at line 198 and match its setup.
 
-- [ ] **Step 3: Run the new tests against the unchanged code**
+- [ ] **Step 3: Confirm the other pinned inputs are green**
 
-Run: `php artisan test --compact tests/Feature/Api/V1/ListFilterTest.php`
-Expected: all pass. They pin current behavior, so a failure means the test is wrong. Fix the test.
+Run: `php artisan test --compact tests/Feature/Api/V1/ListFilterTest.php --filter="rejects a filter that is not an object|names the sorts cursor paging takes|rejects a cursor from another sort order"`
+Expected: all pass. These three existing tests guard Review Focus items 1 and 2 through the rest of this task.
 
-- [ ] **Step 4: Commit the pinning tests**
+- [ ] **Step 4: Commit the pinning test**
 
 ```bash
-git add tests/Feature/Api/V1/ListFilterTest.php
-git commit -m "test(api): pin list cursor sorts, include forms and the view check"
+git add tests/Feature/Api/V1/CompaniesApiTest.php
+git commit -m "test(api): pin an include sent as a list"
 ```
 
 - [ ] **Step 5: Create `ListQuery`**
@@ -435,7 +423,7 @@ In `tests/Arch/ArchTest.php`, the test `API controllers must depend on actions f
 - [ ] **Step 12: Run the REST tests**
 
 Run: `php artisan test --compact tests/Feature/Api/V1 tests/Arch/ArchTest.php`
-Expected: all pass, with no assertion edited.
+Expected: all pass, with no assertion edited. This run includes `ApiWorkspaceScopingTest`, which pins the 403.
 
 - [ ] **Step 13: Static analysis on the new files**
 
@@ -462,13 +450,7 @@ git commit -m "refactor(queries): list crm records through query classes on the 
 - Consumes: `CrmEntity::query()`, `EntityQuery::paginate(User, ListQuery)`, `new ListQuery(...)` from Task 2.
 - Produces: `BaseListTool` no longer declares `actionClass()`.
 
-- [ ] **Step 1: Pin the MCP refusal for a member who cannot view records**
-
-Run: `grep -rnE "RecordsView|viewer|cannot view" tests/Feature/Mcp | head`
-
-If no MCP list test covers a role without `RecordsView`, and Task 2 kept its REST version of that test, add one to `tests/Feature/Mcp/McpReadToolsTest.php` in the style of the tests already in that file: put the user in the same role Task 2 used, call `ListCompaniesTool`, and assert the 403 the tool raises today. Run it against the unchanged tool first and confirm it passes. If Task 2 deleted its version because no such role exists, skip this step.
-
-- [ ] **Step 2: Replace the action call**
+- [ ] **Step 1: Replace the action call**
 
 In `BaseListTool::handle()`, replace the `app()->make($this->actionClass())->execute(...)` call inside the `try`:
 
@@ -500,25 +482,25 @@ Delete `abstract protected function actionClass(): string;` with its docblock. R
 
 Add `use App\Data\ListQuery;`. Remove `use Illuminate\Http\Request as HttpRequest;`.
 
-- [ ] **Step 3: Delete the five `actionClass()` overrides**
+- [ ] **Step 2: Delete the five `actionClass()` overrides**
 
 In each of the five MCP list tools, delete the `actionClass()` method and its `use App\Actions\...\List...;` import. `entity()` and `resourceClass()` stay.
 
-- [ ] **Step 4: Run the MCP tests**
+- [ ] **Step 3: Run the MCP tests**
 
 Run: `php artisan test --compact tests/Feature/Mcp tests/Feature/Api/V1/ListFilterSurfacesTest.php tests/Feature/CRM/SurfaceParityTest.php`
 Expected: all pass, with no assertion edited.
 
-- [ ] **Step 5: Lower the method length entry**
+- [ ] **Step 4: Lower the method length entry**
 
 Run: `vendor/bin/phpstan analyse app/Mcp`
 `phpstan-method-length.php` lists `App\Mcp\Tools\BaseListTool::handle` at 94. If PHPStan reports the method is now shorter, set the entry to the number it reports. Expected after that: no errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 vendor/bin/pint --dirty --format agent
-git add app/Mcp phpstan-method-length.php tests/Feature/Mcp
+git add app/Mcp phpstan-method-length.php
 git commit -m "refactor(mcp): list crm records through query classes"
 ```
 
@@ -718,14 +700,23 @@ Run the grep from Step 3 again. Expected: no output.
 Run: `php artisan test --compact tests/Feature/Api/V1 tests/Feature/Mcp tests/Feature/CRM/SurfaceParityTest.php tests/Feature/Chat/ListDateFilterTest.php tests/Arch`
 Expected: all pass.
 
-- [ ] **Step 6: Prove the API reference is byte-identical**
+- [ ] **Step 6: Prove the API reference did not change**
 
 ```bash
 php artisan scribe:generate --no-interaction
-diff -r /tmp/scribe-before/dot-scribe .scribe && diff -r /tmp/scribe-before/storage storage/app/private/scribe && echo IDENTICAL
+rm -rf /tmp/scribe-after && mkdir /tmp/scribe-after
+cp -R .scribe /tmp/scribe-after/dot-scribe
+cp -R storage/app/private/scribe /tmp/scribe-after/storage
+diff -r /tmp/scribe-before /tmp/scribe-after > /tmp/scribe-change.diff; wc -l /tmp/scribe-change.diff
 ```
 
-Expected: `IDENTICAL`. Use the storage path recorded in Task 1. A difference in a timestamp or a generated hash line is noise: name the line and move on. Any difference in a parameter name, a description or their order is a regression. Fix the query class or the trait until the diff is clean. Never accept a changed reference.
+Use the storage path recorded in Task 1. Read `/tmp/scribe-change.diff` against the noise set from Task 1. Every difference must be of a kind already in `/tmp/scribe-noise.diff`. Then check the part that must be exact:
+
+```bash
+grep -E "^[<>]" /tmp/scribe-change.diff | grep -iE "Allowed:|Sort results|Include related|filter\[|Operators:|per_page|cursor" | head
+```
+
+Expected: no output. A difference in a parameter name, a description or their order is a regression. Fix the query class or the trait until it is gone. Never accept a changed reference.
 
 - [ ] **Step 7: Static analysis**
 
@@ -1316,7 +1307,7 @@ git branch --show-current
 git push -u origin feat/queries-read-layer
 ```
 
-Draft the PR title and body and show them to Manuk. Do not open the PR until he replies "post". Base: `feat/crm-filter-language` while #906 is open, `main` once it has merged. The body states: what moved, that nothing observable changed, the byte-identical API reference, the chat walk with its two screenshots, and the open finding about conversations with a null `workspace_id`.
+Draft the PR title and body and show them to Manuk. Do not open the PR until he replies "post". Base: `feat/crm-filter-language` while #906 is open, `main` once it has merged. The body states: what moved, that nothing observable changed, the unchanged API reference, the chat walk with its two screenshots, and the open finding about conversations with a null `workspace_id`.
 
 - [ ] **Step 6: Watch CI**
 

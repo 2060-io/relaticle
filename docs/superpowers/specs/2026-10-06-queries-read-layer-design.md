@@ -308,8 +308,9 @@ One branch, four phases. Each ends green and can be reviewed on its own.
   `ListFilterTest` and `ListFilterSurfacesTest`), `tests/Feature/CRM/SurfaceParityTest.php`,
   `tests/Feature/Mcp`, `tests/Feature/Chat`. The only test edits are class references and
   `mutates()` lines.
-- The generated API reference is byte-identical. Generate it at `ca5a4d130`, generate it after
-  phase 1, and diff.
+- The generated API reference does not change. Scribe makes example responses from factory
+  data, so generate it twice at `ca5a4d130` to learn what varies, then once after phase 1. Every
+  parameter name, description and order must match exactly.
 - Phase 3 changes what `ChatController`, `ChatInterface` and the chat panels call, so it is
   walked on the production-shaped stack that `chat.md` requires: Horizon,
   `QUEUE_CONNECTION=redis`, Reverb, a real browser. The walk opens a conversation, sends a
