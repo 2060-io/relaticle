@@ -20,8 +20,8 @@ they involve, and you can send from Relaticle with that address.
 5. Microsoft sends you back to Relaticle, and the account appears under
    **Connected accounts**.
 
-The **Meetings** panel on **Home** shows the same button until you connect
-an account.
+The **Emails** page, a record's **Emails** tab, and the **Meetings** panel
+on **Home** show the same button until you connect an account.
 
 On a self-hosted install, the button appears once the Microsoft client is
 configured. The [Self-Hosting Guide](/developers/self-hosting) lists the
