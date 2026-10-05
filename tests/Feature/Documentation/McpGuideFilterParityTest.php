@@ -66,6 +66,8 @@ test('the mcp guide lists exactly the filter names of each entity under their ki
         $defined[$kind][] = $name;
     }
 
+    expect(mcpGuideCodeSpans($row))->toEqualCanonicalizing(array_keys(EntityFilters::definitions($entity)), "names of {$entity->value} in the mcp guide");
+
     foreach ($defined as $kind => $names) {
         expect($listed[$kind])->toEqualCanonicalizing($names, "{$kind}s of {$entity->value} in the mcp guide");
     }
