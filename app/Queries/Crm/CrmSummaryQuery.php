@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Queries\Crm;
 
-use App\Queries\Opportunities\OpportunityAggregatesQuery;
 use App\Enums\CrmEntity;
 use App\Enums\CustomFields\TaskField;
 use App\Models\Company;
@@ -12,6 +11,7 @@ use App\Models\Note;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Queries\Opportunities\OpportunityAggregatesQuery;
 use DateTimeInterface;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\JoinClause;
