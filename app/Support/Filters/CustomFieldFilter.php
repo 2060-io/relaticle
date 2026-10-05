@@ -41,7 +41,7 @@ final readonly class CustomFieldFilter implements Filter
     public function __construct(
         private string $entityType,
         private User $user,
-        private string $dayZone,
+        private ?string $viewerZone,
         private CustomFieldOptionMap $optionMap = new CustomFieldOptionMap,
     ) {}
 
@@ -112,6 +112,10 @@ final readonly class CustomFieldFilter implements Filter
     private function normalizeOperand(string $fieldCode, string $operator, mixed $operand, array $operatorSchema, bool $splitsStrings): mixed
     {
         $type = $operatorSchema['type'] ?? null;
+
+        if (($operatorSchema['format'] ?? null) === 'date-time') {
+            Operand::assertOffset("{$fieldCode}.{$operator}", "{$fieldCode} {$operator}", $operand, $this->viewerZone);
+        }
 
         $normalized = match ($type) {
             'array' => Operand::stringList($operand, $splitsStrings),
@@ -233,7 +237,7 @@ final readonly class CustomFieldFilter implements Filter
      */
     private function wholeDay(Builder $query, string $valueColumn, string $operator, string $date): void
     {
-        foreach (Operand::wholeDay($operator, $date, $this->dayZone) as [$comparison, $instant]) {
+        foreach (Operand::wholeDay($operator, $date, $this->viewerZone ?? 'UTC') as [$comparison, $instant]) {
             $query->where($valueColumn, $comparison, $instant);
         }
     }

@@ -170,7 +170,7 @@ abstract class BaseReadListTool implements Tool
                 perPage: $this->perPageFor($request),
                 page: isset($request['page']) ? (int) $request['page'] : null,
                 request: $this->buildHttpRequest($request),
-                dayZone: $user->effectiveTimezone(),
+                viewerZone: $user->effectiveTimezone(),
             );
         } catch (ValidationException $exception) {
             return (string) json_encode(['error' => FilterErrors::located($exception)], JSON_UNESCAPED_SLASHES);

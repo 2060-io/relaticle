@@ -32,7 +32,7 @@ final readonly class ListNotes
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
-        string $dayZone = 'UTC',
+        ?string $viewerZone = null,
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Note::class), 403);
 
@@ -44,7 +44,7 @@ final readonly class ListNotes
             Note::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(...new EntityFilters($user, $dayZone)->for(CrmEntity::Note))
+            ->allowedFilters(...new EntityFilters($user, $viewerZone)->for(CrmEntity::Note))
             ->allowedFields('id', 'title', 'creator_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'companies', 'people', 'opportunities',

@@ -6,6 +6,7 @@ namespace App\Support\CustomFields;
 
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
+use App\Support\Filters\Operand;
 use App\Support\Media\RichContentAttachments;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Validator;
@@ -20,7 +21,7 @@ final readonly class CustomFieldInput
      * @param  array<array-key, mixed>  $customFields
      * @return array<array-key, mixed>
      */
-    public function normalize(string $workspaceId, string $entityType, array $customFields): array
+    public function normalize(string $workspaceId, string $entityType, array $customFields, ?string $viewerZone = null): array
     {
         if ($customFields === []) {
             return [];
@@ -48,7 +49,7 @@ final readonly class CustomFieldInput
                 continue;
             }
 
-            $normalized[$code] = $this->normalizeValue($field, $value, $optionMap[(string) $code] ?? ['ids' => [], 'labels' => []]);
+            $normalized[$code] = $this->normalizeValue($field, $value, $optionMap[(string) $code] ?? ['ids' => [], 'labels' => []], $viewerZone);
         }
 
         return $normalized;
@@ -57,7 +58,7 @@ final readonly class CustomFieldInput
     /**
      * @param  array{ids: array<string, list<string>>, labels: list<string>}  $entry
      */
-    private function normalizeValue(CustomField $field, mixed $value, array $entry): mixed
+    private function normalizeValue(CustomField $field, mixed $value, array $entry, ?string $viewerZone): mixed
     {
         return match (CustomFieldType::from($field->type)) {
             CustomFieldType::SELECT,
@@ -66,7 +67,7 @@ final readonly class CustomFieldInput
             CustomFieldType::MULTI_SELECT,
             CustomFieldType::CHECKBOX_LIST => $this->optionList($field, $value, $entry),
             CustomFieldType::RICH_EDITOR => $this->richText($field, $value),
-            CustomFieldType::DATE_TIME => $this->isBlankString($value) ? null : $this->utcDateTime($value),
+            CustomFieldType::DATE_TIME => $this->isBlankString($value) ? null : $this->utcDateTime($field, $value, $viewerZone),
             CustomFieldType::DATE => $this->isBlankString($value) ? null : $value,
             CustomFieldType::TEXT,
             CustomFieldType::NUMBER,
@@ -166,10 +167,14 @@ final readonly class CustomFieldInput
         return RichContentAttachments::forWorkspace((string) $field->tenant_id)->canonicalize($html);
     }
 
-    private function utcDateTime(mixed $value): mixed
+    private function utcDateTime(CustomField $field, mixed $value, ?string $viewerZone): mixed
     {
         if (! is_string($value) || Validator::make(['value' => $value], ['value' => ['date']])->fails()) {
             return $value;
+        }
+
+        if ($viewerZone !== null && Operand::lacksOffset($value)) {
+            $this->fail($field, Operand::offsetRequired($field->code, $value, $viewerZone));
         }
 
         return Date::parse($value)->utc()->toDateTimeString();

@@ -93,6 +93,17 @@ it('updates the task due_date via ISO 8601 and persists as datetime_value', func
         ->and((string) $stored)->toContain('2026-06-15');
 });
 
+it('asks for a utc offset on a proposed date-time that has none', function (): void {
+    $this->user->forceFill(['timezone' => 'Asia/Yerevan'])->save();
+    $task = Task::factory()->for($this->workspace)->create(['title' => 'T']);
+    $proposals = PendingAction::query()->count();
+
+    $result = json_decode(runUpdateToolForCustomFieldsTest(UpdateTaskTool::class, $task, ['due_date' => '2026-10-10T15:00:00']), true);
+
+    expect(json_encode($result))->toContain('due_date needs a UTC offset, such as 2026-10-10T15:00:00+04:00')
+        ->and(PendingAction::query()->count())->toBe($proposals);
+});
+
 it('shows a proposed date-time on the calendar day of the viewer', function (): void {
     $this->user->forceFill(['timezone' => 'America/Los_Angeles'])->save();
     $task = Task::factory()->for($this->workspace)->create(['title' => 'T']);

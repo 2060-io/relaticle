@@ -15,7 +15,7 @@ final readonly class EntityFilters
 {
     public const string CUSTOM_FIELDS_RULE = 'custom_fields takes an object keyed by custom field code, each value an operator object.';
 
-    public function __construct(private User $user, private string $dayZone = 'UTC') {}
+    public function __construct(private User $user, private ?string $viewerZone = null) {}
 
     public static function grammar(CrmEntity $entity): string
     {
@@ -135,13 +135,13 @@ final readonly class EntityFilters
 
         foreach (self::definitions($entity) as $name => $definition) {
             $filters[] = TreeAllowedFilter::custom($name, match ($definition->kind) {
-                FilterKind::Text, FilterKind::DateTime, FilterKind::Enum => new NativeFilter($definition, $this->dayZone),
+                FilterKind::Text, FilterKind::DateTime, FilterKind::Enum => new NativeFilter($definition, $this->viewerZone),
                 FilterKind::Members, FilterKind::Relation => new RelationFilter($definition, $this, $this->user),
                 FilterKind::Computed => new ($definition->filterClass)($this->user),
             });
         }
 
-        $filters[] = TreeAllowedFilter::custom('custom_fields', new CustomFieldFilter($entity->value, $this->user, $this->dayZone));
+        $filters[] = TreeAllowedFilter::custom('custom_fields', new CustomFieldFilter($entity->value, $this->user, $this->viewerZone));
 
         $logic = new LogicFilter($entity, $this, $this->user);
 

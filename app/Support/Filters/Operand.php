@@ -99,6 +99,26 @@ final readonly class Operand
         };
     }
 
+    public static function lacksOffset(mixed $operand): bool
+    {
+        return is_string($operand) && preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?$/', $operand) === 1;
+    }
+
+    public static function offsetRequired(string $name, string $operand, string $viewerZone): string
+    {
+        return __('validation.filter.offset_required', [
+            'name' => $name,
+            'example' => Date::parse($operand, $viewerZone)->format('Y-m-d\TH:i:sP'),
+        ]);
+    }
+
+    public static function assertOffset(string $path, string $name, mixed $operand, ?string $viewerZone): void
+    {
+        if ($viewerZone !== null && self::lacksOffset($operand)) {
+            throw FilterErrors::at($path, self::offsetRequired($name, (string) $operand, $viewerZone));
+        }
+    }
+
     public static function boolean(mixed $operand): ?bool
     {
         if (is_bool($operand)) {

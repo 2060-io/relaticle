@@ -32,7 +32,7 @@ final readonly class ListOpportunities
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
-        string $dayZone = 'UTC',
+        ?string $viewerZone = null,
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Opportunity::class), 403);
 
@@ -44,7 +44,7 @@ final readonly class ListOpportunities
             Opportunity::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(...new EntityFilters($user, $dayZone)->for(CrmEntity::Opportunity))
+            ->allowedFilters(...new EntityFilters($user, $viewerZone)->for(CrmEntity::Opportunity))
             ->allowedFields('id', 'name', 'company_id', 'contact_id', 'creator_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'company', 'contact',

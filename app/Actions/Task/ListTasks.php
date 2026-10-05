@@ -32,7 +32,7 @@ final readonly class ListTasks
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
-        string $dayZone = 'UTC',
+        ?string $viewerZone = null,
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Task::class), 403);
 
@@ -44,7 +44,7 @@ final readonly class ListTasks
             Task::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(...new EntityFilters($user, $dayZone)->for(CrmEntity::Task))
+            ->allowedFilters(...new EntityFilters($user, $viewerZone)->for(CrmEntity::Task))
             ->allowedFields('id', 'title', 'creator_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'assignees', 'companies', 'people', 'opportunities',

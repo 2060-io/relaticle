@@ -527,6 +527,21 @@ it('names the node to fix in a nested filter error', function (): void {
     expect($result['error'])->toBe('filter.$or.1.name.$eq: name $eq must be a non-empty string, or use $is_empty for records without a value.');
 });
 
+it('asks for a utc offset on a date-time filter operand that has none', function (Closure $filter, string $name): void {
+    $user = User::factory()->withPersonalWorkspace()->create(['timezone' => 'Asia/Yerevan']);
+    $this->actingAs($user);
+    Task::factory()->for($user->currentWorkspace)->create(['title' => 'Call Ana', 'created_at' => '2026-10-10 12:00:00']);
+
+    $without = json_decode((new ListTasksTool)->handle(new Request(['filter' => $filter('2026-10-10T15:00:00')])), true);
+    $with = listToolRows((new ListTasksTool)->handle(new Request(['filter' => $filter('2026-10-10T15:00:00+04:00')])));
+
+    expect($without['error'])->toContain("{$name} \$gte needs a UTC offset, such as 2026-10-10T15:00:00+04:00")
+        ->and($with)->toBeArray()->not->toHaveKey('error');
+})->with([
+    'a native field' => [fn (string $operand): array => ['created_at' => ['$gte' => $operand]], 'created_at'],
+    'a custom field' => [fn (string $operand): array => ['custom_fields' => ['due_date' => ['$gte' => $operand]]], 'due_date'],
+]);
+
 it('reports total and showing when results exceed one page', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);

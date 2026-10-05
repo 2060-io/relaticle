@@ -147,7 +147,7 @@ abstract class BaseWriteCreateTool implements Tool
                 continue;
             }
 
-            $validation = $validator->validate($user, $this->entityType(), $record['custom_fields'] ?? null, isUpdate: false);
+            $validation = $validator->validate($user, $this->entityType(), $record['custom_fields'] ?? null, isUpdate: false, viewerZone: $user->effectiveTimezone());
 
             if ($validation->error !== null) {
                 $skipped[] = $this->skippedRecord($record, $index, $validation->error);
