@@ -1,13 +1,13 @@
 ---
 title: See meetings and link them to records
 description: View synced calendar events on Home and on your records, answer an invitation, and link a meeting to the person, company, or opportunity.
-order: 7
+order: 8
 updated: "2026-10-05"
-related: [help/email-and-calendar/connect-your-google-account, help/email-and-calendar/set-workspace-email-privacy, help/records/opportunity-records]
+related: [help/email-and-calendar/connect-your-google-account, help/email-and-calendar/connect-your-microsoft-account, help/email-and-calendar/set-workspace-email-privacy, help/records/opportunity-records]
 ---
 
-Once your Google account is connected, your calendar events sync into
-Relaticle as meetings. You see your day on **Home**, and each record shows
+Once your Google or Microsoft account is connected, your calendar events
+sync into Relaticle as meetings. You see your day on **Home**, and each record shows
 the meetings that involve it.
 
 ## See your day
@@ -28,7 +28,7 @@ that person's email, and to a company by the attendee's domain.
 
 Open a meeting from its row menu. You see the **Participants**, the
 **Linked records**, the **Description**, and **Open in calendar**, which
-opens the event in Google Calendar.
+opens the event in Google Calendar or Outlook.
 
 ## Link a meeting to another record
 
@@ -46,13 +46,14 @@ The event stays on your calendar.
 ## Answer an invitation
 
 Open the meeting. The button beside its title shows your current answer.
-Click it and choose **Accept**, **Maybe**, or **Decline**. Relaticle updates your Google Calendar with the answer. Declining leaves the
-meeting on the calendar for the other guests.
+Click it and choose **Accept**, **Maybe**, or **Decline**. Relaticle sends
+the answer to your Google or Outlook calendar. Declining leaves the meeting
+on the calendar for the other guests.
 
 ## If your RSVP could not be updated
 
-- **Reconnect the mailbox and try again** means Google stopped accepting the
-  saved access. Reconnect the account under **Workspace Settings**,
+- **Reconnect the mailbox and try again** means Google or Microsoft stopped
+  accepting the saved access. Reconnect the account under **Workspace Settings**,
   **Email and Calendar**.
 - **This meeting has not appeared on your calendar yet** means the event is
   still syncing. Try again in a moment.

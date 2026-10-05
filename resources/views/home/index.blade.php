@@ -12,7 +12,7 @@
         ['What AI agents can I connect from outside?', 'Claude, ChatGPT, Gemini, open-source models, or your own agent. They connect over MCP (Model Context Protocol), an open standard, and can read, create, update, delete, and analyze your CRM data.'],
         ['What is MCP?', 'MCP (Model Context Protocol) is an open standard that lets AI agents interact with tools and data sources. Relaticle\'s MCP server lets external agents list companies, create people, update opportunities, analyze pipelines, and more.'],
         $emailIntegrationActive
-            ? ['Does Relaticle sync my email and calendar?', 'Yes. Connect a Google account and your email and meetings appear on the people, companies, and opportunities they involve. You can reply and send from the record, and you choose how much of each email your workspace can see. Relaticle connects Google accounts for now.']
+            ? ['Does Relaticle sync my email and calendar?', 'Yes. Connect a Google or Microsoft account and your email and meetings appear on the people, companies, and opportunities they involve. You can reply and send from the record, and you choose how much of each email your workspace can see.']
             : null,
         ['How is Relaticle different from HubSpot or Salesforce?', "Relaticle is open source (AGPL-3.0), can be self-hosted so you own your data, ships with {$assistantName}, a built-in AI assistant, lets Claude, ChatGPT, or your own agent work in the same records over MCP, and has no per-seat pricing. It's designed for teams who want AI built in and AI integration without vendor lock-in."],
         ['How do I deploy Relaticle?', 'The quickest way is the hosted version at app.relaticle.com: sign up and start. To run it yourself, deploy with Docker Compose on your own server, and your data never leaves it.'],
@@ -51,7 +51,7 @@
                     'Persistent searchable conversation history',
                     'MCP server for external AI agents',
                     'REST API with full CRUD operations',
-                    $emailIntegrationActive ? 'Gmail and Google Calendar sync with per-email sharing controls' : null,
+                    $emailIntegrationActive ? 'Gmail and Outlook email and calendar sync with per-email sharing controls' : null,
                     'Custom fields with per-field encryption',
                     'Self-hosted with full data ownership',
                     'Multi-workspace isolation with role-based permissions',

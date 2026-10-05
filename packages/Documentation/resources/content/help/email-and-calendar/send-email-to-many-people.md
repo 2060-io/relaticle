@@ -1,7 +1,7 @@
 ---
 title: Send one email to many people
 description: Select people or companies, write one message with merge tags, and Relaticle sends a separate email to each recipient within your send limits.
-order: 3
+order: 4
 updated: "2026-10-05"
 related: [help/email-and-calendar/read-and-reply-to-email, help/email-and-calendar/connect-your-google-account, help/records/people-records]
 ---

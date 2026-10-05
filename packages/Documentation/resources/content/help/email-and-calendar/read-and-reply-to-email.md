@@ -1,9 +1,9 @@
 ---
 title: Read and reply to email on a record
 description: Find every synced conversation on a person, company, or opportunity, then reply, forward, or compose a new email without leaving the record.
-order: 2
+order: 3
 updated: "2026-10-05"
-related: [help/email-and-calendar/connect-your-google-account, help/email-and-calendar/send-email-to-many-people, help/email-and-calendar/request-access-to-an-email]
+related: [help/email-and-calendar/connect-your-google-account, help/email-and-calendar/connect-your-microsoft-account, help/email-and-calendar/send-email-to-many-people, help/email-and-calendar/request-access-to-an-email]
 ---
 
 Synced email lives on the record it involves. Open a person, company, or
@@ -73,4 +73,4 @@ tabs.
 
 The composer shows **Relaticle can't send from this account yet** when the
 account was connected without send access. Click **Grant permission** and
-approve it at Google.
+approve it at Google or Microsoft.
