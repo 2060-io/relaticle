@@ -85,8 +85,9 @@ final class NormalizeCustomFieldValuesCommand extends Command
                     try {
                         $this->normalizeRow($field, $row, $isDomain, $write);
                     } catch (Throwable $exception) {
-                        $this->warn("Value {$row->id}: {$exception->getMessage()}, skipped.");
-                        $this->logSkipped($field, $row, class_basename($exception));
+                        $reason = class_basename($exception);
+                        $this->warn("Value {$row->id}: {$reason}, skipped.");
+                        $this->logSkipped($field, $row, $reason);
                     }
                 }
             });

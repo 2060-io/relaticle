@@ -186,6 +186,20 @@ it('logs one line per skipped row without its value and one summary line', funct
         ->once();
 });
 
+it('never prints a stored value when a row fails to update', function (): void {
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    writeRawJsonValue($person->getKey(), $phone, ['+1 415-555-0142']);
+    DB::beforeExecuting(function (string $query, array $bindings): void {
+        throw_if(str_starts_with($query, 'update "custom_field_values"'), RuntimeException::class, 'update failed for '.implode(' ', array_map(strval(...), $bindings)));
+    });
+
+    $this->artisan('custom-fields:normalize-values', ['--force' => true])
+        ->doesntExpectOutputToContain('555')
+        ->expectsOutputToContain('RuntimeException, skipped.')
+        ->assertSuccessful();
+});
+
 it('logs a row edited while the backfill runs as skipped', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
     $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
