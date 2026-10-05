@@ -46,7 +46,7 @@
                 ->operatingSystem('Linux, macOS, Windows')
                 ->description("The open-source CRM built for people and AI-powered work. Self-hosted with a built-in AI chat (with @-mentions, approval before every write, voice, and persistent history) plus a production-grade MCP server ({$mcpToolCount} tools), REST API, and 20 custom field types. Connect any external agent: Claude, ChatGPT, or open-source models.")
                 ->url(url('/'))
-                ->offers(\Spatie\SchemaOrg\Schema::offer()->price('0')->priceCurrency('USD'))
+                ->offers(\Spatie\SchemaOrg\Schema::offer()->name('Self-hosted')->description('Free to self-host under the AGPL-3.0 license.')->price('0')->priceCurrency('USD'))
                 ->setProperty('featureList', array_values(array_filter([
                     'Built-in AI chat with @-mentions to records, approval before every write, and voice input',
                     'Persistent searchable conversation history',

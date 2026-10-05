@@ -501,7 +501,7 @@ it('keeps the credits help article in step with each plan allowance', function (
 
     expect($rows->all())->toBe([
         'Cloud Pro and its trial' => ['Cloud Pro and its trial', number_format(Plan::Pro->credits()), (string) Plan::Pro->rateLimit()],
-        'Enterprise' => ['Enterprise', number_format(Plan::Enterprise->credits()), (string) Plan::Enterprise->rateLimit()],
+        'Enterprise' => ['Enterprise', 'Agreed with your team', 'Agreed with your team'],
         'Self-hosted (default)' => ['Self-hosted (default)', number_format(Plan::default()->credits()), (string) Plan::default()->rateLimit()],
     ]);
 });

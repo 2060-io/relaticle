@@ -2,7 +2,7 @@
 title: Opportunity records
 description: Deals with an amount, close date, and stage, linked to a company and a person, in a list or on the board.
 order: 3
-updated: "2026-08-13"
+updated: "2026-10-05"
 related: [help/getting-started/track-a-deal-through-the-pipeline, help/custom-fields/edit-the-options-in-a-select-field, help/records/company-records]
 ---
 
@@ -36,3 +36,6 @@ has its own add button for creating a deal directly in that stage.
 An opportunity's page links its company and point of contact, lists every visible
 field, and carries **Tasks**, **Notes**, and **Activity log** tabs. Tasks and
 notes can be created here pre-linked, or attached if they already exist.
+
+With email and calendar sync on, **Emails** and **Meetings** tabs appear
+here too.

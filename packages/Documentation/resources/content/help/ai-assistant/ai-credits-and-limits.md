@@ -24,7 +24,7 @@ final cost settles after the answer completes.
 | Plan | Credits per month | Messages per minute |
 |------|-------------------|---------------------|
 | Cloud Pro and its trial | 2,000 | 30 |
-| Enterprise | 10,000 | 60 |
+| Enterprise | Agreed with your team | Agreed with your team |
 | Self-hosted (default) | 300 | 10 |
 
 Relaticle Cloud has no free plan; what each plan costs is in

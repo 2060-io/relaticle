@@ -40,7 +40,6 @@
             @php
                 $freeCredits = number_format(\App\Enums\Plan::Free->credits());
                 $proCredits = number_format(\App\Enums\Plan::Pro->credits());
-                $enterpriseCredits = number_format(\App\Enums\Plan::Enterprise->credits());
                 $freeRateLimit = \App\Enums\Plan::Free->rateLimit();
                 $proRateLimit = \App\Enums\Plan::Pro->rateLimit();
                 $trialDays = \App\Models\Workspace::PRO_TRIAL_DAYS;
@@ -94,8 +93,8 @@
                 );
 
                 $selfHostedCreditAnswer = __(
-                    'No. Self-hosting does not disable credit metering. Self-hosted installs default to the Free plan\'s :credits-credit monthly allowance, and a system administrator can raise a workspace\'s plan and reset its credit period from the sysadmin panel, but no plan removes metering entirely: the highest built-in plan caps at :enterpriseCredits credits a month.',
-                    ['credits' => $freeCredits, 'enterpriseCredits' => $enterpriseCredits]
+                    'No. Self-hosting does not disable credit metering. Self-hosted installs default to the Free plan\'s :credits-credit monthly allowance, and a system administrator can raise a workspace\'s plan and reset its credit period from the sysadmin panel, but no plan removes metering entirely.',
+                    ['credits' => $freeCredits]
                 );
 
                 if ($billingActive) {
