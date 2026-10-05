@@ -43,17 +43,9 @@ trait DescribesListEndpoint
     {
         foreach ($endpointData->method->getParameters() as $parameter) {
             $type = $parameter->getType();
-            if (! $type instanceof ReflectionNamedType) {
-                continue;
-            }
-            if ($type->isBuiltin()) {
-                continue;
-            }
 
-            $className = $type->getName();
-
-            if (str_starts_with($className, 'App\\Actions\\') && str_starts_with(class_basename($className), 'List') && class_exists($className)) {
-                return $className;
+            if ($type instanceof ReflectionNamedType && isset(self::LIST_ACTION_ENTITIES[$type->getName()])) {
+                return $type->getName();
             }
         }
 
