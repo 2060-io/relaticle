@@ -346,6 +346,28 @@ it('complements inside a relation node', function (): void {
     expect(listIds($this, 'opportunities', ['company' => ['$not' => ['name' => ['$eq' => 'Acme']]]]))->toBe([$kept->id]);
 });
 
+it('matches a related record whose id is stored in upper case', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['id' => (string) str()->ulid()]);
+    $linked = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);
+    $loose = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => null]);
+
+    expect($company->id)->toBe(strtoupper($company->id))
+        ->and(listIds($this, 'opportunities', ['company' => ['$in' => [$company->id]]]))->toBe([$linked->id])
+        ->and(listIds($this, 'opportunities', ['company' => ['$in' => [strtolower($company->id)]]]))->toBe([$linked->id])
+        ->and(listIds($this, 'opportunities', ['company' => ['$not_in' => [$company->id]]]))->toBe([$loose->id]);
+});
+
+it('matches a member whose id is stored in upper case', function (): void {
+    $member = User::factory()->create(['id' => (string) str()->ulid()]);
+    $this->workspace->users()->attach($member, ['role' => 'member']);
+    $theirs = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $theirs->assignees()->attach($member);
+    Task::factory()->recycle([$this->user, $this->workspace])->create();
+
+    expect($member->id)->toBe(strtoupper($member->id))
+        ->and(listIds($this, 'tasks', ['assignees' => ['$in' => [$member->id]]]))->toBe([$theirs->id]);
+});
+
 it('matches a relation id sent in upper case', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $linked = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);

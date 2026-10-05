@@ -113,7 +113,8 @@ final readonly class RelationFilter implements Filter
             throw FilterErrors::at($operator, __('validation.filter.record_id', ['name' => "{$property} {$operator}", 'value' => $invalid]));
         }
 
-        return array_map(strtolower(...), $ids);
+        // Records that predate the ULID migration hold upper-case ids, and every record created since holds lower-case ones.
+        return array_values(array_unique([...array_map(strtolower(...), $ids), ...array_map(strtoupper(...), $ids)]));
     }
 
     /**
