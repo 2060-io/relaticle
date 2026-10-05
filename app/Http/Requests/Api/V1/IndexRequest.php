@@ -17,8 +17,6 @@ final class IndexRequest extends FormRequest
 
     public const int MAX_BODY_KILOBYTES = 256;
 
-    private const array OPTIONAL = ['per_page', 'cursor', 'page', 'include', 'sort', 'fields'];
-
     private const array NAME_LISTS = ['include', 'sort'];
 
     /**
@@ -63,7 +61,7 @@ final class IndexRequest extends FormRequest
             __('validation.filter.body_too_large', ['max' => self::MAX_BODY_KILOBYTES]),
         );
 
-        foreach (self::OPTIONAL as $key) {
+        foreach (array_keys($this->rules()) as $key) {
             if (in_array($this->input($key), [null, '', []], true)) {
                 $this->getInputSource()->remove($key);
             }
