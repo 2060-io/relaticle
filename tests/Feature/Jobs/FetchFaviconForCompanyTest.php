@@ -267,3 +267,33 @@ test('drops the logo of a previous domain when the new domain has no favicon', f
 
     expect($company->fresh()->getMedia('logo'))->toBeEmpty();
 });
+
+test('ignores a domain stored against another workspace field', function (): void {
+    $otherWorkspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+
+    $foreignDomainsField = CustomField::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $otherWorkspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', CompanyField::DOMAINS->value)
+        ->firstOrFail();
+
+    $company = Company::factory()->for($this->user->currentWorkspace)->create();
+
+    CustomFieldValue::withoutEvents(function () use ($company, $otherWorkspace, $foreignDomainsField): void {
+        $company->customFieldValues()->delete();
+
+        CustomFieldValue::forceCreate([
+            'tenant_id' => $otherWorkspace->getKey(),
+            'entity_type' => 'company',
+            'entity_id' => $company->getKey(),
+            'custom_field_id' => $foreignDomainsField->getKey(),
+            'json_value' => ['foreign.com'],
+        ]);
+    });
+
+    Filament::setTenant(null);
+    Favicon::shouldReceive('driver')->never();
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+});
