@@ -84,7 +84,7 @@ enum CreationSource: string implements HasColor, HasLabel
     {
         return match ($this) {
             self::WEB => 'Web Interface',
-            self::SYSTEM => 'System Process',
+            self::SYSTEM => 'Sample Data',
             self::IMPORT => 'Data Import',
             self::API => 'API',
             self::MCP => 'MCP Agent',
