@@ -59,13 +59,15 @@ the filter names the list action accepts for each entity" and "states every filt
 from the constants on every surface".
 
 The MCP guide is the exception. `packages/Documentation/resources/content/docs/guides/mcp.md`
-lists the names, the operators and the limits by hand, and no test reads them. A change to
-any of the three edits that page in the same commit.
+lists the names, the operators and the limits by hand.
+`tests/Feature/Documentation/McpGuideFilterParityTest.php` fails when its names table, its
+operator table or a limit drifts from the registry.
 
 ## Adding to it
 
 - **A filter name.** Add one line to `EntityFilters::definitions()`. The API reference, MCP
-  and chat pick it up. The MCP guide does not.
+  and chat pick it up. The MCP guide does not: `McpGuideFilterParityTest` fails until its
+  table lists the name.
 - **A kind of condition.** Add a `FilterKind` case and a class in `Filters`. PHPStan fails a
   `match` over `FilterKind` that has no `default` arm and misses the case.
   `FilterDefinition::operand()`, `NativeFilter` and `FilterTree::walk()` branch on the kind
@@ -76,6 +78,9 @@ any of the three edits that page in the same commit.
   equality. `ListFilterSurfacesTest` fails until its operator table lists it ("publishes
   exactly the operators of each custom field type"), and then until a case runs it on every
   surface ("applies every operator of every custom field type alike on the api and mcp").
+  A native field that shares the type fails the same way until a case runs the operator on
+  it ("filters every native field of every entity alike on the api and mcp").
+  `McpGuideFilterParityTest` fails until the guide's operator table lists it.
 - **A filter parameter on a list tool or endpoint.** Do not add one. A list takes filters only
   as the `filter` tree. `FilterTree::rejectUnknownArguments()` rejects a flat parameter, and
   `FilterTree::REPLACED` names the tree form of each retired one. `ListToolFilterTest` is the
