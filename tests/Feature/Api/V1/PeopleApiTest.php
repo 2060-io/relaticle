@@ -83,6 +83,20 @@ it('validates required fields on create', function (): void {
         ->assertInvalid(['name']);
 });
 
+it('stores a phone as E.164 and refuses one without a country code', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/people', ['name' => 'Ana Costa', 'custom_fields' => ['phone_number' => ['+1 (415) 555-0100']]])->assertCreated();
+
+    expect($created->json('data.attributes.custom_fields.phone_number.0.id'))->toBe('+14155550100');
+
+    $this->patchJson("/api/v1/people/{$created->json('data.id')}", ['name' => 'Renamed', 'custom_fields' => ['phone_number' => ['415 555 0100']]])
+        ->assertUnprocessable()
+        ->assertInvalid(['custom_fields.phone_number.0']);
+
+    expect(People::query()->findOrFail($created->json('data.id'))->name)->toBe('Ana Costa');
+});
+
 it('can show a person', function (): void {
     Sanctum::actingAs($this->user);
 

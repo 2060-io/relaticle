@@ -96,9 +96,10 @@ it('compares an offset operand on a custom date-time field as the same instant i
 });
 
 it('accepts a date operand as YYYY-MM-DD or ISO 8601', function (string $operand): void {
-    Company::factory()->recycle([$this->user, $this->workspace])->create();
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['created_at' => '2026-01-01 12:00:00']);
+    Company::factory()->recycle([$this->user, $this->workspace])->create(['created_at' => '2025-12-31 12:00:00']);
 
-    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['created_at' => ['$gte' => $operand]]]))->assertOk();
+    $this->getJson('/api/v1/companies?'.http_build_query(['filter' => ['created_at' => ['$gte' => $operand]]]))->assertOk()->assertJsonCount(1, 'data');
 })->with([
     'bare date' => ['2026-01-01'],
     'utc instant' => ['2026-01-01T10:00:00Z'],
@@ -174,7 +175,7 @@ it('filters tasks by assignee and by assigned_to_me', function (): void {
 it('returns nothing for a member id from another workspace', function (): void {
     $stranger = User::factory()->withPersonalWorkspace()->create();
     Task::factory()->recycle([$stranger, $stranger->personalWorkspace()])->create()->assignees()->attach($stranger);
-    Task::factory()->recycle([$this->user, $this->workspace])->create()->assignees()->attach($this->user);
+    Task::factory()->recycle([$this->user, $this->workspace])->create()->assignees()->attach([$this->user->id, $stranger->id]);
 
     expect(listIds($this, 'tasks', ['assignees' => ['$in' => [$stranger->id]]]))->toBe([]);
 });
@@ -535,7 +536,9 @@ it('rejects a null or empty value for a name', function (): void {
 });
 
 it('ignores an empty custom_fields at the top level and rejects it inside a group', function (): void {
-    $this->getJson('/api/v1/companies?filter[custom_fields]=')->assertOk();
+    Company::factory()->recycle([$this->user, $this->workspace])->count(2)->create();
+
+    $this->getJson('/api/v1/companies?filter[custom_fields]=')->assertOk()->assertJsonCount(2, 'data');
 
     $this->postJson('/api/v1/opportunities/query', ['filter' => ['$not' => ['custom_fields' => null]]])
         ->assertUnprocessable()
@@ -570,7 +573,9 @@ it('rejects an empty node at every level', function (array $filter, string $key,
 ]);
 
 it('ignores an empty custom_fields object at the top level', function (): void {
-    $this->postJson('/api/v1/companies/query', ['filter' => ['custom_fields' => []]])->assertOk();
+    Company::factory()->recycle([$this->user, $this->workspace])->count(2)->create();
+
+    $this->postJson('/api/v1/companies/query', ['filter' => ['custom_fields' => []]])->assertOk()->assertJsonCount(2, 'data');
 });
 
 it('counts a member relation as a relation hop', function (): void {
