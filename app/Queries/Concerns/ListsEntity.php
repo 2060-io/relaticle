@@ -42,7 +42,10 @@ trait ListsEntity
         return $builder
             ->allowedFilters(...new EntityFilters($user, $list->viewerZone)->for($entity))
             ->allowedFields(...static::fields())
-            ->allowedIncludes(...static::includes(), ...$this->countAllowedIncludes())
+            ->allowedIncludes(
+                ...static::includes(),
+                ...array_map(AllowedInclude::count(...), array_keys(static::countIncludes()), static::countIncludes()),
+            )
             ->allowedSorts(
                 ...static::sorts(),
                 ...($list->cursor ? [] : new CustomFieldFilterSchema()->allowedSorts($user, $entity->value)),
@@ -65,17 +68,5 @@ trait ListsEntity
             // A cursor holds the columns of the sort it was issued under, and the paginator throws when one is missing.
             throw FilterErrors::at('cursor', __('validation.filter.cursor'));
         }
-    }
-
-    /** @return list<AllowedInclude> */
-    private function countAllowedIncludes(): array
-    {
-        $counts = [];
-
-        foreach (static::countIncludes() as $name => $relation) {
-            $counts[] = AllowedInclude::count($name, $relation);
-        }
-
-        return $counts;
     }
 }
