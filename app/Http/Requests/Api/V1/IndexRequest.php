@@ -62,15 +62,11 @@ final class IndexRequest extends FormRequest
 
     public function toListQuery(): ListQuery
     {
-        $sort = $this->input('sort');
-        $include = $this->input('include');
-        $fields = $this->input('fields');
-
         return new ListQuery(
             filter: $this->input('filter'),
-            sort: is_string($sort) ? $sort : null,
-            include: is_string($include) ? $include : null,
-            fields: is_array($fields) || is_string($fields) ? $fields : null,
+            sort: $this->validated('sort'),
+            include: $this->validated('include'),
+            fields: $this->validated('fields'),
             perPage: $this->safe()->integer('per_page', 15),
             cursor: $this->safe()->has('cursor'),
         );
