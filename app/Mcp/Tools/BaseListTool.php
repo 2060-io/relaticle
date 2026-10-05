@@ -13,6 +13,7 @@ use App\Mcp\Tools\Concerns\HasReadOnlyToolAnnotations;
 use App\Mcp\Tools\Concerns\SerializesRelatedModels;
 use App\Models\User;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterTree;
 use Closure;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -36,6 +37,9 @@ abstract class BaseListTool extends Tool
     private const int MAX_PER_PAGE = 25;
 
     private const int MAX_PAGE = 1_000_000;
+
+    /** @var list<string> */
+    private const array ARGUMENTS = ['filter', 'sort', 'include', 'per_page', 'page'];
 
     /** @return class-string */
     abstract protected function actionClass(): string;
@@ -177,6 +181,8 @@ abstract class BaseListTool extends Tool
 
     private function buildHttpRequest(Request $mcpRequest): HttpRequest
     {
+        FilterTree::rejectUnknownArguments($mcpRequest->all(), self::ARGUMENTS);
+
         $input = [];
 
         $filter = $mcpRequest->get('filter');

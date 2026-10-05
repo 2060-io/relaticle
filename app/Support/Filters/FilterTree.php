@@ -50,6 +50,23 @@ final readonly class FilterTree
     }
 
     /**
+     * @param  array<array-key, mixed>  $arguments
+     * @param  list<string>  $accepted
+     */
+    public static function rejectUnknownArguments(array $arguments, array $accepted): void
+    {
+        $unknown = array_first(array_diff(array_map(strval(...), array_keys($arguments)), $accepted));
+
+        if ($unknown === null) {
+            return;
+        }
+
+        throw FilterErrors::at($unknown, isset(self::REPLACED[$unknown])
+            ? __('validation.filter.replaced', ['name' => $unknown, 'replacement' => self::REPLACED[$unknown]])
+            : __('validation.filter.unknown_argument', ['name' => $unknown, 'accepted' => implode(', ', $accepted)]));
+    }
+
+    /**
      * @param  array<array-key, mixed>  $filter
      * @return list<string>
      */

@@ -73,6 +73,7 @@ return [
         'cursor' => 'The cursor must be true for the first page or the meta.next_cursor value of the previous page.',
         'empty_node' => ':name needs at least one condition.',
         'replaced' => ':name was replaced. Use :replacement.',
+        'unknown_argument' => ':name is not an argument of this tool. Put conditions inside filter. Arguments: :accepted.',
         'too_many_conditions' => 'A filter holds at most :max conditions. This one has :count.',
         'too_deep' => '$and, $or and $not nest at most :max levels.',
         'too_many_hops' => 'Relations nest at most :max levels.',

@@ -67,6 +67,9 @@ abstract class BaseReadListTool implements Tool
      */
     private const int MAX_PER_PAGE = 25;
 
+    /** @var list<string> */
+    private const array ARGUMENTS = ['filter', 'sort', 'per_page', 'page', 'lookup', 'include'];
+
     /** @return class-string */
     abstract protected function actionClass(): string;
 
@@ -631,6 +634,8 @@ abstract class BaseReadListTool implements Tool
 
     private function buildHttpRequest(Request $request): HttpRequest
     {
+        FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
+
         $input = [];
 
         $filter = $request['filter'] ?? null;

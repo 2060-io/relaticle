@@ -587,6 +587,37 @@ it('rejects custom_fields sent as a string instead of returning every row', func
         ->and($result['error'])->toContain('object keyed by field code');
 });
 
+it('names the replacement for an argument the list tools no longer take', function (string $argument, string $replacement): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    Task::factory()->for($user->currentWorkspace)->create(['title' => 'Anything']);
+
+    $result = json_decode((new ListTasksTool)->handle(new Request([$argument => 'x'])), true);
+
+    expect($result)->toBe(['error' => "{$argument} was replaced. Use {$replacement}."]);
+})->with([
+    'search' => ['search', 'name or title with $contains'],
+    'created_after' => ['created_after', 'created_at with $gte'],
+    'assignee_ids' => ['assignee_ids', 'assignees with $in'],
+]);
+
+it('rejects an argument a list tool does not take instead of listing every record', function (string $argument, mixed $value): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    Task::factory()->for($user->currentWorkspace)->create(['title' => 'Anything']);
+
+    $result = json_decode((new ListTasksTool)->handle(new Request([$argument => $value])), true);
+
+    expect($result)->toHaveKey('error')
+        ->and($result['error'])->toContain("{$argument} is not an argument of this tool");
+})->with([
+    'the custom_fields object this tool took before' => ['custom_fields', ['status' => ['$eq' => 'Done']]],
+    'a filter name sent beside filter' => ['assigned_to_me', true],
+    'a misspelled filter' => ['filters', ['title' => ['$eq' => 'x']]],
+]);
+
 it('treats an empty filter string as no filter', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);

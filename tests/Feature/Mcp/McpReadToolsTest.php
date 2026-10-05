@@ -244,6 +244,30 @@ it('publishes one filter object and no flat filter params on every list tool', f
     'notes' => ListNotesTool::class,
 ]);
 
+it('names the replacement for an argument a list tool no longer takes', function (string $toolClass, string $argument, string $replacement): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    RelaticleServer::actingAs($this->user)
+        ->tool($toolClass, [$argument => 'x'])
+        ->assertHasErrors(["{$argument} was replaced. Use {$replacement}."]);
+})->with([
+    'search' => [ListCompaniesTool::class, 'search', 'name or title with $contains'],
+    'created_after' => [ListPeopleTool::class, 'created_after', 'created_at with $gte'],
+    'created_before' => [ListNotesTool::class, 'created_before', 'created_at with $lte'],
+    'company_id' => [ListOpportunitiesTool::class, 'company_id', 'company (or companies) with $in'],
+    'assignee_ids' => [ListTasksTool::class, 'assignee_ids', 'assignees with $in'],
+]);
+
+it('rejects an argument a list tool does not take instead of listing every record', function (string $toolClass, string $argument): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool($toolClass, [$argument => true])
+        ->assertHasErrors(["{$argument} is not an argument of this tool"]);
+})->with([
+    'a filter name sent beside filter' => [ListTasksTool::class, 'assigned_to_me'],
+    'creation_source beside filter' => [ListCompaniesTool::class, 'creation_source'],
+    'a misspelled filter' => [ListCompaniesTool::class, 'filters'],
+]);
+
 it('names a registered tool as the source of the filter codes on every list tool', function (string $toolClass): void {
     $description = resolve($toolClass)->toArray()['inputSchema']['properties']['filter']['description'];
     $registeredNames = array_map(
