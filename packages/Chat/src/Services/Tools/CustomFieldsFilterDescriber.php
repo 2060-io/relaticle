@@ -39,12 +39,12 @@ final readonly class CustomFieldsFilterDescriber
                 $rules[$entry['type']] ??= "- {$entry['type']}: takes {$entry['operand']}";
             }
 
-            $line .= '; example: '.CustomFieldFilterSchema::json($entry['example']);
-            $line .= isset($entry['nested_example']) ? '; nested example: '.CustomFieldFilterSchema::json($entry['nested_example']) : '';
+            $line .= '; example: '.$this->exampleJson($entry['example']);
+            $line .= isset($entry['nested_example']) ? '; nested example: '.$this->exampleJson($entry['nested_example']) : '';
             $lines[] = $line.')';
 
             if (isset($entry['nested_custom_field_example'])) {
-                $nestedExample ??= CustomFieldFilterSchema::json([$name => $entry['nested_custom_field_example']]);
+                $nestedExample ??= $this->exampleJson([$name => $entry['nested_custom_field_example']]);
             }
         }
 
@@ -57,7 +57,7 @@ final readonly class CustomFieldsFilterDescriber
         }
 
         $lines[] = '';
-        $lines[] = 'Example: '.CustomFieldFilterSchema::json(EntityFilters::example($entity));
+        $lines[] = 'Example: '.$this->exampleJson(EntityFilters::example($entity));
 
         $customFieldExample = $this->vocabulary->firstCustomFieldExample($user, $entity);
 
@@ -71,7 +71,7 @@ final readonly class CustomFieldsFilterDescriber
         array_push($lines, ...$this->customFieldLines($customFields, $types));
 
         $lines[] = '';
-        $lines[] = 'Custom field example: '.CustomFieldFilterSchema::json($customFieldExample);
+        $lines[] = 'Custom field example: '.$this->exampleJson($customFieldExample);
 
         return implode("\n", $lines);
     }
@@ -93,9 +93,9 @@ final readonly class CustomFieldsFilterDescriber
 
         foreach ($types as $type => $entry) {
             $line = "- {$type}: operators ".implode(', ', $entry['operators']);
-            $line .= isset($entry['sub_fields']) ? '; sub-field domain takes '.implode(', ', $entry['sub_fields']['domain']['operators'])." and matches {$entry['sub_fields']['domain']['matches']}, example ".CustomFieldFilterSchema::json($entry['sub_fields']['domain']['example']) : '';
+            $line .= isset($entry['sub_fields']) ? '; sub-field domain takes '.implode(', ', $entry['sub_fields']['domain']['operators'])." and matches {$entry['sub_fields']['domain']['matches']}, example ".$this->exampleJson($entry['sub_fields']['domain']['example']) : '';
             $line .= isset($entry['matching']) ? "; values match {$entry['matching']}" : '';
-            $lines[] = $line.(isset($entry['example']) ? '; example '.CustomFieldFilterSchema::json($entry['example']) : '');
+            $lines[] = $line.(isset($entry['example']) ? '; example '.$this->exampleJson($entry['example']) : '');
         }
 
         $lines[] = '';
@@ -105,9 +105,21 @@ final readonly class CustomFieldsFilterDescriber
             $name = PromptText::sanitize($entry['name'], 120);
             $options = isset($entry['options']) ? '; one of: "'.implode('", "', array_map(fn (string $option): string => PromptText::sanitize($option, 120), $entry['options'])).'"' : '';
             $line = "- {$code} ({$name}, {$entry['type']}{$options}";
-            $lines[] = $line.(isset($entry['example']) ? '; example '.CustomFieldFilterSchema::json($entry['example']) : '').')';
+            $lines[] = $line.(isset($entry['example']) ? '; example '.$this->exampleJson($entry['example']) : '').')';
         }
 
         return $lines;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $example
+     */
+    private function exampleJson(array $example): string
+    {
+        array_walk_recursive($example, static function (mixed &$leaf): void {
+            $leaf = is_string($leaf) ? PromptText::sanitize($leaf, 120) : $leaf;
+        });
+
+        return CustomFieldFilterSchema::json($example);
     }
 }
