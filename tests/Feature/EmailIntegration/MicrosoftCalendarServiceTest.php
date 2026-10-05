@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use Relaticle\EmailIntegration\Data\CalendarEventData;
 use Relaticle\EmailIntegration\Data\CalendarSyncResult;
 use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
 use Relaticle\EmailIntegration\Exceptions\CalendarSyncTokenExpired;
@@ -545,6 +546,49 @@ it('fetches changes from every stored Graph window cursor', function (): void {
             'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=W1-NEW',
             'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=W2-NEW',
         ]);
+});
+
+it('keeps an event one window holds when the other windows report it removed', function (): void {
+    Http::preventStrayRequests();
+    Http::fake([
+        'https://graph.microsoft.com/v1.0/me/calendarView/delta*' => function (Request $request) {
+            if (str_contains(urldecode($request->url()), '$deltatoken=W2')) {
+                return Http::response([
+                    'value' => [[
+                        'id' => 'evt-now',
+                        'subject' => 'First look',
+                        'start' => ['dateTime' => '2026-10-07T17:30:00', 'timeZone' => 'UTC'],
+                        'end' => ['dateTime' => '2026-10-07T18:00:00', 'timeZone' => 'UTC'],
+                        'isCancelled' => false,
+                        'organizer' => ['emailAddress' => ['address' => 'org@example.com']],
+                        'attendees' => [],
+                    ]],
+                    '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=W2-NEW',
+                ]);
+            }
+
+            return Http::response([
+                'value' => [
+                    ['id' => 'evt-now', '@removed' => ['reason' => 'deleted']],
+                    ['id' => 'evt-gone', '@removed' => ['reason' => 'deleted']],
+                ],
+                '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=NEW',
+            ]);
+        },
+    ]);
+
+    $result = new MicrosoftCalendarService(makeAzureCalendarAccount(), resolve(MicrosoftGraphClientFactory::class))
+        ->fetchDelta(microsoftCalendarSyncCursor(
+            'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=W1',
+            'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=W2',
+            'https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=W3',
+        ));
+
+    expect(array_map(fn (CalendarEventData $event): array => [$event->providerEventId, $event->status], $result->events))->toBe([
+        ['evt-gone', 'cancelled'],
+        ['evt-now', 'confirmed'],
+        ['evt-gone', 'cancelled'],
+    ]);
 });
 
 it('expires a raw Graph delta URL so earlier windows are rebuilt', function (): void {
