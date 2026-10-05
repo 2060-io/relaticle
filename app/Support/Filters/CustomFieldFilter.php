@@ -75,6 +75,7 @@ final readonly class CustomFieldFilter implements Filter
 
         foreach ($value as $fieldCode => $operators) {
             $field = $fields[$fieldCode];
+            $valueColumn = $field->getValueColumn();
             $supportedOperators = CustomFieldFilterSchema::operatorsForType($field->type);
 
             if (! is_array($operators) || $operators === []) {
@@ -96,7 +97,7 @@ final readonly class CustomFieldFilter implements Filter
                 $operand = $this->resolveOptions($fieldCode, $operator, $entry, $operand);
                 $operand = $this->spellings($field, $operator, $operand);
 
-                $this->applyCondition($query, $field, $field->getValueColumn(), $operator, $operand);
+                $this->applyCondition($query, $field, $valueColumn, $operator, $operand);
             }
         }
     }

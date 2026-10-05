@@ -114,7 +114,7 @@ final readonly class RelationFilter implements Filter
         }
 
         // Records that predate the ULID migration hold upper-case ids, and every record created since holds lower-case ones.
-        return array_values(array_unique([...array_map(strtolower(...), $ids), ...array_map(strtoupper(...), $ids)]));
+        return [...array_map(strtolower(...), $ids), ...array_map(strtoupper(...), $ids)];
     }
 
     /**
