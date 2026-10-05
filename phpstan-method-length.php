@@ -75,7 +75,6 @@ return [
                 'Relaticle\Chat\Tools\CustomField\SetCustomFieldOptionsTool::handle' => 109,
                 'Relaticle\Chat\Tools\CustomField\UpdateCustomFieldTool::handle' => 145,
                 'Relaticle\Chat\Tools\SearchCrmTool::handle' => 75,
-                'Relaticle\Documentation\Support\DocsRepository::build' => 71,
                 'Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction::execute' => 77,
                 'Relaticle\EmailIntegration\Actions\ConnectAccountAction::execute' => 115,
                 'Relaticle\EmailIntegration\Actions\LinkEmailAction::link' => 111,
