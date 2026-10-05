@@ -37,6 +37,28 @@ function migrationFiles(): array
     return $files;
 }
 
+/**
+ * @param  list<string>  $directories
+ * @return list<string>
+ */
+function phpFilesUnder(array $directories): array
+{
+    $files = [];
+
+    foreach (array_filter($directories, is_dir(...)) as $directory) {
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getExtension() === 'php') {
+                $files[] = $file->getPathname();
+            }
+        }
+    }
+
+    sort($files);
+
+    return $files;
+}
+
 it('keeps migrations forward-only (no down methods)', function (): void {
     $offenders = array_values(array_filter(
         migrationFiles(),
@@ -968,20 +990,17 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
 
 it('names a class in a domain folder of Queries with the Query suffix', function (): void {
     $root = dirname(__DIR__, 2);
-    $grammarFolders = ['Filters', 'Sorts', 'Concerns', 'Contracts'];
 
-    $files = [
-        ...glob($root.'/app/Queries/*/*.php') ?: [],
-        ...glob($root.'/packages/*/src/Queries/*.php') ?: [],
-        ...glob($root.'/packages/*/src/Queries/*/*.php') ?: [],
-    ];
+    $domainFolders = array_filter(
+        glob($root.'/app/Queries/*', GLOB_ONLYDIR) ?: [],
+        static fn (string $folder): bool => ! in_array(basename($folder), ['Filters', 'Sorts', 'Concerns', 'Contracts'], true),
+    );
 
     $offenders = array_values(array_map(
         static fn (string $file): string => str_replace($root.'/', '', $file),
         array_filter(
-            $files,
-            static fn (string $file): bool => ! in_array(basename(dirname($file)), $grammarFolders, true)
-                && ! str_ends_with(basename($file, '.php'), 'Query'),
+            phpFilesUnder([...$domainFolders, ...glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: []]),
+            static fn (string $file): bool => ! str_ends_with(basename($file, '.php'), 'Query'),
         ),
     ));
 
@@ -994,16 +1013,10 @@ it('names a class in a domain folder of Queries with the Query suffix', function
 it('keeps reads out of the Actions folders', function (): void {
     $root = dirname(__DIR__, 2);
 
-    $files = [
-        ...glob($root.'/app/Actions/*/*.php') ?: [],
-        ...glob($root.'/packages/*/src/Actions/*.php') ?: [],
-        ...glob($root.'/packages/*/src/Actions/*/*.php') ?: [],
-    ];
-
     $offenders = array_values(array_map(
         static fn (string $file): string => str_replace($root.'/', '', $file),
         array_filter(
-            $files,
+            phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]),
             static fn (string $file): bool => preg_match('/^(List|Find|Search|Get|Aggregate)[A-Z]/', basename($file, '.php')) === 1,
         ),
     ));
@@ -1011,6 +1024,29 @@ it('keeps reads out of the Actions folders', function (): void {
     expect($offenders)->toBe(
         [],
         'An action is a write. A reusable read is a *Query class under Queries (.ai/rules/queries.md): '.implode(', ', $offenders),
+    );
+});
+
+it('guards every Queries folder against writes in phpstan.neon', function (): void {
+    $root = dirname(__DIR__, 2);
+    $neon = (string) file_get_contents($root.'/phpstan.neon');
+
+    $namespaces = [
+        'App\\Queries',
+        ...array_map(
+            static fn (string $folder): string => 'Relaticle\\'.basename(dirname($folder, 2)).'\\Queries',
+            glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
+        ),
+    ];
+
+    $unguarded = array_values(array_filter(
+        $namespaces,
+        static fn (string $namespace): bool => ! str_contains($neon, "- {$namespace}\n"),
+    ));
+
+    expect($unguarded)->toBe(
+        [],
+        'List each under guardedNamespaces of EloquentWriteOutsideActionRule (.ai/rules/queries.md): '.implode(', ', $unguarded),
     );
 });
 

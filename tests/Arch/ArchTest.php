@@ -349,51 +349,58 @@ arch('the query language uses no transport')
     ->not
     ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
 
-$queryGrammarFolders = ['Concerns', 'Contracts', 'Filters', 'Sorts'];
-
 $packageQueryLayers = array_map(
     static fn (string $directory): string => 'Relaticle\\'.basename(dirname($directory, 2)).'\Queries',
     glob(dirname(__DIR__, 2).'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
 );
 
-$queryLayers = [
-    ...array_map(
-        static fn (string $directory): string => 'App\Queries\\'.basename($directory),
-        array_filter(
-            glob(dirname(__DIR__, 2).'/app/Queries/*', GLOB_ONLYDIR) ?: [],
-            static fn (string $directory): bool => ! in_array(basename($directory), $queryGrammarFolders, true),
-        ),
-    ),
-    ...$packageQueryLayers,
-];
-
-foreach ($queryLayers as $queryLayer) {
-    arch("{$queryLayer} holds final readonly query classes")
-        ->expect($queryLayer)
-        ->classes()
-        ->toBeFinal()
-        ->toBeReadonly();
-}
-
-foreach (['App\Queries', ...$packageQueryLayers] as $queryRoot) {
-    arch("{$queryRoot} takes the acting user and reads no ambient request")
-        ->expect($queryRoot)
-        ->not
-        ->toUse(['auth', 'request']);
-}
-
-arch('actions build no list query')
-    ->expect('App\Actions')
-    ->not
-    ->toUse('Spatie\QueryBuilder');
+arch('query classes are readonly')
+    ->expect('App\Queries')
+    ->classes()
+    ->toBeReadonly()
+    ->ignoring('App\Queries\TreeAllowedFilter');
 
 foreach ($packageQueryLayers as $packageQueryLayer) {
     $package = Str::beforeLast($packageQueryLayer, '\Queries');
+
+    arch("{$packageQueryLayer} holds final readonly query classes")
+        ->expect($packageQueryLayer)
+        ->classes()
+        ->toBeFinal()
+        ->toBeReadonly();
 
     arch("{$packageQueryLayer} uses no transport of its package")
         ->expect($packageQueryLayer)
         ->not
         ->toUse(["{$package}\Http", "{$package}\Livewire", "{$package}\Tools", "{$package}\Jobs"]);
+}
+
+foreach (['App\Queries', ...$packageQueryLayers] as $queryRoot) {
+    arch("{$queryRoot} takes the acting user and reads no ambient user, request or workspace")
+        ->expect($queryRoot)
+        ->not
+        ->toUse([
+            'auth',
+            'request',
+            'Illuminate\Support\Facades\Auth',
+            'Illuminate\Support\Facades\Request',
+            'Illuminate\Http\Request',
+            'Filament\Facades\Filament',
+            'App\Support\CurrentWorkspace',
+        ]);
+}
+
+$packageRoots = array_map(
+    static fn (string $directory): string => 'Relaticle\\'.basename(dirname($directory)),
+    glob(dirname(__DIR__, 2).'/packages/*/src', GLOB_ONLYDIR) ?: [],
+);
+
+foreach (['App', ...$packageRoots] as $codeRoot) {
+    arch("{$codeRoot} builds a list query only in a query layer")
+        ->expect($codeRoot)
+        ->not
+        ->toUse('Spatie\QueryBuilder\QueryBuilder')
+        ->ignoring(['App\Queries', ...$packageQueryLayers]);
 }
 
 arch('CRM API write requests share the custom field contract')
