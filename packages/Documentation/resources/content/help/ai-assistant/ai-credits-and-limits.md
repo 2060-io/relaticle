@@ -2,7 +2,7 @@
 title: AI credits and rate limits
 description: How assistant messages spend credits, what each plan includes monthly, and what happens at zero.
 order: 4
-updated: "2026-10-02"
+updated: "2026-10-05"
 related: [help/ai-assistant/choose-an-ai-model, help/workspace/billing-and-plans]
 ---
 

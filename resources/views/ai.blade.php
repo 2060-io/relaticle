@@ -55,7 +55,7 @@
     } else {
         $includedPlanQuestion = __('Is :name included in the free plan?', ['name' => $assistantName]);
         $includedPlanAnswer = __(
-            'Yes. Every Relaticle Cloud workspace gets :name with a :credits-credit monthly allowance on the free-tier model. A self-hosted install ships without a provider. You add your own key or local model, and pay that provider directly.',
+            'Yes. Every workspace on the Free plan gets :name with a :credits-credit monthly allowance. A self-hosted install ships without a provider. You add your own key or local model, and pay that provider directly.',
             ['name' => $assistantName, 'credits' => $freeCredits]
         );
     }
@@ -338,7 +338,7 @@
                     </div>
                     <div>
                         <h3 class="font-display text-base font-semibold text-gray-900 dark:text-white mb-1.5">
-                            {{ __('Nothing writes without your approval') }}
+                            {{ __(':name never writes without your approval', ['name' => $assistantName]) }}
                         </h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
                             {{ __('Every proposed create, update, or delete renders as a card showing the old value and the new one. You approve or reject it; nothing saves until you do. An unanswered proposal expires after :duration.', ['duration' => $pendingActionExpiry]) }}

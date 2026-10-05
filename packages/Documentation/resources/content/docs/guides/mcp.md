@@ -2,7 +2,7 @@
 title: MCP Server
 description: Read the reference for Relaticle's 39 MCP tools, with OAuth and personal access token setup, custom field access and direct writes.
 order: 2
-updated: "2026-09-15"
+updated: "2026-10-05"
 ---
 
 MCP (Model Context Protocol) lets AI assistants like Claude work directly with your Relaticle CRM data. Instead of copy-pasting between tools, your AI assistant can list companies, create tasks, update people, and more -- all from a natural conversation.

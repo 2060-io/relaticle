@@ -2,7 +2,7 @@
 title: Ask the assistant about your data
 description: Chat with your CRM in plain language. Search records, summarise your pipeline, and pull quick answers.
 order: 1
-updated: "2026-08-13"
+updated: "2026-10-05"
 related: [help/ai-assistant/approve-what-the-assistant-changes, help/ai-assistant/ai-credits-and-limits, help/getting-started/find-anything-with-search-and-filters]
 ---
 

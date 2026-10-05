@@ -357,7 +357,7 @@ it('does not overstate the self-hoster\'s lever over the credit cap', function (
     $this->get('/pricing')
         ->assertOk()
         ->assertSee('no plan removes metering entirely')
-        ->assertSee("doesn't reset the current period's balance")
+        ->assertSee('reset its credit period from the sysadmin panel')
         ->assertDontSee('raising or removing that cap is a matter of updating your own workspace\'s plan; there is no separate self-hosted billing UI for it.');
 });
 

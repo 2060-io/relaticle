@@ -2,7 +2,7 @@
 title: Approve what the assistant changes
 description: Every create, update, or delete the AI proposes waits for your review. Nothing is saved until you approve it.
 order: 2
-updated: "2026-08-13"
+updated: "2026-10-05"
 related: [help/ai-assistant/ask-questions-about-your-data, help/getting-started/use-custom-fields]
 ---
 

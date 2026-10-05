@@ -94,7 +94,7 @@
                 );
 
                 $selfHostedCreditAnswer = __(
-                    'No. Self-hosting does not disable credit metering. Self-hosted installs default to the Free plan\'s :credits-credit monthly allowance, and self-hosters can raise their own workspace\'s plan value in the database, but no plan removes metering entirely: the highest built-in plan caps at :enterpriseCredits credits a month. Changing the plan value alone doesn\'t reset the current period\'s balance. That happens once the existing period ends.',
+                    'No. Self-hosting does not disable credit metering. Self-hosted installs default to the Free plan\'s :credits-credit monthly allowance, and a system administrator can raise a workspace\'s plan and reset its credit period from the sysadmin panel, but no plan removes metering entirely: the highest built-in plan caps at :enterpriseCredits credits a month.',
                     ['credits' => $freeCredits, 'enterpriseCredits' => $enterpriseCredits]
                 );
 
