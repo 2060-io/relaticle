@@ -38,18 +38,18 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
     public function handle(): void
     {
         try {
-            $domainName = self::sourceUrl($this->company);
+            $sourceUrl = self::sourceUrl($this->company);
 
-            if ($domainName === null) {
+            if ($sourceUrl === null) {
                 return;
             }
 
             $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
-                ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $domainName))
+                ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $sourceUrl))
                 ->each
                 ->delete();
 
-            $favicon = Favicon::driver('high-quality')->fetch($domainName);
+            $favicon = Favicon::driver('high-quality')->fetch($sourceUrl);
             $url = $favicon?->getFaviconUrl();
 
             if ($url === null) {
@@ -82,7 +82,7 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
                 ->usingFileName("logo.{$extension}")
                 ->usingName('company_logo')
                 ->withCustomProperties([
-                    'domain' => $domainName,
+                    'domain' => $sourceUrl,
                     'original_size' => $favicon->getIconSize(),
                     'icon_type' => $favicon->getIconType(),
                     'fetched_at' => now()->toIso8601String(),
