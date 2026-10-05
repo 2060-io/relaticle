@@ -7,6 +7,11 @@ use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager
 use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Http;
+use Laravel\Ai\Exceptions\ProviderOverloadedException;
+use Laravel\Ai\Exceptions\RateLimitedException;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\TextResponse;
@@ -301,3 +306,28 @@ it('regenerates legacy summaries without a permission fingerprint', function ():
         ->assertMountedActionModalSee('Verified summary')
         ->assertMountedActionModalDontSee('Legacy unscoped summary');
 });
+
+it('shows a failure notice instead of erroring when the AI provider rejects the summary request', function (int $status, string $reported): void {
+    config(['services.email_summary.provider' => 'openai', 'ai.providers.openai.key' => 'test-key']);
+    Http::preventStrayRequests();
+    Http::fake(['api.openai.com/*' => Http::response(['error' => ['message' => 'Provider rejected the request.']], $status)]);
+    Exceptions::fake();
+    $thread = makeThreadWithEmail();
+    $email = $thread->emails()->firstOrFail();
+    $person = People::factory()->create(['workspace_id' => $this->workspace->id, 'creator_id' => $this->owner->id]);
+    $person->emails()->attach($email->getKey());
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->mountAction('summarizeThread', arguments: ['emailId' => $email->getKey()])
+        ->assertMountedActionModalSee(__('filament/pages/record-emails.actions.summarize_thread.failed'));
+
+    Exceptions::assertReported($reported);
+    expect($thread->aiSummary()->exists())->toBeFalse();
+})->with([
+    'no credit or rate limited' => [429, RateLimitedException::class],
+    'invalid api key' => [401, RequestException::class],
+    'provider unavailable' => [503, ProviderOverloadedException::class],
+]);
