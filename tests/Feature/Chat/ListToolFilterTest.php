@@ -17,6 +17,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Support\CurrentWorkspace;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -259,6 +260,15 @@ it('sorts companies by the requested column and direction', function (): void {
 
     expect($descending[0]['attributes']['name'])->toBe('Zulu')
         ->and($ascending[0]['attributes']['name'])->toBe('Alpha');
+});
+
+it('offers only the custom fields a list can be sorted by', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    $sort = (new ListPeopleTool)->schema(new JsonSchemaTypeFactory)['sort']->toArray()['description'];
+
+    expect($sort)->toStartWith('Sort by one of: name, created_at, updated_at, job_title.');
 });
 
 it('reports an unknown sort column instead of failing silently', function (): void {

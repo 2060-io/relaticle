@@ -40,31 +40,22 @@ final readonly class CustomFieldFilterSchema
     private const array BOOLEAN_OPERATORS = ['$eq'];
 
     /**
-     * @return array<string, array<string, mixed>>
-     */
-    public function build(User $user, string $entityType): array
-    {
-        $fields = $this->resolveFilterableFields($user, $entityType);
-        $schema = [];
-
-        foreach ($fields as $field) {
-            $schema[$field->code] = [
-                'type' => 'object',
-                'description' => $field->name,
-                'properties' => self::operatorsForType($field->type),
-            ];
-        }
-
-        return $schema;
-    }
-
-    /**
      * @return array<int, AllowedSort>
      */
     public function allowedSorts(User $user, string $entityType): array
     {
-        return collect(array_keys($this->build($user, $entityType)))
-            ->map(fn (string $code): AllowedSort => AllowedSort::custom($code, new CustomFieldSort($entityType)))
+        return $this->sortableFields($user, $entityType)
+            ->map(fn (CustomField $field): AllowedSort => AllowedSort::custom($field->code, new CustomFieldSort($field)))
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function sortableCodes(User $user, string $entityType): array
+    {
+        return $this->sortableFields($user, $entityType)
+            ->map(fn (CustomField $field): string => $field->code)
             ->all();
     }
 
@@ -205,6 +196,17 @@ final readonly class CustomFieldFilterSchema
     private static function buildOperators(array $operators, string $jsonType, ?string $format = null): array
     {
         return array_fill_keys($operators, array_filter(['type' => $jsonType, 'format' => $format]));
+    }
+
+    /**
+     * @return Collection<int, CustomField>
+     */
+    private function sortableFields(User $user, string $entityType): Collection
+    {
+        // Postgres has no ordering operator for the json column that holds list values.
+        return $this->resolveFilterableFields($user, $entityType)
+            ->reject(fn (CustomField $field): bool => $field->getValueColumn() === 'json_value')
+            ->values();
     }
 
     /**

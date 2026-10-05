@@ -2,14 +2,19 @@
 
 declare(strict_types=1);
 
-use App\Models\CustomField;
+use App\Actions\CustomFields\CreateCustomField;
+use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Mcp\Servers\RelaticleServer;
+use App\Mcp\Tools\Opportunity\ListOpportunitiesTool;
+use App\Mcp\Tools\People\ListPeopleTool;
 use App\Models\Opportunity;
 use App\Models\User;
 use App\Support\CurrentWorkspace;
 use App\Support\Filters\CustomFieldSort;
-use Illuminate\Http\Request;
-use Spatie\QueryBuilder\AllowedSort;
-use Spatie\QueryBuilder\QueryBuilder;
+use Illuminate\Testing\Fluent\AssertableJson;
+use Tests\Helpers\WorkspaceCustomField;
+
+mutates(CustomFieldSort::class, CustomFieldFilterSchema::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withPersonalWorkspace()->create();
@@ -18,70 +23,48 @@ beforeEach(function (): void {
     resolve(CurrentWorkspace::class)->set($this->workspace);
 });
 
-it('sorts opportunities by custom field value ascending', function (): void {
-    $opp1 = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'A']);
-    $opp2 = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'B']);
+function opportunityNamesSortedBy(User $user, string $field, string $direction): array
+{
+    $names = [];
 
-    $amountField = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->getKey())
-        ->where('entity_type', 'opportunity')
-        ->where('code', 'amount')
-        ->first();
+    RelaticleServer::actingAs($user)
+        ->tool(ListOpportunitiesTool::class, ['sort' => ['field' => $field, 'direction' => $direction]])
+        ->assertOk()
+        ->assertStructuredContent(function (AssertableJson $json) use (&$names): void {
+            $names = array_column(array_column($json->toArray()['items'], 'attributes'), 'name');
+            $json->etc();
+        });
 
-    expect($amountField)->not->toBeNull();
+    return $names;
+}
 
-    $opp1->saveCustomFieldValue($amountField, 50000);
-    $opp2->saveCustomFieldValue($amountField, 100000);
+it('sorts opportunities by a custom field in each direction', function (string $direction, array $expected): void {
+    $amount = WorkspaceCustomField::byCode($this->workspace->getKey(), 'opportunity', 'amount');
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Mid'])->saveCustomFieldValue($amount, 50000);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'High'])->saveCustomFieldValue($amount, 100000);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Low'])->saveCustomFieldValue($amount, 1000);
 
-    $request = new Request(['sort' => 'amount']);
+    expect(opportunityNamesSortedBy($this->user, 'amount', $direction))->toBe($expected);
+})->with([
+    'ascending' => ['asc', ['Low', 'Mid', 'High']],
+    'descending' => ['desc', ['High', 'Mid', 'Low']],
+]);
 
-    $results = QueryBuilder::for(
-        Opportunity::query()->where('workspace_id', $this->workspace->getKey())->withCustomFieldValues(),
-        $request,
-    )
-        ->allowedSorts(
-            AllowedSort::custom('amount', new CustomFieldSort('opportunity')),
-        )
-        ->get();
+it('sorts by a custom field created after an earlier sort', function (): void {
+    $high = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'High']);
+    $low = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Low']);
+    opportunityNamesSortedBy($this->user, 'amount', 'asc');
 
-    $names = $results->pluck('name')->values();
-    $indexA = $names->search('A');
-    $indexB = $names->search('B');
+    $score = resolve(CreateCustomField::class)->execute($this->user, ['entity_type' => 'opportunity', 'name' => 'Score', 'code' => 'score', 'type' => 'number']);
+    $high->saveCustomFieldValue($score, 90);
+    $low->saveCustomFieldValue($score, 10);
 
-    expect($indexA)->toBeLessThan($indexB);
+    expect(opportunityNamesSortedBy($this->user, 'score', 'asc'))->toBe(['Low', 'High'])
+        ->and(opportunityNamesSortedBy($this->user, 'score', 'desc'))->toBe(['High', 'Low']);
 });
 
-it('sorts opportunities by custom field value descending', function (): void {
-    $opp1 = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'A']);
-    $opp2 = Opportunity::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'B']);
-
-    $amountField = CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $this->workspace->getKey())
-        ->where('entity_type', 'opportunity')
-        ->where('code', 'amount')
-        ->first();
-
-    expect($amountField)->not->toBeNull();
-
-    $opp1->saveCustomFieldValue($amountField, 50000);
-    $opp2->saveCustomFieldValue($amountField, 100000);
-
-    $request = new Request(['sort' => '-amount']);
-
-    $results = QueryBuilder::for(
-        Opportunity::query()->where('workspace_id', $this->workspace->getKey())->withCustomFieldValues(),
-        $request,
-    )
-        ->allowedSorts(
-            AllowedSort::custom('amount', new CustomFieldSort('opportunity')),
-        )
-        ->get();
-
-    $names = $results->pluck('name')->values();
-    $indexA = $names->search('A');
-    $indexB = $names->search('B');
-
-    expect($indexB)->toBeLessThan($indexA);
-});
+it('refuses a sort by a custom field that holds a list', function (string $field): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['sort' => ['field' => $field]])
+        ->assertHasErrors(["Requested sort(s) `{$field}` is not allowed. Allowed sort(s) are `name, created_at, updated_at, job_title`."]);
+})->with(['emails', 'phone_number', 'linkedin']);

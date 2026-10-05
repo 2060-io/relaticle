@@ -842,6 +842,12 @@ it('takes sort as a list and fields as a string, a list or a map', function (arr
     'empty include list' => [['sort' => 'name', 'include' => []]],
 ]);
 
+it('refuses a sort by a custom field that holds a list instead of failing', function (): void {
+    $this->getJson('/api/v1/people?sort=emails')
+        ->assertBadRequest()
+        ->assertJsonPath('message', 'Requested sort(s) `emails` is not allowed. Allowed sort(s) are `name, created_at, updated_at, job_title`.');
+});
+
 it('pages with a cursor under a filter and a native sort', function (): void {
     foreach (['Delta', 'Alpha', 'Echo', 'Bravo', 'Charlie'] as $name) {
         $this->postJson('/api/v1/opportunities', ['name' => "Deal {$name}", 'custom_fields' => ['amount' => 20000]])->assertCreated();

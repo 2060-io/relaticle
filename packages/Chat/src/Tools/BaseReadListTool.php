@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools;
 
 use App\Enums\CrmEntity;
+use App\Mcp\Schema\CustomFieldFilterSchema;
 use App\Models\CustomField;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\Filters\EntityFilters;
 use App\Support\Filters\FilterTree;
-use App\Support\Filters\FilterVocabulary;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -118,7 +118,7 @@ abstract class BaseReadListTool implements Tool
         if ($user instanceof User) {
             $describer = resolve(CustomFieldsFilterDescriber::class);
             $filterDescription = $describer->describe($user, $entityType);
-            $sortable = array_merge($sortable, resolve(FilterVocabulary::class)->customFieldCodes($user, CrmEntity::from($entityType)));
+            $sortable = array_merge($sortable, resolve(CustomFieldFilterSchema::class)->sortableCodes($user, $entityType));
         }
 
         $fields = [

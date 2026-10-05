@@ -71,14 +71,6 @@ final readonly class FilterVocabulary
     }
 
     /**
-     * @return list<string>
-     */
-    public function customFieldCodes(User $user, CrmEntity $entity): array
-    {
-        return array_keys($this->customFieldEntries($user, $entity)['fields']);
-    }
-
-    /**
      * @return array{types: array<string, array<string, mixed>>, fields: array<string, array<string, mixed>>}
      */
     private function customFieldEntries(User $user, CrmEntity $entity): array
