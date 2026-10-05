@@ -10,7 +10,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Queries\Companies\CompaniesQuery;
-use App\Queries\EntityQuery;
+use App\Queries\Contracts\EntityQuery;
 use App\Queries\Notes\NotesQuery;
 use App\Queries\Opportunities\OpportunitiesQuery;
 use App\Queries\People\PeopleQuery;

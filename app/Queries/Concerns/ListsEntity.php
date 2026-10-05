@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Queries;
+namespace App\Queries\Concerns;
 
 use App\Data\ListQuery;
-use App\Enums\CrmEntity;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
+use App\Queries\EntityFilters;
+use App\Queries\FilterErrors;
+use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
@@ -14,19 +17,8 @@ use Spatie\QueryBuilder\AllowedInclude;
 use Spatie\QueryBuilder\QueryBuilder;
 use UnexpectedValueException;
 
-abstract readonly class EntityQuery
+trait ListsEntity
 {
-    abstract public static function entity(): CrmEntity;
-
-    /** @return list<string> */
-    abstract public static function fields(): array;
-
-    /** @return list<string> */
-    abstract public static function includes(): array;
-
-    /** @return array<string, string> */
-    abstract public static function countIncludes(): array;
-
     /** @return list<string> */
     public static function sorts(): array
     {
@@ -34,7 +26,7 @@ abstract readonly class EntityQuery
     }
 
     /** @return QueryBuilder<Model> */
-    final public function for(User $user, ListQuery $list): QueryBuilder
+    public function for(User $user, ListQuery $list): QueryBuilder
     {
         $entity = static::entity();
         $model = $entity->model();
@@ -59,7 +51,7 @@ abstract readonly class EntityQuery
     }
 
     /** @return CursorPaginator<int, Model>|LengthAwarePaginator<int, Model> */
-    final public function paginate(User $user, ListQuery $list): CursorPaginator|LengthAwarePaginator
+    public function paginate(User $user, ListQuery $list): CursorPaginator|LengthAwarePaginator
     {
         $ordered = $this->for($user, $list)->orderBy('id');
 

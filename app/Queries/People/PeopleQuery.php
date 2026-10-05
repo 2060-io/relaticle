@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Queries\People;
 
 use App\Enums\CrmEntity;
-use App\Queries\EntityQuery;
+use App\Queries\Concerns\ListsEntity;
+use App\Queries\Contracts\EntityQuery;
 
-final readonly class PeopleQuery extends EntityQuery
+final readonly class PeopleQuery implements EntityQuery
 {
+    use ListsEntity;
+
     public static function entity(): CrmEntity
     {
         return CrmEntity::People;

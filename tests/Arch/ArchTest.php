@@ -19,7 +19,6 @@ use App\Mcp\Tools\BaseRelationshipTool;
 use App\Mcp\Tools\BaseShowTool;
 use App\Mcp\Tools\BaseUpdateTool;
 use App\Models\PersonalAccessToken;
-use App\Queries\EntityQuery;
 use App\Rules\ArrayExistsForWorkspace;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -82,7 +81,6 @@ arch('avoid open for extension')
         BaseDetachTool::class,
         BaseRelationshipTool::class,
         BaseCrmEntityRequest::class,
-        EntityQuery::class,
         ImportPage::class,
         PersonalAccessToken::class,
     ]);
@@ -108,7 +106,6 @@ arch('ensure no extends')
         BaseDetachTool::class,
         BaseRelationshipTool::class,
         BaseCrmEntityRequest::class,
-        EntityQuery::class,
         ImportPage::class,
     ]);
 
@@ -219,12 +216,6 @@ arch('avoid inheritance')
         'App\Support\ActivityLog\CleanActivityLogAction',
         // Subclasses spatie's AllowedFilter, the query builder's extension point.
         'App\Queries\TreeAllowedFilter',
-        // The five list queries state four facts over the shared EntityQuery base.
-        'App\Queries\Companies\CompaniesQuery',
-        'App\Queries\People\PeopleQuery',
-        'App\Queries\Opportunities\OpportunitiesQuery',
-        'App\Queries\Tasks\TasksQuery',
-        'App\Queries\Notes\NotesQuery',
         // Hooks slug uniqueness by extending sluggable's GenerateSlugAction,
         // which is the package's documented extension point.
         'App\Support\ReservedSlugAwareGenerateSlugAction',
