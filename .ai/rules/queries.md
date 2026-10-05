@@ -37,8 +37,9 @@ without the `Filter` or `Sort` suffix. The Pest Laravel preset fails an enum out
 `Query` suffix ("names a class in a domain folder of Queries with the Query suffix"). It also
 fails a `List*`, `Find*`, `Search*`, `Get*` or `Aggregate*` class under `Actions` ("keeps reads
 out of the Actions folders"). `tests/Arch/ArchTest.php` fails a query class that is not `final
-readonly` ("holds final readonly query classes"). A new domain folder joins `$queryLayers` in
-that file, or the gate skips it.
+readonly` ("holds final readonly query classes"). The gate reads the folders under
+`app/Queries` and each package's `src/Queries`, so a new domain folder is covered without an
+edit.
 
 The folders name roles, not layers. `EntityFilters` builds the classes in `Filters`, and they
 use `Operand` and `FilterErrors` from the root.

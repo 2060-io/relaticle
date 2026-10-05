@@ -349,15 +349,22 @@ arch('the query language uses no transport')
     ->not
     ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
 
+$queryGrammarFolders = ['Concerns', 'Contracts', 'Filters', 'Sorts'];
+
+$packageQueryLayers = array_map(
+    static fn (string $directory): string => 'Relaticle\\'.basename(dirname($directory, 2)).'\Queries',
+    glob(dirname(__DIR__, 2).'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
+);
+
 $queryLayers = [
-    'App\Queries\Companies',
-    'App\Queries\Crm',
-    'App\Queries\CustomFields',
-    'App\Queries\Notes',
-    'App\Queries\Opportunities',
-    'App\Queries\People',
-    'App\Queries\Tasks',
-    'Relaticle\Chat\Queries',
+    ...array_map(
+        static fn (string $directory): string => 'App\Queries\\'.basename($directory),
+        array_filter(
+            glob(dirname(__DIR__, 2).'/app/Queries/*', GLOB_ONLYDIR) ?: [],
+            static fn (string $directory): bool => ! in_array(basename($directory), $queryGrammarFolders, true),
+        ),
+    ),
+    ...$packageQueryLayers,
 ];
 
 foreach ($queryLayers as $queryLayer) {
@@ -368,7 +375,7 @@ foreach ($queryLayers as $queryLayer) {
         ->toBeReadonly();
 }
 
-foreach (['App\Queries', 'Relaticle\Chat\Queries'] as $queryRoot) {
+foreach (['App\Queries', ...$packageQueryLayers] as $queryRoot) {
     arch("{$queryRoot} takes the acting user and reads no ambient request")
         ->expect($queryRoot)
         ->not
@@ -380,10 +387,14 @@ arch('actions build no list query')
     ->not
     ->toUse('Spatie\QueryBuilder');
 
-arch('chat queries use no chat transport')
-    ->expect('Relaticle\Chat\Queries')
-    ->not
-    ->toUse(['Relaticle\Chat\Http', 'Relaticle\Chat\Livewire', 'Relaticle\Chat\Tools', 'Relaticle\Chat\Jobs']);
+foreach ($packageQueryLayers as $packageQueryLayer) {
+    $package = Str::beforeLast($packageQueryLayer, '\Queries');
+
+    arch("{$packageQueryLayer} uses no transport of its package")
+        ->expect($packageQueryLayer)
+        ->not
+        ->toUse(["{$package}\Http", "{$package}\Livewire", "{$package}\Tools", "{$package}\Jobs"]);
+}
 
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
