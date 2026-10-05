@@ -106,6 +106,17 @@ it('links a row to the company storing the legacy www spelling of its domain', f
     expect($result['https://www.acme.com'])->toBe($company->id);
 });
 
+it('links a row to the company storing its domain in another letter case', function (): void {
+    $company = Company::factory()->for($this->workspace)->create();
+    LegacyCompanyDomains::write($this->workspace, $company, ['Acme.COM']);
+
+    $resolver = new EntityLinkResolver($this->workspace->id);
+
+    $result = $resolver->batchResolve(EntityLink::company(), MatchableField::domain('custom_fields_domains'), ['acme.com']);
+
+    expect($result['acme.com'])->toBe($company->id);
+});
+
 it('matches a legacy-format value by the identical csv value and a canonical value by a formatted one', function (string $stored, string $csvValue): void {
     $field = WorkspaceCustomField::byCode($this->workspace->id, 'people', 'phone_number');
     $person = People::factory()->create(['workspace_id' => $this->workspace->id]);

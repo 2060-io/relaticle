@@ -812,6 +812,20 @@ it('rejects a cursor that is neither true nor a token from a previous page', fun
     'query string, made up token' => ['GET', 'abc'],
 ]);
 
+it('pages with a cursor through records that share a sort value', function (): void {
+    $companies = Company::factory()->recycle([$this->user, $this->workspace])->count(3)->create(['created_at' => '2026-05-01 10:00:00']);
+    $seen = [];
+    $cursor = true;
+
+    while ($cursor !== null) {
+        $page = $this->postJson('/api/v1/companies/query', ['cursor' => $cursor, 'per_page' => 1])->assertOk();
+        $seen[] = $page->json('data.0.id');
+        $cursor = $page->json('meta.next_cursor');
+    }
+
+    expect($seen)->toEqualCanonicalizing($companies->pluck('id')->all());
+});
+
 it('rejects a cursor from another sort order instead of failing', function (): void {
     Company::factory()->recycle([$this->user, $this->workspace])->count(3)->create();
 
