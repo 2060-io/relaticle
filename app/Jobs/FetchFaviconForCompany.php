@@ -11,12 +11,14 @@ use AshAllenDesign\FaviconFetcher\Facades\Favicon;
 use finfo;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -95,23 +97,15 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
 
     public static function sourceUrl(Company $company): ?string
     {
-        // The custom-fields package registers the tenant relation under the name
-        // `team`, so the relation has to be named rather than guessed.
-        $domainsField = $company->customFields()
-            ->whereBelongsTo($company->workspace, 'team')
-            ->where('code', CompanyField::DOMAINS->value)
-            ->first();
+        $domains = $company->customFieldValues()
+            ->whereHas('customField', fn (Builder $field): Builder => $field
+                ->where('code', CompanyField::DOMAINS->value)
+                ->where('tenant_id', $company->workspace_id))
+            ->with('customField')
+            ->first()
+            ?->getValue();
 
-        if ($domainsField === null) {
-            return null;
-        }
-
-        // Reading a value walks every custom field value on the company, and a company
-        // with more than one of them trips strict lazy loading outside production.
-        $company->load('customFieldValues.customField.options');
-
-        $domains = $company->getCustomFieldValue($domainsField);
-        $domain = is_array($domains) ? ($domains[0] ?? null) : $domains;
+        $domain = is_iterable($domains) ? Arr::first($domains) : $domains;
 
         if (blank($domain)) {
             return null;
