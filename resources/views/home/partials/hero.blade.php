@@ -47,7 +47,7 @@
 
                 <p class="mt-6 sm:mt-7 text-[15px] sm:text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto leading-relaxed tracking-[-0.01em]">
                     Open-source, self-hosted, and human-first.<br class="hidden sm:block"/>
-                    Built-in AI chat plus 39 MCP tools for external agents.
+                    Built-in AI chat plus {{ \App\Support\CompetitorFacts::mcpToolCount() }} MCP tools for external agents.
                 </p>
             </div>
 
@@ -162,7 +162,7 @@
 
                             @php
                                 $heroScreenshots = [
-                                    'pipeline' => ['widths' => [380, 640, 832, 1652], 'alt' => __('Relaticle opportunities board with deals grouped into pipeline stages, showing deal value and close date')],
+                                    'pipeline' => ['widths' => [380, 640, 832, 1652], 'alt' => __('Relaticle opportunities board grouped into pipeline stages, showing amount and close date')],
                                     'companies' => ['widths' => [1652], 'alt' => __('Relaticle companies list showing account owner, ICP status, and website domain for each company')],
                                     'custom-fields' => ['widths' => [1652], 'alt' => __('Relaticle custom fields settings showing field name, type, constraints, and properties for Opportunities')],
                                 ];

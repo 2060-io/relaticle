@@ -70,7 +70,7 @@
         [
             __('What can :name change in my CRM?', ['name' => $assistantName]),
             __(
-                'Anything you can change by hand: companies, people, opportunities, tasks, and notes, one record or a batch of up to :max. Every write still needs your approval first.',
+                'Companies, people, opportunities, tasks, and notes, one record or a batch of up to :max, plus custom fields and member invitations. It drafts emails for you to send and never sends mail itself. Every write needs your approval first.',
                 ['max' => $maxBatchSize]
             ),
         ],

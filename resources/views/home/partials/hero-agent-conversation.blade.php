@@ -149,7 +149,7 @@
 
             <span class="relative inline-flex shrink-0 items-center gap-1.5 text-micro font-medium text-gray-500 dark:text-gray-400">
                 <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500"></span>
-                <span>Done</span>
+                <span>Updated</span>
             </span>
 
             <span class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400">

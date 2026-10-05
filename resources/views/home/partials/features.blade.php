@@ -42,7 +42,7 @@
                     Built-in AI chat
                 </h3>
                 <p class="{{ $cardDesc }}">
-                    Ask {{ config('chat.assistant_name') }} about your CRM and make changes through chat. Review proposed updates and deletions before they run.
+                    Ask {{ config('chat.assistant_name') }} about your CRM and make changes through chat. Review every proposed change before it runs.
                 </p>
                 {{-- Mini chat-bubble preview (uses ai-fill for staggered width animation) --}}
                 <div class="mt-4 space-y-2">
@@ -75,7 +75,7 @@
                     Custom fields
                 </h3>
                 <p class="{{ $cardDesc }}">
-                    Capture the details that matter to your business. Add custom fields, connect related records, and show fields only when relevant.
+                    Capture the details that matter to your business. Add custom fields, connect related records, and encrypt sensitive values.
                 </p>
                 <div class="mt-4 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
                     @foreach([['Text', 'Company name...', false], ['Select', 'Industry', true]] as [$label, $placeholder, $hasArrow])
@@ -133,7 +133,7 @@
                     <div class="pipe-seg flex-[1] bg-gray-200 dark:bg-gray-700 rounded-r-full origin-left"></div>
                 </div>
                 <div class="mt-1.5 flex justify-between text-[10px] text-gray-500 dark:text-gray-500">
-                    @foreach(['Lead', 'Qualified', 'Proposal', 'Won'] as $stage)
+                    @foreach(['Prospecting', 'Qualification', 'Proposal', 'Closed Won'] as $stage)
                         <span>{{ $stage }}</span>
                     @endforeach
                 </div>
@@ -204,7 +204,7 @@
                         Start for free
                     </x-marketing.button>
                     <div class="mt-3 flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-500">
-                        <span>No credit card</span><span>&middot;</span><span>2,000+ tests</span><span>&middot;</span><span>AGPL-3.0</span>
+                        <span>No credit card</span><span>&middot;</span><span>6,000+ tests</span><span>&middot;</span><span>AGPL-3.0</span>
                     </div>
                 </div>
             </div>

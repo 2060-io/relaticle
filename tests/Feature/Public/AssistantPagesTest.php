@@ -89,7 +89,7 @@ it('says access continues on Cloud Pro after the trial rather than calling the c
 
     $text = assistantPageText($this->get('/crm-for-chatgpt')->assertOk()->getContent());
 
-    expect($text)->toContain('stays active on Cloud Pro after that')
+    expect($text)->toContain('the workspace needs a Cloud Pro subscription to stay active')
         ->and($text)->not->toContain('The connector is free');
 });
 

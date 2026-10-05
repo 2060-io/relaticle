@@ -84,7 +84,7 @@
         ['account', __('Your account'), __('How you sign in, and what protects the account.'), $account, null],
         ['workspace', __('Your workspace'), __('Who can reach a record, and how you see what they did.'), $workspace, null],
         ['ai', __('What the AI sees'), __('Three ways AI touches your records, and what leaves Relaticle in each.'), $ai, null],
-        $emailActive ? ['email', __('Email and calendar'), __('What happens when you connect a Google or Microsoft account.'), $email, $policyLink] : null,
+        $emailActive ? ['email', __('Email and calendar'), __('What happens when you connect a Google account.'), $email, $policyLink] : null,
         ['access', __('API and connector access'), __('Every token is scoped, and you can cut any of them off.'), $tokens, null],
         ['data', __('Your data stays yours'), __('Export it, delete it, or take it to your own server.'), $ownership, null],
     ]);

@@ -100,7 +100,7 @@
 
                 if ($billingActive) {
                     $selfHostedCreditAnswer .= ' '.__(
-                        'New Cloud workspaces start a :days-day Cloud Pro trial with :proCredits credits a month, and hosted access pauses when the trial ends without a subscription.',
+                        'New Cloud workspaces start a :days-day Cloud Pro trial with :proCredits credits, and hosted access pauses when the trial ends without a subscription.',
                         ['days' => $trialDays, 'proCredits' => $proCredits]
                     );
 
@@ -124,7 +124,7 @@
                 } else {
                     $hostedPriceCell = __('$0/mo per workspace');
                     $hostedUpdatesCell = __('Zero-downtime updates and automatic daily backups, handled for you');
-                    $hostedPlanAnswer = __('The hosted Cloud plan is $0/mo and includes unlimited users and data, the 39-tool MCP server, the REST API, all 22 custom field types, multi-team workspaces, zero-downtime updates, automatic daily backups, and email support. No credit card is required.');
+                    $hostedPlanAnswer = __('The hosted Cloud plan is $0/mo and includes unlimited users and data, the 39-tool MCP server, the REST API, all 20 custom field types, multiple workspaces, zero-downtime updates, automatic daily backups, and email support. No credit card is required.');
                     $planLimitAnswer = __(
                         'CRM data itself is never capped on any plan. Every workspace supports unlimited users, companies, people, opportunities, tasks, and notes, whether you\'re self-hosting or on the hosted Cloud plan. The AI assistant is metered, though: every workspace defaults to the Free plan\'s :credits credits a month, resetting every calendar month. That includes self-hosted installs; see "Are self-hosted installs exempt from AI credit limits?" below. Once they are used up, the assistant declines new chat requests until the reset; nothing else in the CRM is affected.',
                         ['credits' => $freeCredits]
@@ -158,14 +158,17 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-white/[0.06]">
-                            @foreach([
+                            @foreach(array_filter([
                                 [__('Users and records'), __('Unlimited'), __('Unlimited')],
                                 [__('AI assistant'), __('2,000 credits each month'), __('Usage agreed with your team')],
+                                \Laravel\Pennant\Feature::active(\App\Features\EmailIntegration::class)
+                                    ? [__('Email and calendar'), __('Gmail and Google Calendar sync'), __('Gmail and Google Calendar sync')]
+                                    : null,
                                 [__('Getting started'), __('Self-service setup'), __('Scoped implementation project')],
                                 [__('billing.comparison.integrations'), __('REST API and MCP server'), __('Custom integrations by agreement')],
                                 [__('Hosting and updates'), __('Managed by Relaticle'), __('Agreed deployment and maintenance')],
                                 [__('billing.comparison.support'), __('Email support'), __('Agreed support with the founding team')],
-                            ] as [$feature, $pro, $enterprise])
+                            ]) as [$feature, $pro, $enterprise])
                                 <tr class="block px-5 py-4 sm:table-row sm:p-0">
                                     <th scope="row" class="block pb-2 text-left font-semibold text-gray-900 dark:text-white sm:table-cell sm:px-5 sm:py-4 sm:align-top sm:font-medium">{{ $feature }}</th>
                                     <td data-label="{{ __('billing.plans.cloud_pro') }}:" class="block py-0.5 text-gray-600 before:mr-1.5 before:font-medium before:text-primary-700 before:content-[attr(data-label)] dark:text-gray-400 dark:before:text-primary-300 sm:table-cell sm:bg-primary/[0.04] sm:px-5 sm:py-4 sm:align-top sm:before:content-none dark:sm:bg-primary/[0.08]">{{ $pro }}</td>

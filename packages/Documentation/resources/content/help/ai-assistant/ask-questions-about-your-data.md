@@ -42,9 +42,8 @@ shows it, and you can dismiss the chip if you don't want that context.
   from your opportunity data.
 - **Your team**: who's in the workspace, for assigning work.
 
-For anything it can't do in chat (managing custom field definitions in bulk,
-importing files, inviting teammates), it links you to the right page instead
-of guessing.
+For anything it can't do in chat, such as importing a file, it links you to
+the right page instead of guessing.
 
 ## Manage your conversations
 

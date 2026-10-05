@@ -22,6 +22,8 @@ With the Relaticle MCP server, your AI assistant can:
 - **Read entity schemas** to understand your custom fields
 - **Get a CRM overview** with record counts and recent activity
 
+Writes made over MCP apply immediately. The approval card belongs to the assistant built into Relaticle, and an MCP client relies on its own confirmation prompts. The server exposes CRM records only: it does not send email or read synced mail and meetings.
+
 ---
 
 ## Connect to Relaticle
@@ -73,10 +75,9 @@ The MCP server endpoint is `https://mcp.relaticle.com`. ChatGPT and Claude use O
 
 ### ChatGPT
 
-1. Open **Settings → Security and login** and enable **Developer mode**.
-2. Open **ChatGPT Plugins** and select the plus button.
-3. Enter `Relaticle` and `https://mcp.relaticle.com`.
-4. Connect, sign in to Relaticle, and choose one workspace.
+1. Open the [Relaticle plugin](https://chatgpt.com/plugins/plugin_asdk_app_6a92c3af04a0819180ed6652ebe09961) in ChatGPT's plugin directory and click **Install plugin**.
+2. Sign in to Relaticle and choose one workspace.
+3. Start a message with **@Relaticle**.
 
 ### Claude
 
@@ -167,7 +168,7 @@ The server provides 39 tools. They cover account context, cross-entity discovery
 
 | Tool | Description |
 |------|-------------|
-| `who-ami-tool` | Get the authenticated user, current team, team members, and token abilities |
+| `who-ami-tool` | Get the authenticated user, current workspace, workspace members, and token abilities |
 
 ### Workspace intelligence
 
@@ -250,7 +251,7 @@ List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`.
 
 ## Schema Resources
 
-The server exposes five schema resources that describe each entity's fields, including any custom fields your team has configured:
+The server exposes five schema resources that describe each entity's fields, including any custom fields your workspace has configured, plus a summary resource with record counts:
 
 | Resource URI | Description |
 |---|---|
@@ -292,7 +293,7 @@ Your access token may be expired or invalid. Create a new one from **Settings > 
 
 ### No Data Returned
 
-The MCP server scopes all data to the team associated with your token. Make sure the token was created for the correct team and that the team has data.
+The MCP server scopes all data to the workspace associated with your token. Make sure the token was created for the correct workspace and that the workspace has data.
 
 ### Connection Refused
 
@@ -300,7 +301,7 @@ Verify the MCP URL is correct: `https://mcp.relaticle.com`.
 
 ### Custom Fields Not Showing
 
-Custom fields are team-specific. If you don't see them, confirm they're configured for your team in **Settings > Custom Fields**. Then call `get-crm-schema-tool` for the entity type.
+Custom fields are workspace-specific. If you don't see them, confirm they're configured for your workspace in **Settings > Custom Fields**. Then call `get-crm-schema-tool` for the entity type.
 
 ### Rate Limiting
 

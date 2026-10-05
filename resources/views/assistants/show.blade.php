@@ -59,7 +59,7 @@
     ];
 
     $costAnswer = $billingActive
-        ? __('The connector adds no charge and spends no AI credits. It needs an active Relaticle Cloud workspace. Every new workspace starts with a :days-day Cloud Pro trial, and stays active on Cloud Pro after that.', ['days' => $trialDays])
+        ? __('The connector adds no charge and spends no AI credits. It needs an active Relaticle Cloud workspace. Every new workspace starts with a :days-day Cloud Pro trial. After the trial, the workspace needs a Cloud Pro subscription to stay active.', ['days' => $trialDays])
         : __('The connector adds no charge and spends no AI credits. It needs a Relaticle Cloud workspace or a self-hosted install.');
 
     $faqs = [
@@ -69,7 +69,7 @@
         ],
         [
             __('Can :name change my records without asking me?', ['name' => $name]),
-            __('Yes, inside the workspace you approved. Changes made through the connector apply directly, so use the confirmation prompts :name gives you. The built-in assistant works differently: it proposes each change and waits for your approval.', ['name' => $name]),
+            __('Through the :name connector, yes. Changes made through the connector apply directly inside the workspace you approved, with no approval card in Relaticle, so use the confirmation prompts :name gives you. The assistant built into Relaticle works differently: it proposes every change and waits for your approval.', ['name' => $name]),
         ],
         [
             __('What does it cost?'),

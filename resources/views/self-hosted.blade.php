@@ -40,7 +40,7 @@
         ],
         [
             __('What does the AI assistant need to work on a self-hosted install?'),
-            __('A provider it can call. Set an API key for Claude or GPT, or point it at a local Ollama server. With neither configured, the assistant has no model to answer with.'),
+            __('A provider it can call. Set an API key for Claude or GPT, or point it at Ollama or any OpenAI-compatible endpoint. With neither configured, the assistant has no model to answer with.'),
         ],
         [
             __('Where does my data live?'),
@@ -194,7 +194,7 @@
                     {{ __('Three steps to a running CRM') }}
                 </h2>
                 <p class="mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed">
-                    {{ __('Distilled from the full guide, which also covers Dokploy, Coolify, Traefik, and a Docker-free manual install.') }}
+                    {{ __('Distilled from the full guide, which also covers Dokploy, Coolify, Laravel Cloud, Traefik, and a Docker-free manual install.') }}
                 </p>
             </div>
 

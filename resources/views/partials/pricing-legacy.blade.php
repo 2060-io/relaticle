@@ -41,8 +41,8 @@
                     'Unlimited users and data',
                     'MCP server with 39 tools',
                     'REST API with full CRUD',
-                    '22 custom field types',
-                    'Multi-team workspaces',
+                    '20 custom field types',
+                    'Multiple workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">
                         <x-ri-check-line class="w-4 h-4 text-primary dark:text-primary-400 shrink-0 mt-0.5"/>
@@ -106,8 +106,8 @@
                     'Unlimited users and data',
                     'MCP server with 39 tools',
                     'REST API with full CRUD',
-                    '22 custom field types',
-                    'Multi-team workspaces',
+                    '20 custom field types',
+                    'Multiple workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">
                         <x-ri-check-line class="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0 mt-0.5"/>

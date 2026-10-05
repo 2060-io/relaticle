@@ -316,7 +316,7 @@ final readonly class HelpController
             __('Use Relaticle when an agent needs to read or change CRM records: companies, people, opportunities, tasks, notes, and per-workspace custom fields.'),
             '',
             '- '.__('Good fits: logging a lead or meeting, moving a deal between pipeline stages, listing open tasks for a person, updating contact details, attaching a note to a company.'),
-            '- '.__('Not a fit: email sending, calendar scheduling, marketing automation, or invoicing. Relaticle stores the relationship data; it does not run those workflows.'),
+            '- '.__('Not a fit: sending email, reading synced mail or meetings, marketing automation, or invoicing. The REST API and MCP server expose CRM records only.'),
             '- '.__('How to call it: the REST API at :api with a Bearer access token created in Settings > Access Tokens (abilities: read, create, update, delete), or the MCP server at :mcp over OAuth.', ['api' => url()->getApiUrl('v1'), 'mcp' => url()->getMcpUrl()]),
             '- '.__('Every write is scoped to one workspace; the token or OAuth grant decides which one.'),
         ];

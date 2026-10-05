@@ -65,7 +65,7 @@
         ],
         [
             __('AI-native CRM'),
-            __('A CRM built so that both its own assistant and outside agents work on the data model directly, with permissions and review designed in from the start. Relaticle is built this way, and its assistant is agentic within one rule: it asks before it writes.'),
+            __('A CRM built so that both its own assistant and outside agents work on the data model itself, with permissions and review designed in from the start. Relaticle is built this way. Outside agents write through the MCP server under your permissions, and the built-in assistant is agentic within one rule: it asks before it writes.'),
         ],
     ];
 

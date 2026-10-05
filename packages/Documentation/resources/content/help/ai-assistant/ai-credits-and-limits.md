@@ -7,8 +7,8 @@ related: [help/ai-assistant/choose-an-ai-model, help/workspace/billing-and-plans
 ---
 
 Every message you send the assistant costs credits from your workspace's
-monthly allowance. Most messages cost a single credit, heavier ones a few
-more. Credits are shared by the whole workspace, not per person.
+monthly allowance. A plain reply costs one credit, and each tool the
+assistant uses to answer adds to it. Credits are shared by the whole workspace, not per person.
 
 ## What a message costs
 
@@ -45,6 +45,6 @@ CRM never spends credits; only assistant messages do.
 ## Rate limits
 
 The per-minute message limit is shared across the workspace. If your team
-sends faster, the chat shows **You're sending fast** with a countdown and
+sends faster, the chat shows **Sending too fast** with a countdown and
 sends your message automatically when the window opens, so nothing is lost.
 A single message can be up to 5,000 characters.
