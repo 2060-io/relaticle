@@ -650,6 +650,7 @@ it('shows one copy when two calendars share an ical uid', function (): void {
 });
 
 it('asks the user to sync a calendar when no mailbox is connected', function (): void {
+    config()->set('services.azure.client_id');
     $this->account->delete();
 
     livewire(MeetingsHomeWidget::class)
@@ -662,6 +663,21 @@ it('asks the user to sync a calendar when no mailbox is connected', function ():
             $component,
             TestAction::make('connectGmail'),
             'gmail',
+            $this->workspace,
+        ));
+});
+
+it('offers a Microsoft mailbox on Home once a Microsoft mailbox client is configured', function (): void {
+    config()->set('services.azure.client_id', 'azure-client');
+    $this->account->delete();
+
+    livewire(MeetingsHomeWidget::class)
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionVisible('connectAzure')
+        ->tap(fn ($component) => assertActionHasMailboxOAuthUrl(
+            $component,
+            TestAction::make('connectAzure'),
+            'azure',
             $this->workspace,
         ));
 });

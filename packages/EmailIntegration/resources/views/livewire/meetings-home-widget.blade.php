@@ -80,8 +80,12 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {{ __('filament/pages/dashboard.meetings.disconnected.description') }}
             </p>
-            <div class="mt-4 flex justify-center">
+            <div class="mt-4 flex flex-wrap justify-center gap-3">
                 {{ $this->connectGmailAction }}
+
+                @if ($this->connectAzureAction->isVisible())
+                    {{ $this->connectAzureAction }}
+                @endif
             </div>
         </div>
     @elseif ($this->meetings->isEmpty())

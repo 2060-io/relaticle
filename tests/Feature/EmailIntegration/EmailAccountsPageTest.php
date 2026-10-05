@@ -498,11 +498,21 @@ it('shows in sync when the mailbox has no recorded error', function (): void {
         ->assertSee(__('filament/pages/email-accounts.in_sync'));
 });
 
-it('renders Connect Gmail and hides Connect Outlook for now', function (): void {
+it('renders Connect Gmail and hides Connect Microsoft without a Microsoft mailbox client', function (): void {
+    config()->set('services.azure.client_id');
+
     livewire(EmailAccountsPage::class)
         ->assertActionExists('connectGmail')
         ->assertActionVisible('connectGmail')
         ->assertActionHidden('connectAzure');
+});
+
+it('offers Connect Microsoft once a Microsoft mailbox client is configured', function (): void {
+    config()->set('services.azure.client_id', 'azure-client');
+
+    livewire(EmailAccountsPage::class)
+        ->assertActionVisible('connectAzure')
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_azure'));
 });
 
 it('keeps email settings out of the sidebar and shows only accounts and templates as per-user tabs', function (): void {
