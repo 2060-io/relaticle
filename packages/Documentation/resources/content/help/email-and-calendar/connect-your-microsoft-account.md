@@ -23,6 +23,8 @@ they involve, and you can send from Relaticle with that address.
 The **Emails** page, a record's **Emails** tab, and the **Meetings** panel
 on **Home** show the same button until you connect an account.
 
+![The Accounts tab under Email and Calendar, with the Connect Microsoft account button beside Connect Google account below the connected accounts](/help-assets/email-and-calendar/connect-your-google-account-1.png)
+
 On a self-hosted install, the button appears once the Microsoft client is
 configured. The [Self-Hosting Guide](/developers/self-hosting) lists the
 settings.
@@ -46,8 +48,8 @@ to an invitation.
 
 Relaticle syncs every mail folder, including folders inside your Inbox and
 folders a rule moves mail into. It leaves out **Drafts**, **Junk Email**,
-**Deleted Items**, **Outbox**, and **Conversation History**, along with any
-folder inside them.
+**Deleted Items**, **Outbox**, **Clutter**, and **Conversation History**,
+along with any folder inside them.
 
 ## What happens after you connect
 

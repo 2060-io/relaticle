@@ -24,7 +24,7 @@ Relaticle with that address. For an Outlook or Microsoft 365 mailbox, see
 The **Emails** page and the **Meetings** panel on **Home** show the same
 button until you connect an account.
 
-![The Accounts tab under Email and Calendar, showing one connected Google account marked Default and In sync above the Connect Google account button](/help-assets/email-and-calendar/connect-your-google-account-1.png)
+![The Accounts tab under Email and Calendar, showing one connected Google account marked Default and In sync above the Connect Google account and Connect Microsoft account buttons](/help-assets/email-and-calendar/connect-your-google-account-1.png)
 
 ## What Relaticle asks Google for
 
