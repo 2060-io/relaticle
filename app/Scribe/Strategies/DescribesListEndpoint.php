@@ -100,6 +100,17 @@ trait DescribesListEndpoint
     }
 
     /**
+     * @return list<string>
+     */
+    private function topLevelNames(string $arguments): array
+    {
+        // A quoted string inside a nested call is that call's own argument, never a name the list accepts.
+        preg_match_all("/'([^']+)'/", (string) preg_replace('/\\((?:[^()]*|\\([^()]*\\))*\\)/', '', $arguments), $matches);
+
+        return $matches[1];
+    }
+
+    /**
      * @return array<string, array<string, mixed>>
      */
     private function sortParameter(string $source): array
@@ -108,8 +119,7 @@ trait DescribesListEndpoint
             return [];
         }
 
-        preg_match_all("/'([^']+)'/", $match[1], $sortMatches);
-        $sorts = $sortMatches[1];
+        $sorts = $this->topLevelNames($match[1]);
 
         if ($sorts === []) {
             return [];
@@ -134,8 +144,8 @@ trait DescribesListEndpoint
             return [];
         }
 
-        preg_match_all("/'([^']+)'/", $match[1], $includeMatches);
-        $includes = $includeMatches[1];
+        preg_match_all("/AllowedInclude::count\\('([^']+)'/", $match[1], $countMatches);
+        $includes = [...$this->topLevelNames($match[1]), ...$countMatches[1]];
 
         if ($includes === []) {
             return [];

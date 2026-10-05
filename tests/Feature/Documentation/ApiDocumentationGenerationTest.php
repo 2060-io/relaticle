@@ -90,6 +90,19 @@ it('generates the complete API documentation with company ownership fields', fun
             ->and($filter['description'])->toBe(EntityFilters::grammar($entity));
 
         $this->postJson("/api/v1/{$path}/query", ['filter' => $filter['examples'][0]])->assertOk();
+
+        $published = collect($spec['paths']["/api/v1/{$path}"]['get']['parameters'])->keyBy('name');
+
+        foreach (['sort', 'include'] as $parameter) {
+            $names = str($published[$parameter]['description'])->after('Allowed: ')->beforeLast('.')->explode(', ');
+
+            expect($names->all())->not->toBeEmpty()
+                ->and($names->duplicates()->all())->toBe([], "{$path} publishes a {$parameter} twice");
+
+            foreach ($names as $name) {
+                expect($this->getJson("/api/v1/{$path}?{$parameter}={$name}")->status())->toBe(200, "{$path} publishes {$parameter}={$name}, which the list refuses");
+            }
+        }
     }
 
     foreach (GetFromSpatieQueryBuilder::CUSTOM_FIELD_EXAMPLES as $path => $example) {
