@@ -32,6 +32,6 @@ final readonly class AssignedToMeFilter implements Filter
             throw FilterErrors::at('', __('validation.filter.assigned_to_me'));
         }
 
-        $query->whereHas('assignees', fn (Builder $q): Builder => $q->whereKey($this->user->getKey()));
+        $query->whereAttachedTo($this->user, 'assignees');
     }
 }
