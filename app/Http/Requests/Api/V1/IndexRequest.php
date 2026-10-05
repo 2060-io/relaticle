@@ -47,7 +47,7 @@ final class IndexRequest extends FormRequest
                 }
             },
             function (Validator $validator): void {
-                if ($this->isMethod('POST') && $this->has('page') && $this->has('cursor')) {
+                if ($this->has('page') && $this->has('cursor')) {
                     $validator->errors()->add('page', __('validation.filter.page_with_cursor'));
                 }
             },
