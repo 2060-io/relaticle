@@ -1617,8 +1617,10 @@ html.fi-record-stacked .fi-record-layout {
             @apply absolute end-3 top-3 w-auto p-0 opacity-0 transition duration-75;
         }
 
+        /* WebKit does not focus a clicked button, so an open menu holds the actions itself. */
         &:hover .fi-ta-actions,
-        &:focus-within .fi-ta-actions {
+        &:focus-within .fi-ta-actions,
+        & .fi-ta-actions:has(.fi-dropdown-panel[style*='display: block']) {
             @apply opacity-100;
         }
     }
