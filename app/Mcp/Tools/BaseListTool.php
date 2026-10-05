@@ -104,7 +104,7 @@ abstract class BaseListTool extends Tool
             ));
         }
 
-        $httpRequest = $this->buildHttpRequest($request);
+        FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
 
         try {
             $action = app()->make($this->actionClass());
@@ -112,7 +112,7 @@ abstract class BaseListTool extends Tool
                 user: $user,
                 perPage: (int) ($validated['per_page'] ?? 15),
                 page: (int) ($validated['page'] ?? 1),
-                request: $httpRequest,
+                request: $this->buildHttpRequest($request),
             );
         } catch (InvalidQuery $e) {
             return Response::error($e->getMessage());
@@ -181,8 +181,6 @@ abstract class BaseListTool extends Tool
 
     private function buildHttpRequest(Request $mcpRequest): HttpRequest
     {
-        FilterTree::rejectUnknownArguments($mcpRequest->all(), self::ARGUMENTS);
-
         $input = [];
 
         $filter = $mcpRequest->get('filter');

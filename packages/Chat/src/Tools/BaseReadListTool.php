@@ -165,13 +165,13 @@ abstract class BaseReadListTool implements Tool
         }
 
         try {
-            $httpRequest = $this->buildHttpRequest($request);
+            FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
             $action = app()->make($this->actionClass());
             $results = $action->execute(
                 user: $user,
                 perPage: $this->perPageFor($request),
                 page: isset($request['page']) ? (int) $request['page'] : null,
-                request: $httpRequest,
+                request: $this->buildHttpRequest($request),
             );
         } catch (ValidationException $exception) {
             return $this->validationError($exception);
@@ -634,8 +634,6 @@ abstract class BaseReadListTool implements Tool
 
     private function buildHttpRequest(Request $request): HttpRequest
     {
-        FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
-
         $input = [];
 
         $filter = $request['filter'] ?? null;
