@@ -50,6 +50,25 @@ test('an admin sees who deleted a record and when', function (): void {
         ->assertSee(__('workspaces.activity.events.deleted'));
 });
 
+test('a change by a deleted account names a former member, and a change with no author names the system', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => 'admin']);
+    $byMember = Company::factory()->for($this->workspace)->create(['name' => 'Lumen Robotics']);
+    $byNobody = Company::factory()->for($this->workspace)->create(['name' => 'Harbor Freight Lines']);
+
+    Activity::withoutGlobalScopes()->delete();
+    $this->actingAs($member);
+    $byMember->delete();
+    auth()->logout();
+    $byNobody->delete();
+    $member->delete();
+    $this->actingAs($this->owner);
+
+    livewire(ActivityLog::class)
+        ->assertOk()
+        ->assertSeeInOrder([__('workspaces.activity.system'), 'Harbor Freight Lines', __('workspaces.activity.former_member'), 'Lumen Robotics']);
+});
+
 test('the audit row survives a permanent delete', function (): void {
     $company = Company::factory()->for($this->workspace)->create(['name' => 'Vanished Corp']);
     $company->delete();

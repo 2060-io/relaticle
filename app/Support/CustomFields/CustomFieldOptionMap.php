@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Support\CustomFields;
 
+use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Relaticle\CustomFields\Facades\CustomFieldsType;
 
 final readonly class CustomFieldOptionMap
 {
@@ -54,5 +56,24 @@ final readonly class CustomFieldOptionMap
     public function isAmbiguous(array $entry, string $label): bool
     {
         return count($entry['ids'][mb_strtolower(trim($label))] ?? []) > 1;
+    }
+
+    public function translates(CustomField $field): bool
+    {
+        $type = CustomFieldType::tryFrom($field->type);
+
+        return $type !== null && self::picksFromOptions($type) && $field->lookup_type === null;
+    }
+
+    public static function choiceRule(): string
+    {
+        $types = array_filter(CustomFieldType::cases(), self::picksFromOptions(...));
+
+        return ucfirst(Arr::join(array_map(static fn (CustomFieldType $type): string => $type->value, $types), ', ', ' and ')).' values take an option label or ID.';
+    }
+
+    private static function picksFromOptions(CustomFieldType $type): bool
+    {
+        return $type->isChoice() && CustomFieldsType::getFieldType($type->value)?->acceptsArbitraryValues === false;
     }
 }

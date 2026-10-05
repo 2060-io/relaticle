@@ -4,21 +4,23 @@ declare(strict_types=1);
 
 namespace App\Actions\Opportunity;
 
-use App\Mcp\Filters\CustomFieldFilter;
-use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Concerns\PaginatesListQuery;
+use App\Enums\CrmEntity;
 use App\Models\Opportunity;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
+use App\Queries\EntityFilters;
+use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Query\Builder as DbBuilder;
 use Illuminate\Http\Request;
-use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedInclude;
 use Spatie\QueryBuilder\QueryBuilder;
 
 final readonly class ListOpportunities
 {
+    use PaginatesListQuery;
+
     /**
      * @param  array<string, mixed>  $filters
      * @return CursorPaginator<int, Opportunity>|LengthAwarePaginator<int, Opportunity>
@@ -30,36 +32,19 @@ final readonly class ListOpportunities
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
+        ?string $viewerZone = null,
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Opportunity::class), 403);
 
         $request ??= new Request(['filter' => $filters]);
+        FilterTree::validate($request->input('filter'), CrmEntity::Opportunity);
         $filterSchema = new CustomFieldFilterSchema;
 
         $query = QueryBuilder::for(
             Opportunity::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(
-                AllowedFilter::partial('name'),
-                AllowedFilter::exact('company_id'),
-                AllowedFilter::exact('contact_id'),
-                CustomFieldFilter::allowedFilter('opportunity'),
-                AllowedFilter::callback('created_after', fn (Builder $query, string $value) => $query->whereDate('opportunities.created_at', '>=', $value)),
-                AllowedFilter::callback('created_before', fn (Builder $query, string $value) => $query->whereDate('opportunities.created_at', '<=', $value)),
-                AllowedFilter::exact('creation_source', 'opportunities.creation_source'),
-                AllowedFilter::callback('stale_days', function (Builder $query, string $value) use ($user): void {
-                    $workspaceId = $user->currentWorkspace->getKey();
-
-                    $query->whereNotExists(
-                        fn (DbBuilder $sub) => $sub->from('activity_log')
-                            ->where('activity_log.workspace_id', $workspaceId)
-                            ->where('activity_log.subject_type', 'opportunity')
-                            ->whereColumn('activity_log.subject_id', 'opportunities.id')
-                            ->where('activity_log.created_at', '>=', now()->subDays((int) $value))
-                    );
-                }),
-            )
+            ->allowedFilters(...new EntityFilters($user, $viewerZone)->for(CrmEntity::Opportunity))
             ->allowedFields('id', 'name', 'company_id', 'contact_id', 'creator_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'company', 'contact',
@@ -68,15 +53,10 @@ final readonly class ListOpportunities
             )
             ->allowedSorts(
                 'name', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'opportunity'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'opportunity')),
             )
-            ->defaultSort('-created_at')
-            ->orderBy('id');
+            ->defaultSort('-created_at');
 
-        if ($useCursor) {
-            return $query->cursorPaginate($perPage);
-        }
-
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $this->paginateList($query, $perPage, $useCursor, $page);
     }
 }

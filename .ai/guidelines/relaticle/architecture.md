@@ -34,6 +34,13 @@ anatomy mirrors a Laravel app: `src/`, `config/`, `routes/`, `resources/`,
 - `packages/SystemAdmin` is excluded from PHPStan. When adding or removing enum
   cases, manually sweep SystemAdmin for `match` expressions over that enum (this
   exclusion already caused a production `UnhandledMatchError`)
+- `app/Queries` holds the filter and sort language every list surface shares, laid out
+  like spatie/laravel-query-builder's own `src/`. A class that implements Spatie's `Filter`
+  lives in `app/Queries/Filters`, and a `Sort` in `app/Queries/Sorts`. Shared traits go in
+  `app/Queries/Concerns`, and registries sit at the root. `app/Queries` never uses a
+  transport: `App\Mcp`, `App\Http`, `App\Filament`, `App\Livewire`, `App\Scribe` or
+  `Relaticle\Chat`. Enums stay in `app/Enums`, because the Pest Laravel preset fails one
+  anywhere else. `.ai/rules/queries.md` holds the rules for extending it
 
 ## Actions (the write path)
 
@@ -81,6 +88,7 @@ final readonly class CreateOpportunity
 
 A fact more than one surface publishes gets an owner class, and every surface reads it.
 The working examples: `CustomFieldFilterSchema` owns filter operators,
+`EntityFilters::definitions()` owns the filter names each entity accepts,
 `App\Mcp\Schema\CustomFieldSchema` plus `CustomFieldType::inputFormat()` own how a
 custom field is described to an agent, `CrmEntity::titleColumn()` owns the name column.
 Facts that are a pure function of an enum case (a label, a format, a capability) live on

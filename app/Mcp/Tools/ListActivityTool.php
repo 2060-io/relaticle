@@ -263,7 +263,7 @@ final class ListActivityTool extends Tool
 
         return [
             'at' => $this->occurredAt($user, $base)->toIso8601String(),
-            'by' => $this->causerName($base),
+            'by' => $base->causerLabel(),
             'source' => $base->source?->value,
             'event' => (string) ($base->event ?? $base->description),
             'record' => [
@@ -382,13 +382,6 @@ final class ListActivityTool extends Tool
     private function occurredAt(User $user, Activity $activity): CarbonImmutable
     {
         return Date::parse($activity->created_at)->setTimezone($user->effectiveTimezone());
-    }
-
-    private function causerName(Activity $activity): string
-    {
-        $name = $activity->causer?->getAttribute('name');
-
-        return is_string($name) && $name !== '' ? $name : 'System';
     }
 
     private function recordName(Model $subject, ?CrmEntity $entity): string

@@ -5,16 +5,14 @@ declare(strict_types=1);
 namespace App\Mcp\Tools\Task;
 
 use App\Actions\Task\ListTasks;
+use App\Enums\CrmEntity;
 use App\Http\Resources\V1\TaskResource;
 use App\Mcp\Tools\BaseListTool;
-use App\Models\User;
-use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Laravel\Mcp\Request;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Title;
 
 #[Title('List Tasks')]
-#[Description('List tasks in the CRM with optional search and pagination.')]
+#[Description('List tasks in the CRM with optional filters and pagination.')]
 final class ListTasksTool extends BaseListTool
 {
     protected function actionClass(): string
@@ -22,47 +20,13 @@ final class ListTasksTool extends BaseListTool
         return ListTasks::class;
     }
 
+    protected function entity(): CrmEntity
+    {
+        return CrmEntity::Task;
+    }
+
     protected function resourceClass(): string
     {
         return TaskResource::class;
-    }
-
-    protected function searchFilterName(): string
-    {
-        return 'title';
-    }
-
-    protected function additionalSchema(JsonSchema $schema): array
-    {
-        return [
-            'assigned_to_me' => $schema->boolean()->description('Filter tasks assigned to the current user.'),
-            'assignee_ids' => $schema->array()->description('Filter tasks assigned to any of these user IDs. Use the whoami tool to discover valid user IDs.'),
-            'company_id' => $schema->string()->description('Filter tasks linked to a specific company.'),
-            'people_id' => $schema->string()->description('Filter tasks linked to a specific person.'),
-            'opportunity_id' => $schema->string()->description('Filter tasks linked to a specific opportunity.'),
-        ];
-    }
-
-    protected function additionalFilters(Request $request): array
-    {
-        return [
-            'assigned_to_me' => $request->get('assigned_to_me') ? '1' : null,
-            'assignee_ids' => $request->get('assignee_ids'),
-            'company_id' => $request->get('company_id'),
-            'people_id' => $request->get('people_id'),
-            'opportunity_id' => $request->get('opportunity_id'),
-        ];
-    }
-
-    protected function additionalValidationRules(User $user): array
-    {
-        return [
-            'assigned_to_me' => ['sometimes', 'boolean'],
-            'assignee_ids' => ['sometimes', 'array', 'list', 'max:100'],
-            'assignee_ids.*' => ['string', 'ulid', 'distinct'],
-            'company_id' => ['sometimes', 'string', 'ulid'],
-            'people_id' => ['sometimes', 'string', 'ulid'],
-            'opportunity_id' => ['sometimes', 'string', 'ulid'],
-        ];
     }
 }

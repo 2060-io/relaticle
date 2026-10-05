@@ -27,6 +27,7 @@ use Relaticle\Chat\Tools\Company\GetCompanyTool;
 use Relaticle\Chat\Tools\Company\ListCompaniesTool;
 use Relaticle\Chat\Tools\Opportunity\GetOpportunityTool;
 use Relaticle\Chat\Tools\Opportunity\ListOpportunitiesTool;
+use Relaticle\Chat\Tools\Task\GetTaskTool;
 use Relaticle\Chat\Tools\Task\ListTasksTool;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
@@ -165,6 +166,7 @@ function forceDisplaySettings(User $user, string $entityType, string $code, arra
         'visible_in_list' => true,
         'list_toggleable_hidden' => false,
         'visible_in_view' => true,
+        'additional' => $field->settings->additional,
         ...$settings,
     ]);
     $field->save();
@@ -385,6 +387,18 @@ it('returns a record_card block for a single record', function (): void {
         ->and($block['fields'][0])->toHaveKeys(['label', 'value', 'type']);
 });
 
+it('shows a stored date-time on the calendar day of the viewer', function (): void {
+    $user = $this->user;
+    $user->forceFill(['timezone' => 'America/Los_Angeles'])->save();
+    $dueDate = forceDisplaySettings($user, 'task', 'due_date');
+    $task = Task::factory()->for($user->currentWorkspace)->create(['title' => 'Call Ana']);
+    $task->saveCustomFieldValue($dueDate, '2026-10-02 01:00:00');
+
+    $block = displayBlockOf(app(GetTaskTool::class)->handle(new Request(['id' => (string) $task->getKey()])));
+
+    expect(blockFieldValue($block, $dueDate->name))->toBe('Oct 1, 2026');
+});
+
 // --- block values are capped: the envelope is persisted forever ---
 
 it('caps a long free-text value harder in a table cell than on a card', function (): void {
@@ -496,19 +510,19 @@ it('emits no block when the list matches no records', function (): void {
 it('keeps a long link value whole so a card href cannot break', function (): void {
     $user = $this->user;
 
-    forceDisplaySettings($user, 'company', 'domains');
+    forceDisplaySettings($user, 'company', 'linkedin');
 
     $long = 'https://example.com/?ref='.str_repeat('a', 600);
 
     $company = app(CreateCompany::class)->execute($user, [
         'name' => 'Acme',
-        'custom_fields' => ['domains' => [$long]],
+        'custom_fields' => ['linkedin' => [$long]],
     ]);
 
     $card = displayBlockOf(app(GetCompanyTool::class)->handle(new Request(['id' => (string) $company->getKey()])));
 
-    expect(blockFieldValue($card, 'Domains'))->toBe($long)
-        ->and(blockFieldValues($card, 'Domains'))->toBe([$long]);
+    expect(blockFieldValue($card, 'LinkedIn'))->toBe($long)
+        ->and(blockFieldValues($card, 'LinkedIn'))->toBe([$long]);
 });
 
 it('carries choice option names as a values list so the card renders chips', function (): void {
@@ -688,7 +702,7 @@ it('promotes a filtered hidden field to the first column', function (): void {
     $unfiltered = displayBlockOf(app(ListOpportunitiesTool::class)->handle(new Request([])));
 
     $filtered = displayBlockOf(app(ListOpportunitiesTool::class)->handle(new Request([
-        'custom_fields' => ['deal_source' => ['eq' => 'Referral']],
+        'filter' => ['custom_fields' => ['deal_source' => ['$eq' => 'Referral']]],
     ])));
 
     expect(blockColumnKeys($unfiltered))->not->toContain('deal_source')
@@ -777,7 +791,7 @@ it('strips display_block from the replayed agent history while the row keeps it'
 it('emits no block when the list is called in lookup mode, keeping the data for chaining', function (): void {
     app(CreateCompany::class)->execute($this->user, ['name' => 'Lookup Co']);
 
-    $decoded = json_decode(app(ListCompaniesTool::class)->handle(new Request(['search' => 'Lookup', 'lookup' => true])), true);
+    $decoded = json_decode(app(ListCompaniesTool::class)->handle(new Request(['filter' => ['name' => ['$contains' => 'Lookup']], 'lookup' => true])), true);
 
     expect($decoded)->not->toHaveKey('display_block')
         ->and($decoded['data'][0]['attributes']['name'])->toBe('Lookup Co');

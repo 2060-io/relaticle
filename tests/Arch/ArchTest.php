@@ -25,6 +25,8 @@ use Illuminate\Support\Str;
 use Livewire\Component;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseEmailsRelationManager;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseMeetingsRelationManager;
+use Spatie\QueryBuilder\Filters\Filter;
+use Spatie\QueryBuilder\Sorts\Sort;
 
 arch()->preset()->php();
 
@@ -139,6 +141,9 @@ arch('avoid mutation')
         'App\Notifications',
         'App\Providers',
         'App\Support\ActivityLog\CleanActivityLogAction',
+        // Extends spatie's AllowedFilter; PHP forbids a readonly class extending a
+        // non-readonly one.
+        'App\Queries\TreeAllowedFilter',
         // Request-scoped batch_uuid holder, mutable by design (lazily caches the
         // per-request id), like a value cache rather than a service.
         'App\Support\ActivityLog\RequestActivityBatch',
@@ -209,6 +214,8 @@ arch('avoid inheritance')
         'App\Scribe',
         'App\View',
         'App\Support\ActivityLog\CleanActivityLogAction',
+        // Subclasses spatie's AllowedFilter, the query builder's extension point.
+        'App\Queries\TreeAllowedFilter',
         // Hooks slug uniqueness by extending sluggable's GenerateSlugAction,
         // which is the package's documented extension point.
         'App\Support\ReservedSlugAwareGenerateSlugAction',
@@ -317,6 +324,31 @@ arch('email integration owns its controllers, jobs, policies and timeline entrie
     ->not
     ->toUse(['App\Http\Controllers', 'App\Jobs', 'App\Policies', 'App\ActivityLog']);
 
+arch('query filters implement the query builder filter contract')
+    ->expect('App\Queries\Filters')
+    ->toImplement(Filter::class);
+
+arch('query sorts implement the query builder sort contract')
+    ->expect('App\Queries\Sorts')
+    ->toImplement(Sort::class);
+
+arch('a query filter lives in the filters folder')
+    ->expect('App\Queries')
+    ->not
+    ->toImplement(Filter::class)
+    ->ignoring('App\Queries\Filters\\');
+
+arch('a query sort lives in the sorts folder')
+    ->expect('App\Queries')
+    ->not
+    ->toImplement(Sort::class)
+    ->ignoring('App\Queries\Sorts\\');
+
+arch('the query language uses no transport')
+    ->expect('App\Queries')
+    ->not
+    ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
+
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
     ->classes()
@@ -399,7 +431,6 @@ foreach (['App', 'Relaticle\ImportWizard', 'Relaticle\OnboardSeed', 'Relaticle\D
             'App\Filament\CustomFields\RichContentEntry',
             'App\Filament\CustomFields\RichEditorFieldType',
             'App\Http\Resources\V1\Concerns\FormatsCustomFields',
-            'App\Mcp\Filters\CustomFieldSort',
             'App\Observers\CustomFieldValueObserver',
             'App\Rules\ValidCustomFields',
             'App\Support\ActivityLog\CustomFieldChangeLog',

@@ -11,6 +11,7 @@ use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\CustomFields\CanonicalValue;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -18,11 +19,13 @@ use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     PeopleUpsertController::class,
     FindEntitiesByFieldValue::class,
     EnsureTokenHasAbility::class,
+    CanonicalValue::class,
 );
 
 beforeEach(function (): void {
@@ -32,12 +35,7 @@ beforeEach(function (): void {
 
 function upsertCustomField(string $workspaceId, string $entityType, string $code): CustomField
 {
-    return CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $workspaceId)
-        ->where('entity_type', $entityType)
-        ->where('code', $code)
-        ->firstOrFail();
+    return WorkspaceCustomField::byCode($workspaceId, $entityType, $code);
 }
 
 function markUpsertCustomFieldUnique(string $workspaceId, string $entityType, string $code): void

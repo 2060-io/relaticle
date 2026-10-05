@@ -929,6 +929,8 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
         'Mcp/Tools' => 'Tool',
         'Observers' => 'Observer',
         'Policies' => 'Policy',
+        'Queries/Filters' => 'Filter',
+        'Queries/Sorts' => 'Sort',
         'Tools' => 'Tool',
     ];
 

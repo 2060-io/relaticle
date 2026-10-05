@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace App\Actions\Company;
 
-use App\Mcp\Filters\CustomFieldFilter;
-use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Concerns\PaginatesListQuery;
+use App\Enums\CrmEntity;
 use App\Models\Company;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
+use App\Queries\EntityFilters;
+use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedInclude;
 use Spatie\QueryBuilder\QueryBuilder;
 
 final readonly class ListCompanies
 {
+    use PaginatesListQuery;
+
     /**
      * @param  array<string, mixed>  $filters
      * @return CursorPaginator<int, Company>|LengthAwarePaginator<int, Company>
@@ -29,23 +32,19 @@ final readonly class ListCompanies
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
+        ?string $viewerZone = null,
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Company::class), 403);
 
         $request ??= new Request(['filter' => $filters]);
+        FilterTree::validate($request->input('filter'), CrmEntity::Company);
         $filterSchema = new CustomFieldFilterSchema;
 
         $query = QueryBuilder::for(
             Company::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(
-                AllowedFilter::partial('name'),
-                CustomFieldFilter::allowedFilter('company'),
-                AllowedFilter::callback('created_after', fn (Builder $query, string $value) => $query->whereDate('companies.created_at', '>=', $value)),
-                AllowedFilter::callback('created_before', fn (Builder $query, string $value) => $query->whereDate('companies.created_at', '<=', $value)),
-                AllowedFilter::exact('creation_source', 'companies.creation_source'),
-            )
+            ->allowedFilters(...new EntityFilters($user, $viewerZone)->for(CrmEntity::Company))
             ->allowedFields('id', 'name', 'creator_id', 'account_owner_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'accountOwner', 'people', 'opportunities',
@@ -56,15 +55,10 @@ final readonly class ListCompanies
             )
             ->allowedSorts(
                 'name', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'company'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'company')),
             )
-            ->defaultSort('-created_at')
-            ->orderBy('id');
+            ->defaultSort('-created_at');
 
-        if ($useCursor) {
-            return $query->cursorPaginate($perPage);
-        }
-
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $this->paginateList($query, $perPage, $useCursor, $page);
     }
 }

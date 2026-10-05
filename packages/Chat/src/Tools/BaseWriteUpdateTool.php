@@ -165,7 +165,7 @@ abstract class BaseWriteUpdateTool implements Tool
                 return (string) json_encode(['error' => "records[{$index}]: {$nameError}"], JSON_UNESCAPED_SLASHES);
             }
 
-            $validation = $validator->validate($user, $this->entityType(), $record['custom_fields'] ?? null, ignoreEntityId: $model->getKey());
+            $validation = $validator->validate($user, $this->entityType(), $record['custom_fields'] ?? null, ignoreEntityId: $model->getKey(), viewerZone: $user->effectiveTimezone());
 
             if ($validation->error !== null) {
                 return (string) json_encode(['error' => "records[{$index}]: {$validation->error}"], JSON_UNESCAPED_SLASHES);

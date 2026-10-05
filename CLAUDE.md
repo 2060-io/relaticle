@@ -37,6 +37,13 @@ anatomy mirrors a Laravel app: `src/`, `config/`, `routes/`, `resources/`,
 - `packages/SystemAdmin` is excluded from PHPStan. When adding or removing enum
   cases, manually sweep SystemAdmin for `match` expressions over that enum (this
   exclusion already caused a production `UnhandledMatchError`)
+- `app/Queries` holds the filter and sort language every list surface shares, laid out
+  like spatie/laravel-query-builder's own `src/`. A class that implements Spatie's `Filter`
+  lives in `app/Queries/Filters`, and a `Sort` in `app/Queries/Sorts`. Shared traits go in
+  `app/Queries/Concerns`, and registries sit at the root. `app/Queries` never uses a
+  transport: `App\Mcp`, `App\Http`, `App\Filament`, `App\Livewire`, `App\Scribe` or
+  `Relaticle\Chat`. Enums stay in `app/Enums`, because the Pest Laravel preset fails one
+  anywhere else. `.ai/rules/queries.md` holds the rules for extending it
 
 ## Actions (the write path)
 
@@ -84,6 +91,7 @@ final readonly class CreateOpportunity
 
 A fact more than one surface publishes gets an owner class, and every surface reads it.
 The working examples: `CustomFieldFilterSchema` owns filter operators,
+`EntityFilters::definitions()` owns the filter names each entity accepts,
 `App\Mcp\Schema\CustomFieldSchema` plus `CustomFieldType::inputFormat()` own how a
 custom field is described to an agent, `CrmEntity::titleColumn()` owns the name column.
 Facts that are a pure function of an enum case (a label, a format, a capability) live on
@@ -396,8 +404,8 @@ are under about 50. Each rule below names what fails when it is broken.
   only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
   that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
 - A class is named for its role where its directory carries one: `Command`, `Controller`,
-  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
-  fails a class there without the suffix.
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`, and `Filter` and `Sort` under
+  `app/Queries`. `tests/Arch/ConventionsTest.php` fails a class there without the suffix.
 - Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
   can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
   direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.

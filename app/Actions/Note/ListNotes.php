@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace App\Actions\Note;
 
-use App\Mcp\Filters\CustomFieldFilter;
-use App\Mcp\Schema\CustomFieldFilterSchema;
+use App\Concerns\PaginatesListQuery;
+use App\Enums\CrmEntity;
 use App\Models\Note;
 use App\Models\User;
+use App\Queries\CustomFieldFilterSchema;
+use App\Queries\EntityFilters;
+use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedInclude;
 use Spatie\QueryBuilder\QueryBuilder;
 
 final readonly class ListNotes
 {
+    use PaginatesListQuery;
+
     /**
      * @param  array<string, mixed>  $filters
      * @return CursorPaginator<int, Note>|LengthAwarePaginator<int, Note>
@@ -29,25 +32,19 @@ final readonly class ListNotes
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
+        ?string $viewerZone = null,
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Note::class), 403);
 
         $request ??= new Request(['filter' => $filters]);
+        FilterTree::validate($request->input('filter'), CrmEntity::Note);
         $filterSchema = new CustomFieldFilterSchema;
 
         $query = QueryBuilder::for(
             Note::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(
-                AllowedFilter::partial('title'),
-                AllowedFilter::scope('notable_type', 'forNotableType'),
-                AllowedFilter::scope('notable_id', 'forNotableId'),
-                CustomFieldFilter::allowedFilter('note'),
-                AllowedFilter::callback('created_after', fn (Builder $query, string $value) => $query->whereDate('notes.created_at', '>=', $value)),
-                AllowedFilter::callback('created_before', fn (Builder $query, string $value) => $query->whereDate('notes.created_at', '<=', $value)),
-                AllowedFilter::exact('creation_source', 'notes.creation_source'),
-            )
+            ->allowedFilters(...new EntityFilters($user, $viewerZone)->for(CrmEntity::Note))
             ->allowedFields('id', 'title', 'creator_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'companies', 'people', 'opportunities',
@@ -57,15 +54,10 @@ final readonly class ListNotes
             )
             ->allowedSorts(
                 'title', 'created_at', 'updated_at',
-                ...$filterSchema->allowedSorts($user, 'note'),
+                ...($useCursor ? [] : $filterSchema->allowedSorts($user, 'note')),
             )
-            ->defaultSort('-created_at')
-            ->orderBy('id');
+            ->defaultSort('-created_at');
 
-        if ($useCursor) {
-            return $query->cursorPaginate($perPage);
-        }
-
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        return $this->paginateList($query, $perPage, $useCursor, $page);
     }
 }

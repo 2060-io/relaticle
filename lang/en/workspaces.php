@@ -168,6 +168,7 @@ return [
 
     'activity' => [
         'system' => 'System',
+        'former_member' => 'Former member',
         'search_placeholder' => 'Search by record name',
         'record_destroyed' => 'This record has been permanently deleted.',
         'yes' => 'Yes',

@@ -37,7 +37,7 @@ final readonly class CompaniesController
             perPage: $request->safe()->integer('per_page', 15),
             useCursor: $request->safe()->has('cursor'),
             request: $request,
-        ));
+        )->appends($request->query()));
     }
 
     #[ResponseFromApiResource(CompanyResource::class, Company::class, status: 201)]

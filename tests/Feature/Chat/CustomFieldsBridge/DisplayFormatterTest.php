@@ -204,6 +204,7 @@ it('names the record on a stored record card, not its id', function (): void {
             $task->fresh('customFieldValues.customField.options'),
             [$field->fresh('options')],
             200,
+            $user->effectiveTimezone(),
         );
     } finally {
         TenantContextService::setTenantId(null);
