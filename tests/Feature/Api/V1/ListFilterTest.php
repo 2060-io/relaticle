@@ -907,6 +907,9 @@ it('rejects a sort or a field list that is not made of names', function (array $
     'sort number' => [['sort' => 5], 'sort'],
     'nested field list' => [['fields' => [['id']]], 'fields'],
     'field list of numbers' => [['fields' => [1, 2]], 'fields'],
+    'field map keyed by a zero-padded number' => [['fields' => ['01' => ['id']]], 'fields'],
+    'field map keyed by a decimal' => [['fields' => ['1.5' => ['id']]], 'fields'],
+    'field map keyed by an exponent' => [['fields' => ['1e3' => ['id']]], 'fields'],
 ]);
 
 it('takes sort as a list and fields as a string, a list or a map', function (array $body): void {

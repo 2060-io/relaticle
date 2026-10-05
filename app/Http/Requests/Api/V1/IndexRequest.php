@@ -113,7 +113,7 @@ final class IndexRequest extends FormRequest
     private function fieldNames(string $attribute, mixed $value, Closure $fail): void
     {
         $isNameList = static fn (mixed $names, int|string $recordType): bool => is_string($names)
-            || (is_string($recordType) && is_array($names) && array_all($names, static fn (mixed $name): bool => is_string($name)));
+            || (! is_numeric($recordType) && is_array($names) && array_all($names, static fn (mixed $name): bool => is_string($name)));
 
         if (! array_all(Arr::wrap($value), $isNameList)) {
             $fail(__('validation.filter.field_names'));
