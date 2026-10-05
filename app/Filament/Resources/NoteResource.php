@@ -7,6 +7,7 @@ namespace App\Filament\Resources;
 use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Filament\Components\Tables\RecordChipColumn;
+use App\Filament\Concerns\RemembersViewMode;
 use App\Filament\Exports\NoteExporter;
 use App\Filament\Resources\NoteResource\Forms\NoteForm;
 use App\Filament\Resources\NoteResource\Pages\ManageNotes;
@@ -34,6 +35,8 @@ use Override;
 
 final class NoteResource extends Resource
 {
+    use RemembersViewMode;
+
     protected static ?string $model = Note::class;
 
     protected static ?string $recordTitleAttribute = 'title';

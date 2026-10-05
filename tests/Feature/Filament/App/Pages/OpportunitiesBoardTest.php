@@ -218,3 +218,13 @@ it('does not walk a close date back a day for a viewer west of utc', function ()
         ->assertSee('Closes Today')
         ->assertDontSee('Overdue');
 });
+
+it('points the navigation link at the view the user opened last', function (): void {
+    livewire(OpportunitiesBoard::class)->assertOk();
+
+    expect(OpportunityResource::getNavigationUrl())->toBe(OpportunityResource::getUrl('board'));
+
+    livewire(ListOpportunities::class)->assertOk();
+
+    expect(OpportunityResource::getNavigationUrl())->toBe(OpportunityResource::getUrl('index'));
+});

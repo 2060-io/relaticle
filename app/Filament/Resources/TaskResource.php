@@ -10,6 +10,7 @@ use App\Enums\CrmEntity;
 use App\Filament\Components\Forms\WorkspaceMemberSelect;
 use App\Filament\Components\Tables\Filters\RecordSelectFilter;
 use App\Filament\Components\Tables\RecordChipColumn;
+use App\Filament\Concerns\RemembersViewMode;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Filament\Resources\TaskResource\Pages\TasksBoard;
@@ -40,6 +41,8 @@ use Relaticle\CustomFields\Contracts\ValueResolvers;
 
 final class TaskResource extends Resource
 {
+    use RemembersViewMode;
+
     protected static ?string $model = Task::class;
 
     protected static ?string $navigationLabel = null;
