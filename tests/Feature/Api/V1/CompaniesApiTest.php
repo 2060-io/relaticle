@@ -204,6 +204,20 @@ describe('includes', function (): void {
             );
     });
 
+    it('expands an include sent as a list', function (): void {
+        Sanctum::actingAs($this->user);
+
+        Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+        $this->getJson('/api/v1/companies?include[]=creator&include[]=accountOwner')
+            ->assertOk()
+            ->assertJson(fn (AssertableJson $json) => $json
+                ->has('data.0.relationships.creator')
+                ->has('included')
+                ->etc()
+            );
+    });
+
     it('can include relations on show endpoint with full structure', function (): void {
         Sanctum::actingAs($this->user);
 
