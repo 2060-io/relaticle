@@ -64,7 +64,7 @@ return [
                 'Relaticle\Chat\Services\Tools\PlanReferenceValidator::error' => 66,
                 'Relaticle\Chat\Tools\Activity\ListActivityTool::handle' => 74,
                 'Relaticle\Chat\Tools\BaseReadListTool::buildDisplayBlock' => 61,
-                'Relaticle\Chat\Tools\BaseReadListTool::handle' => 106,
+                'Relaticle\Chat\Tools\BaseReadListTool::handle' => 100,
                 'Relaticle\Chat\Tools\BaseWriteCreateTool::handle' => 139,
                 'Relaticle\Chat\Tools\BaseWriteDeleteTool::handle' => 71,
                 'Relaticle\Chat\Tools\BaseWriteUpdateTool::handle' => 173,
