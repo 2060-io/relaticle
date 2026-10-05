@@ -176,17 +176,25 @@ abstract class BaseListTool extends Tool
     private function listQuery(Request $request, array $validated): ListQuery
     {
         $filter = $request->get('filter');
-        $sort = $request->get('sort');
         $include = $request->get('include');
 
         return new ListQuery(
             filter: is_array($filter) && $filter !== [] ? FilterTree::trimmed($filter) : null,
-            sort: is_array($sort) && isset($sort['field'])
-                ? (($sort['direction'] ?? 'asc') === 'desc' ? '-' : '').$sort['field']
-                : null,
+            sort: $this->sortExpression($request->get('sort')),
             include: is_array($include) && $include !== [] ? $include : null,
             perPage: (int) ($validated['per_page'] ?? 15),
             page: (int) ($validated['page'] ?? 1),
         );
+    }
+
+    private function sortExpression(mixed $sort): ?string
+    {
+        if (! is_array($sort) || ! isset($sort['field'])) {
+            return null;
+        }
+
+        $direction = ($sort['direction'] ?? 'asc') === 'desc' ? '-' : '';
+
+        return $direction.$sort['field'];
     }
 }
