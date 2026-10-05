@@ -254,12 +254,11 @@ it('keeps polling while checkout activation is pending, then opens the workspace
     $page->call('reopenWhenActive')->assertRedirect(Filament::getUrl($workspace));
 });
 
-it('advertises all 39 MCP tools on the authenticated billing page', function (): void {
+it('lists the MCP server on the authenticated billing page', function (): void {
     billingPageOwner();
 
     livewire(Billing::class)
-        ->assertSee('REST API and 39-tool MCP server')
-        ->assertDontSee('REST API and 32-tool MCP server');
+        ->assertSee('REST API and MCP server');
 });
 
 it('starts a trial via the page action', function (): void {

@@ -1,6 +1,6 @@
 ---
 title: MCP Server
-description: Read the reference for Relaticle's 39 MCP tools, with OAuth and personal access token setup, custom field access and direct writes.
+description: Read the reference for Relaticle's MCP server, with OAuth and personal access token setup, custom field access and direct writes.
 order: 2
 updated: "2026-09-15"
 ---
