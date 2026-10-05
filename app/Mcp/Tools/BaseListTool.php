@@ -201,7 +201,7 @@ abstract class BaseListTool extends Tool
         $include = $mcpRequest->get('include');
 
         if (is_array($include) && $include !== []) {
-            $input['include'] = implode(',', $include);
+            $input['include'] = $include;
         }
 
         return new HttpRequest($input);

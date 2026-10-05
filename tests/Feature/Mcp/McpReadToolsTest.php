@@ -24,6 +24,7 @@ use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\Opportunity;
+use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
 use App\Support\CurrentSource;
@@ -243,6 +244,16 @@ it('publishes one filter object and no flat filter params on every list tool', f
     'tasks' => ListTasksTool::class,
     'notes' => ListNotesTool::class,
 ]);
+
+it('refuses a to-many relationship hidden behind a comma in one include', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id, 'name' => 'Hidden Person']);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListCompaniesTool::class, ['include' => ['creator,people']])
+        ->assertHasErrors(['Requested include(s) `creator,people` are not allowed.'])
+        ->assertDontSee('Hidden Person');
+});
 
 it('names the replacement for an argument a list tool no longer takes', function (string $toolClass, string $argument, string $replacement): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create();
