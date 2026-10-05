@@ -119,7 +119,8 @@ final class MicrosoftGraphMailService implements MailServiceInterface
             '$select' => 'id,internetMessageId,conversationId,subject,bodyPreview,receivedDateTime,sentDateTime,isRead,hasAttachments,parentFolderId,from,toRecipients,ccRecipients,bccRecipients,body',
             // Pull attachment metadata (not bytes) alongside the message so has-attachment
             // rows expose a downloadable list; bytes are fetched on demand via downloadAttachment().
-            '$expand' => 'attachments($select=id,name,contentType,size,isInline,contentId),'.$this->reconciliationPropertiesExpand(),
+            // contentId lives on fileAttachment; Graph answers 400 when it is selected on the base type.
+            '$expand' => 'attachments($select=id,name,contentType,size,isInline,microsoft.graph.fileAttachment/contentId),'.$this->reconciliationPropertiesExpand(),
         ]);
 
         $participants = [

@@ -756,6 +756,18 @@ it('expands and maps inbound attachment metadata into FetchedEmailData', functio
         && str_contains(urldecode((string) $r->url()), '$expand=attachments'));
 });
 
+it('selects the inline content id through the fileAttachment type Graph accepts', function (): void {
+    Http::fake([
+        ...graphWellKnownFolderFakes(),
+        'https://graph.microsoft.com/v1.0/me/messages/AAA2*' => Http::response(['id' => 'AAA2']),
+    ]);
+
+    resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchMessage('AAA2');
+
+    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/messages/AAA2')
+        && str_contains(urldecode((string) $r->url()), 'isInline,microsoft.graph.fileAttachment/contentId)'));
+});
+
 it('stores Graph inline cid images so the reader can rewrite them', function (): void {
     Http::fake([
         ...graphWellKnownFolderFakes(),
