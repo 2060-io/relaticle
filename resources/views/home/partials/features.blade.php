@@ -29,17 +29,17 @@
                     Connect your AI agents
                 </h3>
                 <p class="{{ $cardDesc }} max-w-md">
-                    Give MCP-compatible agents access to your CRM through {{ $mcpToolCount }} tools. Build custom integrations with the REST API.
+                    Give MCP-compatible agents access to your CRM through a {{ $mcpToolCount }}-tool MCP server. Build custom integrations with the REST API.
                 </p>
 
                 @include('home.partials.agent-network')
             </div>
 
-            {{-- Built-in AI Chat: the in-app conversational agent --}}
+            {{-- The built-in assistant: the in-app conversational agent --}}
             <div id="card-builtin-ai" class="{{ $cardBase }} p-6 overflow-hidden">
                 <h3 class="{{ $cardTitle }} inline-flex items-center gap-2">
                     <x-ri-chat-smile-3-line id="ai-sparkle" class="w-3.5 h-3.5 text-primary dark:text-primary-400"/>
-                    Built-in AI chat
+                    {{ config('chat.assistant_name') }}, the built-in AI assistant
                 </h3>
                 <p class="{{ $cardDesc }}">
                     Ask {{ config('chat.assistant_name') }} about your CRM and make changes through chat. Review every proposed change before it runs.

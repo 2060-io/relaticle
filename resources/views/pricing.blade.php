@@ -106,7 +106,7 @@
                     $hostedPriceCell = __('$19/mo per workspace ($228 billed yearly, or $24/mo billed monthly)');
                     $hostedUpdatesCell = __('Managed by Relaticle. No self-hosted maintenance required');
                     $hostedPlanAnswer = __(
-                        'Cloud Pro is :price and includes unlimited users and records, every supported AI model from :cheapestModel up to :dearestModel, the REST API, the 39-tool MCP server, and email support. Each workspace gets a :credits-credit monthly AI allowance; how far it goes depends on the model and how many tool calls each reply makes (see "What counts as an AI credit?" below). As a reference point, :credits credits covers roughly :credits simple :cheapestModel replies, or around :dearestReplies :dearestModel replies before tool calls. New workspaces start on a :days-day trial automatically, with no card required.',
+                        'Cloud Pro is :price and includes unlimited users and records, every supported AI model from :cheapestModel up to :dearestModel, the REST API, the :toolCount-tool MCP server, and email support. Each workspace gets a :credits-credit monthly AI allowance; how far it goes depends on the model and how many tool calls each reply makes (see "What counts as an AI credit?" below). As a reference point, :credits credits covers roughly :credits simple :cheapestModel replies, or around :dearestReplies :dearestModel replies before tool calls. New workspaces start on a :days-day trial automatically, with no card required.',
                         [
                             'price' => '$19/mo per workspace ($228 billed yearly, or $24/mo billed monthly)',
                             'credits' => $proCredits,
@@ -114,19 +114,20 @@
                             'dearestModel' => $dearestEntry['label'],
                             'dearestReplies' => number_format(intdiv((int) \App\Enums\Plan::Pro->credits(), max(1, (int) ceil($dearestEntry['credit_multiplier'])))),
                             'days' => $trialDays,
+                            'toolCount' => $mcpToolCount,
                         ]
                     );
                     $planLimitAnswer = __(
-                        'CRM data itself is never capped. Every plan supports unlimited users, companies, people, opportunities, tasks, and notes. The only metered resource is the AI assistant: Cloud Pro\'s :credits credits a month reset each billing (or trial) period. Once they are used up, the assistant declines new chat requests until the next reset. Cloud Pro workspaces can buy a prepaid credit top-up instead of waiting. Nothing else in the CRM is affected.',
-                        ['credits' => $proCredits]
+                        'CRM data itself is never capped. Every plan supports unlimited users, companies, people, opportunities, tasks, and notes. The only metered resource is :name, the AI assistant: Cloud Pro\'s :credits credits a month reset each billing (or trial) period. Once they are used up, :name declines new chat requests until the next reset. Cloud Pro workspaces can buy a prepaid credit top-up instead of waiting. Nothing else in the CRM is affected.',
+                        ['credits' => $proCredits, 'name' => config('chat.assistant_name')]
                     );
                 } else {
                     $hostedPriceCell = __('$0/mo per workspace');
                     $hostedUpdatesCell = __('Zero-downtime updates and automatic daily backups, handled for you');
-                    $hostedPlanAnswer = __('The hosted Cloud plan is $0/mo and includes unlimited users and data, the 39-tool MCP server, the REST API, all 20 custom field types, multiple workspaces, zero-downtime updates, automatic daily backups, and email support. No credit card is required.');
+                    $hostedPlanAnswer = __('The hosted Cloud plan is $0/mo and includes unlimited users and data, the :toolCount-tool MCP server, the REST API, all 20 custom field types, multiple workspaces, zero-downtime updates, automatic daily backups, and email support. No credit card is required.', ['toolCount' => $mcpToolCount]);
                     $planLimitAnswer = __(
-                        'CRM data itself is never capped on any plan. Every workspace supports unlimited users, companies, people, opportunities, tasks, and notes, whether you\'re self-hosting or on the hosted Cloud plan. The AI assistant is metered, though: every workspace defaults to the Free plan\'s :credits credits a month, resetting every calendar month. That includes self-hosted installs; see "Are self-hosted installs exempt from AI credit limits?" below. Once they are used up, the assistant declines new chat requests until the reset; nothing else in the CRM is affected.',
-                        ['credits' => $freeCredits]
+                        'CRM data itself is never capped on any plan. Every workspace supports unlimited users, companies, people, opportunities, tasks, and notes, whether you\'re self-hosting or on the hosted Cloud plan. :name, the AI assistant, is metered, though: every workspace defaults to the Free plan\'s :credits credits a month, resetting every calendar month. That includes self-hosted installs; see "Are self-hosted installs exempt from AI credit limits?" below. Once they are used up, the assistant declines new chat requests until the reset; nothing else in the CRM is affected.',
+                        ['credits' => $freeCredits, 'name' => config('chat.assistant_name')]
                     );
                 }
             @endphp
@@ -159,7 +160,7 @@
                         <tbody class="divide-y divide-gray-100 dark:divide-white/[0.06]">
                             @foreach(array_filter([
                                 [__('Users and records'), __('Unlimited'), __('Unlimited')],
-                                [__('AI assistant'), __('2,000 credits each month'), __('Usage agreed with your team')],
+                                [__(':name, the AI assistant', ['name' => config('chat.assistant_name')]), __('2,000 credits each month'), __('Usage agreed with your team')],
                                 \Laravel\Pennant\Feature::active(\App\Features\EmailIntegration::class)
                                     ? [__('Email and calendar'), __('Gmail and Google Calendar sync'), __('Gmail and Google Calendar sync')]
                                     : null,
@@ -290,7 +291,7 @@
                 @endif
             </div>
             <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">
-                <a href="{{ route('ai') }}" class="font-medium text-gray-700 underline underline-offset-4 hover:text-primary dark:text-gray-300 dark:hover:text-primary-300">{{ __('Explore the AI assistant and :count MCP tools', ['count' => $mcpToolCount]) }}</a>
+                <a href="{{ route('ai') }}" class="font-medium text-gray-700 underline underline-offset-4 hover:text-primary dark:text-gray-300 dark:hover:text-primary-300">{{ __('Explore :name and the MCP server for Claude and ChatGPT', ['name' => config('chat.assistant_name')]) }}</a>
                 @if(! $billingActive)
                     <span class="mx-2" aria-hidden="true">·</span>
                     <a href="{{ route('contact') }}" class="font-medium text-gray-700 underline underline-offset-4 hover:text-primary dark:text-gray-300 dark:hover:text-primary-300">{{ __('Questions? Talk to us.') }}</a>

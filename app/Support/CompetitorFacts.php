@@ -60,7 +60,7 @@ final readonly class CompetitorFacts
     // can drift from the tool count the MCP server actually registers.
     public static function mcpToolCount(): int
     {
-        preg_match('/^(\d+)/', self::all()['relaticle']['ai'], $matches);
+        preg_match('/(\d+)-tool/', self::all()['relaticle']['ai'], $matches);
 
         return (int) ($matches[1] ?? 0);
     }

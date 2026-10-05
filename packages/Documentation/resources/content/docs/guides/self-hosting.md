@@ -2,7 +2,7 @@
 title: Self-Hosting Guide
 description: Get Docker Compose, Coolify, Dokploy and Laravel Cloud deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.
 order: 1
-updated: "2026-10-01"
+updated: "2026-10-05"
 ---
 
 Deploy Relaticle on your own infrastructure with Docker or manually.
@@ -125,7 +125,7 @@ These are pre-configured in `compose.yml` and generally don't need changing.
 
 ### AI Assistant
 
-The AI assistant works with cloud providers, a self-hosted server, or both. Models appear in the chat model picker only when their provider is configured. With none configured, the assistant cannot answer.
+Rela, the built-in AI assistant, works with cloud providers, a self-hosted server, or both. Models appear in the chat model picker only when their provider is configured. With none configured, the assistant cannot answer.
 
 There are two ways to run a self-hosted model, and you can use either or both:
 

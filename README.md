@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="https://relaticle.com/images/github-preview-light.png?v=5" alt="Relaticle Home - AI assistant, chat history, and your open tasks in one view" />
+  <img src="https://relaticle.com/images/github-preview-light.png?v=5" alt="Relaticle Home - Rela the AI assistant, chat history, and your open tasks in one view" />
   <br>
   <sub>Clean, modern interface built with Filament 5 and Livewire 4</sub>
 </p>
@@ -32,13 +32,13 @@
 
 # About Relaticle
 
-Relaticle is a self-hosted CRM with a production-grade MCP server. Connect any AI agent -- Claude, GPT, or open-source models -- with 39 tools for CRM operations and analysis. 20 custom field types, REST API, and multi-workspace isolation.
+Relaticle is a self-hosted CRM with a production-grade MCP server. Connect any AI agent -- Claude, GPT, or open-source models -- through a 39-tool MCP server for CRM operations and analysis. 20 custom field types, REST API, and multi-workspace isolation.
 
 **Perfect for:** Developer-led teams, AI-forward startups, and SMBs who want AI agent integration without vendor lock-in.
 
 **Core Strengths:**
 
-- **Agent-Native Infrastructure** - MCP server with 39 tools, REST API with full CRUD, schema access, activity history, and pipeline analysis
+- **Agent-Native Infrastructure** - 39-tool MCP server, REST API with full CRUD, schema access, activity history, and pipeline analysis
 - **Customizable Data Model** - 20 field types including entity relationships and per-field encryption. No migrations needed.
 - **Multi-Workspace Isolation** - Workspace-scoped data with role-based permissions
 - **Modern Tech Stack** - Laravel 13, Filament 5, PHP 8.5, 6,000+ automated tests

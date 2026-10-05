@@ -39,7 +39,7 @@
             <ul class="space-y-3">
                 @foreach([
                     'Unlimited users and data',
-                    'MCP server with 39 tools',
+                    \App\Support\CompetitorFacts::mcpToolCount().'-tool MCP server',
                     'REST API with full CRUD',
                     '20 custom field types',
                     'Multiple workspaces',
@@ -104,7 +104,7 @@
             <ul class="space-y-3">
                 @foreach([
                     'Unlimited users and data',
-                    'MCP server with 39 tools',
+                    \App\Support\CompetitorFacts::mcpToolCount().'-tool MCP server',
                     'REST API with full CRUD',
                     '20 custom field types',
                     'Multiple workspaces',

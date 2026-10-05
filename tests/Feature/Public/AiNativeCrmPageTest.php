@@ -27,7 +27,7 @@ it('renders the AI-native CRM page with its structured data', function (): void 
 it('reads the MCP tool count from the competitor facts rather than a literal', function (): void {
     $html = $this->get('/ai-native-crm')->assertOk()->getContent();
 
-    expect($html)->toContain(__('A first-party MCP server with :count tools and a REST API.', ['count' => CompetitorFacts::mcpToolCount()]));
+    expect($html)->toContain(__('A first-party :count-tool MCP server and a REST API.', ['count' => CompetitorFacts::mcpToolCount()]));
 });
 
 it('scopes the approval promise to the assistant and says MCP writes commit directly', function (): void {

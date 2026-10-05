@@ -2,7 +2,7 @@
 title: Billing and plans
 description: Relaticle Cloud is priced per workspace, never per seat. Trials, subscriptions, credits, and pausing explained.
 order: 3
-updated: "2026-10-02"
+updated: "2026-10-05"
 related: [help/ai-assistant/ai-credits-and-limits, help/workspace/rename-or-delete-your-workspace]
 ---
 
@@ -35,7 +35,7 @@ Cancelling keeps Pro until the end of the paid period.
 
 ## If the subscription lapses
 
-The workspace **pauses**. The app, API, MCP server, and AI assistant step
+The workspace **pauses**. The app, API, MCP server, and Rela step
 aside, but **your records are safe** and remain stored. Resubscribing
 restores everything exactly as it was. A paused workspace can still be
 deleted by its owner, and its 30-day deletion grace period applies as usual.

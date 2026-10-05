@@ -50,6 +50,6 @@ and **Delete record**.
 **Companies** in the sidebar lists every company with sortable columns for
 owner, creator, and dates, plus a column for each custom field marked
 visible in lists. Filter by **Creation Source** (the app, an import, the API,
-or the AI assistant, whichever created the record) or show
+or Rela, whichever created the record) or show
 **Deleted records** to [restore one](/help/records/restore-deleted-records).
 Header buttons cover **New company** and **Import / Export**.

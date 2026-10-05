@@ -71,7 +71,7 @@ it('says connector changes apply directly and scopes the approval step to the bu
 })->with(['claude', 'chatgpt']);
 
 it('reads the MCP tool count from the competitor facts rather than a literal', function (): void {
-    $this->get('/crm-for-claude')->assertOk()->assertSee(__(':count tools on one server', ['count' => CompetitorFacts::mcpToolCount()]));
+    $this->get('/crm-for-claude')->assertOk()->assertSee(__('A :count-tool MCP server', ['count' => CompetitorFacts::mcpToolCount()]));
 });
 
 it('links each assistant page to the other, the setup guide and pricing from its own copy', function (): void {
@@ -98,7 +98,7 @@ it('has no copy holes from empty interpolations', function (string $assistant): 
 
     expect($html)
         ->not->toMatch('/\s-day Cloud/')
-        ->not->toMatch('/>\s*tools on one server/')
+        ->not->toMatch('/A -tool MCP server/')
         ->not->toContain(':name')
         ->not->toContain(':count')
         ->not->toContain(':days')

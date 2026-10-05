@@ -29,7 +29,7 @@
     $faqs = [
         [
             __('What license is Relaticle released under?'),
-            __('AGPL-3.0. The full application, the CRM, the AI assistant, and the MCP server, is on GitHub under that license: read it, audit it, modify it, and redeploy your own fork.'),
+            __('AGPL-3.0. The full application, the CRM, :name the AI assistant, and the MCP server, is on GitHub under that license: read it, audit it, modify it, and redeploy your own fork.', ['name' => config('chat.assistant_name')]),
         ],
         [
             __('How do I update a self-hosted install?'),
@@ -39,7 +39,7 @@
             ]),
         ],
         [
-            __('What does the AI assistant need to work on a self-hosted install?'),
+            __('What does :name need to work on a self-hosted install?', ['name' => config('chat.assistant_name')]),
             __('A provider it can call. Set an API key for Claude or GPT, or point it at Ollama or any OpenAI-compatible endpoint. With neither configured, the assistant has no model to answer with.'),
         ],
         [

@@ -26,7 +26,7 @@
             'ri-plug-line',
             __('Can an outside agent work in it?'),
             __('Claude, ChatGPT, or an agent you wrote should get first-class access to records, not a screen-scraper.'),
-            __('A first-party MCP server with :count tools and a REST API. Agents connected over MCP write directly, under the same permissions as the user whose token they use.', ['count' => $mcpToolCount]),
+            __('A first-party :count-tool MCP server and a REST API. Agents connected over MCP write directly, under the same permissions as the user whose token they use.', ['count' => $mcpToolCount]),
         ],
         [
             'ri-stack-line',

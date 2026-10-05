@@ -4,6 +4,6 @@ description: Ask Rela questions about your CRM, and let it create and update rec
 order: 3
 ---
 
-Relaticle has a built-in AI assistant. Ask it questions about your pipeline in
+Rela is Relaticle's built-in AI assistant. Ask it questions about your pipeline in
 plain language, or tell it to create, update, and delete records. Every
 change waits for your approval before anything is saved.

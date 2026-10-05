@@ -18,7 +18,7 @@ it('renders the press page with facts and unique metadata', function (): void {
     $this->get('/press')
         ->assertOk()
         ->assertSee('AGPL-3.0')
-        ->assertSee(CompetitorFacts::mcpToolCount().' MCP tools')
+        ->assertSee(CompetitorFacts::mcpToolCount().'-tool MCP server')
         ->assertSee('<title>'.e(__('Press kit & brand assets')).' - Relaticle</title>', false);
 });
 

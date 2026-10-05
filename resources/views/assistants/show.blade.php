@@ -55,7 +55,7 @@
         ['ri-edit-line', __('Changes apply directly'), __('A connected assistant writes straight to your records, so rely on its own confirmation prompts. :assistant, the built-in assistant, asks before every change instead.', ['assistant' => $assistantName])],
         ['ri-shield-check-line', __('It acts as you, in one workspace'), __('It can do what you can do there, and nothing else. Revoke it at any time under Settings, Access Tokens.')],
         ['ri-coin-line', __('It spends no AI credits'), __('Credits are only for the built-in assistant. Relaticle does not charge for work done through :name.', ['name' => $name])],
-        ['ri-tools-line', __(':count tools on one server', ['count' => $mcpToolCount]), __('Search, create, update and delete across companies, people, opportunities, tasks and notes.')],
+        ['ri-tools-line', __('A :count-tool MCP server', ['count' => $mcpToolCount]), __('Search, create, update and delete across companies, people, opportunities, tasks and notes.')],
     ];
 
     $costAnswer = $billingActive

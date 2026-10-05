@@ -2,7 +2,7 @@
 title: Take notes on your records
 description: Capture meeting notes and context in rich text, attached to the companies and people they're about.
 order: 3
-updated: "2026-08-13"
+updated: "2026-10-05"
 related: [help/tasks-and-notes/work-with-tasks, help/records/company-records]
 ---
 
@@ -26,6 +26,6 @@ on in the Notes list either way.
 ## Find notes again
 
 The **Notes** list shows every note with its linked companies and people as
-clickable columns. Notes are searchable from the sidebar search by title, the
-AI assistant reads them when you ask about a record, and each record's
+clickable columns. Notes are searchable from the sidebar search by title,
+Rela reads them when you ask about a record, and each record's
 **Notes** tab is the running history for that record.

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\WorkspaceRole;
+use App\Mcp\Servers\RelaticleServer;
 use Illuminate\Contracts\Database\Eloquent\Builder as EloquentBuilderContract;
 use Illuminate\Contracts\Database\Query\Builder as QueryBuilderContract;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -683,6 +684,62 @@ it('keeps the retired contact and deal words out of record copy', function (): v
         [],
         'A person record is a person or people, and Opportunity labels the record (.ai/guidelines/relaticle/architecture.md, '.
         'Business language). "Your people" reads as the reader\'s staff (.ai/guidelines/relaticle/writing.md). '.
+        'Offending lines: '.implode(', ', array_slice($offenders, 0, 40)),
+    );
+});
+
+it('names the assistant one way and states the MCP tool count the server registers', function (): void {
+    $root = dirname(__DIR__, 2);
+    $registered = count((new ReflectionClass(RelaticleServer::class))->getProperty('tools')->getDefaultValue());
+
+    $paths = [$root.'/README.md'];
+
+    foreach (['lang', 'resources/views', 'resources/data', 'packages'] as $directory) {
+        $files = new RegexIterator(
+            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory)),
+            '/\.(php|md|js)$/',
+        );
+
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $relativePath = str_replace($root.'/', '', $file->getPathname());
+
+            if ($directory !== 'packages' || preg_match('#^packages/\w+/resources/#', $relativePath) === 1) {
+                $paths[] = $file->getPathname();
+            }
+        }
+    }
+
+    $offenders = [];
+
+    foreach ($paths as $path) {
+        $relativePath = str_replace($root.'/', '', $path);
+
+        foreach (explode("\n", (string) file_get_contents($path)) as $index => $line) {
+            $location = $relativePath.':'.($index + 1).' ';
+
+            if (preg_match('/\bAI chat\b/i', $line, $retiredName) === 1) {
+                $offenders[] = $location.$retiredName[0];
+            }
+
+            if (preg_match('/MCP server with \d+ tools|\b\d+ (?:first-party )?MCP tools\b/', $line, $retiredForm) === 1) {
+                $offenders[] = $location.$retiredForm[0];
+            }
+
+            preg_match_all('/\b(\d+)-tool MCP server|provides (\d+) tools|MCP_Tools-(\d+)|\b(\d+) MCP Tools\b/', $line, $counts, PREG_SET_ORDER);
+
+            foreach ($counts as $count) {
+                if ((int) implode('', array_slice($count, 1)) !== $registered) {
+                    $offenders[] = $location.$count[0];
+                }
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'The assistant is named by chat.assistant_name, never "AI chat", and a tool count reads "N-tool MCP server" '.
+        "with N = {$registered}, the tools RelaticleServer registers (.ai/guidelines/relaticle/writing.md). ".
         'Offending lines: '.implode(', ', array_slice($offenders, 0, 40)),
     );
 });

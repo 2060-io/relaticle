@@ -2,7 +2,7 @@
 title: See who changed a record
 description: The Activity log tab on a record shows every field change and who made it, and workspace admins get the same history across every record type.
 order: 6
-updated: "2026-08-30"
+updated: "2026-10-05"
 related: [help/records/company-records, help/records/restore-deleted-records]
 ---
 
@@ -20,7 +20,7 @@ Tasks and notes don't have an activity tab; for those, the list columns show
 who created each record and when it last changed. If you need to know how a
 record entered the workspace in the first place, the **Creation Source**
 filter on every list distinguishes records created by hand, by import, by
-the API, and by the AI assistant.
+the API, and by Rela.
 
 ## The whole workspace at once
 
