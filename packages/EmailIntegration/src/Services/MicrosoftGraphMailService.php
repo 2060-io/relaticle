@@ -240,7 +240,8 @@ final class MicrosoftGraphMailService implements MailServiceInterface
                 continue;
             }
 
-            if (($property['id'] ?? null) !== self::RECONCILIATION_PROPERTY_ID) {
+            // Graph echoes the property id back with a lowercase GUID.
+            if (strcasecmp((string) ($property['id'] ?? ''), self::RECONCILIATION_PROPERTY_ID) !== 0) {
                 continue;
             }
 

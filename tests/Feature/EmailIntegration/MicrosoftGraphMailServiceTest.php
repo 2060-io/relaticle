@@ -397,7 +397,7 @@ it('maps a Graph sent message reconciliation property onto FetchedEmailData', fu
             'bccRecipients' => [],
             'body' => ['contentType' => 'html', 'content' => '<p>Hi</p>'],
             'singleValueExtendedProperties' => [[
-                'id' => 'String {00020329-0000-0000-C000-000000000046} Name RelaticleMessageId',
+                'id' => 'String {00020329-0000-0000-c000-000000000046} Name RelaticleMessageId',
                 'value' => '<local-id@example.com>',
             ]],
         ]),
