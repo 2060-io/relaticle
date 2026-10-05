@@ -58,7 +58,7 @@ final class IndexRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         abort_if(
-            $this->isMethod('POST') && strlen($this->getContent()) > self::MAX_BODY_KILOBYTES * 1024,
+            strlen($this->getContent()) > self::MAX_BODY_KILOBYTES * 1024,
             Response::HTTP_REQUEST_ENTITY_TOO_LARGE,
             __('validation.filter.body_too_large', ['max' => self::MAX_BODY_KILOBYTES]),
         );

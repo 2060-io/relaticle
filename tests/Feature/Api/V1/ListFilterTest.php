@@ -914,6 +914,14 @@ it('rejects a query body that is not a json object', function (string $content, 
     'form encoded' => ['filter%5Bname%5D%5B%24eq%5D=zzzz-nope', 'application/x-www-form-urlencoded'],
 ]);
 
+it('caps a filter sent in the body of a GET request', function (): void {
+    $body = (string) json_encode(['filter' => ['name' => ['$contains' => str_repeat('a', 257 * 1024)]]]);
+
+    $this->call('GET', '/api/v1/companies', [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'], $body)
+        ->assertStatus(413)
+        ->assertJsonPath('message', 'A query body holds at most 256 KB.');
+});
+
 it('treats an empty body and an empty object as no filter', function (string $content): void {
     Company::factory()->recycle([$this->user, $this->workspace])->count(2)->create();
 
