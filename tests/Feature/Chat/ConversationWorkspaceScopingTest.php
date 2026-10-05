@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
-use Relaticle\Chat\Actions\ListConversationMessages;
+use Relaticle\Chat\Queries\ConversationMessagesQuery;
 use Relaticle\Chat\Queries\ConversationsQuery;
 use Tests\Helpers\ChatDocument;
 
@@ -91,7 +91,7 @@ it('lists no messages from a conversation in another workspace of the same user'
         'updated_at' => now(),
     ]);
 
-    expect(resolve(ListConversationMessages::class)->execute($user, 'conv-foreign-messages'))->toBe([]);
+    expect(resolve(ConversationMessagesQuery::class)->get($user, 'conv-foreign-messages'))->toBe([]);
 });
 
 it('scopes a conversation listing to the participant type, not just the id', function (): void {

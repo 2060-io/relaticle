@@ -10,11 +10,11 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Renderless;
-use Relaticle\Chat\Actions\ListConversationMessages;
 use Relaticle\Chat\Enums\MessageOrigin;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Models\AgentConversationMessage;
 use Relaticle\Chat\Models\PendingAction;
+use Relaticle\Chat\Queries\ConversationMessagesQuery;
 use Relaticle\Chat\Queries\ConversationsQuery;
 use Relaticle\Chat\Support\DisplayBlocks;
 use Relaticle\Chat\Support\NextSteps;
@@ -95,7 +95,7 @@ final class ChatInterface extends BaseLivewireComponent
         $this->initialModel = $initialModel ?? $modelQuery;
 
         if ($this->conversationId !== null) {
-            $this->messages = resolve(ListConversationMessages::class)->execute(
+            $this->messages = resolve(ConversationMessagesQuery::class)->get(
                 $this->authUser(),
                 $this->conversationId,
             );
@@ -196,7 +196,7 @@ final class ChatInterface extends BaseLivewireComponent
     }
 
     /**
-     * The in-flight user message, shaped like a ListConversationMessages row so
+     * The in-flight user message, shaped like a ConversationMessagesQuery row so
      * the client renders it exactly as the persisted one will after the turn.
      *
      * @param  array{origin: string, message: string, document: array<string, mixed>, mentions: list<array{type: string, id: string, label: string}>, page_context: array{type: string, id: string, label: string}|null, started_at: string}  $presence
@@ -272,7 +272,7 @@ final class ChatInterface extends BaseLivewireComponent
             return;
         }
 
-        $earlier = resolve(ListConversationMessages::class)->execute(
+        $earlier = resolve(ConversationMessagesQuery::class)->get(
             $this->authUser(),
             $this->conversationId,
             beforeMessageId: $this->oldestMessageId,
@@ -343,7 +343,7 @@ final class ChatInterface extends BaseLivewireComponent
      * shaped exactly as the live `.tool_result` payload the client renders.
      *
      * Scoped to the authed participant in its own right, matching the filter
-     * ListConversationMessages applies to the same rows. Every caller does
+     * ConversationMessagesQuery applies to the same rows. Every caller does
      * verify the conversation, but leaning on that precondition is how a
      * route-supplied id once reached these payloads.
      *
