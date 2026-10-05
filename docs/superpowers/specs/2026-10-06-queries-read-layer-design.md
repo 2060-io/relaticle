@@ -66,7 +66,8 @@ A query class is created when a read has two callers, spans models, or carries t
 app/Queries/
 ├── FilterTree.php, EntityFilters.php, Operand.php ...   the grammar, unchanged
 ├── Filters/  Sorts/  Concerns/                          unchanged
-├── EntityQuery.php                                      base of the five list queries
+├── Contracts/EntityQuery.php                            contract of the five list queries
+├── Concerns/ListsEntity.php                             their shared body
 ├── Companies/CompaniesQuery.php
 ├── People/PeopleQuery.php
 ├── Opportunities/OpportunitiesQuery.php
@@ -115,7 +116,7 @@ final readonly class ListQuery
 
 - `toRequest()` returns an `Illuminate\Http\Request` holding only `filter`, `sort`, `include`
   and `fields`. It is the single adapter into `Spatie\QueryBuilder\QueryBuilder::for()`, and
-  only `EntityQuery` calls it.
+  only `ListsEntity` calls it.
 - `filter` is `mixed` on purpose. `FilterTree::validate()` owns the rejection of a filter that
   is not an object, and a typed property would turn that 422 into a `TypeError`.
 - `include` and `fields` take what Spatie's builder takes: REST sends a comma string, MCP a list.
@@ -125,34 +126,39 @@ final readonly class ListQuery
   `BaseListTool::listQuery()`, `BaseReadListTool::listQuery()`. The two `buildHttpRequest()`
   methods are deleted. `FilterTree::trimmed()` still runs in the MCP and chat adapters.
 
-### `App\Queries\EntityQuery`
+### `EntityQuery` and `ListsEntity`
 
-The base of the five list queries. It owns everything they share.
+The five list queries share one contract and one body. Three arch tests forbid inheritance
+in `App` (`avoid open for extension`, `ensure no extends`, `avoid inheritance`), so the shared
+part is an interface plus a trait, not a base class.
 
 ```php
-/** @template TModel of Model */
-abstract readonly class EntityQuery
+// app/Queries/Contracts/EntityQuery.php
+interface EntityQuery
 {
-    abstract public static function entity(): CrmEntity;
+    public static function entity(): CrmEntity;
 
     /** @return list<string> */
-    abstract public static function fields(): array;
+    public static function fields(): array;
 
     /** @return list<string> */
-    abstract public static function includes(): array;
+    public static function includes(): array;
 
     /** @return array<string, string> */
-    abstract public static function countIncludes(): array;
+    public static function countIncludes(): array;
 
     /** @return list<string> */
-    public static function sorts(): array
+    public static function sorts(): array;
 
-    /** @return QueryBuilder<TModel> */
-    final public function for(User $user, ListQuery $list): QueryBuilder
+    /** @return QueryBuilder<Model> */
+    public function for(User $user, ListQuery $list): QueryBuilder;
 
-    /** @return CursorPaginator<int, TModel>|LengthAwarePaginator<int, TModel> */
-    final public function paginate(User $user, ListQuery $list): CursorPaginator|LengthAwarePaginator
+    /** @return CursorPaginator<int, Model>|LengthAwarePaginator<int, Model> */
+    public function paginate(User $user, ListQuery $list): CursorPaginator|LengthAwarePaginator;
 }
+
+// app/Queries/Concerns/ListsEntity.php
+trait ListsEntity   // sorts(), for(), paginate()
 ```
 
 - `for()` runs, in this order: `abort_unless($user->can('viewAny', $model), 403)`,
@@ -174,9 +180,10 @@ abstract readonly class EntityQuery
 Each declares four facts and nothing else.
 
 ```php
-/** @extends EntityQuery<Company> */
-final readonly class CompaniesQuery extends EntityQuery
+final readonly class CompaniesQuery implements EntityQuery
 {
+    use ListsEntity;
+
     public static function entity(): CrmEntity
     {
         return CrmEntity::Company;
@@ -290,7 +297,7 @@ reads for that.
 
 One branch, four phases. Each ends green and can be reviewed on its own.
 
-1. **CRM lists.** `ListQuery`, `EntityQuery`, the five list queries, `CrmEntity::query()`.
+1. **CRM lists.** `ListQuery`, `EntityQuery`, `ListsEntity`, the five list queries, `CrmEntity::query()`.
    Migrate the five REST controllers, both base list tools and Scribe. Delete the five actions,
    the trait and both `buildHttpRequest()` methods.
 2. **Other app reads.** Move `GetCrmSummary`, `AggregateOpportunities` and

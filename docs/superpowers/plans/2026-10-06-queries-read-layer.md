@@ -4,7 +4,7 @@
 
 **Goal:** Move every reusable read out of `Actions` into query classes under `Queries`, with no change a user or an agent can observe.
 
-**Architecture:** `App\Queries\EntityQuery` is the base of five list queries. It owns authorization, the workspace bound, the allowlists and pagination. Each transport maps its own input to `App\Data\ListQuery` and calls `paginate()`. The other reads move as renames. New arch, convention and PHPStan gates hold the layout.
+**Architecture:** Five list queries implement `App\Queries\Contracts\EntityQuery` and share their body through the `App\Queries\Concerns\ListsEntity` trait (three arch tests forbid inheritance in `App`). The trait owns authorization, the workspace bound, the allowlists and pagination. Each transport maps its own input to `App\Data\ListQuery` and calls `paginate()`. The other reads move as renames. New arch, convention and PHPStan gates hold the layout.
 
 **Tech Stack:** PHP 8.5, Laravel, spatie/laravel-query-builder 7, Pest 5, PHPStan with the project's custom rules, Scribe.
 
@@ -33,6 +33,8 @@ These are the inputs most likely to break without any task's main tests noticing
 3. `include` sent as a comma string and as a list must both expand on REST. The comma form is pinned in `CompaniesApiTest`. The list form is pinned in Task 2, Step 1.
 4. A user the policy refuses must get 403 from the list, now that the check lives in `EntityQuery::for()`. Every `WorkspaceRole` holds `RecordsView`, so no role reaches that branch. `ApiWorkspaceScopingTest` "returns 403 when user has no workspace" pins the refusal, and Task 2, Step 12 runs it.
 5. A conversation with a null `workspace_id` must still open. This plan leaves the five inline ownership checks alone. Pinned by leaving `ChatController` and `channels.php` ownership code untouched in Tasks 7 and 8, and checked in Task 8, Step 5.
+
+> **Design change after Task 2 (2026-10-06).** `EntityQuery` is an interface at `app/Queries/Contracts/EntityQuery.php`, and the shared body is the trait `app/Queries/Concerns/ListsEntity.php`. Three arch tests forbid inheritance in `App`. Task 2's code blocks below show the first draft with an abstract base class: the committed code is the source of truth. Tasks 3 to 11 are already written for the interface and the trait.
 
 ---
 
@@ -361,7 +363,7 @@ Verify each row against its action before writing: `sed -n '/allowedFields/,/def
 In `app/Enums/CrmEntity.php`, after `model()`:
 
 ```php
-    /** @return class-string<EntityQuery<Model>> */
+    /** @return class-string<EntityQuery> */
     public function query(): string
     {
         return match ($this) {
@@ -588,7 +590,7 @@ git commit -m "refactor(chat): list crm records through query classes"
 In `DescribesListEndpoint.php`, delete the `LIST_ACTION_ENTITIES` constant, `findActionClass()`, `getMethodSource()` and `topLevelNames()`. Replace `listParameters()`, `sortParameter()` and `includeParameter()` with:
 
 ```php
-    /** @return class-string<EntityQuery<Model>>|null */
+    /** @return class-string<EntityQuery>|null */
     private function findQueryClass(ExtractedEndpointData $endpointData): ?string
     {
         foreach ($endpointData->method->getParameters() as $parameter) {
@@ -603,7 +605,7 @@ In `DescribesListEndpoint.php`, delete the `LIST_ACTION_ENTITIES` constant, `fin
     }
 
     /**
-     * @param  class-string<EntityQuery<Model>>  $queryClass
+     * @param  class-string<EntityQuery>  $queryClass
      * @return array<string, array<string, mixed>>
      */
     private function listParameters(string $queryClass): array
@@ -654,7 +656,7 @@ In `DescribesListEndpoint.php`, delete the `LIST_ACTION_ENTITIES` constant, `fin
     }
 ```
 
-Fix the imports: add `App\Queries\EntityQuery` and `Illuminate\Database\Eloquent\Model`. Remove the five action imports, `App\Enums\CrmEntity` if unused, `ReflectionClass`, `ReflectionException` and `ReflectionMethod`. `isIndexMethod()`, `isPostIndex()` and `paginationParameters()` stay untouched.
+Fix the imports: add `App\Queries\Contracts\EntityQuery`. Remove the five action imports, `App\Enums\CrmEntity` if unused, `ReflectionClass`, `ReflectionException` and `ReflectionMethod`. `isIndexMethod()`, `isPostIndex()` and `paginationParameters()` stay untouched.
 
 - [ ] **Step 2: Update the three strategies**
 
@@ -674,7 +676,7 @@ Expected from the grep: only the six test files' `use` and `mutates()` lines.
 
 - [ ] **Step 4: Repoint `mutates()`**
 
-In each of the five `tests/Feature/Api/V1/*ApiTest.php` files, replace the `use App\Actions\...\List...;` import with the matching query class import and add `use App\Queries\EntityQuery;`. In the `mutates(...)` call, replace `ListCompanies::class` (or its sibling) with the query class and add `EntityQuery::class`. Example for `CompaniesApiTest.php`:
+In each of the five `tests/Feature/Api/V1/*ApiTest.php` files, replace the `use App\Actions\...\List...;` import with the matching query class import and add `use App\Queries\Concerns\ListsEntity;`. In the `mutates(...)` call, replace `ListCompanies::class` (or its sibling) with the query class and add `ListsEntity::class`. Example for `CompaniesApiTest.php`:
 
 ```php
 mutates(
@@ -682,7 +684,7 @@ mutates(
     UpdateCompany::class,
     DeleteCompany::class,
     CompaniesQuery::class,
-    EntityQuery::class,
+    ListsEntity::class,
     CompanyResource::class,
 );
 ```
@@ -690,7 +692,7 @@ mutates(
 Keep every other entry of each file's own list. In `tests/Feature/Chat/ListDateFilterTest.php:20`:
 
 ```php
-mutates(OpportunitiesQuery::class, CompaniesQuery::class, PeopleQuery::class, EntityQuery::class);
+mutates(OpportunitiesQuery::class, CompaniesQuery::class, PeopleQuery::class, ListsEntity::class);
 ```
 
 Run the grep from Step 3 again. Expected: no output.
@@ -1074,7 +1076,7 @@ In `tests/Arch/ConventionsTest.php`, after `keeps the role suffix on classes who
 ```php
 it('names a class in a domain folder of Queries with the Query suffix', function (): void {
     $root = dirname(__DIR__, 2);
-    $grammarFolders = ['Filters', 'Sorts', 'Concerns'];
+    $grammarFolders = ['Filters', 'Sorts', 'Concerns', 'Contracts'];
 
     $files = [
         ...glob($root.'/app/Queries/*/*.php') ?: [],
@@ -1185,7 +1187,7 @@ Make these edits. Keep every section this list does not name.
    | Kind of class | Folder |
    |---|---|
    | one entity's list, or a read across models | `app/Queries/<Domain>`, named `*Query` |
-   | the base of the five list queries | `app/Queries/EntityQuery.php` |
+   | the contract and the shared body of the five list queries | `app/Queries/Contracts/EntityQuery.php`, `app/Queries/Concerns/ListsEntity.php` |
    | a read only one package calls | `packages/<Name>/src/Queries`, named `*Query` |
 
    Under the table, name the gates: `ConventionsTest` "names a class in a domain folder of Queries with the Query suffix" and "keeps reads out of the Actions folders", `ArchTest` "holds final readonly query classes".
@@ -1218,8 +1220,10 @@ A query class is `final readonly`. It takes the acting `User`, authorizes, and b
 workspace itself, so a transport cannot forget either:
 
 ```php
-final readonly class CompaniesQuery extends EntityQuery
+final readonly class CompaniesQuery implements EntityQuery
 {
+    use ListsEntity;
+
     public static function entity(): CrmEntity
     {
         return CrmEntity::Company;
