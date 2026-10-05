@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\CustomFields\CanonicalValue;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\PlainText;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -46,6 +47,7 @@ final readonly class CustomFieldsDisplayFormatter
             ->get()
             ->keyBy('code');
 
+        $timezone = $user->effectiveTimezone();
         $rows = [];
         foreach ($cleanFields as $code => $proposedValue) {
             $field = $fields->get($code);
@@ -59,7 +61,7 @@ final readonly class CustomFieldsDisplayFormatter
             $row = [
                 'label' => $field->name,
                 'code' => (string) $code,
-                'new' => $this->renderValue($field, $newValue, $user->effectiveTimezone()),
+                'new' => $this->renderValue($field, $newValue, $timezone),
                 'type' => $this->displayType($field, $dataType),
             ];
 
@@ -76,7 +78,7 @@ final readonly class CustomFieldsDisplayFormatter
 
             if ($oldModel instanceof Model) {
                 $oldValue = $this->lookupCurrentValue($field, $oldModel);
-                $row['old'] = $oldValue !== null ? $this->renderValue($field, $oldValue, $user->effectiveTimezone()) : null;
+                $row['old'] = $oldValue !== null ? $this->renderValue($field, $oldValue, $timezone) : null;
                 // Raw values ride along so the no-op check compares stored data,
                 // not rendered labels (two options can share a label). The write
                 // base strips them before the row is persisted or displayed.
@@ -234,8 +236,8 @@ final readonly class CustomFieldsDisplayFormatter
         return match ($dataType) {
             FieldDataType::SINGLE_CHOICE => $this->renderSingleChoice($field, $value),
             FieldDataType::MULTI_CHOICE => $this->renderMultiChoice($field, $value),
-            FieldDataType::DATE => $this->renderDate($value),
-            FieldDataType::DATE_TIME => $this->renderDate($value, $timezone),
+            FieldDataType::DATE => $this->toDate($value)->isoFormat('MMM D, YYYY'),
+            FieldDataType::DATE_TIME => $this->toDate($value)->setTimezone($timezone)->isoFormat('MMM D, YYYY'),
             FieldDataType::TEXT => trim(strip_tags((string) $value)),
             FieldDataType::BOOLEAN => $value ? 'Yes' : 'No',
             default => is_array($value) ? implode(', ', array_map(strval(...), $value)) : (string) $value,
@@ -300,11 +302,9 @@ final readonly class CustomFieldsDisplayFormatter
         }, $ids));
     }
 
-    private function renderDate(mixed $value, ?string $timezone = null): string
+    private function toDate(mixed $value): CarbonImmutable
     {
-        $date = $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
-
-        return ($timezone === null ? $date : $date->setTimezone($timezone))->isoFormat('MMM D, YYYY');
+        return $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
     }
 
     private function storedForm(CustomField $field, mixed $value): mixed
