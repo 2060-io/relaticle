@@ -30,14 +30,7 @@ final readonly class ConversationsQuery
     /** @return Collection<int, stdClass> */
     public function recent(User $user, int $limit = self::LIMIT): Collection
     {
-        return $this->withCleanTitles(
-            AgentConversation::query()
-                ->ownedBy($user)
-                ->latest('updated_at')
-                ->limit($limit)
-                ->toBase()
-                ->get(self::COLUMNS),
-        );
+        return $this->newest(AgentConversation::query()->ownedBy($user), $limit);
     }
 
     /** @return Collection<int, stdClass> */
@@ -51,30 +44,32 @@ final readonly class ConversationsQuery
 
         $needle = '%'.LikePattern::escape($term).'%';
 
-        return $this->withCleanTitles(
+        return $this->newest(
             AgentConversation::query()
                 ->ownedBy($user)
                 ->where(function (Builder $conversation) use ($needle): void {
                     $conversation->where('title', 'ilike', $needle)
                         ->orWhereHas('messages', fn (Builder $message): Builder => $message->withoutSynthetic()->where('content', 'ilike', $needle));
-                })
-                ->latest('updated_at')
-                ->limit(self::LIMIT)
-                ->toBase()
-                ->get(self::COLUMNS),
+                }),
+            self::LIMIT,
         );
     }
 
     /**
-     * @param  Collection<int, stdClass>  $rows
+     * @param  Builder<AgentConversation>  $conversations
      * @return Collection<int, stdClass>
      */
-    private function withCleanTitles(Collection $rows): Collection
+    private function newest(Builder $conversations, int $limit): Collection
     {
-        return $rows->map(function (stdClass $row): stdClass {
-            $row->title = TitleSanitizer::clean((string) $row->title);
+        return $conversations
+            ->latest('updated_at')
+            ->limit($limit)
+            ->toBase()
+            ->get(self::COLUMNS)
+            ->map(function (stdClass $row): stdClass {
+                $row->title = TitleSanitizer::clean((string) $row->title);
 
-            return $row;
-        });
+                return $row;
+            });
     }
 }
