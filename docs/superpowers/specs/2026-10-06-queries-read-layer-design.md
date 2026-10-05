@@ -231,7 +231,7 @@ final readonly class ConversationsQuery
 }
 ```
 
-- The three bodies move unchanged. `ownedBy()` stays the only ownership predicate.
+- The three bodies move unchanged, the `ownedBy()` scope included.
 - `ConversationMessagesQuery::get()` is `ListConversationMessages::execute()` renamed. Its body
   does not change in this work. Its two `phpstan-method-length.php` entries are renamed with it.
 - The `lockForUpdate()` read at `ChatController:218` stays: it belongs to a write transaction.
