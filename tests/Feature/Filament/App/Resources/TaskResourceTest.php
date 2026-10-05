@@ -6,6 +6,9 @@ use App\Actions\Task\NotifyTaskAssignees;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Mail\TaskAssignedMail;
+use App\Models\Company;
+use App\Models\Opportunity;
+use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
@@ -42,6 +45,7 @@ it('heads every column but the task title with an icon', function (): void {
 
     livewire(ManageTasks::class)
         ->assertTableColumnExists('title', fn (Column $column): bool => ! $hasIcon($column))
+        ->assertTableColumnExists('relations', $hasIcon)
         ->assertTableColumnExists('assignees.name', $hasIcon)
         ->assertTableColumnExists('created_at', $hasIcon);
 });
@@ -49,15 +53,15 @@ it('heads every column but the task title with an icon', function (): void {
 it('exposes the expected table columns', function (): void {
     $table = livewire(ManageTasks::class);
 
-    foreach (['title', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
+    foreach (['title', 'relations', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
         $table->assertTableColumnExists($column);
     }
 
-    foreach (['title', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
+    foreach (['title', 'relations', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
         $table->assertTableColumnVisible($column);
     }
 
-    foreach (['title', 'creator.name'] as $column) {
+    foreach (['title', 'relations', 'creator.name'] as $column) {
         $table->assertCanRenderTableColumn($column);
     }
 
@@ -219,6 +223,25 @@ it('notifies only the assignees submitted through the create action', function (
 
     Mail::assertQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($intendedAssignee->email));
     Mail::assertNotQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($concurrentAssignee->email));
+});
+
+it('links companies, people and opportunities to a task from the relations picker', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $opportunity = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ManageTasks::class)
+        ->callAction('create', data: [
+            'title' => 'Send the renewal quote',
+            'relations' => ["company:{$company->id}", "people:{$person->id}", "opportunity:{$opportunity->id}"],
+        ])
+        ->assertHasNoActionErrors();
+
+    $task = Task::query()->where('title', 'Send the renewal quote')->sole();
+
+    expect($task->companies->modelKeys())->toBe([$company->id])
+        ->and($task->people->modelKeys())->toBe([$person->id])
+        ->and($task->opportunities->modelKeys())->toBe([$opportunity->id]);
 });
 
 it('can edit a task', function (): void {

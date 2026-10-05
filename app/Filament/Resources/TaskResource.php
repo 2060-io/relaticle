@@ -9,6 +9,7 @@ use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Filament\Components\Forms\WorkspaceMemberSelect;
 use App\Filament\Components\Tables\Filters\RecordSelectFilter;
+use App\Filament\Components\Tables\LinkedRecordsColumn;
 use App\Filament\Components\Tables\RecordChipColumn;
 use App\Filament\Concerns\RemembersViewMode;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
@@ -28,6 +29,7 @@ use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Tables\Columns\Column;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -86,35 +88,7 @@ final class TaskResource extends Resource
         $valueResolver = resolve(ValueResolvers::class);
 
         return $table
-            ->columns([
-                TextColumn::make('title')
-                    ->searchable()
-                    ->limit(50)
-                    ->weight('medium'),
-                RecordChipColumn::make('assignees.name')
-                    ->label(__('filament/resources/task.fields.assignees.label'))
-                    ->searchable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('creator.name')
-                    ->label(__('filament/resources/task.fields.creator.label'))
-                    ->searchable()
-                    ->sortable()
-                    ->toggleable()
-                    ->getStateUsing(fn (Task $record): string => $record->createdBy),
-                TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('deleted_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable()
-                    ->toggledHiddenByDefault(),
-            ])
+            ->columns(self::columns())
             ->defaultSort('created_at', 'desc')
             ->searchable()
             ->filters([
@@ -160,6 +134,45 @@ final class TaskResource extends Resource
                     RestoreBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * @return array<int, Column>
+     */
+    private static function columns(): array
+    {
+        return [
+            TextColumn::make('title')
+                ->searchable()
+                ->limit(50)
+                ->weight('medium'),
+            LinkedRecordsColumn::make('relations')
+                ->toggleable(),
+            RecordChipColumn::make('assignees.name')
+                ->label(__('filament/resources/task.fields.assignees.label'))
+                ->searchable()
+                ->toggleable(isToggledHiddenByDefault: true),
+            TextColumn::make('creator.name')
+                ->label(__('filament/resources/task.fields.creator.label'))
+                ->searchable()
+                ->sortable()
+                ->toggleable()
+                ->getStateUsing(fn (Task $record): string => $record->createdBy),
+            TextColumn::make('created_at')
+                ->dateTime()
+                ->sortable()
+                ->toggleable(isToggledHiddenByDefault: true),
+            TextColumn::make('updated_at')
+                ->dateTime()
+                ->sortable()
+                ->toggleable(isToggledHiddenByDefault: true),
+            TextColumn::make('deleted_at')
+                ->dateTime()
+                ->sortable()
+                ->toggleable()
+                ->toggledHiddenByDefault(),
+
+        ];
     }
 
     public static function getPages(): array
@@ -216,7 +229,7 @@ final class TaskResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['assignees', 'customFieldValues.customField.options'])
+            ->with(['assignees', 'companies.media', 'people', 'opportunities', 'customFieldValues.customField.options'])
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);
