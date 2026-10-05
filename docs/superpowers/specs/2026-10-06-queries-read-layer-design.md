@@ -43,7 +43,7 @@ and Spatie's public apps (scopes on the model, no query folder).
 | 1 | A reusable read is a `*Query` class. The read actions are deleted. | Keep `List*` actions as an authorized shell around a query class. Two classes per read, and the shell is a pass-through. |
 | 2 | Authorization and the workspace bound live inside the query class. | Leave them to each caller. Three transports call every list, and one forgetting the check is a data leak. |
 | 3 | Query classes sit in a domain subfolder: `app/Queries/Companies/CompaniesQuery.php`. | Flat at the root. The root stays the filter and sort grammar. |
-| 4 | A package-only read lives in `packages/<Name>/src/Queries`. It moves to `app/Queries` when a second module needs it. | A `Queries` folder in every package up front. |
+| 4 | A read over a package's own models lives in `packages/<Name>/src/Queries`, whoever calls it. | A `Queries` folder in every package up front. |
 | 5 | A one-model predicate stays a `#[Scope]`. No custom Eloquent builders. | `ConnectedAccountBuilder`, `UserBuilder`. The five CRM models have no scopes, and `ConventionsTest` already gates the scope rule. |
 | 6 | The list input is `App\Data\ListQuery`, a plain `final readonly` class. | `spatie/laravel-data`. Every class in `app/Data` is a plain readonly class, and each transport validates before it builds one. |
 | 7 | Write actions keep `array $data`. | DTOs per write. `custom_fields` is dynamic per workspace. |
@@ -267,8 +267,9 @@ production have a null `workspace_id`. If none, a follow-up replaces the five ch
 
 `GetCrmSummary`, `AggregateOpportunities` and `FindEntitiesByFieldValue` move to the paths in
 the layout. Their method becomes `get()`. Bodies, constructor dependencies and authorization
-checks do not change. `EntitiesByFieldValueQuery` takes no `User`: its callers are write
-actions that have already authorized, and the `CustomField` it takes is workspace-owned.
+checks do not change. `EntitiesByFieldValueQuery` takes no `User`. It bounds both
+of its subqueries by the `tenant_id` of the `CustomField` it receives, so its caller must resolve
+that field inside the acting workspace.
 
 ## Rules and the artifact that fails
 
@@ -352,3 +353,23 @@ One branch, four phases. Each ends green and can be reviewed on its own.
   dropped.
 - **`mutates()` targets.** Five API tests and `ListDateFilterTest` declare the list actions.
   They are repointed at the query classes and `EntityQuery`.
+
+## Changes during review (2026-10-06)
+
+The pre-merge review simplified the design. The code is the source of truth where a sketch
+above differs.
+
+- **Two facts per list query, not four.** `countIncludes()` is gone: a count include is a name
+  in `includes()` ending in `Count`, which spatie/laravel-query-builder 7 resolves itself.
+  `entity()` moved into the trait and reads `CrmEntity::query()`, so the entity-to-query mapping
+  has one owner.
+- **The chat list tool reads its sort names from the query class.** Its own copy is gone.
+- **A package read stays in its package.** `ConversationsQuery` is called from `app/Filament`
+  and cannot move to `app/Queries`, which may not import a package.
+- **Refining `for()` has a rule.** `where` and `whereHas` only, with any `or` grouped. A
+  top-level `orWhere` escapes the workspace bound in a queued job. No caller refines it yet.
+- **Gates read the folders.** Readonly covers every class under `app/Queries`. One gate fails a
+  Spatie query built outside a query layer. A convention test fails a `Queries` folder that
+  `phpstan.neon` does not guard.
+- **The list authorization has a test.** Removing the `viewAny` check left the suite green, so
+  `SurfaceParityTest` now refuses the list to an unverified user on REST, MCP and chat.

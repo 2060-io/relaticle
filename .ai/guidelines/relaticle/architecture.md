@@ -94,7 +94,7 @@ of the Actions folders").
 |---|---|
 | a predicate over one model's columns | a `#[Scope]` on the model |
 | one entity's list, or a read across models | `app/Queries/<Domain>/<Name>Query.php` |
-| a read only one package calls | `packages/<Name>/src/Queries/<Name>Query.php` |
+| a read over a package's own models | `packages/<Name>/src/Queries/<Name>Query.php` |
 | a read with one caller | inline in that caller |
 
 A query class is `final readonly`. The five list queries implement
@@ -107,23 +107,21 @@ final readonly class CompaniesQuery implements EntityQuery
 {
     use ListsEntity;
 
-    public static function entity(): CrmEntity
-    {
-        return CrmEntity::Company;
-    }
-
-    // fields(), includes(), countIncludes()
+    // fields() and includes()
 }
 
 $page = $query->paginate($user, $request->toListQuery());
 ````
 
-- Each transport maps its own input to `App\Data\ListQuery`. A query class never reads
-  `auth()` or `request()`, because chat tools run in queued jobs. `tests/Arch/ArchTest.php`
-  fails it ("takes the acting user and reads no ambient request")
-- A caller that wants more than a page calls `for($user, $list)` and refines the builder
-- A query class never writes. `EloquentWriteOutsideActionRule` (PHPStan) covers `App\Queries`
-  and `Relaticle\Chat\Queries`
+- Each transport maps its own input to `App\Data\ListQuery`. A query class reads no ambient
+  user, request or workspace, because chat tools run in queued jobs. `tests/Arch/ArchTest.php`
+  fails it ("takes the acting user and reads no ambient user, request or workspace")
+- `CrmEntity::query()` owns which query lists which entity. A list query declares `fields()` and
+  `includes()`, and the trait derives the rest
+- A caller that wants more than a page calls `for($user, $list)` and refines the builder with
+  `where` only. A top-level `orWhere` escapes the workspace bound in a queued job
+- A query class never writes. `EloquentWriteOutsideActionRule` (PHPStan) covers every `Queries`
+  folder, and `tests/Arch/ConventionsTest.php` fails one that `phpstan.neon` does not list
 - `.ai/rules/queries.md` holds the filter grammar and the rest of the rules
 
 ## One fact, one owner
