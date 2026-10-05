@@ -24,14 +24,12 @@ final readonly class OpportunitiesQuery implements EntityQuery
 
     public static function includes(): array
     {
-        return ['creator', 'company', 'contact'];
-    }
-
-    public static function countIncludes(): array
-    {
         return [
-            'tasksCount' => 'tasks',
-            'notesCount' => 'notes',
+            'creator',
+            'company',
+            'contact',
+            'tasksCount',
+            'notesCount',
         ];
     }
 }

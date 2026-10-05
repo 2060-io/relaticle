@@ -22,9 +22,6 @@ interface EntityQuery
     /** @return list<string> */
     public static function includes(): array;
 
-    /** @return array<string, string> */
-    public static function countIncludes(): array;
-
     /** @return list<string> */
     public static function sorts(): array;
 

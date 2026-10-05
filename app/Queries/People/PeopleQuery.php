@@ -24,14 +24,11 @@ final readonly class PeopleQuery implements EntityQuery
 
     public static function includes(): array
     {
-        return ['creator', 'company'];
-    }
-
-    public static function countIncludes(): array
-    {
         return [
-            'tasksCount' => 'tasks',
-            'notesCount' => 'notes',
+            'creator',
+            'company',
+            'tasksCount',
+            'notesCount',
         ];
     }
 }

@@ -24,15 +24,14 @@ final readonly class NotesQuery implements EntityQuery
 
     public static function includes(): array
     {
-        return ['creator', 'companies', 'people', 'opportunities'];
-    }
-
-    public static function countIncludes(): array
-    {
         return [
-            'companiesCount' => 'companies',
-            'peopleCount' => 'people',
-            'opportunitiesCount' => 'opportunities',
+            'creator',
+            'companies',
+            'people',
+            'opportunities',
+            'companiesCount',
+            'peopleCount',
+            'opportunitiesCount',
         ];
     }
 }

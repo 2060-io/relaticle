@@ -24,16 +24,15 @@ final readonly class CompaniesQuery implements EntityQuery
 
     public static function includes(): array
     {
-        return ['creator', 'accountOwner', 'people', 'opportunities'];
-    }
-
-    public static function countIncludes(): array
-    {
         return [
-            'peopleCount' => 'people',
-            'opportunitiesCount' => 'opportunities',
-            'tasksCount' => 'tasks',
-            'notesCount' => 'notes',
+            'creator',
+            'accountOwner',
+            'people',
+            'opportunities',
+            'peopleCount',
+            'opportunitiesCount',
+            'tasksCount',
+            'notesCount',
         ];
     }
 }

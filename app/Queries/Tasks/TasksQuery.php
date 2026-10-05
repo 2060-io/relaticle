@@ -24,16 +24,16 @@ final readonly class TasksQuery implements EntityQuery
 
     public static function includes(): array
     {
-        return ['creator', 'assignees', 'companies', 'people', 'opportunities'];
-    }
-
-    public static function countIncludes(): array
-    {
         return [
-            'assigneesCount' => 'assignees',
-            'companiesCount' => 'companies',
-            'peopleCount' => 'people',
-            'opportunitiesCount' => 'opportunities',
+            'creator',
+            'assignees',
+            'companies',
+            'people',
+            'opportunities',
+            'assigneesCount',
+            'companiesCount',
+            'peopleCount',
+            'opportunitiesCount',
         ];
     }
 }

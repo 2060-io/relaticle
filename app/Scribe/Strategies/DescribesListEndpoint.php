@@ -42,7 +42,7 @@ trait DescribesListEndpoint
     {
         return [
             ...$this->sortParameter($queryClass::sorts()),
-            ...$this->includeParameter([...$queryClass::includes(), ...array_keys($queryClass::countIncludes())]),
+            ...$this->includeParameter($queryClass::includes()),
             ...$this->paginationParameters(),
         ];
     }

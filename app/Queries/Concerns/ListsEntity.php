@@ -13,7 +13,6 @@ use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
-use Spatie\QueryBuilder\AllowedInclude;
 use Spatie\QueryBuilder\QueryBuilder;
 use UnexpectedValueException;
 
@@ -42,10 +41,7 @@ trait ListsEntity
         return $builder
             ->allowedFilters(...new EntityFilters($user, $list->viewerZone)->for($entity))
             ->allowedFields(...static::fields())
-            ->allowedIncludes(
-                ...static::includes(),
-                ...array_map(AllowedInclude::count(...), array_keys(static::countIncludes()), static::countIncludes()),
-            )
+            ->allowedIncludes(...static::includes())
             ->allowedSorts(
                 ...static::sorts(),
                 ...($list->cursor ? [] : new CustomFieldFilterSchema()->allowedSorts($user, $entity->value)),
