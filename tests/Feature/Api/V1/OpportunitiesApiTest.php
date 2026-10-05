@@ -555,7 +555,7 @@ describe('filtering and sorting', function (): void {
 
         $this->getJson('/api/v1/opportunities?filter[custom_fields][close_date][$gt]='.urlencode($operand))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['filter.custom_fields.close_date.$gt' => 'close_date.$gt']);
+            ->assertJsonValidationErrors(['filter.custom_fields.close_date.$gt' => 'close_date $gt must be a date']);
     })->with([
         'not a date' => ['notadate'],
         'month thirteen' => ['2026-13-45'],

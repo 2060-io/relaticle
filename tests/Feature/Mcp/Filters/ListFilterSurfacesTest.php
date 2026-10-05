@@ -651,7 +651,7 @@ it('applies every operator of every custom field type alike on the api and mcp',
     ]);
 
     foreach (array_diff(EVERY_FILTER_OPERATOR, FILTER_OPERATORS_BY_TYPE[$type]) as $operator) {
-        expectErrorOnEverySurface($this, $this->user, 'opportunities', $on([$operator => $sample]), "filter.custom_fields.{$field->code}.{$operator}", "Operator \"{$operator}\" is not supported for \"{$field->code}\".");
+        expectErrorOnEverySurface($this, $this->user, 'opportunities', $on([$operator => $sample]), "filter.custom_fields.{$field->code}.{$operator}", "{$field->code} does not support {$operator}.");
     }
 })->with([
     'text' => ['text', [], 'Alpha Corp', 'Beta Ltd', [
@@ -787,12 +787,12 @@ it('names the node to fix under the same key on the api and in the same words on
     expectErrorOnEverySurface($this, $this->user, $route, $filter, $key, $message);
 })->with([
     'unknown custom field' => ['opportunities', ['custom_fields' => ['stagee' => ['$eq' => 'Won']]], 'filter.custom_fields.stagee', '"stagee" is not a filterable custom field'],
-    'operator of another type' => ['opportunities', ['custom_fields' => ['amount' => ['$contains' => '5']]], 'filter.custom_fields.amount.$contains', 'Operator "$contains" is not supported for "amount".'],
+    'operator of another type' => ['opportunities', ['custom_fields' => ['amount' => ['$contains' => '5']]], 'filter.custom_fields.amount.$contains', 'amount does not support $contains.'],
     'bare custom field operator' => ['opportunities', ['custom_fields' => ['stage' => ['eq' => 'Won']]], 'filter.custom_fields.stage.eq', 'Use $eq.'],
     'bare native operator' => ['companies', ['name' => ['contains' => 'Acme']], 'filter.name.contains', 'Use $contains.'],
     'bare relation operator' => ['people', ['company' => ['in' => ['01J8Z4Y6T5Q2M9N3B7K1W0X8VD']]], 'filter.company.in', 'Use $in.'],
     'shorthand value' => ['companies', ['name' => 'Acme'], 'filter.name', 'name takes an operator object'],
-    'shorthand custom field value' => ['opportunities', ['custom_fields' => ['stage' => 'Won']], 'filter.custom_fields.stage', 'must be an operator object'],
+    'shorthand custom field value' => ['opportunities', ['custom_fields' => ['stage' => 'Won']], 'filter.custom_fields.stage', 'stage takes an operator object'],
     'unknown name' => ['companies', ['industry' => ['$eq' => 'x']], 'filter.industry', 'name, created_at, updated_at, creation_source, creator, accountOwner, people, opportunities, custom_fields, $and, $or, $not'],
     'unknown keyword' => ['companies', ['$nor' => [['name' => ['$eq' => 'x']]]], 'filter.$nor', 'Unknown filter $nor.'],
     'unknown name on a related record' => ['people', ['company' => ['title' => ['$eq' => 'x']]], 'filter.company.title', 'Unknown filter title.'],
@@ -802,7 +802,7 @@ it('names the node to fix under the same key on the api and in the same words on
     'fourth logic level' => ['companies', ['$not' => ['$or' => [['$and' => [['$not' => ['name' => ['$eq' => 'x']]]]]]]], 'filter.$not.$or.0.$and.0.$not', 'nest at most 3 levels'],
     'twenty-one conditions' => ['companies', ['$or' => array_fill(0, 21, ['name' => ['$eq' => 'x']])], 'filter', 'A filter holds at most 20 conditions. This one has 21.'],
     'one hundred and one enum values' => ['companies', ['creation_source' => ['$in' => array_fill(0, 101, 'api')]], 'filter.creation_source.$in', 'at most 100 values'],
-    'one hundred and one custom field values' => ['opportunities', ['custom_fields' => ['stage' => ['$in' => array_fill(0, 101, 'Won')]]], 'filter.custom_fields.stage.$in', 'pass at most 100 values'],
+    'one hundred and one custom field values' => ['opportunities', ['custom_fields' => ['stage' => ['$in' => array_fill(0, 101, 'Won')]]], 'filter.custom_fields.stage.$in', 'stage $in takes at most 100 values'],
     'one hundred and one relation ids' => ['people', ['company' => ['$in' => array_fill(0, 101, '01J8Z4Y6T5Q2M9N3B7K1W0X8VD')]], 'filter.company.$in', 'at most 100 values'],
     'relation id that is not an id' => ['people', ['company' => ['$in' => ['acme']]], 'filter.company.$in', 'acme is not a record ID'],
     'operator outside the link operators' => ['people', ['company' => ['$eq' => '01J8Z4Y6T5Q2M9N3B7K1W0X8VD']], 'filter.company.$eq', 'company does not support $eq'],
@@ -824,7 +824,7 @@ it('names the node to fix under the same key on the api and in the same words on
     'eleven nodes of a link and a related condition' => ['people', ['$or' => array_fill(0, 11, ['company' => ['$is_empty' => false, 'name' => ['$eq' => 'x']]])], 'filter', 'A filter holds at most 20 conditions. This one has 22.'],
     'unknown name after a native field' => ['companies', ['name' => ['$eq' => 'x'], 'industry' => ['$eq' => 'x']], 'filter.industry', 'Unknown filter industry.'],
     'two conditions on a member relation' => ['companies', ['creator' => ['name' => ['$eq' => 'Ana'], 'email' => ['$eq' => 'ana@acme.com']]], 'filter.creator.name', 'creator takes $in, $not_in or $is_empty.'],
-    'operator outside the domain operators' => ['people', ['custom_fields' => ['emails' => ['domain' => ['$eq' => 'acme.com']]]], 'filter.custom_fields.emails.domain.$eq', 'Operator "$eq" is not supported for'],
+    'operator outside the domain operators' => ['people', ['custom_fields' => ['emails' => ['domain' => ['$eq' => 'acme.com']]]], 'filter.custom_fields.emails.domain.$eq', 'emails.domain does not support $eq.'],
     'national phone' => ['people', ['custom_fields' => ['phone_number' => ['$has_any' => ['415 555 0100']]]], 'filter.custom_fields.phone_number.$has_any.0', 'needs a country code'],
     'domain with a path' => ['people', ['custom_fields' => ['emails' => ['domain' => ['$in' => ['acme.com/team']]]]], 'filter.custom_fields.emails.domain.$in', 'a list of domains such as acme.com'],
     'unknown option label' => ['opportunities', ['custom_fields' => ['stage' => ['$eq' => 'Daydream']]], 'filter.custom_fields.stage.$eq', 'Daydream'],

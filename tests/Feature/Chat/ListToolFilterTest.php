@@ -244,7 +244,7 @@ it('rejects an operator the field does not support', function (): void {
     TenantContextService::setTenantId(null);
 
     expect($result)->toHaveKey('error')
-        ->and($result['error'])->toContain('not supported');
+        ->and($result['error'])->toContain('status does not support $contains.');
 });
 
 it('sorts companies by the requested column and direction', function (): void {
@@ -704,7 +704,7 @@ it('shows the operator example when a bare value is given', function (): void {
         'filter' => ['custom_fields' => ['status' => 'Done']],
     ])), true);
 
-    expect($result['error'])->toContain('must be an operator object, e.g. {"$eq": "..."}');
+    expect($result['error'])->toContain('takes an operator object, for example {"$eq": ...}.');
 });
 
 function hideLinkedinFromPeopleList(User $user): void

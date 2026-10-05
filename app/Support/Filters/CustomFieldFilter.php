@@ -83,7 +83,7 @@ final readonly class CustomFieldFilter implements Filter
             $supportedOperators = CustomFieldFilterSchema::operatorsForType($field->type);
 
             if (! is_array($operators) || $operators === []) {
-                throw FilterErrors::at((string) $fieldCode, __('validation.custom_field.operator_object', ['field' => $fieldCode, 'operator' => array_key_first($supportedOperators)]));
+                throw FilterErrors::at((string) $fieldCode, __('validation.filter.operator_object', ['name' => $fieldCode, 'operator' => array_key_first($supportedOperators)]));
             }
 
             $entry = $options[$fieldCode] ?? null;
@@ -123,8 +123,8 @@ final readonly class CustomFieldFilter implements Filter
         };
 
         if (is_array($normalized) && count($normalized) > CustomFieldFilterSchema::MAX_LIST_VALUES) {
-            throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.too_many_values', [
-                'field' => $fieldCode,
+            throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.filter.too_many_values', [
+                'name' => "{$fieldCode} {$operator}",
                 'max' => CustomFieldFilterSchema::MAX_LIST_VALUES,
             ]));
         }
@@ -140,9 +140,8 @@ final readonly class CustomFieldFilter implements Filter
             $type === 'string' => __('validation.filter.expected.string'),
             default => __('validation.custom_field.expected.type', ['type' => $type]),
         };
-        throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.operand_type', [
-            'field' => $fieldCode,
-            'operator' => $operator,
+        throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.filter.operand_type', [
+            'name' => "{$fieldCode} {$operator}",
             'expected' => $expected,
         ]));
     }
@@ -303,9 +302,8 @@ final readonly class CustomFieldFilter implements Filter
             }
 
             if (array_any($domains, static fn (string $domain): bool => preg_match('/^[^\s\p{Cc}\/@:?#]+$/u', $domain) !== 1)) {
-                throw FilterErrors::at("{$path}.{$operator}", __('validation.custom_field.operand_type', [
-                    'field' => $path,
-                    'operator' => $operator,
+                throw FilterErrors::at("{$path}.{$operator}", __('validation.filter.operand_type', [
+                    'name' => "{$path} {$operator}",
                     'expected' => __('validation.custom_field.expected.domains'),
                 ]));
             }
@@ -332,9 +330,9 @@ final readonly class CustomFieldFilter implements Filter
         }
 
         if (! isset($supported[$operator])) {
-            throw FilterErrors::at("{$path}.{$operator}", __('validation.custom_field.unsupported_filter_operator', [
+            throw FilterErrors::at("{$path}.{$operator}", __('validation.filter.unsupported_operator', [
+                'name' => $path,
                 'operator' => $operator,
-                'field' => $path,
                 'supported' => implode(', ', array_keys($supported)),
             ]));
         }

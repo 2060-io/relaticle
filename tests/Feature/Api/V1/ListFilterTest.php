@@ -126,7 +126,7 @@ it('rejects a date operand in any other format', function (string $operand): voi
 it('rejects a custom date operand in any other format', function (string $code, string $entity): void {
     $this->getJson("/api/v1/{$entity}?".http_build_query(['filter' => ['custom_fields' => [$code => ['$gte' => '02/03/2026']]]]))
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(["filter.custom_fields.{$code}.\$gte" => "Custom field filter [{$code}.\$gte] must be a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z."]);
+        ->assertJsonValidationErrors(["filter.custom_fields.{$code}.\$gte" => "{$code} \$gte must be a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z."]);
 })->with([
     'date' => ['close_date', 'opportunities'],
     'date-time' => ['due_date', 'tasks'],

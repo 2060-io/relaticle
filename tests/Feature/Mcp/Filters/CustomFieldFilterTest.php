@@ -204,7 +204,7 @@ it('rejects unknown operators', function (): void {
         ->get())
         ->toThrow(function (ValidationException $exception): void {
             expect(array_keys($exception->errors()))->toBe(['filter.custom_fields.amount.approximately'])
-                ->and($exception->getMessage())->toContain('Operator "approximately" is not supported for "amount".');
+                ->and($exception->getMessage())->toContain('amount does not support approximately.');
         });
 });
 
@@ -241,13 +241,13 @@ it('returns an actionable MCP error for an operator incompatible with the field 
                 ],
             ],
         ])
-        ->assertHasErrors(['Operator "$contains" is not supported for "amount".']);
+        ->assertHasErrors(['amount does not support $contains.']);
 });
 
 it('names an operator the field takes when a custom field is given a bare value', function (string $code, string $operator): void {
     RelaticleServer::actingAs($this->user)
         ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => [$code => 'ana@acme.com']]])
-        ->assertHasErrors(["Custom field filter [{$code}] must be an operator object, e.g. {\"{$operator}\": \"...\"}."]);
+        ->assertHasErrors(["{$code} takes an operator object, for example {\"{$operator}\": ...}."]);
 })->with([
     'email' => ['emails', '$has_any'],
     'phone' => ['phone_number', '$has_any'],
@@ -498,7 +498,7 @@ it('rejects a list operand longer than one hundred values', function (): void {
 
     RelaticleServer::actingAs($this->user)
         ->tool(ListOpportunitiesTool::class, ['filter' => ['custom_fields' => ['stage' => ['$in' => $values]]]])
-        ->assertHasErrors(['stage: pass at most 100 values.']);
+        ->assertHasErrors(['stage $in takes at most 100 values.']);
 });
 
 it('publishes list and emptiness operators for email, phone, and link types', function (): void {
@@ -982,7 +982,7 @@ it('filters a person by the domain of a field on their company', function (): vo
 it('offers the domain sub-field only on email and link fields', function (): void {
     RelaticleServer::actingAs($this->user)
         ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => ['job_title' => ['domain' => ['$in' => ['x']]]]]])
-        ->assertHasErrors(['Operator "domain" is not supported for "job_title".']);
+        ->assertHasErrors(['job_title does not support domain.']);
 });
 
 it('publishes fields that share a sort order by id', function (): void {
