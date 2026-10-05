@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
 final readonly class CrmSummaryQuery
 {
     public function __construct(
-        private OpportunityAggregatesQuery $aggregateOpportunities,
+        private OpportunityAggregatesQuery $opportunityAggregates,
     ) {}
 
     /** @return array<string, mixed> */
@@ -39,7 +39,7 @@ final readonly class CrmSummaryQuery
         $cacheKey = "crm_summary_{$workspaceId}_{$timezone}_{$today->toDateString()}";
 
         return Cache::remember($cacheKey, 60, function () use ($user, $workspaceId, $timezone, $today): array {
-            $opportunities = $this->aggregateOpportunities->get($user, 'stage');
+            $opportunities = $this->opportunityAggregates->get($user, 'stage');
             $rows = collect($opportunities['rows']);
 
             // Two stage options may share a name, so group rather than assign by label:
