@@ -33,6 +33,7 @@ use Illuminate\Support\Facades\Storage;
 use Relaticle\CustomFields\Services\TenantContextService;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(BaseCreateTool::class, BaseUpdateTool::class, CustomFieldInput::class, CustomFieldOptionMap::class, OwnedLookupRecords::class, ValidCustomFields::class, RecordNameResolver::class, FormatsCustomFields::class);
 
@@ -170,6 +171,36 @@ it('clears a select field sent a blank string', function (string $blank): void {
 
     expect($task->fresh('customFieldValues.customField.options')->getCustomFieldValue($this->status))->toBeNull();
 })->with(['empty' => '', 'whitespace' => '  ']);
+
+it('clears a date or date-time field sent a blank string instead of storing the current time', function (string $code, string $blank): void {
+    $this->travelTo('2026-10-05 12:00:00');
+    $field = WorkspaceCustomField::byCode($this->workspace->getKey(), 'task', 'due_date');
+    $field = $code === 'due_date' ? $field : CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $field->custom_field_section_id,
+        'entity_type' => 'task',
+        'code' => $code,
+        'name' => 'Starts on',
+        'type' => 'date',
+        'sort_order' => 99,
+        'active' => true,
+        'validation_rules' => [],
+        'settings' => $field->settings,
+    ]);
+    $task = Task::factory()->create(['workspace_id' => $this->workspace->getKey()]);
+    $task->saveCustomFieldValue($field, '2026-01-15 09:00:00');
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateTaskTool::class, ['id' => $task->getKey(), 'custom_fields' => [$code => $blank]])
+        ->assertOk();
+
+    expect($task->fresh('customFieldValues.customField')->getCustomFieldValue($field))->toBeNull();
+})->with([
+    'date-time, empty' => ['due_date', ''],
+    'date-time, whitespace' => ['due_date', '  '],
+    'date, empty' => ['starts_on', ''],
+    'date, whitespace' => ['starts_on', '  '],
+]);
 
 it('clears a multi-select field sent an empty string', function (): void {
     $field = CustomField::query()->create([

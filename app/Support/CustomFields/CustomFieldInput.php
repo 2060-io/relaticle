@@ -66,7 +66,8 @@ final readonly class CustomFieldInput
             CustomFieldType::MULTI_SELECT,
             CustomFieldType::CHECKBOX_LIST => $this->optionList($field, $value, $entry),
             CustomFieldType::RICH_EDITOR => $this->richText($field, $value),
-            CustomFieldType::DATE_TIME => $this->utcDateTime($value),
+            CustomFieldType::DATE_TIME => $this->isBlankString($value) ? null : $this->utcDateTime($value),
+            CustomFieldType::DATE => $this->isBlankString($value) ? null : $value,
             CustomFieldType::TEXT,
             CustomFieldType::NUMBER,
             CustomFieldType::EMAIL,
@@ -78,7 +79,6 @@ final readonly class CustomFieldInput
             CustomFieldType::COLOR_PICKER,
             CustomFieldType::TOGGLE,
             CustomFieldType::CURRENCY,
-            CustomFieldType::DATE,
             CustomFieldType::FILE_UPLOAD,
             CustomFieldType::RECORD => $value,
         };
