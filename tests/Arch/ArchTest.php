@@ -25,6 +25,8 @@ use Illuminate\Support\Str;
 use Livewire\Component;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseEmailsRelationManager;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseMeetingsRelationManager;
+use Spatie\QueryBuilder\Filters\Filter;
+use Spatie\QueryBuilder\Sorts\Sort;
 
 arch()->preset()->php();
 
@@ -321,6 +323,26 @@ arch('email integration owns its controllers, jobs, policies and timeline entrie
     ->expect('Relaticle\EmailIntegration')
     ->not
     ->toUse(['App\Http\Controllers', 'App\Jobs', 'App\Policies', 'App\ActivityLog']);
+
+arch('query filters implement the query builder filter contract')
+    ->expect('App\Queries\Filters')
+    ->toImplement(Filter::class);
+
+arch('query sorts implement the query builder sort contract')
+    ->expect('App\Queries\Sorts')
+    ->toImplement(Sort::class);
+
+arch('a query filter lives in the filters folder')
+    ->expect('App\Queries')
+    ->not
+    ->toImplement(Filter::class)
+    ->ignoring('App\Queries\Filters');
+
+arch('a query sort lives in the sorts folder')
+    ->expect('App\Queries')
+    ->not
+    ->toImplement(Sort::class)
+    ->ignoring('App\Queries\Sorts');
 
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
