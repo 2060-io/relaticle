@@ -60,8 +60,10 @@ from the constants on every surface".
 
 The MCP guide is the exception. `packages/Documentation/resources/content/docs/guides/mcp.md`
 lists the names, the operators and the limits by hand.
-`tests/Feature/Documentation/McpGuideFilterParityTest.php` fails when its names table, its
-operator table or a limit drifts from the registry.
+`tests/Feature/Documentation/McpGuideFilterParityTest.php` fails when its names table, an
+operator list in its operator table, or a limit drifts from the registry. No test reads which
+field type a row names, the relation and `domain` operator sentences, or the sample error in
+the REST guide. Update those by hand.
 
 ## Adding to it
 
@@ -80,7 +82,8 @@ operator table or a limit drifts from the registry.
   surface ("applies every operator of every custom field type alike on the api and mcp").
   A native field that shares the type fails the same way until a case runs the operator on
   it ("filters every native field of every entity alike on the api and mcp").
-  `McpGuideFilterParityTest` fails until the guide's operator table lists it.
+  `McpGuideFilterParityTest` fails until a row of the guide's operator table holds the new
+  list.
 - **A filter parameter on a list tool or endpoint.** Do not add one. A list takes filters only
   as the `filter` tree. `FilterTree::rejectUnknownArguments()` rejects a flat parameter, and
   `FilterTree::REPLACED` names the tree form of each retired one. `ListToolFilterTest` is the
