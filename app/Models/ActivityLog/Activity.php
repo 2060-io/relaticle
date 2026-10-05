@@ -38,6 +38,19 @@ final class Activity extends SpatieActivity
         return $this->belongsTo(Workspace::class);
     }
 
+    public function causerLabel(): string
+    {
+        $name = $this->causer?->getAttribute('name');
+
+        if (is_string($name) && $name !== '') {
+            return $name;
+        }
+
+        return $this->causer_id === null
+            ? __('workspaces.activity.system')
+            : __('workspaces.activity.former_member');
+    }
+
     /** @return Attribute<CreationSource|null, never> */
     protected function source(): Attribute
     {

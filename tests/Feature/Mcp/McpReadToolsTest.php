@@ -189,6 +189,25 @@ it('returns activity with complete saves and caller-timezone timestamps', functi
             ->etc());
 });
 
+it('names a change by a deleted account as a former member', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => 'admin']);
+    $member->switchWorkspace($this->workspace);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Before']);
+
+    $this->actingAs($member);
+    resolve(UpdateCompany::class)->execute($member, $company, ['name' => 'After']);
+    $member->delete();
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListActivityTool::class, ['record_type' => 'company', 'record_id' => $company->id])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('items.0.event', 'updated')
+            ->where('items.0.by', 'Former member')
+            ->etc());
+});
+
 it('denies activity reads to an unverified user', function (): void {
     $unverifiedUser = User::factory()->withPersonalWorkspace()->unverified()->create();
 

@@ -110,6 +110,25 @@ it('reports a name change with its old and new value', function (): void {
         ->and($block['rows'][1]['cells']['what'])->toBe('Created');
 });
 
+it('names a change by a deleted account as a former member', function (): void {
+    $workspace = $this->user->personalWorkspace();
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => WorkspaceRole::Admin->value]);
+    $member->switchWorkspace($workspace);
+    $company = app(CreateCompany::class)->execute($this->user, ['name' => 'Old Co']);
+
+    nextActivityRequest();
+    $this->actingAs($member);
+    app(UpdateCompany::class)->execute($member, $company, ['name' => 'New Co']);
+    $member->delete();
+    $this->actingAs($this->user);
+
+    $payload = activityPayload(['record_type' => 'company', 'record_id' => (string) $company->getKey()]);
+
+    expect($payload['data'][0]['event'])->toBe('updated')
+        ->and($payload['data'][0]['by'])->toBe('Former member');
+});
+
 it('never shows another workspace\'s activity', function (): void {
     $intruder = User::factory()->withPersonalWorkspace()->create();
     $owner = User::factory()->withPersonalWorkspace()->create();
