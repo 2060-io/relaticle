@@ -65,6 +65,8 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
                 $composeEmail,
                 ConnectMailboxAction::make()
                     ->hidden(fn (): bool => $this->hasMailbox()),
+                ConnectMailboxAction::microsoft()
+                    ->hidden(fn (): bool => $this->hasMailbox()),
             ])
             ->recordAction('openDraft')
             ->columns([

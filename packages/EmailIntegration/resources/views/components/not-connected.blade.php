@@ -2,6 +2,7 @@
     'heading',
     'description',
     'action',
+    'secondaryAction' => null,
     'icon' => 'heroicon-o-envelope',
 ])
 
@@ -14,7 +15,11 @@
 
     <p class="max-w-sm text-sm text-gray-500 dark:text-gray-400">{{ $description }}</p>
 
-    <div class="mt-2">
+    <div class="mt-2 flex flex-wrap justify-center gap-3">
         {{ $action }}
+
+        @if ($secondaryAction?->isVisible())
+            {{ $secondaryAction }}
+        @endif
     </div>
 </div>

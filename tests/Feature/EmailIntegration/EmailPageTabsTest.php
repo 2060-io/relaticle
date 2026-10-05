@@ -190,7 +190,7 @@ it('offers a direct gmail connect on drafts when no mailbox is connected', funct
         ->assertDontSee(__('filament/pages/email-inbox.drafts.empty.heading'))
         ->assertDontSee(__('filament/emails/composer.grant_send.description'))
         ->assertDontSee(__('filament/concerns/email-compose.actions.compose.label'))
-        ->assertTableEmptyStateActionsExistInOrder(['composeEmail', 'connectMailbox']);
+        ->assertTableEmptyStateActionsExistInOrder(['composeEmail', 'connectMailbox', 'connectAzure']);
 });
 
 it('opens the composer from the drafts empty state when a mailbox is connected', function (): void {
@@ -198,8 +198,32 @@ it('opens the composer from the drafts empty state when a mailbox is connected',
         ->assertSee(__('filament/pages/email-inbox.drafts.empty.heading'))
         ->assertSee(__('filament/concerns/email-compose.actions.compose.label'))
         ->assertTableHeaderActionsExistInOrder(['composeEmail'])
-        ->assertTableEmptyStateActionsExistInOrder(['composeEmail', 'connectMailbox'])
-        ->assertTableActionHidden('connectMailbox');
+        ->assertTableEmptyStateActionsExistInOrder(['composeEmail', 'connectMailbox', 'connectAzure'])
+        ->assertTableActionHidden('connectMailbox')
+        ->assertTableActionHidden('connectAzure');
+});
+
+it('offers a microsoft mailbox on drafts once its client is configured', function (): void {
+    config()->set('services.azure.client_id', 'azure-client');
+    $this->account->forceDelete();
+
+    Livewire::test(DraftsTable::class)
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->tap(fn ($component) => assertActionHasMailboxOAuthUrl(
+            $component,
+            TestAction::make('connectAzure')->table(),
+            'azure',
+            $this->account->workspace,
+        ));
+});
+
+it('hides the microsoft mailbox on drafts without a microsoft client', function (): void {
+    config()->set('services.azure.client_id');
+    $this->account->forceDelete();
+
+    Livewire::test(DraftsTable::class)
+        ->assertDontSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertTableActionHidden('connectAzure');
 });
 
 it('keeps the drafts empty copy when the mailbox cannot send', function (): void {

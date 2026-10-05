@@ -127,6 +127,11 @@ abstract class BaseEmailsRelationManager extends RelationManager
         return ConnectMailboxAction::make();
     }
 
+    public function connectAzureAction(): ConnectMailboxAction
+    {
+        return ConnectMailboxAction::microsoft();
+    }
+
     /**
      * Take the whole tab over with the connect prompt only when the user has nothing
      * to read here: teammates without a mailbox of their own still get the thread list

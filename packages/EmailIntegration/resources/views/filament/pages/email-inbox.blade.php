@@ -18,6 +18,7 @@
             :heading="__('filament/pages/email-accounts.not_connected.inbox.heading')"
             :description="__('filament/pages/email-accounts.not_connected.inbox.description')"
             :action="$this->connectMailboxAction"
+            :secondary-action="$this->connectAzureAction"
         />
     @endif
 

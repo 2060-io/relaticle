@@ -91,6 +91,11 @@ final class EmailInboxPage extends Page
         return ConnectMailboxAction::make();
     }
 
+    public function connectAzureAction(): ConnectMailboxAction
+    {
+        return ConnectMailboxAction::microsoft();
+    }
+
     /**
      * Badge counts for the tab bar. Drafts are the user's own unsent messages,
      * the outbox counts what is still waiting to go out, failed counts delivery

@@ -40,6 +40,25 @@ it('shows only the gmail connect prompt when no account is connected', function 
         ->tap(fn ($component) => assertActionHasMailboxOAuthUrl($component, 'connectMailbox', 'gmail', $this->account->workspace));
 });
 
+it('offers a microsoft mailbox on the emails page once its client is configured', function (): void {
+    config()->set('services.azure.client_id', 'azure-client');
+    $this->account->forceDelete();
+
+    livewire(EmailInboxPage::class)
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionVisible('connectAzure')
+        ->tap(fn ($component) => assertActionHasMailboxOAuthUrl($component, 'connectAzure', 'azure', $this->account->workspace));
+});
+
+it('hides the microsoft mailbox on the emails page without a microsoft client', function (): void {
+    config()->set('services.azure.client_id');
+    $this->account->forceDelete();
+
+    livewire(EmailInboxPage::class)
+        ->assertDontSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionHidden('connectAzure');
+});
+
 it('shows the inbox instead of the prompt once an account is connected', function (): void {
     livewire(EmailInboxPage::class)
         ->assertDontSee(__('filament/pages/email-accounts.not_connected.inbox.heading'));
