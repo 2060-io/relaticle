@@ -93,6 +93,17 @@ it('updates the task due_date via ISO 8601 and persists as datetime_value', func
         ->and((string) $stored)->toContain('2026-06-15');
 });
 
+it('shows a proposed date-time on the calendar day of the viewer', function (): void {
+    $this->user->forceFill(['timezone' => 'America/Los_Angeles'])->save();
+    $task = Task::factory()->for($this->workspace)->create(['title' => 'T']);
+
+    runUpdateToolForCustomFieldsTest(UpdateTaskTool::class, $task, ['due_date' => '2026-10-01T18:00:00-07:00']);
+
+    $card = collect(latestPendingForCustomFieldsTest()->display_data['fields'])->firstWhere('code', 'due_date');
+
+    expect($card['new'])->toBe('Oct 1, 2026');
+});
+
 it('updates company domains via custom_fields and persists as json_value', function (): void {
     $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme']);
 

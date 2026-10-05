@@ -59,7 +59,7 @@ final readonly class CustomFieldsDisplayFormatter
             $row = [
                 'label' => $field->name,
                 'code' => (string) $code,
-                'new' => $this->renderValue($field, $newValue),
+                'new' => $this->renderValue($field, $newValue, $user->effectiveTimezone()),
                 'type' => $this->displayType($field, $dataType),
             ];
 
@@ -76,7 +76,7 @@ final readonly class CustomFieldsDisplayFormatter
 
             if ($oldModel instanceof Model) {
                 $oldValue = $this->lookupCurrentValue($field, $oldModel);
-                $row['old'] = $oldValue !== null ? $this->renderValue($field, $oldValue) : null;
+                $row['old'] = $oldValue !== null ? $this->renderValue($field, $oldValue, $user->effectiveTimezone()) : null;
                 // Raw values ride along so the no-op check compares stored data,
                 // not rendered labels (two options can share a label). The write
                 // base strips them before the row is persisted or displayed.
@@ -103,7 +103,7 @@ final readonly class CustomFieldsDisplayFormatter
      * @param  int  $valueLimit  characters kept per free-text value, after whitespace is squeezed onto one line
      * @return list<array{label: string, code: string, value: string, type: string, values?: list<string>}>
      */
-    public function formatStored(Model $model, array $fields, int $valueLimit): array
+    public function formatStored(Model $model, array $fields, int $valueLimit, string $timezone): array
     {
         if ($fields === [] || ! $model->relationLoaded('customFieldValues')) {
             return [];
@@ -123,7 +123,7 @@ final readonly class CustomFieldsDisplayFormatter
             }
 
             $raw = $this->plainValue($stored->{CustomFieldValue::getValueColumn($field->type)});
-            $rendered = $this->renderValue($field, $raw);
+            $rendered = $this->renderValue($field, $raw, $timezone);
 
             if ($rendered === null) {
                 continue;
@@ -215,7 +215,7 @@ final readonly class CustomFieldsDisplayFormatter
         return $limit === null ? $oneLine : Str::limit($oneLine, $limit);
     }
 
-    private function renderValue(CustomField $field, mixed $value): ?string
+    private function renderValue(CustomField $field, mixed $value, string $timezone): ?string
     {
         if (in_array($value, [null, '', []], true)) {
             return null;
@@ -234,7 +234,8 @@ final readonly class CustomFieldsDisplayFormatter
         return match ($dataType) {
             FieldDataType::SINGLE_CHOICE => $this->renderSingleChoice($field, $value),
             FieldDataType::MULTI_CHOICE => $this->renderMultiChoice($field, $value),
-            FieldDataType::DATE, FieldDataType::DATE_TIME => $this->renderDate($value),
+            FieldDataType::DATE => $this->renderDate($value),
+            FieldDataType::DATE_TIME => $this->renderDate($value, $timezone),
             FieldDataType::TEXT => trim(strip_tags((string) $value)),
             FieldDataType::BOOLEAN => $value ? 'Yes' : 'No',
             default => is_array($value) ? implode(', ', array_map(strval(...), $value)) : (string) $value,
@@ -299,11 +300,11 @@ final readonly class CustomFieldsDisplayFormatter
         }, $ids));
     }
 
-    private function renderDate(mixed $value): string
+    private function renderDate(mixed $value, ?string $timezone = null): string
     {
-        $carbon = $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
+        $date = $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
 
-        return $carbon->isoFormat('MMM D, YYYY');
+        return ($timezone === null ? $date : $date->setTimezone($timezone))->isoFormat('MMM D, YYYY');
     }
 
     private function storedForm(CustomField $field, mixed $value): mixed

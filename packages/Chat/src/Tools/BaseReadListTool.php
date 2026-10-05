@@ -454,7 +454,7 @@ abstract class BaseReadListTool implements Tool
                 ...$this->fieldColumns($derived),
                 ...$this->includeColumns($includes),
             ],
-            'rows' => $this->blockRows($records, [...$promoted, ...$derived], $coreKey, $includes),
+            'rows' => $this->blockRows($records, [...$promoted, ...$derived], $coreKey, $includes, $user->effectiveTimezone()),
             'total' => $results->total(),
             // The rows are this PAGE's, not the result set's. Without the offset
             // the footer renders "Showing 25 of 200" over records 101-125.
@@ -514,7 +514,7 @@ abstract class BaseReadListTool implements Tool
      * @param  list<string>  $includes
      * @return list<array{id: string, url: string, cells: array<string, mixed>}>
      */
-    private function blockRows(array $records, array $fields, string $coreKey, array $includes): array
+    private function blockRows(array $records, array $fields, string $coreKey, array $includes, string $timezone): array
     {
         $resolver = resolve(RecordReferenceResolver::class);
         $formatter = resolve(CustomFieldsDisplayFormatter::class);
@@ -529,7 +529,7 @@ abstract class BaseReadListTool implements Tool
             $coreValue = $record->getAttribute($coreKey);
             $cells = [$coreKey => is_scalar($coreValue) ? (string) $coreValue : ''];
 
-            foreach ($formatter->formatStored($record, $fields, self::CELL_VALUE_LIMIT) as $row) {
+            foreach ($formatter->formatStored($record, $fields, self::CELL_VALUE_LIMIT, $timezone) as $row) {
                 $cells[$row['code']] = $row['value'];
             }
 

@@ -27,6 +27,7 @@ use Relaticle\Chat\Tools\Company\GetCompanyTool;
 use Relaticle\Chat\Tools\Company\ListCompaniesTool;
 use Relaticle\Chat\Tools\Opportunity\GetOpportunityTool;
 use Relaticle\Chat\Tools\Opportunity\ListOpportunitiesTool;
+use Relaticle\Chat\Tools\Task\GetTaskTool;
 use Relaticle\Chat\Tools\Task\ListTasksTool;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
@@ -384,6 +385,18 @@ it('returns a record_card block for a single record', function (): void {
         ->and($block['url'])->toBe("/r/company/{$company->getKey()}")
         ->and(blockFieldLabels($block))->toContain('Segment')
         ->and($block['fields'][0])->toHaveKeys(['label', 'value', 'type']);
+});
+
+it('shows a stored date-time on the calendar day of the viewer', function (): void {
+    $user = $this->user;
+    $user->forceFill(['timezone' => 'America/Los_Angeles'])->save();
+    $dueDate = forceDisplaySettings($user, 'task', 'due_date');
+    $task = Task::factory()->for($user->currentWorkspace)->create(['title' => 'Call Ana']);
+    $task->saveCustomFieldValue($dueDate, '2026-10-02 01:00:00');
+
+    $block = displayBlockOf(app(GetTaskTool::class)->handle(new Request(['id' => (string) $task->getKey()])));
+
+    expect(blockFieldValue($block, $dueDate->name))->toBe('Oct 1, 2026');
 });
 
 // --- block values are capped: the envelope is persisted forever ---
