@@ -32,6 +32,7 @@ final readonly class ListCompanies
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
+        string $dayZone = 'UTC',
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', Company::class), 403);
 
@@ -43,7 +44,7 @@ final readonly class ListCompanies
             Company::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(...new EntityFilters($user)->for(CrmEntity::Company))
+            ->allowedFilters(...new EntityFilters($user, $dayZone)->for(CrmEntity::Company))
             ->allowedFields('id', 'name', 'creator_id', 'account_owner_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'accountOwner', 'people', 'opportunities',

@@ -166,12 +166,12 @@ abstract class BaseReadListTool implements Tool
 
         try {
             FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
-            $action = app()->make($this->actionClass());
-            $results = $action->execute(
+            $results = app()->make($this->actionClass())->execute(
                 user: $user,
                 perPage: $this->perPageFor($request),
                 page: isset($request['page']) ? (int) $request['page'] : null,
                 request: $this->buildHttpRequest($request),
+                dayZone: $user->effectiveTimezone(),
             );
         } catch (ValidationException $exception) {
             return $this->validationError($exception);

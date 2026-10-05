@@ -476,6 +476,33 @@ it('filters every list tool by creation date, including tasks and notes', functi
     'notes' => [ListNotesTool::class, Note::class],
 ]);
 
+it('reads a bare date on a date-time field as the day of the viewer', function (Closure $filter): void {
+    $user = User::factory()->withPersonalWorkspace()->create(['timezone' => 'Asia/Yerevan']);
+    $this->actingAs($user);
+    $workspace = $user->currentWorkspace;
+    $dueDate = WorkspaceCustomField::byCode($workspace->getKey(), 'task', 'due_date');
+
+    TenantContextService::setTenantId($workspace->getKey());
+
+    foreach (['2026-10-09 19:59:59', '2026-10-09 20:00:00', '2026-10-10 19:59:59', '2026-10-10 20:00:00'] as $instant) {
+        Task::factory()->for($workspace)->create(['title' => $instant, 'created_at' => $instant])->saveCustomFieldValue($dueDate, $instant);
+    }
+
+    TenantContextService::setTenantId(null);
+
+    $titles = fn (string $operator): array => collect(listToolRows((new ListTasksTool)->handle(new Request(['filter' => $filter([$operator => '2026-10-10'])]))))
+        ->pluck('attributes.title')->sort()->values()->all();
+
+    expect($titles('$eq'))->toBe(['2026-10-09 20:00:00', '2026-10-10 19:59:59'])
+        ->and($titles('$lt'))->toBe(['2026-10-09 19:59:59'])
+        ->and($titles('$lte'))->toBe(['2026-10-09 19:59:59', '2026-10-09 20:00:00', '2026-10-10 19:59:59'])
+        ->and($titles('$gte'))->toBe(['2026-10-09 20:00:00', '2026-10-10 19:59:59', '2026-10-10 20:00:00'])
+        ->and($titles('$gt'))->toBe(['2026-10-10 20:00:00']);
+})->with([
+    'a native field' => [fn (array $operators): array => ['created_at' => $operators]],
+    'a custom field' => [fn (array $operators): array => ['custom_fields' => ['due_date' => $operators]]],
+]);
+
 it('reports total and showing when results exceed one page', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);

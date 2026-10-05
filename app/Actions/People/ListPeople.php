@@ -32,6 +32,7 @@ final readonly class ListPeople
         array $filters = [],
         ?int $page = null,
         ?Request $request = null,
+        string $dayZone = 'UTC',
     ): CursorPaginator|LengthAwarePaginator {
         abort_unless($user->can('viewAny', People::class), 403);
 
@@ -43,7 +44,7 @@ final readonly class ListPeople
             People::query()->withCustomFieldValues()->whereBelongsTo($user->currentWorkspace),
             $request,
         )
-            ->allowedFilters(...new EntityFilters($user)->for(CrmEntity::People))
+            ->allowedFilters(...new EntityFilters($user, $dayZone)->for(CrmEntity::People))
             ->allowedFields('id', 'name', 'company_id', 'creator_id', 'created_at', 'updated_at')
             ->allowedIncludes(
                 'creator', 'company',

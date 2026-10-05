@@ -16,7 +16,7 @@ use Spatie\QueryBuilder\Filters\Filter;
  */
 final readonly class NativeFilter implements Filter
 {
-    public function __construct(private FilterDefinition $definition) {}
+    public function __construct(private FilterDefinition $definition, private string $dayZone) {}
 
     /**
      * @param  Builder<Model>  $query
@@ -75,9 +75,15 @@ final readonly class NativeFilter implements Filter
     {
         $date = Operand::date($operand) ?? throw FilterErrors::operand($property, $operator, __('validation.filter.expected.date'));
 
-        is_string($operand) && Operand::isBareDate($operand)
-            ? $query->whereDate($column, CustomFieldFilterSchema::COMPARISONS[$operator], $date->toDateString())
-            : $query->where($column, CustomFieldFilterSchema::COMPARISONS[$operator], $date->utc()->toDateTimeString());
+        if (! is_string($operand) || ! Operand::isBareDate($operand)) {
+            $query->where($column, CustomFieldFilterSchema::COMPARISONS[$operator], $date->utc()->toDateTimeString());
+
+            return;
+        }
+
+        foreach (Operand::wholeDay($operator, $operand, $this->dayZone) as [$comparison, $instant]) {
+            $query->where($column, $comparison, $instant);
+        }
     }
 
     /**

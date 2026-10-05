@@ -38,6 +38,7 @@ final readonly class CustomFieldFilter implements Filter
     public function __construct(
         private string $entityType,
         private User $user,
+        private string $dayZone,
         private CustomFieldOptionMap $optionMap = new CustomFieldOptionMap,
     ) {}
 
@@ -213,7 +214,7 @@ final readonly class CustomFieldFilter implements Filter
 
                 match ($operator) {
                     '$eq', '$gt', '$gte', '$lt', '$lte' => $this->coversTheWholeDay($field, $operand)
-                        ? $q->whereDate($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand)
+                        ? $this->wholeDay($q, $valueColumn, $operator, $operand)
                         : $q->where($valueColumn, CustomFieldFilterSchema::COMPARISONS[$operator], $operand),
                     '$contains' => $q->where($valueColumn, 'ILIKE', '%'.LikePattern::escape((string) $operand).'%'),
                     '$in' => $q->whereIn($valueColumn, $operand),
@@ -222,6 +223,16 @@ final readonly class CustomFieldFilter implements Filter
                 };
             }),
         };
+    }
+
+    /**
+     * @param  Builder<Model>  $query
+     */
+    private function wholeDay(Builder $query, string $valueColumn, string $operator, string $date): void
+    {
+        foreach (Operand::wholeDay($operator, $date, $this->dayZone) as [$comparison, $instant]) {
+            $query->where($valueColumn, $comparison, $instant);
+        }
     }
 
     private function coversTheWholeDay(CustomField $field, mixed $operand): bool

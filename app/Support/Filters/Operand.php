@@ -81,6 +81,24 @@ final readonly class Operand
         return preg_match('/^\d{4}-\d{2}-\d{2}$/', $operand) === 1;
     }
 
+    /**
+     * @return list<array{string, string}>
+     */
+    public static function wholeDay(string $operator, string $date, string $zone): array
+    {
+        $start = Date::parse($date, $zone);
+        $instant = static fn (CarbonImmutable $bound): string => $bound->utc()->toDateTimeString();
+
+        return match ($operator) {
+            '$eq' => [['>=', $instant($start)], ['<', $instant($start->addDay())]],
+            '$gte' => [['>=', $instant($start)]],
+            '$gt' => [['>=', $instant($start->addDay())]],
+            '$lt' => [['<', $instant($start)]],
+            '$lte' => [['<', $instant($start->addDay())]],
+            default => throw new \LogicException("Unsupported whole-day operator [{$operator}]."),
+        };
+    }
+
     public static function boolean(mixed $operand): ?bool
     {
         if (is_bool($operand)) {
