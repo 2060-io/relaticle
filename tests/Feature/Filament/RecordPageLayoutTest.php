@@ -129,7 +129,7 @@ it('marks custom field labels with the same outline icon set as the native detai
 
 it('credits a sample record to sample data in the record info', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     livewire(ViewCompany::class, ['record' => $company->getKey()])

@@ -115,7 +115,7 @@ final class ResetDemoAccountCommand extends Command
         Auth::setUser($user);
 
         try {
-            CurrentSource::during(CreationSource::SYSTEM, function () use ($user, $workspace): void {
+            CurrentSource::during(CreationSource::SAMPLE, function () use ($user, $workspace): void {
                 $seededCompanies = DB::transaction(fn (): EloquentCollection => $this->rebuildWorkspace($user, $workspace));
 
                 $this->fetchCompanyLogos($seededCompanies);

@@ -102,7 +102,7 @@ final class WorkspaceActivationFacts
         foreach (self::ENTITY_TABLES as $table) {
             $counts[$table] = DB::table($table)
                 ->where('workspace_id', $workspace->getKey())
-                ->where('creation_source', CreationSource::SYSTEM->value)
+                ->where('creation_source', CreationSource::SAMPLE->value)
                 ->whereNull('deleted_at')
                 ->count();
         }
@@ -142,7 +142,7 @@ final class WorkspaceActivationFacts
             'own' => ['creation_source not in ('.implode(', ', array_fill(0, count($automated), '?')).')', $automated],
             'any' => [null, []],
             'import' => ['creation_source = ?', [CreationSource::IMPORT->value]],
-            'sample' => ['creation_source = ?', [CreationSource::SYSTEM->value]],
+            'sample' => ['creation_source = ?', [CreationSource::SAMPLE->value]],
         ] as $name => [$predicate, $values]) {
             $parts = [];
 

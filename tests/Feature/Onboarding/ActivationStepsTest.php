@@ -54,7 +54,7 @@ it('completes first_record only for non-system records', function (): void {
 
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
     expect(stepByKey($this->workspace, 'first_record')->complete())->toBeFalse();
 

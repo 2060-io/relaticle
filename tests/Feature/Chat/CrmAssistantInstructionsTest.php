@@ -302,7 +302,7 @@ it('removes all sample data in one approval but lets a partial removal use the c
 
     expect($instructions)
         ->toContain('wants all the sample data gone, call RemoveSampleDataTool')
-        ->toContain('To remove only part of it ("just the sample contacts"), list those records with `creation_source: "system"`');
+        ->toContain('To remove only part of it ("just the sample contacts"), list those records with `creation_source: "sample"`');
 });
 
 it('renders the workspace_state block naming the seeded sample count when the workspace holds only sample records', function (): void {
@@ -311,7 +311,7 @@ it('renders the workspace_state block naming the seeded sample count when the wo
 
     People::factory()->count(2)->create([
         'workspace_id' => $workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     $agent = resolve(CrmAssistant::class)->withWorkspace($workspace);
@@ -327,7 +327,7 @@ it('stops claiming only sample records once the user has a record of their own',
 
     People::factory()->create([
         'workspace_id' => $workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
     People::factory()->create([
         'workspace_id' => $workspace->getKey(),

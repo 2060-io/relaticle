@@ -39,7 +39,7 @@ final readonly class RemoveSampleData
             foreach (self::MODELS as $model) {
                 $records = $model::query()
                     ->where('workspace_id', $workspace->getKey())
-                    ->where('creation_source', CreationSource::SYSTEM)
+                    ->where('creation_source', CreationSource::SAMPLE)
                     ->get();
 
                 $records->each(function (Model $record) use (&$removed): void {
