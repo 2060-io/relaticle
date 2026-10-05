@@ -95,9 +95,11 @@ For a long result, page with a cursor. Send `"cursor": true` for the first page,
 
 A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`. Any other format returns `422`. A date-time with an offset, such as `2026-10-01T13:00:00+05:00`, is read as the same instant in UTC. A date without a time covers that whole UTC day.
 
-A body that is not a JSON object returns `422`. That includes truncated JSON, a bare string or number, and a body sent without the `application/json` content type. An empty body counts as no filter.
+A body that is not a JSON object returns `422`. That includes truncated JSON, a bare string or number, and a body sent without the `application/json` content type. An empty body counts as no filter. So do `{}` and an empty list `[]`, which is what PHP sends for an empty array. A key the endpoint does not take returns `422` and lists the accepted keys.
 
-`sort` takes a native field or a custom field that holds one value. A field that holds a list, such as email, phone, link or tags, returns `400` as a sort.
+Spaces around an operand are ignored. A blank operand returns `422`. Use `$is_empty` to find records without a value.
+
+`sort` takes a native field or a custom field that holds one value. Records without a value for a custom field sort last in both directions. A field that holds a list, such as email, phone, link or tags, returns `400` as a sort.
 
 ## Value formats
 
