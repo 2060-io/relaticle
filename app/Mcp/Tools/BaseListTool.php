@@ -175,13 +175,10 @@ abstract class BaseListTool extends Tool
     /** @param  array<string, mixed>  $validated */
     private function listQuery(Request $request, array $validated): ListQuery
     {
-        $filter = $request->get('filter');
-        $include = $request->get('include');
-
         return new ListQuery(
-            filter: is_array($filter) && $filter !== [] ? FilterTree::trimmed($filter) : null,
+            filter: FilterTree::trimmed($request->get('filter')),
             sort: $this->sortExpression($request->get('sort')),
-            include: is_array($include) && $include !== [] ? $include : null,
+            include: $validated['include'] ?? null,
             perPage: (int) ($validated['per_page'] ?? 15),
             page: (int) ($validated['page'] ?? 1),
         );

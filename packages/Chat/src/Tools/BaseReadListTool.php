@@ -613,11 +613,10 @@ abstract class BaseReadListTool implements Tool
 
     private function listQuery(Request $request, User $user): ListQuery
     {
-        $filter = $request['filter'] ?? null;
         $sort = $request['sort'] ?? null;
 
         return new ListQuery(
-            filter: filled($filter) ? FilterTree::trimmed($filter) : null,
+            filter: FilterTree::trimmed($request['filter'] ?? null),
             sort: is_string($sort) && $sort !== '' ? $sort : null,
             perPage: $this->perPageFor($request),
             page: isset($request['page']) ? (int) $request['page'] : null,
