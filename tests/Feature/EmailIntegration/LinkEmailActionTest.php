@@ -7,11 +7,14 @@ use App\Jobs\FetchFaviconForCompany;
 use App\Models\ActivityLog\Activity;
 use App\Models\Company;
 use App\Models\CustomField;
+use App\Models\CustomFieldValue;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Bus;
+use Relaticle\CustomFields\Services\TenantContextService;
 use Relaticle\EmailIntegration\Actions\AutoCreateCompanyAction;
 use Relaticle\EmailIntegration\Actions\AutoCreatePersonAction;
 use Relaticle\EmailIntegration\Actions\LinkEmailAction;
@@ -857,6 +860,27 @@ it('queues a logo fetch for an auto-created company', function (): void {
     $company = Company::query()->where('workspace_id', $this->workspace->id)->where('name', 'Brandnewcorp')->firstOrFail();
 
     Bus::assertDispatched(FetchFaviconForCompany::class, fn (FetchFaviconForCompany $job): bool => $job->company->is($company));
+});
+
+it('writes only its own workspace fields on an auto-created company when no tenant is set', function (): void {
+    Bus::fake([FetchFaviconForCompany::class]);
+    User::factory()->withWorkspace()->create();
+    Filament::setTenant(null);
+
+    $company = app(AutoCreateCompanyAction::class)->execute('brandnewcorp.com', $this->workspace->id);
+
+    $fieldTenantIds = CustomFieldValue::query()
+        ->withoutGlobalScopes()
+        ->whereMorphedTo('entity', $company)
+        ->with(['customField' => fn (BelongsTo $field): BelongsTo => $field->withoutGlobalScopes()])
+        ->get()
+        ->map(fn (CustomFieldValue $value): string => $value->customField->tenant_id)
+        ->unique()
+        ->values()
+        ->all();
+
+    expect($fieldTenantIds)->toBe([$this->workspace->id])
+        ->and(TenantContextService::getCurrentTenantId())->toBeNull();
 });
 
 it('records auto-created people and companies and their activity as mailbox sync', function (): void {
