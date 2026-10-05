@@ -24,7 +24,7 @@ use RuntimeException;
 final class MicrosoftGraphMailService implements MailServiceInterface
 {
     /** Well-known folders whose mail never syncs. Their subfolders are skipped with them. */
-    private const array EXCLUDED_FOLDERS = ['junkemail', 'deleteditems', 'outbox', 'conversationhistory', 'syncissues'];
+    private const array EXCLUDED_FOLDERS = ['junkemail', 'deleteditems', 'outbox', 'conversationhistory', 'clutter', 'syncissues'];
 
     private const int CURSOR_VERSION = 2;
 

@@ -80,10 +80,12 @@ function graphMailFolderFakes(?array $topLevel = null, array $children = []): ar
         'deleteditems' => ['id' => 'deleted-folder-id'],
         'outbox' => ['id' => 'outbox-folder-id'],
         'conversationhistory' => ['id' => 'history-folder-id'],
+        'clutter' => ['id' => 'clutter-folder-id'],
     ]);
 
     $fakes['https://graph.microsoft.com/v1.0/me/mailFolders/syncissues?*'] = Http::response('', 404);
     $fakes['https://graph.microsoft.com/v1.0/me/mailFolders?*'] = Http::response(['value' => $topLevel ?? [
+        ['id' => 'clutter-folder-id'],
         ['id' => 'deleted-folder-id', 'childFolderCount' => 1],
         ['id' => 'drafts-folder-id'],
         ['id' => 'inbox-folder-id'],
@@ -197,7 +199,7 @@ it('backfills Inbox, Sent Items, then every other folder and returns a cursor pe
     Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/drafts-folder-id/messages/delta'));
 });
 
-it('never lists mail from drafts, junk, deleted items, or a folder inside them', function (): void {
+it('never lists mail from drafts, junk, clutter, deleted items, or a folder inside them', function (): void {
     Http::preventStrayRequests();
     Http::fake([
         ...graphMailFolderFakes(),
