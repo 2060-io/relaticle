@@ -336,13 +336,13 @@ arch('a query filter lives in the filters folder')
     ->expect('App\Queries')
     ->not
     ->toImplement(Filter::class)
-    ->ignoring('App\Queries\Filters');
+    ->ignoring('App\Queries\Filters\\');
 
 arch('a query sort lives in the sorts folder')
     ->expect('App\Queries')
     ->not
     ->toImplement(Sort::class)
-    ->ignoring('App\Queries\Sorts');
+    ->ignoring('App\Queries\Sorts\\');
 
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
