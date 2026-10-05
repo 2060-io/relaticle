@@ -164,6 +164,16 @@ it('opens the edit action when a card is clicked', function (): void {
         ->assertSet('mountedActions.0.data.name', $opportunity->name);
 });
 
+it('labels the contact select point of contact when adding an opportunity to a column', function (): void {
+    $prospecting = $this->stageField->options->firstWhere('name', 'Prospecting');
+
+    $page = livewire(OpportunitiesBoard::class)
+        ->call('mountAction', 'create', ['column' => (string) $prospecting->getKey()])
+        ->instance();
+
+    expect($page->getSchema($page->getMountedActionSchemaName())->toHtml())->toContain('Point of Contact');
+});
+
 /**
  * Sibling of the tasks board badge: "closes today" is a claim about the viewer's
  * calendar. A close date is a plain date, so the stored value is midnight UTC. Read

@@ -129,6 +129,19 @@ it('auto-maps the person column of an opportunity export to the contact link', f
         ->and($columns[$header]['entityLink'])->toBe('contact');
 })->with(['Point of Contact', 'Contact Person']);
 
+it('offers the opportunity contact link as point of contact', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Opportunity]);
+
+    createStoreWithHeaders($this, ['Name', 'Person'], [
+        ['Name' => 'Renewal', 'Person' => 'Jane Roe'],
+    ]);
+
+    Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Opportunity,
+    ])->assertSee('Point of Contact');
+});
+
 it('mapToField updates column mapping', function (): void {
     createStoreWithHeaders($this, ['Full Name', 'Notes']);
 

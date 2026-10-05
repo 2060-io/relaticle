@@ -21,7 +21,7 @@ return [
                 'App\Filament\Pages\Workspace\ActivityLog::table' => 122,
                 'App\Filament\Resources\CompanyResource::table' => 70,
                 'App\Filament\Resources\NoteResource::table' => 62,
-                'App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard::board' => 156,
+                'App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard::board' => 136,
                 'App\Filament\Resources\PeopleResource::table' => 62,
                 'App\Filament\Resources\TaskResource::table' => 83,
                 'App\Filament\Resources\TaskResource\Pages\TasksBoard::board' => 134,
