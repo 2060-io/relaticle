@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Actions\CustomFields\CreateCustomField;
 use App\Enums\CreationSource;
+use App\Enums\CrmEntity;
 use App\Http\Requests\Api\V1\IndexRequest;
 use App\Models\Company;
 use App\Models\Opportunity;
@@ -709,6 +710,31 @@ it('returns every record for an empty query body', function (): void {
 
     $this->postJson('/api/v1/companies/query', [])->assertOk()->assertJsonCount(2, 'data');
 });
+
+it('keeps the filter, sort and page size in the next link of a list', function (string $route, CrmEntity $entity, string $paging): void {
+    $title = $entity->titleColumn();
+
+    foreach (['Keep 1', 'Keep 2', 'Keep 3', 'Drop 1', 'Drop 2'] as $name) {
+        $entity->model()::factory()->recycle([$this->user, $this->workspace])->create([$title => $name]);
+    }
+
+    $first = $this->getJson("/api/v1/{$route}?filter[{$title}][\$contains]=Keep&sort={$title}&per_page=2&{$paging}")
+        ->assertOk()
+        ->assertJsonPath('data.*.attributes.'.$title, ['Keep 1', 'Keep 2']);
+
+    $this->getJson($first->json('links.next'))
+        ->assertOk()
+        ->assertJsonPath('data.*.attributes.'.$title, ['Keep 3']);
+})->with([
+    'companies' => ['companies', CrmEntity::Company],
+    'people' => ['people', CrmEntity::People],
+    'opportunities' => ['opportunities', CrmEntity::Opportunity],
+    'tasks' => ['tasks', CrmEntity::Task],
+    'notes' => ['notes', CrmEntity::Note],
+])->with([
+    'by page' => 'page=1',
+    'by cursor' => 'cursor=true',
+]);
 
 it('rejects a query body key the endpoint does not take', function (string $key, string $message): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create();

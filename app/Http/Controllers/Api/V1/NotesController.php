@@ -37,7 +37,7 @@ final readonly class NotesController
             perPage: $request->safe()->integer('per_page', 15),
             useCursor: $request->safe()->has('cursor'),
             request: $request,
-        ));
+        )->appends($request->query()));
     }
 
     #[ResponseFromApiResource(NoteResource::class, Note::class, status: 201)]
