@@ -92,24 +92,13 @@ abstract class BaseReadListTool implements Tool
         return [];
     }
 
-    /**
-     * Native columns every entity can be sorted by; custom-field codes are added
-     * per tenant.
-     *
-     * @return list<string>
-     */
-    protected function nativeSorts(): array
-    {
-        return [$this->entity()->titleColumn(), 'created_at', 'updated_at'];
-    }
-
     public function schema(JsonSchema $schema): array
     {
         $user = auth()->user();
         $entityType = $this->citationType();
 
         $filterDescription = EntityFilters::names($this->entity());
-        $sortable = $this->nativeSorts();
+        $sortable = $this->entity()->query()::sorts();
 
         if ($user instanceof User) {
             $describer = resolve(CustomFieldsFilterDescriber::class);
