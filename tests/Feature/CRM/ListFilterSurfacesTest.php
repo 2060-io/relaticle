@@ -6,6 +6,7 @@ use App\Actions\CustomFields\CreateCustomField;
 use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
+use App\Enums\FilterKind;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\BaseListTool;
 use App\Mcp\Tools\Company\ListCompaniesTool;
@@ -202,8 +203,7 @@ it('filters every native field of every entity alike on the api and mcp', functi
     unlinkedRecord($this->user, $route, 'Acme Renewal', ['creation_source' => CreationSource::API, 'created_at' => '2026-03-10 09:00:00', 'updated_at' => '2026-03-11 09:00:00']);
     unlinkedRecord($this->user, $route, 'Globex Pilot', ['creation_source' => CreationSource::WEB, 'created_at' => '2026-06-15 12:00:00', 'updated_at' => '2026-06-16 12:00:00']);
     unlinkedRecord($this->user, $route, 'Initech Upsell', ['creation_source' => CreationSource::IMPORT, 'created_at' => '2026-09-20 18:00:00', 'updated_at' => '2026-09-21 18:00:00']);
-
-    expectTitlesOnEverySurface($this, $this->user, $route, [
+    $cases = [
         [[$title => ['$eq' => 'Acme Renewal']], ['Acme Renewal']],
         [[$title => ['$eq' => 'acme renewal']], []],
         [[$title => ['$contains' => 'RENEW']], ['Acme Renewal']],
@@ -240,7 +240,22 @@ it('filters every native field of every entity alike on the api and mcp', functi
         [[$title => ['$contains' => 'Renewal', '$eq' => 'Globex Pilot']], []],
         [['creation_source' => ['$is_empty' => false, '$in' => ['web']]], ['Globex Pilot']],
         [['creation_source' => ['$in' => ['api', 'web'], '$not_in' => ['api']]], ['Globex Pilot']],
-    ]);
+    ];
+    $covered = [];
+
+    foreach ($cases as [$filter]) {
+        foreach ($filter as $name => $condition) {
+            $covered[$name] = [...$covered[$name] ?? [], ...array_keys($condition)];
+        }
+    }
+
+    foreach (EntityFilters::definitions(LIST_SURFACES[$route][0]) as $name => $definition) {
+        if (in_array($definition->kind, [FilterKind::Text, FilterKind::DateTime, FilterKind::Enum], true)) {
+            expect(array_values(array_unique($covered[$name] ?? [])))->toEqualCanonicalizing($definition->operators(), "no case runs every operator of {$name}");
+        }
+    }
+
+    expectTitlesOnEverySurface($this, $this->user, $route, $cases);
 })->with(array_keys(LIST_SURFACES));
 
 it('counts a blank title as empty on the api and mcp', function (): void {
