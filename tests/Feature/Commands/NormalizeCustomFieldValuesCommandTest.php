@@ -115,6 +115,26 @@ it('reports domains two companies share after normalization', function (): void 
         ->assertSuccessful();
 });
 
+it('logs how many domains live companies share and leaves a trashed company out', function (): void {
+    $domains = WorkspaceCustomField::byCode($this->workspace->getKey(), 'company', 'domains');
+    [$first, $second, $trashed, $lone] = Company::factory()->recycle([$this->user, $this->workspace])->count(4)->create()->all();
+    writeRawJsonValue($first->getKey(), $domains, ['acme.com']);
+    writeRawJsonValue($second->getKey(), $domains, ['acme.com']);
+    writeRawJsonValue($lone->getKey(), $domains, ['globex.com']);
+    writeRawJsonValue($trashed->getKey(), $domains, ['globex.com']);
+    $trashed->delete();
+    Log::spy();
+
+    $this->artisan('custom-fields:normalize-values')
+        ->expectsOutputToContain('acme.com is shared by 2 companies')
+        ->doesntExpectOutputToContain('globex.com is shared')
+        ->assertSuccessful();
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message, array $context): bool => $context['shared_domains'] === 1)
+        ->once();
+});
+
 it('leaves values that are not a list of strings untouched and reports them', function (): void {
     $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
     $shapes = [
@@ -182,7 +202,7 @@ it('logs one line per skipped row without its value and one summary line', funct
         ])
         ->once();
     Log::shouldHaveReceived('info')
-        ->withArgs(fn (string $message, array $context): bool => $context === ['mode' => 'write', 'changed' => 1, 'skipped' => 1, 'national_phones' => 0])
+        ->withArgs(fn (string $message, array $context): bool => $context === ['mode' => 'write', 'changed' => 1, 'skipped' => 1, 'national_phones' => 0, 'shared_domains' => 0])
         ->once();
 });
 
@@ -231,6 +251,6 @@ it('logs a summary and no skipped row in report mode', function (): void {
 
     Log::shouldNotHaveReceived('warning');
     Log::shouldHaveReceived('info')
-        ->withArgs(fn (string $message, array $context): bool => $context === ['mode' => 'report', 'changed' => 1, 'skipped' => 0, 'national_phones' => 0])
+        ->withArgs(fn (string $message, array $context): bool => $context === ['mode' => 'report', 'changed' => 1, 'skipped' => 0, 'national_phones' => 0, 'shared_domains' => 0])
         ->once();
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Enums\CrmEntity;
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Support\CustomFields\CanonicalValue;
@@ -29,6 +30,8 @@ final class NormalizeCustomFieldValuesCommand extends Command
 
     private int $skipped = 0;
 
+    private int $sharedDomains = 0;
+
     /** @var array<string, list<string>> */
     private array $domainOwners = [];
 
@@ -39,6 +42,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
         $this->national = 0;
         $this->malformed = 0;
         $this->skipped = 0;
+        $this->sharedDomains = 0;
 
         CustomField::query()
             ->withoutGlobalScopes()
@@ -65,6 +69,7 @@ final class NormalizeCustomFieldValuesCommand extends Command
             'changed' => $this->changed,
             'skipped' => $this->skipped,
             'national_phones' => $this->national,
+            'shared_domains' => $this->sharedDomains,
         ]);
 
         return self::SUCCESS;
@@ -181,12 +186,34 @@ final class NormalizeCustomFieldValuesCommand extends Command
 
     private function reportCollisions(CustomField $field): void
     {
+        $live = $this->liveEntityIds($field);
+
         foreach ($this->domainOwners as $domain => $entityIds) {
-            $owners = array_values(array_unique($entityIds));
+            $owners = array_values(array_intersect(array_unique($entityIds), $live));
 
             if (count($owners) > 1) {
+                $this->sharedDomains++;
                 $this->warn("Workspace {$field->tenant_id}: {$domain} is shared by ".count($owners).' companies ('.implode(', ', $owners).').');
             }
         }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function liveEntityIds(CustomField $field): array
+    {
+        $entity = CrmEntity::tryFrom($field->entity_type);
+
+        if ($this->domainOwners === [] || ! $entity instanceof CrmEntity) {
+            return [];
+        }
+
+        return DB::table($entity->table())
+            ->whereIn('id', array_unique(array_merge(...array_values($this->domainOwners))))
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->map(strval(...))
+            ->all();
     }
 }
