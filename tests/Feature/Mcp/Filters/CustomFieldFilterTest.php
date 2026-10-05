@@ -800,6 +800,7 @@ it('reads a domain link operand that stacks schemes as its host', function (): v
     ]);
 
     expect(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://http://acme.com']]]]))->toBe(['Ana'])
+        ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ["http:// http://\tacme.com"]]]]))->toBe(['Ana'])
         ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://acme.com']]]]))->toBe(['Ana']);
 });
 
