@@ -87,6 +87,14 @@ it('compares a date-time operand with an offset as the same instant in utc', fun
     expect(listIds($this, 'companies', ['created_at' => ['$gte' => '2026-01-01T10:00:00+05:00']]))->toBe([$inside->id]);
 });
 
+it('compares an offset operand on a custom date-time field as the same instant in utc', function (): void {
+    $ids = collect(['2026-01-01T04:30:00Z', '2026-01-01T05:30:00Z'])
+        ->mapWithKeys(fn (string $due): array => [$due => $this->postJson('/api/v1/tasks', ['title' => "Due {$due}", 'custom_fields' => ['due_date' => $due]])->assertCreated()->json('data.id')]);
+
+    expect(listIds($this, 'tasks', ['custom_fields' => ['due_date' => ['$gte' => '2026-01-01T10:00:00+05:00']]]))->toBe([$ids['2026-01-01T05:30:00Z']])
+        ->and(listIds($this, 'tasks', ['custom_fields' => ['due_date' => ['$eq' => '2026-01-01T09:30:00+05:00']]]))->toBe([$ids['2026-01-01T04:30:00Z']]);
+});
+
 it('accepts a date operand as YYYY-MM-DD or ISO 8601', function (string $operand): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create();
 

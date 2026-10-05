@@ -189,7 +189,7 @@ final readonly class CustomFieldFilter implements Filter
     {
         return match ($format) {
             'date' => Operand::date($operand)?->toDateString(),
-            'date-time' => is_string($operand) && Operand::isBareDate($operand) ? Operand::date($operand)?->toDateString() : Operand::date($operand)?->toDateTimeString(),
+            'date-time' => is_string($operand) && Operand::isBareDate($operand) ? Operand::date($operand)?->toDateString() : Operand::date($operand)?->utc()->toDateTimeString(),
             default => Operand::string($operand),
         };
     }

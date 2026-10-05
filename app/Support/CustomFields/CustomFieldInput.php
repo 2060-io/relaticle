@@ -7,6 +7,8 @@ namespace App\Support\CustomFields;
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Support\Media\RichContentAttachments;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
 
@@ -64,6 +66,7 @@ final readonly class CustomFieldInput
             CustomFieldType::MULTI_SELECT,
             CustomFieldType::CHECKBOX_LIST => $this->optionList($field, $value, $entry),
             CustomFieldType::RICH_EDITOR => $this->richText($field, $value),
+            CustomFieldType::DATE_TIME => $this->utcDateTime($value),
             CustomFieldType::TEXT,
             CustomFieldType::NUMBER,
             CustomFieldType::EMAIL,
@@ -76,7 +79,6 @@ final readonly class CustomFieldInput
             CustomFieldType::TOGGLE,
             CustomFieldType::CURRENCY,
             CustomFieldType::DATE,
-            CustomFieldType::DATE_TIME,
             CustomFieldType::FILE_UPLOAD,
             CustomFieldType::RECORD => $value,
         };
@@ -162,6 +164,15 @@ final readonly class CustomFieldInput
         $html = str_starts_with(ltrim($value), '<') ? $value : $this->markdown->toHtml($value);
 
         return RichContentAttachments::forWorkspace((string) $field->tenant_id)->canonicalize($html);
+    }
+
+    private function utcDateTime(mixed $value): mixed
+    {
+        if (! is_string($value) || Validator::make(['value' => $value], ['value' => ['date']])->fails()) {
+            return $value;
+        }
+
+        return Date::parse($value)->utc()->toDateTimeString();
     }
 
     private function isBlankString(mixed $value): bool
