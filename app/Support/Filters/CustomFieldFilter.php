@@ -74,13 +74,12 @@ final readonly class CustomFieldFilter implements Filter
         );
 
         foreach ($value as $fieldCode => $operators) {
-            if (! is_array($operators) || $operators === []) {
-                throw FilterErrors::at((string) $fieldCode, __('validation.custom_field.operator_object', ['field' => $fieldCode]));
-            }
-
             $field = $fields[$fieldCode];
-            $valueColumn = CustomFieldValue::getValueColumn($field->type);
             $supportedOperators = CustomFieldFilterSchema::operatorsForType($field->type);
+
+            if (! is_array($operators) || $operators === []) {
+                throw FilterErrors::at((string) $fieldCode, __('validation.custom_field.operator_object', ['field' => $fieldCode, 'operator' => array_key_first($supportedOperators)]));
+            }
 
             $entry = $options[$fieldCode] ?? null;
 
@@ -97,7 +96,7 @@ final readonly class CustomFieldFilter implements Filter
                 $operand = $this->resolveOptions($fieldCode, $operator, $entry, $operand);
                 $operand = $this->spellings($field, $operator, $operand);
 
-                $this->applyCondition($query, $field, $valueColumn, $operator, $operand);
+                $this->applyCondition($query, $field, $field->getValueColumn(), $operator, $operand);
             }
         }
     }

@@ -244,6 +244,16 @@ it('returns an actionable MCP error for an operator incompatible with the field 
         ->assertHasErrors(['Operator "$contains" is not supported for "amount".']);
 });
 
+it('names an operator the field takes when a custom field is given a bare value', function (string $code, string $operator): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListPeopleTool::class, ['filter' => ['custom_fields' => [$code => 'ana@acme.com']]])
+        ->assertHasErrors(["Custom field filter [{$code}] must be an operator object, e.g. {\"{$operator}\": \"...\"}."]);
+})->with([
+    'email' => ['emails', '$has_any'],
+    'phone' => ['phone_number', '$has_any'],
+    'text' => ['job_title', '$eq'],
+]);
+
 it('rejects an encrypted custom field as an unknown filter code', function (): void {
     filterTestField($this->workspace, 'opportunity', 'secret_code', 'text', new CustomFieldSettingsData(encrypted: true));
 

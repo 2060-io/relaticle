@@ -34,7 +34,7 @@ return [
         'unsupported_filter_operator' => 'Operator ":operator" is not supported for ":field". Supported: :supported.',
         'filter_not_object' => 'Custom field filters must be an object keyed by field code.',
         'filter_code_not_string' => 'Custom field filter codes must be strings.',
-        'operator_object' => 'Custom field filter [:field] must be an operator object, e.g. {"$eq": "..."}.',
+        'operator_object' => 'Custom field filter [:field] must be an operator object, e.g. {":operator": "..."}.',
         'operand_type' => 'Custom field filter [:field.:operator] must be :expected.',
         'too_many_values' => ':field: pass at most :max values.',
         'operand_too_long' => ':field: pass values of at most :max characters.',
