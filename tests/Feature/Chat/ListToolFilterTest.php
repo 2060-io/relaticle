@@ -503,6 +503,19 @@ it('reads a bare date on a date-time field as the day of the viewer', function (
     'a custom field' => [fn (array $operators): array => ['custom_fields' => ['due_date' => $operators]]],
 ]);
 
+it('reads a padded operand as its trimmed value and rejects a blank one', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    Company::factory()->for($user->currentWorkspace)->create(['name' => 'Acme']);
+    Company::factory()->for($user->currentWorkspace)->create(['name' => 'Globex']);
+
+    $padded = listToolRows((new ListCompaniesTool)->handle(new Request(['filter' => ['name' => ['$eq' => ' Acme ']]])));
+    $blank = json_decode((new ListCompaniesTool)->handle(new Request(['filter' => ['name' => ['$contains' => '']]])), true);
+
+    expect(Arr::pluck($padded, 'attributes.name'))->toBe(['Acme'])
+        ->and($blank['error'])->toContain('name $contains must be a non-empty string, or use $is_empty for records without a value.');
+});
+
 it('reports total and showing when results exceed one page', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);

@@ -850,11 +850,11 @@ it('rejects an operand that holds a NUL or is not valid utf-8', function (string
     'email with a NUL' => ['email', ['$has_any' => ["a\0@x.com"]], 'must be an array of strings'],
     'email with an invalid byte' => ['email', ['$has_none' => ["a\xFF@x.com"]], 'must be an array of strings'],
     'email domain with a NUL' => ['email', ['domain' => ['$in' => ["a\0b.com"]]], 'must be an array of strings'],
-    'phone with a NUL' => ['phone', ['$has_any' => ["+14155550100\0"]], 'must be an array of strings'],
+    'phone with a NUL' => ['phone', ['$has_any' => ["+1415\x005550100"]], 'must be an array of strings'],
     'link with a NUL' => ['link', ['$has_any' => ["acme\0.com"]], 'must be an array of strings'],
     'tag with a NUL' => ['tags-input', ['$has_any' => ["a\0b"]], 'must be an array of strings'],
-    'text pattern with a NUL' => ['text', ['$contains' => "a\0b"], 'must be a string'],
-    'text pattern with an invalid byte' => ['text', ['$contains' => "a\xFFb"], 'must be a string'],
+    'text pattern with a NUL' => ['text', ['$contains' => "a\0b"], 'must be a non-empty string'],
+    'text pattern with an invalid byte' => ['text', ['$contains' => "a\xFFb"], 'must be a non-empty string'],
 ]);
 
 it('rejects an email, link or phone operand longer than 2048 characters', function (string $type, array $conditions): void {

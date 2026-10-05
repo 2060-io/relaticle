@@ -81,7 +81,7 @@ return [
         'phone_invalid' => ':name: :value is not a valid phone number.',
         'phone_country_code' => ':name needs a country code, for example +1 415 555 0100.',
         'expected' => [
-            'string' => 'a string',
+            'string' => 'a non-empty string, or use $is_empty for records without a value',
             'date' => 'a date as YYYY-MM-DD or an ISO 8601 date-time such as 2026-01-15T10:30:00Z',
             'boolean' => 'true or false',
             'record_ids' => 'a list of record IDs',

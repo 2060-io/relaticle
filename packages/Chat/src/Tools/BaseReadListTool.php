@@ -639,7 +639,7 @@ abstract class BaseReadListTool implements Tool
         $filter = $request['filter'] ?? null;
 
         if (filled($filter)) {
-            $input['filter'] = $filter;
+            $input['filter'] = FilterTree::trimmed($filter);
         }
 
         $sort = $request['sort'] ?? null;

@@ -6,6 +6,7 @@ namespace App\Support\Filters;
 
 use App\Enums\CrmEntity;
 use App\Enums\FilterKind;
+use Illuminate\Support\Str;
 
 final readonly class FilterTree
 {
@@ -27,6 +28,21 @@ final readonly class FilterTree
         'notable_type' => 'companies, people or opportunities with $in',
         'notable_id' => 'companies, people or opportunities with $in',
     ];
+
+    public static function trimmed(mixed $filter): mixed
+    {
+        if (is_array($filter)) {
+            return array_map(self::trimmed(...), $filter);
+        }
+
+        if (! is_string($filter)) {
+            return $filter;
+        }
+
+        $trimmed = Str::trim($filter);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
 
     public static function validate(mixed $filter, CrmEntity $entity): void
     {

@@ -137,6 +137,7 @@ final readonly class CustomFieldFilter implements Filter
             $type === 'array' => __('validation.custom_field.expected.string_list'),
             $type === 'integer' => __('validation.custom_field.expected.integer'),
             isset($operatorSchema['format']) => __('validation.filter.expected.date'),
+            $type === 'string' => __('validation.filter.expected.string'),
             default => __('validation.custom_field.expected.type', ['type' => $type]),
         };
         throw FilterErrors::at("{$fieldCode}.{$operator}", __('validation.custom_field.operand_type', [

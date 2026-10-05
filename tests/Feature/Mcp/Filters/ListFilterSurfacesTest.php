@@ -254,6 +254,26 @@ it('counts a blank title as empty on the api and mcp', function (): void {
     ]);
 });
 
+it('reads a padded operand as its trimmed value on the api and mcp', function (): void {
+    unlinkedRecord($this->user, 'companies', 'Acme');
+    unlinkedRecord($this->user, 'companies', 'Globex');
+
+    expectTitlesOnEverySurface($this, $this->user, 'companies', [
+        [['name' => ['$eq' => ' Acme ']], ['Acme']],
+        [['name' => ['$contains' => "lobe\t"]], ['Globex']],
+        [['creation_source' => ['$in' => [' web ']], 'name' => ['$eq' => 'Acme']], ['Acme']],
+    ]);
+});
+
+it('rejects a blank operand on the api and mcp', function (array $filter, string $key): void {
+    unlinkedRecord($this->user, 'companies', 'Acme');
+
+    expectErrorOnEverySurface($this, $this->user, 'companies', $filter, $key, 'must be a non-empty string, or use $is_empty for records without a value.');
+})->with([
+    'empty' => [['name' => ['$contains' => '']], 'filter.name.$contains'],
+    'spaces' => [['name' => ['$eq' => '   ']], 'filter.name.$eq'],
+]);
+
 it('rejects an operator a native field does not take on the api and mcp', function (string $route, string $name, string $operator, mixed $operand): void {
     $name = $name === 'title' ? LIST_SURFACES[$route][0]->titleColumn() : $name;
 
@@ -272,7 +292,7 @@ it('rejects an operator a native field does not take on the api and mcp', functi
 it('rejects a native operand of the wrong type on the api and mcp', function (array $filter, string $key, string $message): void {
     expectErrorOnEverySurface($this, $this->user, 'companies', $filter, $key, $message);
 })->with([
-    'text list' => [['name' => ['$eq' => ['a', 'b']]], 'filter.name.$eq', 'must be a string'],
+    'text list' => [['name' => ['$eq' => ['a', 'b']]], 'filter.name.$eq', 'must be a non-empty string'],
     'date that is not a date' => [['created_at' => ['$gte' => 'soon']], 'filter.created_at.$gte', 'must be a date as YYYY-MM-DD or an ISO 8601 date-time'],
     'date-time with a space' => [['created_at' => ['$gte' => '2026-01-10 08:00:00']], 'filter.created_at.$gte', 'must be a date as YYYY-MM-DD or an ISO 8601 date-time'],
     'slashed date' => [['updated_at' => ['$lt' => '02/03/2026']], 'filter.updated_at.$lt', 'must be a date as YYYY-MM-DD or an ISO 8601 date-time'],

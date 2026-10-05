@@ -186,7 +186,7 @@ abstract class BaseListTool extends Tool
         $filter = $mcpRequest->get('filter');
 
         if (is_array($filter) && $filter !== []) {
-            $input['filter'] = $filter;
+            $input['filter'] = FilterTree::trimmed($filter);
         }
 
         $sort = $mcpRequest->get('sort');
