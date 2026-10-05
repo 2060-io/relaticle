@@ -44,10 +44,10 @@ to an invitation.
 
 ## Which folders sync
 
-Relaticle syncs your **Inbox** and **Sent Items** folders. Email in any
-other folder does not sync, and that includes folders inside your Inbox. A
-rule that moves incoming mail to another folder keeps that mail out of
-Relaticle.
+Relaticle syncs every mail folder, including folders inside your Inbox and
+folders a rule moves mail into. It leaves out **Drafts**, **Junk Email**,
+**Deleted Items**, **Outbox**, and **Conversation History**, along with any
+folder inside them.
 
 ## What happens after you connect
 

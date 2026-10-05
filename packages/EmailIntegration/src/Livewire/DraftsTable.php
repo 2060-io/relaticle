@@ -44,6 +44,17 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
 
     private ?bool $hasMailbox = null;
 
+    /**
+     * @return list<ConnectMailboxAction>
+     */
+    private function connectMailboxActions(): array
+    {
+        return [
+            ConnectMailboxAction::make()->hidden(fn (): bool => $this->hasMailbox()),
+            ConnectMailboxAction::microsoft()->hidden(fn (): bool => $this->hasMailbox()),
+        ];
+    }
+
     public function table(Table $table): Table
     {
         $composeEmail = $this->composeEmailAction();
@@ -63,10 +74,7 @@ final class DraftsTable extends Component implements HasActions, HasSchemas, Has
                 : Heroicon::OutlinedEnvelope)
             ->emptyStateActions([
                 $composeEmail,
-                ConnectMailboxAction::make()
-                    ->hidden(fn (): bool => $this->hasMailbox()),
-                ConnectMailboxAction::microsoft()
-                    ->hidden(fn (): bool => $this->hasMailbox()),
+                ...$this->connectMailboxActions(),
             ])
             ->recordAction('openDraft')
             ->columns([
