@@ -71,9 +71,30 @@ final readonly class MicrosoftCalendarService implements CalendarServiceInterfac
         }
 
         return new CalendarSyncResult(
-            events: $events,
+            events: $this->withoutRemovalsOfLiveEvents($events),
             nextSyncToken: $this->encodeSyncCursors($updatedCursors),
         );
+    }
+
+    /**
+     * @param  list<CalendarEventData>  $events
+     * @return list<CalendarEventData>
+     */
+    private function withoutRemovalsOfLiveEvents(array $events): array
+    {
+        $liveIds = [];
+
+        foreach ($events as $event) {
+            if ($event->status !== 'cancelled') {
+                $liveIds[$event->providerEventId] = true;
+            }
+        }
+
+        // Each window's delta reports an event held by another window as removed.
+        return array_values(array_filter(
+            $events,
+            static fn (CalendarEventData $event): bool => $event->status !== 'cancelled' || ! isset($liveIds[$event->providerEventId]),
+        ));
     }
 
     public function respondToEvent(string $eventId, AttendeeResponseStatus $status): void
@@ -620,6 +641,7 @@ final readonly class MicrosoftCalendarService implements CalendarServiceInterfac
             organizerEmail: $organizerEmail,
             organizerName: $event['organizer']['emailAddress']['name'] ?? null,
             attendees: $attendees,
+            joinUrl: $event['onlineMeeting']['joinUrl'] ?? null,
         );
     }
 

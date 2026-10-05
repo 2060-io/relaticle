@@ -3,12 +3,13 @@ title: Connect your Google account
 description: Link a Google account so your email and calendar sync into Relaticle, then manage, reconnect, or disconnect it from workspace settings.
 order: 1
 updated: "2026-10-05"
-related: [help/email-and-calendar/read-and-reply-to-email, help/email-and-calendar/choose-who-sees-your-email, help/email-and-calendar/see-meetings-and-link-them-to-records]
+related: [help/email-and-calendar/connect-your-microsoft-account, help/email-and-calendar/read-and-reply-to-email, help/email-and-calendar/choose-who-sees-your-email, help/email-and-calendar/see-meetings-and-link-them-to-records]
 ---
 
 Connecting a Google account brings your email and calendar into Relaticle.
 Emails and meetings land on the records they involve, and you can send from
-Relaticle with that address. Relaticle connects Google accounts for now.
+Relaticle with that address. For an Outlook or Microsoft 365 mailbox, see
+[Connect your Microsoft account](/help/email-and-calendar/connect-your-microsoft-account).
 
 ## Connect it
 
@@ -23,7 +24,7 @@ Relaticle with that address. Relaticle connects Google accounts for now.
 The **Emails** page and the **Meetings** panel on **Home** show the same
 button until you connect an account.
 
-![The Accounts tab under Email and Calendar, showing one connected Google account marked Default and In sync above the Connect Google account button](/help-assets/email-and-calendar/connect-your-google-account-1.png)
+![The Accounts tab under Email and Calendar, showing one connected Google account marked Default and In sync above the Connect Google account and Connect Microsoft account buttons](/help-assets/email-and-calendar/connect-your-google-account-1.png)
 
 ## What Relaticle asks Google for
 
@@ -49,7 +50,8 @@ before you connect a mailbox you consider sensitive.
 
 ## Manage a connected account
 
-Open the menu on the account's row.
+Open the menu on the account's row. The menu is the same for a Google and a
+Microsoft account.
 
 - **Manage** opens the account's settings. **General** holds **Sync inbox**,
   **Sync sent**, and the hourly and daily send limits. **Sharing**,

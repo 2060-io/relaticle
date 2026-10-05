@@ -13,7 +13,15 @@
 
     <div class="min-w-0 flex-1">
         <div class="flex min-w-0 items-center gap-2">
-            <div class="truncate text-sm font-medium leading-5 text-gray-950 dark:text-white">{{ $state['name'] }}</div>
+            @if (($state['url'] ?? null) !== null)
+                <a
+                    href="{{ $state['url'] }}"
+                    wire:navigate
+                    class="truncate text-sm font-medium leading-5 text-gray-950 hover:text-primary-600 hover:underline dark:text-white dark:hover:text-primary-400"
+                >{{ $state['name'] }}</a>
+            @else
+                <div class="truncate text-sm font-medium leading-5 text-gray-950 dark:text-white">{{ $state['name'] }}</div>
+            @endif
 
             @if ($state['is_organizer'])
                 <x-filament::badge color="gray" size="sm" class="shrink-0">

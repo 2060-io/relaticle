@@ -21,22 +21,24 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\Alignment;
-use Filament\Support\Enums\FontWeight;
 use Filament\Support\Enums\Size;
-use Filament\Support\Enums\TextSize;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\HtmlString;
 use Relaticle\EmailIntegration\Actions\LinkMeetingToRecordAction;
+use Relaticle\EmailIntegration\Actions\UnlinkMeetingFromRecordAction;
 use Relaticle\EmailIntegration\Enums\MeetingLinkedRecordType;
 use Relaticle\EmailIntegration\Filament\Actions\MeetingRsvpActions;
 use Relaticle\EmailIntegration\Filament\Infolists\Entries\MeetingAttendeeEntry;
 use Relaticle\EmailIntegration\Filament\Infolists\Entries\MeetingHeaderEntry;
+use Relaticle\EmailIntegration\Filament\Infolists\Entries\MeetingLinkedRecordsEntry;
 use Relaticle\EmailIntegration\Filament\Infolists\Entries\MeetingTimeEntry;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Models\MeetingAttendee;
 use Relaticle\EmailIntegration\Services\MailboxDisplayNameDirectory;
+use Relaticle\EmailIntegration\Services\MeetingTemporalState;
 
 final class MeetingDetailInfolist
 {
@@ -44,15 +46,29 @@ final class MeetingDetailInfolist
     {
         return ViewAction::make()
             ->slideOver(false)
-            ->modalIcon(Heroicon::OutlinedCalendar)
-            ->modalHeading(__('filament/resources/meeting.view.heading'))
-            ->modalWidth(Width::FiveExtraLarge)
+            ->modalHeading(fn (?Meeting $record): string|Htmlable => self::heading($record))
+            ->modalAutofocus(false)
+            ->modalWidth(Width::FourExtraLarge)
             ->modalCancelAction(false)
             ->schema(fn (Schema $schema): Schema => self::configure($schema))
             ->registerModalActions([
                 self::linkRecordsAction('linkRecords'),
+                self::unlinkRecordAction(),
                 ...MeetingRsvpActions::make(),
             ]);
+    }
+
+    private static function heading(?Meeting $meeting): string|Htmlable
+    {
+        if (! $meeting instanceof Meeting) {
+            return __('filament/resources/meeting.view.heading');
+        }
+
+        if (! resolve(MeetingTemporalState::class)->isPast($meeting, self::authUser()->effectiveTimezone())) {
+            return $meeting->title;
+        }
+
+        return new HtmlString('<span class="text-gray-400 line-through dark:text-gray-500">'.e($meeting->title).'</span>');
     }
 
     public static function configure(Schema $schema): Schema
@@ -64,6 +80,7 @@ final class MeetingDetailInfolist
 
                 if ($record instanceof Meeting) {
                     $record->loadMissing(['attendees.contact', 'people', 'companies', 'opportunities', 'connectedAccount.user']);
+                    $record->setRelation('attendees', $record->attendees->sortByDesc('is_organizer')->values());
                     $record->attendees->each(
                         fn (MeetingAttendee $attendee) => $attendee->setRelation('meeting', $record),
                     );
@@ -86,8 +103,9 @@ final class MeetingDetailInfolist
                         MeetingHeaderEntry::make('header')
                             ->hiddenLabel()
                             ->grow(),
-                        $rsvpGroup,
+                        Flex::make([self::joinAction(), $rsvpGroup])->grow(false),
                     ])
+                        ->from('sm')
                         ->verticallyAlignCenter()
                         ->columnSpanFull(),
                     MeetingTimeEntry::make('time_row')
@@ -128,27 +146,10 @@ final class MeetingDetailInfolist
                                         ->visible(fn (Meeting $record): bool => self::linkedCount($record) > 0),
                                 ])
                                 ->schema([
-                                    RepeatableEntry::make('linked_records')
-                                        ->contained(false)
+                                    MeetingLinkedRecordsEntry::make('linked_records')
                                         ->hiddenLabel()
-                                        ->state(fn (Meeting $record): array => self::linkedRecordsState($record))
-                                        ->visible(fn (Meeting $record): bool => self::linkedCount($record) > 0)
-                                        ->schema([
-                                            Flex::make([
-                                                TextEntry::make('name')
-                                                    ->hiddenLabel()
-                                                    ->weight(FontWeight::Medium)
-                                                    ->grow(),
-                                                TextEntry::make('record_type')
-                                                    ->hiddenLabel()
-                                                    ->badge()
-                                                    ->formatStateUsing(fn (string $state): string => MeetingLinkedRecordType::from($state)->getLabel())
-                                                    ->icon(fn (string $state): Heroicon => MeetingLinkedRecordType::from($state)->getIcon())
-                                                    ->color(fn (string $state): string => MeetingLinkedRecordType::from($state)->getColor())
-                                                    ->grow(false)
-                                                    ->size(TextSize::Small),
-                                            ])->alignment(Alignment::Between),
-                                        ]),
+                                        ->registerActions([self::unlinkRecordAction()])
+                                        ->visible(fn (Meeting $record): bool => self::linkedCount($record) > 0),
                                     EmptyState::make(__('filament/resources/meeting.sections.linked_records.empty.heading'))
                                         ->description(__('filament/resources/meeting.sections.linked_records.empty.description'))
                                         ->icon(Heroicon::OutlinedLink)
@@ -161,12 +162,7 @@ final class MeetingDetailInfolist
                                 ->compact(true)
                                 ->columnSpan(2),
                         ]),
-                    Section::make(__('filament/resources/meeting.sections.description.heading'))
-                        ->schema([
-                            TextEntry::make('description')->hiddenLabel()->html(),
-                        ])
-                        ->columnSpanFull()
-                        ->visible(fn (Meeting $record): bool => filled($record->description)),
+                    self::descriptionSection(),
                 ];
             });
     }
@@ -176,37 +172,32 @@ final class MeetingDetailInfolist
         return $meeting->people->count() + $meeting->companies->count() + $meeting->opportunities->count();
     }
 
-    /**
-     * @return list<array{name: string, record_type: string}>
-     */
-    public static function linkedRecordsState(Meeting $meeting): array
+    private static function descriptionSection(): Section
     {
-        $state = [];
-
-        foreach ($meeting->people as $person) {
-            $state[] = self::linkedRecordItem($person->name, MeetingLinkedRecordType::People);
-        }
-
-        foreach ($meeting->companies as $company) {
-            $state[] = self::linkedRecordItem($company->name, MeetingLinkedRecordType::Company);
-        }
-
-        foreach ($meeting->opportunities as $opportunity) {
-            $state[] = self::linkedRecordItem($opportunity->name, MeetingLinkedRecordType::Opportunity);
-        }
-
-        return $state;
+        return Section::make(__('filament/resources/meeting.sections.description.heading'))
+            ->schema([
+                TextEntry::make('description')
+                    ->hiddenLabel()
+                    ->formatStateUsing(fn (string $state): string => self::descriptionHtml($state))
+                    ->html()
+                    ->prose(),
+            ])
+            ->columnSpanFull()
+            ->visible(fn (Meeting $record): bool => filled($record->description));
     }
 
-    /**
-     * @return array{name: string, record_type: string}
-     */
-    private static function linkedRecordItem(string $name, MeetingLinkedRecordType $recordType): array
+    private static function descriptionHtml(string $description): string
     {
-        return [
-            'name' => $name,
-            'record_type' => $recordType->value,
-        ];
+        if ($description !== strip_tags($description)) {
+            return $description;
+        }
+
+        $lines = array_filter(
+            preg_split('/\R/', $description) ?: [],
+            static fn (string $line): bool => preg_match('/^[\s_\-=*]{5,}$/', $line) !== 1,
+        );
+
+        return nl2br(e(trim(implode("\n", $lines))));
     }
 
     public static function linkRecordsAction(string $name): Action
@@ -215,6 +206,7 @@ final class MeetingDetailInfolist
             ->label(__('filament/resources/meeting.actions.link_records.label'))
             ->icon(Heroicon::Plus)
             ->authorize(fn (Meeting $record): bool => self::authUser()->hasWorkspaceCapability($record->workspace_id, WorkspaceCapability::RecordsUpdate))
+            ->overlayParentActions()
             ->schema(self::linkRecordFields())
             ->action(function (array $data, Meeting $record): void {
                 $target = self::resolveLinkTarget(
@@ -231,6 +223,48 @@ final class MeetingDetailInfolist
             });
 
         return $action->link();
+    }
+
+    public static function unlinkRecordAction(): Action
+    {
+        return Action::make('unlinkRecord')
+            ->label(fn (array $arguments): string => __('filament/resources/meeting.actions.unlink_record.label', ['name' => $arguments['name'] ?? '']))
+            ->icon(Heroicon::LinkSlash)
+            ->iconButton()
+            ->color('gray')
+            ->size(Size::Small)
+            ->authorize(fn (Meeting $record): bool => self::authUser()->hasWorkspaceCapability($record->workspace_id, WorkspaceCapability::RecordsUpdate))
+            ->requiresConfirmation()
+            ->overlayParentActions()
+            ->modalSubmitAction(fn (Action $action): Action => $action
+                ->label(__('filament/resources/meeting.actions.unlink_record.submit'))
+                ->color('danger'))
+            ->modalHeading(fn (array $arguments): string => __('filament/resources/meeting.actions.unlink_record.heading', ['name' => $arguments['name'] ?? '']))
+            ->modalDescription(__('filament/resources/meeting.actions.unlink_record.description'))
+            ->action(function (array $arguments, Meeting $record): void {
+                $target = self::resolveLinkTarget((string) $arguments['type'], (string) $arguments['id']);
+
+                resolve(UnlinkMeetingFromRecordAction::class)->execute(self::authUser(), $record, $target);
+
+                $record->load(['people', 'companies', 'opportunities']);
+
+                Notification::make()
+                    ->success()
+                    ->title(__('filament/relation-managers/meetings.notifications.unlinked.title'))
+                    ->send();
+            });
+    }
+
+    public static function joinAction(): Action
+    {
+        return Action::make('joinMeeting')
+            ->label(__('filament/resources/meeting.actions.join.label'))
+            ->icon(Heroicon::VideoCamera)
+            ->button()
+            ->size(Size::ExtraSmall)
+            ->url(fn (Meeting $record): ?string => $record->join_url, shouldOpenInNewTab: true)
+            ->visible(fn (Meeting $record): bool => str_starts_with((string) $record->join_url, 'https://')
+                && ! resolve(MeetingTemporalState::class)->isPast($record, self::authUser()->effectiveTimezone()));
     }
 
     /**

@@ -357,16 +357,6 @@ final readonly class GoogleCalendarService implements CalendarServiceInterface
             ? Date::parse($endDate, 'UTC')->subDay()
             : Date::parse((string) $end->getDateTime())->utc();
 
-        $attendees = [];
-        foreach ($event->getAttendees() as $attendee) {
-            $attendees[] = [
-                'email' => strtolower((string) $attendee->getEmail()),
-                'name' => $attendee->getDisplayName(),
-                'response_status' => $attendee->getResponseStatus(),
-                'is_organizer' => (bool) $attendee->getOrganizer(),
-            ];
-        }
-
         $status = (string) $event->getStatus();
         // Google omits the organizer on some events (holidays, birthdays, imported
         // .ics), so getOrganizer() returns null at runtime despite its non-nullable
@@ -388,8 +378,28 @@ final readonly class GoogleCalendarService implements CalendarServiceInterface
             visibility: $event->getVisibility(),
             organizerEmail: $organizer?->getEmail(),
             organizerName: $organizer?->getDisplayName(),
-            attendees: $attendees,
+            attendees: $this->attendeesOf($event),
+            joinUrl: $event->getHangoutLink(),
         );
+    }
+
+    /**
+     * @return array<int, array{email: string, name: string|null, response_status: string|null, is_organizer: bool}>
+     */
+    private function attendeesOf(GoogleEvent $event): array
+    {
+        $attendees = [];
+
+        foreach ($event->getAttendees() as $attendee) {
+            $attendees[] = [
+                'email' => strtolower((string) $attendee->getEmail()),
+                'name' => $attendee->getDisplayName(),
+                'response_status' => $attendee->getResponseStatus(),
+                'is_organizer' => (bool) $attendee->getOrganizer(),
+            ];
+        }
+
+        return $attendees;
     }
 
     private function tombstone(GoogleEvent $event): CalendarEventData

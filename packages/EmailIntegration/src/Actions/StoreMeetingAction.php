@@ -37,26 +37,7 @@ final readonly class StoreMeetingAction
 
             $responseStatus = $this->resolveSelfResponseStatus($payload, $account, $meeting);
 
-            $attributes = [
-                'workspace_id' => $account->workspace_id,
-                'connected_account_id' => $account->getKey(),
-                'provider_event_id' => $payload->providerEventId,
-                'provider_recurring_event_id' => $payload->providerRecurringEventId,
-                'ical_uid' => $payload->icalUid,
-                'title' => $payload->title,
-                'description' => $payload->description,
-                'location' => $payload->location,
-                'starts_at' => $payload->startsAt,
-                'ends_at' => $payload->endsAt,
-                'all_day' => $payload->allDay,
-                'organizer_email' => $payload->organizerEmail,
-                'organizer_name' => $payload->organizerName,
-                'status' => $payload->status,
-                'visibility' => $payload->visibility,
-                'response_status' => $responseStatus,
-                'html_link' => $payload->htmlLink,
-                'deleted_at' => null,
-            ];
+            $attributes = $this->attributes($payload, $account, $responseStatus);
 
             $isNewMeeting = ! ($meeting instanceof Meeting);
 
@@ -105,6 +86,34 @@ final readonly class StoreMeetingAction
         }
 
         return $meeting;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function attributes(NormalizedMeetingPayload $payload, ConnectedAccount $account, ?AttendeeResponseStatus $responseStatus): array
+    {
+        return [
+            'workspace_id' => $account->workspace_id,
+            'connected_account_id' => $account->getKey(),
+            'provider_event_id' => $payload->providerEventId,
+            'provider_recurring_event_id' => $payload->providerRecurringEventId,
+            'ical_uid' => $payload->icalUid,
+            'title' => $payload->title,
+            'description' => $payload->description,
+            'location' => $payload->location,
+            'starts_at' => $payload->startsAt,
+            'ends_at' => $payload->endsAt,
+            'all_day' => $payload->allDay,
+            'organizer_email' => $payload->organizerEmail,
+            'organizer_name' => $payload->organizerName,
+            'status' => $payload->status,
+            'visibility' => $payload->visibility,
+            'response_status' => $responseStatus,
+            'html_link' => $payload->htmlLink,
+            'join_url' => $payload->joinUrl,
+            'deleted_at' => null,
+        ];
     }
 
     private function resolveSelfResponseStatus(

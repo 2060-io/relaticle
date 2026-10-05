@@ -1,7 +1,7 @@
 ---
 title: Set workspace email privacy
 description: Owners and admins set the default sharing level, hide email from protected or blocked addresses, and decide which records sync creates.
-order: 5
+order: 6
 updated: "2026-10-05"
 related: [help/email-and-calendar/choose-who-sees-your-email, help/workspace/manage-members-and-roles, help/email-and-calendar/connect-your-google-account]
 ---

@@ -125,16 +125,34 @@ These are pre-configured in `compose.yml` and generally don't need changing.
 
 ### Email and calendar
 
-Email and calendar sync is off by default. Turn it on with `RELATICLE_FEATURE_EMAIL_INTEGRATION=true`. It needs its own Google OAuth client, separate from the one used for social login, with the Gmail API and the Google Calendar API enabled.
+Email and calendar sync is off by default. Turn it on with `RELATICLE_FEATURE_EMAIL_INTEGRATION=true`. Members can then connect Google accounts, and Microsoft accounts once you configure a Microsoft client.
+
+Google mailboxes need their own Google OAuth client, separate from the one used for social login, with the Gmail API and the Google Calendar API enabled.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GMAIL_CLIENT_ID` | | OAuth client ID of the Google client used to connect mailboxes. |
 | `GMAIL_CLIENT_SECRET` | | OAuth client secret of that client. |
 | `GMAIL_REDIRECT_URI` | | Callback URL. Register `https://your-host/email-accounts/callback/gmail` as the redirect URI in Google Cloud. |
-| `EMAIL_SYNC_INITIAL_DAYS` | | Limits the first import to the last N days. Leave unset to import the whole mailbox. |
 
 The client requests three scopes: `gmail.readonly`, `gmail.send`, and `calendar.events`. Add them to the OAuth consent screen. While the consent screen is in testing mode, only the test users you list can connect.
+
+Outlook and Microsoft 365 mailboxes need an app registration in Microsoft Entra ID. The **Connect Microsoft account** button appears only when `AZURE_CLIENT_ID` is set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AZURE_CLIENT_ID` | | Application (client) ID of the Entra app registration used to connect mailboxes. |
+| `AZURE_CLIENT_SECRET` | | Client secret of that app registration. |
+| `AZURE_REDIRECT_URI` | | Callback URL. Register `https://your-host/email-accounts/callback/azure` as a Web redirect URI in Entra. |
+| `AZURE_TENANT_ID` | `common` | Directory the sign-in goes through. Set your tenant ID to accept accounts from one organization only. |
+
+The app requests five delegated Microsoft Graph permissions: `Mail.Read`, `Mail.Send`, `Calendars.ReadWrite`, `User.Read`, and `offline_access`. Add them under API permissions. The supported account types you choose on the app registration decide which accounts can connect.
+
+One setting applies to both providers.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMAIL_SYNC_INITIAL_DAYS` | | Limits the first import to the last N days. Leave unset to import the whole mailbox. |
 
 ### AI Assistant
 
@@ -171,7 +189,7 @@ Toggle features on or off. All are enabled by default unless noted. Useful for f
 | `RELATICLE_FEATURE_ONBOARD_SEED` | `true` | Seed demo data (sample companies, people, tasks) when a new workspace is created. Set to `false` to start with an empty workspace. |
 | `RELATICLE_FEATURE_SOCIAL_AUTH` | `true` | Enable Google and Microsoft social login. Set to `false` to use only email, password, and passkey sign-in. |
 | `RELATICLE_FEATURE_DOCUMENTATION` | `true` | Enable the `/developers` and `/help` documentation module. Set to `false` to remove documentation routes and navigation links. |
-| `RELATICLE_FEATURE_EMAIL_INTEGRATION` | `false` | Enable Gmail and Google Calendar sync, the email composer, and the Email & calendar help pages. Requires `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET`. |
+| `RELATICLE_FEATURE_EMAIL_INTEGRATION` | `false` | Enable email and calendar sync for Google and Microsoft accounts, the email composer, and the Email & calendar help pages. Requires `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET`. Microsoft accounts also need `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`. |
 | `RELATICLE_FEATURE_SIGNUP_CHALLENGE` | `false` | Ask new sign-ups to pass a Cloudflare Turnstile check. Stays hidden for normal browsers and shows a checkbox only when Cloudflare needs one. Requires `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`. |
 
 ---

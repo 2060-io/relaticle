@@ -92,6 +92,29 @@ it('keeps the connect prompt instead of compose when no mailbox is linked', func
         ->assertDontSeeHtml('composer:open');
 });
 
+it('offers a microsoft mailbox on a record once its client is configured', function (): void {
+    config()->set('services.azure.client_id', 'azure-client');
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $this->person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionVisible('connectAzure')
+        ->tap(fn ($component) => assertActionHasMailboxOAuthUrl($component, 'connectAzure', 'azure', $this->workspace));
+});
+
+it('hides the microsoft mailbox on a record without a microsoft client', function (): void {
+    config()->set('services.azure.client_id');
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $this->person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->assertDontSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionHidden('connectAzure');
+});
+
 it('shows the compose empty state when the record only has hidden emails', function (): void {
     $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
         'workspace_id' => $this->workspace->id,

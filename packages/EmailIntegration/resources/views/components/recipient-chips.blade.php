@@ -1,7 +1,6 @@
 @props([
     'options' => [],
     'suggestions' => [],
-    'autofocus' => false,
 ])
 
 @php
@@ -266,9 +265,6 @@
     x-effect="if (isOpen) updatePopover()"
     x-on:resize.window="updatePopover()"
     x-on:scroll.window="updatePopover()"
-    @if ($autofocus)
-        x-init="$nextTick(() => $refs.input.focus())"
-    @endif
     @if ($wireModel) wire:ignore @endif
     {{ $attributes->whereDoesntStartWith('wire:model')->merge(['class' => 'flex min-h-10 min-w-0 flex-wrap content-start items-center gap-2 py-2']) }}
 >
@@ -297,7 +293,6 @@
         x-bind:aria-controls="'{{ $listboxId }}'"
         role="combobox"
         autocomplete="off"
-        @if ($autofocus) autofocus @endif
         class="h-6 min-w-[8rem] flex-1 border-0 bg-transparent p-0 text-sm leading-6 focus:outline-none focus:ring-0"
     />
 

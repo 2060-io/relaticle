@@ -12,6 +12,7 @@
                 :heading="__('filament/pages/email-accounts.not_connected.record.heading')"
                 :description="__('filament/pages/email-accounts.not_connected.record.description')"
                 :action="$this->connectMailboxAction"
+                :secondary-action="$this->connectAzureAction"
             />
         </div>
     @else

@@ -160,7 +160,7 @@
                                 [__('Users and records'), __('Unlimited'), __('Unlimited')],
                                 [__(':name, the AI assistant', ['name' => config('chat.assistant_name')]), __('2,000 credits each month'), __('Usage agreed with your team')],
                                 \Laravel\Pennant\Feature::active(\App\Features\EmailIntegration::class)
-                                    ? [__('Email and calendar'), __('Gmail and Google Calendar sync'), __('Gmail and Google Calendar sync')]
+                                    ? [__('Email and calendar'), __('Gmail and Outlook sync'), __('Gmail and Outlook sync')]
                                     : null,
                                 [__('Getting started'), __('Self-service setup'), __('Scoped implementation project')],
                                 [__('billing.comparison.integrations'), __('REST API and MCP server'), __('Custom integrations by agreement')],

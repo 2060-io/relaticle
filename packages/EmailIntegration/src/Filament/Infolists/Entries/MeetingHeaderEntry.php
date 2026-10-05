@@ -10,14 +10,14 @@ use Illuminate\Support\Facades\Date;
 use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Relaticle\EmailIntegration\Services\MeetingRespondentResolver;
-use Relaticle\EmailIntegration\Services\MeetingTemporalState;
+use Relaticle\EmailIntegration\Services\MeetingTimePresenter;
 
 final class MeetingHeaderEntry extends Entry
 {
     protected string $view = 'email-integration::filament.infolists.meeting-header';
 
     /**
-     * @return array{title: string, month: string, day: string, response_status: AttendeeResponseStatus|null, can_respond: bool, is_past: bool}
+     * @return array{month: string, day: string, response_status: AttendeeResponseStatus|null, can_respond: bool, time: array{start_date: string, start_time: string|null, end_time: string|null, end_date: string|null, duration: string|null, all_day: bool, datetime: string, relative: string|null, timezone: string|null}|null}
      */
     public function getState(): array
     {
@@ -25,12 +25,11 @@ final class MeetingHeaderEntry extends Entry
 
         if (! $record instanceof Meeting) {
             return [
-                'title' => '',
                 'month' => '',
                 'day' => '',
                 'response_status' => null,
                 'can_respond' => false,
-                'is_past' => false,
+                'time' => null,
             ];
         }
 
@@ -44,12 +43,11 @@ final class MeetingHeaderEntry extends Entry
             : Date::parse($record->starts_at)->timezone($timezone);
 
         return [
-            'title' => $record->title,
             'month' => strtoupper($start->format('M')),
             'day' => $start->format('j'),
             'response_status' => $responseStatus,
             'can_respond' => $user instanceof User && $user->can('respond', $record),
-            'is_past' => resolve(MeetingTemporalState::class)->isPast($record, $timezone),
+            'time' => resolve(MeetingTimePresenter::class)->present($record, $timezone),
         ];
     }
 }

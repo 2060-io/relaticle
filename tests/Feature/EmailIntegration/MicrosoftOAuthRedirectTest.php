@@ -15,7 +15,7 @@ beforeEach(function (): void {
     config()->set('services.azure.tenant', 'common');
 });
 
-it('redirects to Microsoft with mail Graph scopes and prompt=consent', function (): void {
+it('redirects to Microsoft with the least Graph scopes and prompt=consent', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $this->actingAs($user);
 
@@ -23,24 +23,25 @@ it('redirects to Microsoft with mail Graph scopes and prompt=consent', function 
 
     $location = $response->headers->get('Location');
 
+    parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);
+
     expect($location)->toContain('login.microsoftonline.com')
         ->toContain('prompt=consent')
-        ->toContain(urlencode('https://graph.microsoft.com/Mail.Read'))
-        ->toContain(urlencode('https://graph.microsoft.com/Mail.ReadWrite'))
-        ->toContain(urlencode('https://graph.microsoft.com/Mail.Send'))
-        ->toContain(urlencode('https://graph.microsoft.com/User.Read'))
-        ->toContain(urlencode('offline_access'))
-        ->toContain(urlencode('https://graph.microsoft.com/Calendars.ReadWrite'))
-        ->toContain(urlencode('https://graph.microsoft.com/Calendars.Read'));
+        ->and(explode(' ', (string) $query['scope']))->toEqualCanonicalizing([
+            'https://graph.microsoft.com/Mail.Read',
+            'https://graph.microsoft.com/Mail.Send',
+            'https://graph.microsoft.com/User.Read',
+            'offline_access',
+            'https://graph.microsoft.com/Calendars.ReadWrite',
+        ]);
 });
 
-it('includes Calendars.Read even when the leftover capability query is sent', function (): void {
+it('includes Calendars.ReadWrite even when the leftover capability query is sent', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $this->actingAs($user);
 
     $response = $this->get(MailboxOAuthWorkspace::redirectUrl('azure', $user->currentWorkspace));
 
     expect($response->headers->get('Location'))
-        ->toContain(urlencode('https://graph.microsoft.com/Calendars.ReadWrite'))
-        ->toContain(urlencode('https://graph.microsoft.com/Calendars.Read'));
+        ->toContain(urlencode('https://graph.microsoft.com/Calendars.ReadWrite'));
 });

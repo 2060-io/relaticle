@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Actions\StoreEmailAction;
 use Relaticle\EmailIntegration\Data\MailDeltaResult;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
@@ -54,12 +55,49 @@ function makeAzureAccount(): ConnectedAccount
 function microsoftMailCursor(array $cursors = []): string
 {
     return json_encode([
-        'v' => 1,
-        'cursors' => [
-            'inbox' => $cursors['inbox'] ?? 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=INBOX',
-            'sentitems' => $cursors['sentitems'] ?? 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT',
-        ],
+        'v' => 2,
+        'cursors' => $cursors === [] ? [
+            'inbox-folder-id' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=INBOX',
+            'sent-folder-id' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT',
+        ] : $cursors,
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+}
+
+function graphFolderDeltaUrl(string $folderId): string
+{
+    return "https://graph.microsoft.com/v1.0/me/mailFolders/{$folderId}/messages/delta";
+}
+
+/**
+ * @param  list<array{id: string, childFolderCount?: int}>  $topLevel
+ * @param  array<string, list<array{id: string, childFolderCount?: int}>>  $children
+ * @return array<string, mixed>
+ */
+function graphMailFolderFakes(?array $topLevel = null, array $children = []): array
+{
+    $fakes = graphWellKnownFolderFakes([
+        'junkemail' => ['id' => 'junk-folder-id'],
+        'deleteditems' => ['id' => 'deleted-folder-id'],
+        'outbox' => ['id' => 'outbox-folder-id'],
+        'conversationhistory' => ['id' => 'history-folder-id'],
+        'clutter' => ['id' => 'clutter-folder-id'],
+    ]);
+
+    $fakes['https://graph.microsoft.com/v1.0/me/mailFolders/syncissues?*'] = Http::response('', 404);
+    $fakes['https://graph.microsoft.com/v1.0/me/mailFolders?*'] = Http::response(['value' => $topLevel ?? [
+        ['id' => 'clutter-folder-id'],
+        ['id' => 'deleted-folder-id', 'childFolderCount' => 1],
+        ['id' => 'drafts-folder-id'],
+        ['id' => 'inbox-folder-id'],
+        ['id' => 'junk-folder-id'],
+        ['id' => 'sent-folder-id'],
+    ]]);
+
+    foreach ($children as $parentId => $folders) {
+        $fakes["https://graph.microsoft.com/v1.0/me/mailFolders/{$parentId}/childFolders?*"] = Http::response(['value' => $folders]);
+    }
+
+    return $fakes;
 }
 
 /**
@@ -110,20 +148,26 @@ function graphMessagePayload(array $overrides = []): array
     ];
 }
 
-it('backfills Inbox then SentItems and returns per-folder delta cursors', function (): void {
+it('backfills Inbox, Sent Items, then every other folder and returns a cursor per folder', function (): void {
     Http::preventStrayRequests();
     Http::fake([
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta' => Http::response([
-            'value' => [
-                ['id' => 'IN1', 'isRead' => false],
-            ],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=INBOX',
+        ...graphMailFolderFakes([
+            ['id' => 'clients-folder-id'],
+            ['id' => 'drafts-folder-id'],
+            ['id' => 'inbox-folder-id'],
+            ['id' => 'sent-folder-id'],
         ]),
-        'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta' => Http::response([
-            'value' => [
-                ['id' => 'SE1', 'isRead' => true],
-            ],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT',
+        graphFolderDeltaUrl('inbox-folder-id') => Http::response([
+            'value' => [['id' => 'IN1', 'isRead' => false]],
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=INBOX',
+        ]),
+        graphFolderDeltaUrl('sent-folder-id') => Http::response([
+            'value' => [['id' => 'SE1', 'isRead' => true]],
+            '@odata.deltaLink' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT',
+        ]),
+        graphFolderDeltaUrl('clients-folder-id') => Http::response([
+            'value' => [['id' => 'CL1', 'isRead' => true]],
+            '@odata.deltaLink' => graphFolderDeltaUrl('clients-folder-id').'?$deltatoken=CLIENTS',
         ]),
     ]);
 
@@ -135,28 +179,109 @@ it('backfills Inbox then SentItems and returns per-folder delta cursors', functi
         ->and($inboxPage->messageIds->all())->toEqual(['IN1'])
         ->and($inboxPage->nextPageToken)->not->toBeNull();
 
-    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/mailFolders/inbox/messages/delta'));
-    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/mailFolders/sentitems/messages/delta'));
-    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/messages/delta'));
+    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/sent-folder-id/messages/delta'));
 
     $sentPage = $service->initialBackfill(null, $inboxPage->nextPageToken);
 
-    expect($sentPage->nextPageToken)->toBeNull()
-        ->and($sentPage->messageIds->all())->toEqual(['SE1'])
-        ->and($sentPage->cursor)->toBe(microsoftMailCursor());
+    expect($sentPage->cursor)->toBeNull()
+        ->and($sentPage->messageIds->all())->toEqual(['SE1']);
 
-    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/mailFolders/sentitems/messages/delta'));
-    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/mailFolders/drafts/'));
+    $clientsPage = $service->initialBackfill(null, $sentPage->nextPageToken);
+
+    expect($clientsPage->nextPageToken)->toBeNull()
+        ->and($clientsPage->messageIds->all())->toEqual(['CL1'])
+        ->and($clientsPage->cursor)->toBe(microsoftMailCursor([
+            'inbox-folder-id' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=INBOX',
+            'sent-folder-id' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT',
+            'clients-folder-id' => graphFolderDeltaUrl('clients-folder-id').'?$deltatoken=CLIENTS',
+        ]));
+
+    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/drafts-folder-id/messages/delta'));
+});
+
+it('never lists mail from drafts, junk, clutter, deleted items, or a folder inside them', function (): void {
+    Http::preventStrayRequests();
+    Http::fake([
+        ...graphMailFolderFakes(),
+        graphFolderDeltaUrl('inbox-folder-id').'*' => Http::response([
+            'value' => [],
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=FRESH',
+        ]),
+        graphFolderDeltaUrl('sent-folder-id').'*' => Http::response([
+            'value' => [],
+            '@odata.deltaLink' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=FRESH',
+        ]),
+    ]);
+
+    $delta = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchDelta(microsoftMailCursor());
+
+    expect(array_keys(json_decode($delta->newCursor, true)['cursors']))->toEqual(['inbox-folder-id', 'sent-folder-id']);
+
+    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), '/deleted-folder-id/childFolders'));
+});
+
+it('syncs a folder nested inside the inbox', function (): void {
+    Http::preventStrayRequests();
+    Http::fake([
+        ...graphMailFolderFakes(
+            [['id' => 'inbox-folder-id', 'childFolderCount' => 1], ['id' => 'sent-folder-id']],
+            ['inbox-folder-id' => [['id' => 'receipts-folder-id']]],
+        ),
+        graphFolderDeltaUrl('inbox-folder-id').'*' => Http::response([
+            'value' => [],
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=FRESH',
+        ]),
+        graphFolderDeltaUrl('sent-folder-id').'*' => Http::response([
+            'value' => [],
+            '@odata.deltaLink' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=FRESH',
+        ]),
+        graphFolderDeltaUrl('receipts-folder-id') => Http::response([
+            'value' => [['id' => 'RC1', 'isRead' => false]],
+            '@odata.deltaLink' => graphFolderDeltaUrl('receipts-folder-id').'?$deltatoken=RECEIPTS',
+        ]),
+    ]);
+
+    $delta = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchDelta(microsoftMailCursor());
+
+    expect($delta->messageIds->all())->toEqual(['RC1'])
+        ->and(json_decode($delta->newCursor, true)['cursors']['receipts-folder-id'])
+        ->toBe(graphFolderDeltaUrl('receipts-folder-id').'?$deltatoken=RECEIPTS');
+});
+
+it('caps a newly found folder at initial_days and forgets a folder that is gone', function (): void {
+    config()->set('email-integration.sync.initial_days', 30);
+
+    Http::preventStrayRequests();
+    Http::fake([
+        ...graphMailFolderFakes([['id' => 'inbox-folder-id'], ['id' => 'new-folder-id']]),
+        graphFolderDeltaUrl('inbox-folder-id').'*' => Http::response([
+            'value' => [],
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=FRESH',
+        ]),
+        graphFolderDeltaUrl('new-folder-id').'*' => Http::response([
+            'value' => [['id' => 'NW1']],
+            '@odata.deltaLink' => graphFolderDeltaUrl('new-folder-id').'?$deltatoken=NEW',
+        ]),
+    ]);
+
+    $delta = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchDelta(microsoftMailCursor());
+
+    expect($delta->messageIds->all())->toEqual(['NW1'])
+        ->and(array_keys(json_decode($delta->newCursor, true)['cursors']))->toEqual(['inbox-folder-id', 'new-folder-id']);
+
+    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/new-folder-id/messages/delta')
+        && str_contains(urldecode((string) $r->url()), 'receivedDateTime ge'));
 });
 
 it('returns one backfill page and does not follow @odata.nextLink', function (): void {
     Http::preventStrayRequests();
     Http::fake([
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta' => Http::response([
+        ...graphMailFolderFakes(),
+        graphFolderDeltaUrl('inbox-folder-id') => Http::response([
             'value' => [
                 ['id' => 'AAA1'],
             ],
-            '@odata.nextLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$skiptoken=NEXT',
+            '@odata.nextLink' => graphFolderDeltaUrl('inbox-folder-id').'?$skiptoken=NEXT',
         ]),
     ]);
 
@@ -166,34 +291,36 @@ it('returns one backfill page and does not follow @odata.nextLink', function ():
         ->and($result->nextPageToken)->toContain('$skiptoken=NEXT')
         ->and($result->cursor)->toBeNull();
 
-    Http::assertSentCount(1);
+    Http::assertNotSent(fn (Request $r): bool => str_contains((string) $r->url(), 'skiptoken'));
 });
 
 it('applies the optional initial_days cap as a receivedDateTime filter', function (): void {
     Http::preventStrayRequests();
     Http::fake([
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta*' => Http::response([
+        ...graphMailFolderFakes(),
+        graphFolderDeltaUrl('inbox-folder-id').'*' => Http::response([
             'value' => [],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=INBOX',
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=INBOX',
         ]),
     ]);
 
     resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->initialBackfill(90);
 
-    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/mailFolders/inbox/messages/delta')
+    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/inbox-folder-id/messages/delta')
         && str_contains(urldecode((string) $r->url()), 'receivedDateTime ge'));
 });
 
-it('applies the same receivedDateTime filter when SentItems backfill starts', function (): void {
+it('applies the same receivedDateTime filter when the next folder backfill starts', function (): void {
     Http::preventStrayRequests();
     Http::fake([
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta*' => Http::response([
+        ...graphMailFolderFakes(),
+        graphFolderDeltaUrl('inbox-folder-id').'*' => Http::response([
             'value' => [],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=INBOX',
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=INBOX',
         ]),
-        'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta*' => Http::response([
+        graphFolderDeltaUrl('sent-folder-id').'*' => Http::response([
             'value' => [],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT',
+            '@odata.deltaLink' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT',
         ]),
     ]);
 
@@ -202,59 +329,76 @@ it('applies the same receivedDateTime filter when SentItems backfill starts', fu
 
     $service->initialBackfill(90, $inboxPage->nextPageToken);
 
-    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/mailFolders/sentitems/messages/delta')
+    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/sent-folder-id/messages/delta')
         && str_contains(urldecode((string) $r->url()), 'receivedDateTime ge'));
 });
 
 it('paginates delta with @odata.nextLink and surfaces new + read ids + new cursor', function (): void {
     Http::preventStrayRequests();
     Http::fake([
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=OLD' => Http::response([
+        ...graphMailFolderFakes(),
+        graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=OLD' => Http::response([
             'value' => [
                 ['id' => 'AAA1', 'isRead' => false],
             ],
-            '@odata.nextLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$skiptoken=NEXT',
+            '@odata.nextLink' => graphFolderDeltaUrl('inbox-folder-id').'?$skiptoken=NEXT',
         ]),
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$skiptoken=NEXT' => Http::response([
+        graphFolderDeltaUrl('inbox-folder-id').'?$skiptoken=NEXT' => Http::response([
             'value' => [
                 ['id' => 'AAA2', 'isRead' => true],
             ],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=FRESH',
+            '@odata.deltaLink' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=FRESH',
         ]),
-        'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT-OLD' => Http::response([
+        graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT-OLD' => Http::response([
             'value' => [
                 ['id' => 'SE1', 'isRead' => true],
             ],
-            '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT-FRESH',
+            '@odata.deltaLink' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT-FRESH',
         ]),
     ]);
 
     $service = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount());
 
     $delta = $service->fetchDelta(microsoftMailCursor([
-        'inbox' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=OLD',
-        'sentitems' => 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT-OLD',
+        'inbox-folder-id' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=OLD',
+        'sent-folder-id' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT-OLD',
     ]));
 
     expect($delta->messageIds->all())->toEqual(['AAA1', 'AAA2', 'SE1'])
         ->and($delta->readMessageIds->all())->toEqual(['AAA2', 'SE1'])
+        ->and($delta->unreadMessageIds->all())->toEqual(['AAA1'])
         ->and($delta->newCursor)->toBe(microsoftMailCursor([
-            'inbox' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=FRESH',
-            'sentitems' => 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT-FRESH',
+            'inbox-folder-id' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=FRESH',
+            'sent-folder-id' => graphFolderDeltaUrl('sent-folder-id').'?$deltatoken=SENT-FRESH',
         ]));
 });
 
 it('throws MailHistoryExpired when Graph returns 410 for a folder delta', function (): void {
     Http::preventStrayRequests();
     Http::fake([
-        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=EXPIRED' => Http::response('', 410),
+        ...graphMailFolderFakes(),
+        graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=EXPIRED' => Http::response('', 410),
     ]);
 
     $service = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount());
 
     expect(fn (): MailDeltaResult => $service->fetchDelta(microsoftMailCursor([
-        'inbox' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=EXPIRED',
+        'inbox-folder-id' => graphFolderDeltaUrl('inbox-folder-id').'?$deltatoken=EXPIRED',
     ])))->toThrow(MailHistoryExpired::class);
+});
+
+it('throws MailHistoryExpired for a cursor that holds only Inbox and Sent Items by name', function (): void {
+    Http::preventStrayRequests();
+
+    $service = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount());
+
+    expect(fn (): MailDeltaResult => $service->fetchDelta(json_encode([
+        'v' => 1,
+        'cursors' => [
+            'inbox' => 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=INBOX',
+            'sentitems' => 'https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SENT',
+        ],
+    ], JSON_THROW_ON_ERROR)))->toThrow(MailHistoryExpired::class);
 });
 
 it('throws MailHistoryExpired for a legacy all-folder /me/messages/delta cursor', function (): void {
@@ -397,7 +541,7 @@ it('maps a Graph sent message reconciliation property onto FetchedEmailData', fu
             'bccRecipients' => [],
             'body' => ['contentType' => 'html', 'content' => '<p>Hi</p>'],
             'singleValueExtendedProperties' => [[
-                'id' => 'String {00020329-0000-0000-C000-000000000046} Name RelaticleMessageId',
+                'id' => 'String {00020329-0000-0000-c000-000000000046} Name RelaticleMessageId',
                 'value' => '<local-id@example.com>',
             ]],
         ]),
@@ -414,6 +558,39 @@ it('maps a Graph sent message reconciliation property onto FetchedEmailData', fu
 
     Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/messages/AAA1')
         && str_contains(urldecode((string) $r->url()), 'singleValueExtendedProperties($filter=id eq \'String {00020329-0000-0000-C000-000000000046} Name RelaticleMessageId\')'));
+});
+
+it('marks mail the account sent as outbound when it sits in a custom folder', function (): void {
+    $account = makeAzureAccount();
+
+    Http::preventStrayRequests();
+    Http::fake([
+        ...graphWellKnownFolderFakes(),
+        'https://graph.microsoft.com/v1.0/me/messages/MSG1*' => Http::response(graphMessagePayload([
+            'parentFolderId' => 'clients-folder-id',
+            'from' => ['emailAddress' => ['address' => Str::upper($account->email_address), 'name' => 'Me']],
+        ])),
+    ]);
+
+    $fetched = resolve(MicrosoftGraphServiceFactory::class)->make($account)->fetchMessage('MSG1');
+
+    expect($fetched->direction)->toBe(EmailDirection::OUTBOUND)
+        ->and($fetched->folder)->toBe(EmailFolder::Archive);
+});
+
+it('keeps mail from someone else inbound when it sits in a custom folder', function (): void {
+    Http::preventStrayRequests();
+    Http::fake([
+        ...graphWellKnownFolderFakes(),
+        'https://graph.microsoft.com/v1.0/me/messages/MSG1*' => Http::response(graphMessagePayload([
+            'parentFolderId' => 'clients-folder-id',
+        ])),
+    ]);
+
+    $fetched = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchMessage('MSG1');
+
+    expect($fetched->direction)->toBe(EmailDirection::INBOUND)
+        ->and($fetched->folder)->toBe(EmailFolder::Archive);
 });
 
 it('maps a Graph message payload to FetchedEmailData', function (): void {
@@ -754,6 +931,18 @@ it('expands and maps inbound attachment metadata into FetchedEmailData', functio
 
     Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/messages/AAA2')
         && str_contains(urldecode((string) $r->url()), '$expand=attachments'));
+});
+
+it('selects the inline content id through the fileAttachment type Graph accepts', function (): void {
+    Http::fake([
+        ...graphWellKnownFolderFakes(),
+        'https://graph.microsoft.com/v1.0/me/messages/AAA2*' => Http::response(['id' => 'AAA2']),
+    ]);
+
+    resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchMessage('AAA2');
+
+    Http::assertSent(fn (Request $r): bool => str_contains((string) $r->url(), '/me/messages/AAA2')
+        && str_contains(urldecode((string) $r->url()), 'isInline,microsoft.graph.fileAttachment/contentId)'));
 });
 
 it('stores Graph inline cid images so the reader can rewrite them', function (): void {

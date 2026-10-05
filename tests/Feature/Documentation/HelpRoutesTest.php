@@ -56,6 +56,7 @@ it('lists the email category on the hub while email integration is on', function
 
     $this->get('/help')->assertOk()->assertSee('/help/email-and-calendar', false);
     $this->get('/help/email-and-calendar/connect-your-google-account')->assertOk();
+    $this->get('/help/email-and-calendar/connect-your-microsoft-account')->assertOk();
 });
 
 it('hides the email category and its articles while email integration is off', function (): void {
@@ -65,6 +66,7 @@ it('hides the email category and its articles while email integration is off', f
     $this->get('/help')->assertOk()->assertDontSee('/help/email-and-calendar', false);
     $this->get('/help/email-and-calendar')->assertNotFound();
     $this->get('/help/email-and-calendar/connect-your-google-account')->assertNotFound();
+    $this->get('/help/email-and-calendar/connect-your-microsoft-account')->assertNotFound();
     $this->get('/help/search-index.json')->assertOk()->assertDontSee('email-and-calendar', false);
     $this->get('/llms.txt')->assertOk()->assertDontSee('email-and-calendar', false);
 });
