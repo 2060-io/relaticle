@@ -1211,9 +1211,7 @@ final class ExecuteImportJob implements ShouldQueue
 
         $id = (string) $record->getKey();
 
-        foreach ($dedupKeys as $dedupKey) {
-            $this->createdRecords[$dedupKey] = $id;
-        }
+        $this->rememberCreated($dedupKeys, $id);
 
         return $id;
     }
@@ -1315,9 +1313,7 @@ final class ExecuteImportJob implements ShouldQueue
 
         $id = (string) $record->getKey();
 
-        foreach ($dedupKeys as $dedupKey) {
-            $this->createdRecords[$dedupKey] = $id;
-        }
+        $this->rememberCreated($dedupKeys, $id);
 
         return $id;
     }
@@ -1356,6 +1352,16 @@ final class ExecuteImportJob implements ShouldQueue
     ): void {
         foreach ($pendingRelationships as $pending) {
             $pending['strategy']->store($record, $pending['link'], $pending['ids'], $context);
+        }
+    }
+
+    /**
+     * @param  list<string>  $dedupKeys
+     */
+    private function rememberCreated(array $dedupKeys, string $id): void
+    {
+        foreach ($dedupKeys as $dedupKey) {
+            $this->createdRecords[$dedupKey] = $id;
         }
     }
 }
