@@ -72,6 +72,7 @@ it('parses Graph calendarView/delta into CalendarEventData', function (): void {
                     'end' => ['dateTime' => '2026-06-01T09:30:00', 'timeZone' => 'UTC'],
                     'location' => ['displayName' => 'Zoom'],
                     'webLink' => 'https://outlook/...',
+                    'onlineMeeting' => ['joinUrl' => 'https://teams.live.com/meet/123'],
                     'isCancelled' => false,
                     'organizer' => ['emailAddress' => ['address' => 'org@example.com', 'name' => 'Org']],
                     'attendees' => [
@@ -91,6 +92,7 @@ it('parses Graph calendarView/delta into CalendarEventData', function (): void {
         ->and($result->events[0]->organizerEmail)->toBe('org@example.com')
         ->and($result->events[0]->attendees[0]['email'])->toBe('a@example.com')
         ->and($result->events[0]->attendees[0]['is_organizer'])->toBeFalse()
+        ->and($result->events[0]->joinUrl)->toBe('https://teams.live.com/meet/123')
         ->and($result->nextSyncToken)->toContain('$deltatoken=NEW');
 });
 

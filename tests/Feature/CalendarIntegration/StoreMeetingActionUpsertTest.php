@@ -39,12 +39,14 @@ it('creates a meeting with attendees', function (): void {
             new NormalizedAttendee('me@example.com', 'Me', AttendeeResponseStatus::ACCEPTED, false, true),
             new NormalizedAttendee('guest@acme.com', 'Guest', AttendeeResponseStatus::TENTATIVE, false, false),
         ],
+        joinUrl: 'https://meet.google.com/abc-defg-hij',
     );
 
     (app(StoreMeetingAction::class))->execute($payload, $account);
 
     $meeting = Meeting::query()->where('provider_event_id', 'evt-1')->firstOrFail();
     expect($meeting->title)->toBe('Design review');
+    expect($meeting->join_url)->toBe('https://meet.google.com/abc-defg-hij');
     expect($meeting->attendees()->count())->toBe(3);
     expect($meeting->attendees()->where('is_self', true)->first()?->email_address)->toBe('me@example.com');
 });

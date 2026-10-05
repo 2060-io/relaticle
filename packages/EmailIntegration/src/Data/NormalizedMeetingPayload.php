@@ -31,5 +31,6 @@ final readonly class NormalizedMeetingPayload
         public ?AttendeeResponseStatus $selfResponseStatus,
         public ?string $htmlLink,
         public array $attendees,
+        public ?string $joinUrl = null,
     ) {}
 }

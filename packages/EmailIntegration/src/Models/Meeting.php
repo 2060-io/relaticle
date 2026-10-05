@@ -46,6 +46,7 @@ use Relaticle\EmailIntegration\Policies\MeetingPolicy;
  * @property CalendarVisibility $visibility
  * @property AttendeeResponseStatus|null $response_status
  * @property string|null $html_link
+ * @property string|null $join_url
  */
 #[UsePolicy(MeetingPolicy::class)]
 #[ObservedBy(MeetingObserver::class)]
@@ -67,6 +68,7 @@ use Relaticle\EmailIntegration\Policies\MeetingPolicy;
     'visibility',
     'response_status',
     'html_link',
+    'join_url',
 ])]
 final class Meeting extends Model
 {

@@ -27,6 +27,7 @@ final readonly class CalendarEventData
         public ?string $organizerEmail,
         public ?string $organizerName,
         public array $attendees,
+        public ?string $joinUrl = null,
     ) {}
 
     public function revisionKey(): string

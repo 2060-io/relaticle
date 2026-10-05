@@ -65,13 +65,11 @@ final readonly class NormalizedMeetingPayloadFactory
             );
         }
 
-        $title = $event->title ?? '';
-
         return new NormalizedMeetingPayload(
             providerEventId: $event->providerEventId,
             providerRecurringEventId: $event->providerRecurringEventId,
             icalUid: $event->iCalUid,
-            title: $title !== '' ? $title : '(no title)',
+            title: filled($event->title) ? $event->title : '(no title)',
             description: $event->description,
             location: $event->location,
             startsAt: $event->startsAt,
@@ -84,6 +82,8 @@ final readonly class NormalizedMeetingPayloadFactory
             selfResponseStatus: $selfResponse,
             htmlLink: $event->htmlLink,
             attendees: $attendees,
+            // A job queued before the field existed unserializes without it.
+            joinUrl: $event->joinUrl ?? null,
         );
     }
 

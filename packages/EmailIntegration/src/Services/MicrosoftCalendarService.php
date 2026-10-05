@@ -641,6 +641,7 @@ final readonly class MicrosoftCalendarService implements CalendarServiceInterfac
             organizerEmail: $organizerEmail,
             organizerName: $event['organizer']['emailAddress']['name'] ?? null,
             attendees: $attendees,
+            joinUrl: $event['onlineMeeting']['joinUrl'] ?? null,
         );
     }
 
