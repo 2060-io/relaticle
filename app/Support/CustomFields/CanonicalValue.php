@@ -12,12 +12,6 @@ final readonly class CanonicalValue
 {
     public static function of(CustomField $field, string $value): string
     {
-        // The link normalizer recurses once per leading scheme, which is quadratic on a stack of them.
-        // The field types validate at most one scheme, so no stored value can equal such input.
-        if (self::stacksSchemes($value)) {
-            return $value;
-        }
-
         $type = CustomFieldsType::getFieldTypeInstance($field->type);
 
         return $type instanceof BaseFieldType ? $type->normalize($value, $field) : $value;
@@ -30,19 +24,10 @@ final readonly class CanonicalValue
     {
         $value = trim($value);
 
-        if (self::stacksSchemes($value)) {
-            return [$value];
-        }
-
         $type = CustomFieldsType::getFieldTypeInstance($field->type);
         $equivalents = $type instanceof BaseFieldType ? $type->equivalentValues($value, $field) : [];
 
         return array_values(array_unique([self::of($field, $value), ...$equivalents, $value]));
-    }
-
-    private static function stacksSchemes(string $value): bool
-    {
-        return preg_match('#^(?:[a-z][a-z0-9+.-]*://){2}#i', $value) === 1;
     }
 
     /**

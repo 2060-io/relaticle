@@ -777,7 +777,7 @@ it('matches a url link typed with or without its scheme', function (string $oper
     'another path' => ['acme.com/pricing', []],
 ]);
 
-it('never matches a link operand that stacks more than one scheme', function (): void {
+it('reads a domain link operand that stacks schemes as its host', function (): void {
     $site = filterTestField($this->workspace, 'people', 'site', 'link', new CustomFieldSettingsData(allow_multiple: true, max_values: 5, additional: ['link_variant' => 'domain']));
     $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
     DB::table('custom_field_values')->insert([
@@ -789,7 +789,7 @@ it('never matches a link operand that stacks more than one scheme', function ():
         'json_value' => json_encode(['acme.com']),
     ]);
 
-    expect(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://http://acme.com']]]]))->toBe([])
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://http://acme.com']]]]))->toBe(['Ana'])
         ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['http://acme.com']]]]))->toBe(['Ana']);
 });
 
