@@ -209,7 +209,7 @@ trait HasEmailReaderActions
                 $email = $this->emailForReaderAction($record instanceof Email ? $record : null, $arguments, 'viewBody');
 
                 if (! $email instanceof Email) {
-                    return view('email-integration::filament.actions.ai-summary', ['summary' => null]);
+                    return view('email-integration::filament.actions.ai-summary', ['summary' => null, 'failed' => false]);
                 }
 
                 return $this->buildThreadSummaryView($email);
@@ -406,7 +406,7 @@ trait HasEmailReaderActions
             ->first();
 
         if ($thread === null) {
-            return view('email-integration::filament.actions.ai-summary', ['summary' => null]);
+            return view('email-integration::filament.actions.ai-summary', ['summary' => null, 'failed' => false]);
         }
 
         try {
@@ -418,7 +418,7 @@ trait HasEmailReaderActions
             return view('email-integration::filament.actions.ai-summary', ['summary' => null, 'failed' => true]);
         }
 
-        return view('email-integration::filament.actions.ai-summary', ['summary' => $summary]);
+        return view('email-integration::filament.actions.ai-summary', ['summary' => $summary, 'failed' => false]);
     }
 
     protected function approveAccessRequestAction(): Action

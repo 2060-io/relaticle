@@ -1,5 +1,5 @@
 <div class="space-y-4">
-    @if ($failed ?? false)
+    @if ($failed)
         <div class="rounded-lg bg-danger-50 dark:bg-danger-500/10 p-4">
             <p class="text-sm text-danger-700 dark:text-danger-400 leading-relaxed">
                 {{ __('filament/pages/record-emails.actions.summarize_thread.failed') }}
