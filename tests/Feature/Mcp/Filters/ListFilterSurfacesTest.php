@@ -154,7 +154,7 @@ function expectErrorOnEverySurface(TestCase $test, User $user, string $route, ar
 
     RelaticleServer::actingAs($user)
         ->tool(LIST_SURFACES[$route][1], ['filter' => $filter])
-        ->assertHasErrors([$message]);
+        ->assertHasErrors($key === 'filter' ? [$message] : [$message, "{$key}: "]);
 
     if (queryStringCarries($filter)) {
         $test->getJson("/api/v1/{$route}?".surfaceQueryString($filter))

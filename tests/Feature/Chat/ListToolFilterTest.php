@@ -516,6 +516,17 @@ it('reads a padded operand as its trimmed value and rejects a blank one', functi
         ->and($blank['error'])->toContain('name $contains must be a non-empty string, or use $is_empty for records without a value.');
 });
 
+it('names the node to fix in a nested filter error', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+
+    $result = json_decode((new ListCompaniesTool)->handle(new Request([
+        'filter' => ['$or' => [['name' => ['$eq' => 'Acme']], ['name' => ['$eq' => ['a', 'b']]]]],
+    ])), true);
+
+    expect($result['error'])->toBe('filter.$or.1.name.$eq: name $eq must be a non-empty string, or use $is_empty for records without a value.');
+});
+
 it('reports total and showing when results exceed one page', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);

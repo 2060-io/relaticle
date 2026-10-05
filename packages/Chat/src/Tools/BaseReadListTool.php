@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterErrors;
 use App\Support\Filters\FilterTree;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Collection;
@@ -28,13 +29,11 @@ use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Services\Tools\DisplayFieldSelector;
 use Relaticle\Chat\Support\RecordReferenceResolver;
 use Relaticle\Chat\Tools\Concerns\LocalisesDatetimes;
-use Relaticle\Chat\Tools\Concerns\ReportsValidationFailures;
 use Spatie\QueryBuilder\Exceptions\InvalidQuery;
 
 abstract class BaseReadListTool implements Tool
 {
     use LocalisesDatetimes;
-    use ReportsValidationFailures;
 
     /**
      * Columns carried by the block: the entity's core name/title column plus up
@@ -174,7 +173,7 @@ abstract class BaseReadListTool implements Tool
                 dayZone: $user->effectiveTimezone(),
             );
         } catch (ValidationException $exception) {
-            return $this->validationError($exception);
+            return (string) json_encode(['error' => FilterErrors::located($exception)], JSON_UNESCAPED_SLASHES);
         } catch (InvalidQuery $e) {
             return (string) json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_SLASHES);
         }

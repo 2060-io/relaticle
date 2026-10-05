@@ -13,6 +13,7 @@ use App\Mcp\Tools\Concerns\HasReadOnlyToolAnnotations;
 use App\Mcp\Tools\Concerns\SerializesRelatedModels;
 use App\Models\User;
 use App\Support\Filters\EntityFilters;
+use App\Support\Filters\FilterErrors;
 use App\Support\Filters\FilterTree;
 use Closure;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -93,9 +95,7 @@ abstract class BaseListTool extends Tool
         ]);
 
         $requestedIncludes = $request->get('include');
-        $toManyIncludes = is_array($requestedIncludes)
-            ? $this->toManyIncludes($requestedIncludes)
-            : [];
+        $toManyIncludes = is_array($requestedIncludes) ? $this->toManyIncludes($requestedIncludes) : [];
 
         if ($toManyIncludes !== []) {
             return Response::error(sprintf(
@@ -107,13 +107,14 @@ abstract class BaseListTool extends Tool
         FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
 
         try {
-            $action = app()->make($this->actionClass());
-            $results = $action->execute(
+            $results = app()->make($this->actionClass())->execute(
                 user: $user,
                 perPage: (int) ($validated['per_page'] ?? 15),
                 page: (int) ($validated['page'] ?? 1),
                 request: $this->buildHttpRequest($request),
             );
+        } catch (ValidationException $exception) {
+            return Response::error(FilterErrors::located($exception));
         } catch (InvalidQuery $e) {
             return Response::error($e->getMessage());
         }

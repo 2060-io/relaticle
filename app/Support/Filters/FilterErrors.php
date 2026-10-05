@@ -23,6 +23,19 @@ final readonly class FilterErrors
         return self::at($path, __('validation.filter.operator_sigil', ['operator' => '$'.$operator]));
     }
 
+    public static function located(ValidationException $exception): string
+    {
+        $lines = [];
+
+        foreach ($exception->errors() as $key => $messages) {
+            foreach ($messages as $message) {
+                $lines[] = str_starts_with((string) $key, 'filter.') ? "{$key}: {$message}" : $message;
+            }
+        }
+
+        return implode(' ', $lines);
+    }
+
     public static function prefix(ValidationException $exception, string|int $segment): ValidationException
     {
         $messages = [];
