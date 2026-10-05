@@ -18,7 +18,7 @@ it('renders the press page with facts and unique metadata', function (): void {
     $this->get('/press')
         ->assertOk()
         ->assertSee('AGPL-3.0')
-        ->assertSee('An MCP server and a built-in AI chat assistant')
+        ->assertSee(config('chat.assistant_name').', a built-in AI assistant, and an MCP server')
         ->assertSee('<title>'.e(__('Press kit & brand assets')).' - Relaticle</title>', false);
 });
 

@@ -2,7 +2,7 @@
 title: People records
 description: People with unique emails, phone, job title, and a company link, created standalone or from a company.
 order: 2
-updated: "2026-08-13"
+updated: "2026-10-05"
 related: [help/records/company-records, help/getting-started/add-your-first-person]
 ---
 
@@ -27,6 +27,9 @@ A person's page shows their details with the company as a link. Click
 through to the company any time. Two working tabs, **Tasks** and **Notes**,
 create records pre-linked to this person, and **Activity log** shows the
 change history.
+
+With email and calendar sync on, **Emails** and **Meetings** tabs appear
+here too.
 
 In the **People** list the company column links to the company too, so you
 can move between a person and their company from anywhere.

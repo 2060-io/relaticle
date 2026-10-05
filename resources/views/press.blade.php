@@ -7,7 +7,7 @@
     $brand = json_decode(file_get_contents(public_path('brand/kit/manifest.json')), true, flags: JSON_THROW_ON_ERROR);
     $avatarLabels = ['purple' => __('Purple'), 'light' => __('Light'), 'dark' => __('Dark')];
     $screenshots = [
-        ['id' => 'pipeline', 'title' => __('Sales pipeline'), 'alt' => __('Relaticle opportunities board with deals grouped by pipeline stage')],
+        ['id' => 'pipeline', 'title' => __('Sales pipeline'), 'alt' => __('Relaticle opportunities board grouped by pipeline stage')],
         ['id' => 'companies', 'title' => __('Companies'), 'alt' => __('Relaticle companies list with account owners, ICP status, and website domains')],
         ['id' => 'custom-fields', 'title' => __('Custom fields'), 'alt' => __('Relaticle custom field settings for opportunities')],
     ];
@@ -168,7 +168,7 @@
                 <div class="grid gap-8 lg:grid-cols-3 lg:gap-12">
                     <div>
                         <h2 id="facts-title" class="font-display text-2xl font-bold tracking-tight sm:text-3xl">{{ __('About Relaticle') }}</h2>
-                        <p class="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{{ __('Relaticle is an open-source CRM for managing people, companies, opportunities, and tasks. Its built-in AI assistant proposes changes for you to review and approve.') }}</p>
+                        <p class="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{{ __('Relaticle is an open-source CRM for managing companies, people, opportunities, tasks, and notes. Its built-in AI assistant, :name, proposes changes for you to review and approve.', ['name' => config('chat.assistant_name')]) }}</p>
                         <p class="mt-3 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{{ __('Choose Relaticle Cloud or run it on your own server.') }}</p>
                         <div class="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium">
                             <a href="{{ $facts['source_urls']['repository'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2 rounded-sm text-primary focus-visible:outline-2 focus-visible:outline-primary dark:text-primary-400"><x-ri-github-fill class="size-4" aria-hidden="true"/>{{ __('GitHub') }}</a>
@@ -178,7 +178,7 @@
                     </div>
                     <div class="lg:col-span-2">
                         <ul class="grid gap-px overflow-hidden rounded-2xl border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800 sm:grid-cols-2">
-                            @foreach ([__('Founded') => '2024', __('License') => $facts['license'], __('Tech stack') => $facts['stack'], __('GitHub stars') => $starsLabel, __('Pricing') => $facts['pricing'], __('AI & MCP') => __('An MCP server and a built-in AI chat assistant. Both support self-hosting.')] as $label => $value)
+                            @foreach ([__('Founded') => '2024', __('License') => $facts['license'], __('Tech stack') => $facts['stack'], __('GitHub stars') => $starsLabel, __('Pricing') => $facts['pricing'], __('AI & MCP') => __(':name, a built-in AI assistant, and an MCP server. Both support self-hosting.', ['name' => config('chat.assistant_name')])] as $label => $value)
                                 <li class="bg-white p-5 dark:bg-gray-950"><p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ $label }}</p><p class="mt-2 text-sm leading-relaxed text-gray-800 dark:text-gray-200">{{ $value }}</p></li>
                             @endforeach
                         </ul>

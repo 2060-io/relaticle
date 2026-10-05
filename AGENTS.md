@@ -676,6 +676,23 @@ opportunity". `tests/Arch/ConventionsTest.php` fails `your people` in published 
 Give "people" one meaning per sentence. When the record and the humans who use the
 product meet, the humans are "you" or "your team". No test reads for this.
 
+## The assistant and the MCP server
+
+The built-in assistant has a name, `config('chat.assistant_name')`. The first mention on a
+page is "Rela, the built-in AI assistant". After that it is "Rela". "AI chat" is not a name
+for it. External agents reach Relaticle through "the MCP server", and copy names Claude and
+ChatGPT where there is room, because a buyer knows those and may not know MCP.
+
+Pitch copy states no tool count and no field type count. It says what an agent or a team
+can do. The MCP guide's tool reference is the one place that counts tools.
+
+    Bad:  Explore the AI assistant and 39 MCP tools
+    Good: Explore Rela and the MCP server for Claude and ChatGPT
+
+`tests/Arch/ConventionsTest.php` fails "AI chat" in published copy, and fails the MCP guide
+when its count differs from the tools `RelaticleServer` registers.
+`tests/Feature/Public/PublicPagesTest.php` fails a marketing page that quotes a count.
+
 ## House style
 
 - One idea per sentence. 25 words maximum. Active voice.

@@ -357,7 +357,7 @@ it('does not overstate the self-hoster\'s lever over the credit cap', function (
     $this->get('/pricing')
         ->assertOk()
         ->assertSee('no plan removes metering entirely')
-        ->assertSee("doesn't reset the current period's balance")
+        ->assertSee('reset its credit period from the sysadmin panel')
         ->assertDontSee('raising or removing that cap is a matter of updating your own workspace\'s plan; there is no separate self-hosted billing UI for it.');
 });
 
@@ -501,7 +501,7 @@ it('keeps the credits help article in step with each plan allowance', function (
 
     expect($rows->all())->toBe([
         'Cloud Pro and its trial' => ['Cloud Pro and its trial', number_format(Plan::Pro->credits()), (string) Plan::Pro->rateLimit()],
-        'Enterprise' => ['Enterprise', number_format(Plan::Enterprise->credits()), (string) Plan::Enterprise->rateLimit()],
+        'Enterprise' => ['Enterprise', 'Agreed with your team', 'Agreed with your team'],
         'Self-hosted (default)' => ['Self-hosted (default)', number_format(Plan::default()->credits()), (string) Plan::default()->rateLimit()],
     ]);
 });

@@ -34,14 +34,14 @@
                 @include('home.partials.agent-network')
             </div>
 
-            {{-- Built-in AI Chat: the in-app conversational agent --}}
+            {{-- The built-in assistant: the in-app conversational agent --}}
             <div id="card-builtin-ai" class="{{ $cardBase }} p-6 overflow-hidden">
                 <h3 class="{{ $cardTitle }} inline-flex items-center gap-2">
                     <x-ri-chat-smile-3-line id="ai-sparkle" class="w-3.5 h-3.5 text-primary dark:text-primary-400"/>
-                    Built-in AI chat
+                    {{ config('chat.assistant_name') }}, the built-in AI assistant
                 </h3>
                 <p class="{{ $cardDesc }}">
-                    Ask {{ config('chat.assistant_name') }} about your CRM and make changes through chat. Review proposed updates and deletions before they run.
+                    Ask {{ config('chat.assistant_name') }} about your CRM and make changes through chat. Review every proposed change before it runs.
                 </p>
                 {{-- Mini chat-bubble preview (uses ai-fill for staggered width animation) --}}
                 <div class="mt-4 space-y-2">
@@ -132,7 +132,7 @@
                     <div class="pipe-seg flex-[1] bg-gray-200 dark:bg-gray-700 rounded-r-full origin-left"></div>
                 </div>
                 <div class="mt-1.5 flex justify-between text-[10px] text-gray-500 dark:text-gray-500">
-                    @foreach(['Lead', 'Qualified', 'Proposal', 'Won'] as $stage)
+                    @foreach(['Prospecting', 'Qualification', 'Proposal', 'Closed Won'] as $stage)
                         <span>{{ $stage }}</span>
                     @endforeach
                 </div>

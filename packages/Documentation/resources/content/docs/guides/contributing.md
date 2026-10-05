@@ -2,7 +2,7 @@
 title: Contributing Guide
 description: Get Relaticle development setup steps and a guide to its PHP 8.5, Laravel 13 and Filament 5 codebase.
 order: 4
-updated: "2026-08-13"
+updated: "2026-10-05"
 ---
 
 Technical documentation for developers and contributors.
@@ -30,7 +30,7 @@ Visit `http://localhost:8000` to access the application.
 | Frontend | Livewire 4, Alpine.js, Tailwind CSS 4 |
 | Database | PostgreSQL                             |
 | Queue | Laravel Horizon                       |
-| Testing | Pest v4                               |
+| Testing | Pest v5                               |
 | Static Analysis | PHPStan (Level 7)                     |
 | Code Style | Laravel Pint, Rector                  |
 | Auth | Laravel Jetstream                     |
@@ -123,9 +123,9 @@ git config core.hooksPath .githooks
 ## Testing
 
 All contributions require:
-- Unit tests for new functionality
+- Feature tests through real entry points for new behaviour
 - Feature tests for user interactions
-- Minimum 99.9% type coverage
+- 100% type coverage
 
 Run specific tests:
 ```
@@ -156,7 +156,6 @@ For production deployment instructions, including Docker setup, environment conf
 |-------|----------|
 | Queue not processing | `php artisan queue:restart` |
 | File upload errors | `chmod -R 775 storage bootstrap/cache` |
-| Slow queries | Use Laravel Telescope to identify, then add indexes |
 | View cache issues | `php artisan view:clear && pnpm run build` |
 
 ---

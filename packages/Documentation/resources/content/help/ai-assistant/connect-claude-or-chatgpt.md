@@ -2,7 +2,7 @@
 title: Connect Claude or ChatGPT to Relaticle
 description: Set up an AI connector to Relaticle with OAuth. This guide explains access and why MCP clients write directly to records.
 order: 5
-updated: "2026-10-02"
+updated: "2026-10-05"
 related: [docs/guides/mcp, help/ai-assistant/ask-questions-about-your-data, help/ai-assistant/ai-credits-and-limits]
 ---
 
@@ -42,7 +42,7 @@ The review card you get in Relaticle's own built-in chat doesn't exist here,
 so rely on your assistant's own confirmation prompts before it acts.
 Connector activity never spends your workspace's
 [AI credits](/help/ai-assistant/ai-credits-and-limits), which are only for
-the built-in assistant.
+Rela, the built-in assistant.
 
 ## See and revoke connections
 

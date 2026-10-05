@@ -36,7 +36,7 @@
         ],
         'espocrm' => [
             'badge' => __('Comparison'),
-            'opening' => __('Relaticle and EspoCRM are both open-source, AGPL-3.0, self-hosted-first CRMs built to run on a single PHP server. Pick Relaticle if built-in AI, including a chat assistant and an MCP server, matters to you. EspoCRM ships neither today. Pick EspoCRM if you want a more established codebase and its paid extension ecosystem for specific integrations.'),
+            'opening' => __('Relaticle and EspoCRM are both open-source, AGPL-3.0, self-hosted-first CRMs built to run on a single PHP server. Pick Relaticle if built-in AI, including a built-in assistant and an MCP server, matters to you. EspoCRM ships neither today. Pick EspoCRM if you want a more established codebase and its paid extension ecosystem for specific integrations.'),
             'sections' => [
                 [
                     'heading' => __('How do Relaticle and EspoCRM pricing compare?'),
@@ -89,7 +89,7 @@
      * into a meta description is a second source of truth nothing checks.
      */
     $descriptions = [
-        'twenty' => __('Both are open source and self-hostable. Relaticle bills one flat rate for unlimited users and runs AI chat and MCP self-hosted; Twenty prices per seat.'),
+        'twenty' => __('Both are open source and self-hostable. Relaticle bills one flat rate for unlimited users and runs AI and MCP self-hosted; Twenty prices per seat.'),
         'espocrm' => __('Both are AGPL-3.0 PHP CRMs you can self-host. Relaticle adds a built-in AI assistant and a first-party MCP server, and bills flat; EspoCRM prices per seat.'),
     ];
 

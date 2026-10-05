@@ -79,12 +79,12 @@ it('links each assistant page to the other, the setup guide and pricing from its
         ->and($body)->toContain('href="'.route('pricing').'"');
 });
 
-it('says access continues on Cloud Pro after the trial rather than calling the connector free', function (): void {
+it('says the workspace needs Cloud Pro after the trial rather than calling the connector free', function (): void {
     Feature::define(BillingFeature::class, true);
 
     $text = assistantPageText($this->get('/crm-for-chatgpt')->assertOk()->getContent());
 
-    expect($text)->toContain('stays active on Cloud Pro after that')
+    expect($text)->toContain('the workspace needs a Cloud Pro subscription to stay active')
         ->and($text)->not->toContain('The connector is free');
 });
 

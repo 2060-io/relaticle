@@ -2,7 +2,7 @@
 title: Add, edit, and archive fields
 description: Create fields on the Custom Fields page, reorder them, retire them safely, and understand system fields.
 order: 2
-updated: "2026-08-13"
+updated: "2026-10-05"
 related: [help/custom-fields/field-types-you-can-add, help/custom-fields/control-where-a-field-appears, help/getting-started/use-custom-fields]
 ---
 
@@ -31,7 +31,7 @@ table you can search with **Search fields...**.
 
 The field appears on the record form, the record page, and (if you enabled
 it) the list view immediately, for everyone in the workspace. It's also
-instantly usable by the AI assistant and the CSV import, with no extra setup.
+instantly usable by Rela and the CSV import, with no extra setup.
 
 ## Edit and reorder
 
@@ -45,7 +45,7 @@ reorder fields; forms and record pages follow the order you set.
 bottom of the table. It disappears from forms and lists, but every stored
 value is kept. **Activate** brings the field and its data straight back.
 This is the safe way to retire a field you might need again, and the way to
-hide a field from the AI assistant.
+hide a field from Rela.
 
 **Delete** is only available on a field that is already archived, and it is
 destructive: the field, its options, and **all values stored on your

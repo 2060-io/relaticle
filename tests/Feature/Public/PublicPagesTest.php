@@ -41,7 +41,7 @@ describe('Home page', function () {
         $response = $this->get('/');
 
         $response->assertStatus(200);
-        $response->assertSee('alt="Relaticle opportunities board with deals grouped into pipeline stages, showing deal value and close date"', false);
+        $response->assertSee('alt="Relaticle opportunities board grouped into pipeline stages, showing amount and close date"', false);
         $response->assertSee('alt="Relaticle companies list showing account owner, ICP status, and website domain for each company"', false);
         $response->assertSee('alt="Relaticle custom fields settings showing field name, type, constraints, and properties for Opportunities"', false);
     });

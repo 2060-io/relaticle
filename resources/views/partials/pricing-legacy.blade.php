@@ -42,7 +42,7 @@
                     'MCP server for AI agents',
                     'REST API with full CRUD',
                     'Custom fields',
-                    'Multi-team workspaces',
+                    'Multiple workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">
                         <x-ri-check-line class="w-4 h-4 text-primary dark:text-primary-400 shrink-0 mt-0.5"/>
@@ -107,7 +107,7 @@
                     'MCP server for AI agents',
                     'REST API with full CRUD',
                     'Custom fields',
-                    'Multi-team workspaces',
+                    'Multiple workspaces',
                 ] as $feature)
                     <li class="flex items-start gap-2.5 text-sm text-gray-600 dark:text-gray-400">
                         <x-ri-check-line class="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0 mt-0.5"/>

@@ -29,7 +29,7 @@
     $faqs = [
         [
             __('What license is Relaticle released under?'),
-            __('AGPL-3.0. The full application, the CRM, the AI assistant, and the MCP server, is on GitHub under that license: read it, audit it, modify it, and redeploy your own fork.'),
+            __('AGPL-3.0. The full application, the CRM, :name the AI assistant, and the MCP server, is on GitHub under that license: read it, audit it, modify it, and redeploy your own fork.', ['name' => config('chat.assistant_name')]),
         ],
         [
             __('How do I update a self-hosted install?'),
@@ -39,8 +39,8 @@
             ]),
         ],
         [
-            __('What does the AI assistant need to work on a self-hosted install?'),
-            __('A provider it can call. Set an API key for Claude or GPT, or point it at a local Ollama server. With neither configured, the assistant has no model to answer with.'),
+            __('What does :name need to work on a self-hosted install?', ['name' => config('chat.assistant_name')]),
+            __('A provider it can call. Set an API key for Claude or GPT, or point it at Ollama or any OpenAI-compatible endpoint. With neither configured, the assistant has no model to answer with.'),
         ],
         [
             __('Where does my data live?'),
@@ -166,7 +166,7 @@
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 @foreach([
-                    ['ri-database-2-line', __('Your data stays yours'), __('Every company, person, opportunity, task, and uploaded file lives on infrastructure you control. Nothing is copied anywhere unless you choose to.')],
+                    ['ri-database-2-line', __('Your data stays yours'), __('Every company, person, opportunity, task, and uploaded file lives on infrastructure you control. Nothing is sent to Relaticle. Looking up a company logo sends that company\'s domain to Google and DuckDuckGo.')],
                     ['ri-scales-line', __('Source you can read and change'), __('Relaticle is licensed AGPL-3.0. The full application is on GitHub, not a stripped-down edition, so you can audit it, modify it, and redeploy your fork.')],
                     ['ri-hard-drive-line', __('One flat cost: your server'), __('Unlimited users and unlimited records on every self-hosted install. There is no per-seat pricing and no user-count paywall to hit.')],
                 ] as [$icon, $cardTitle, $cardDesc])
@@ -194,7 +194,7 @@
                     {{ __('Three steps to a running CRM') }}
                 </h2>
                 <p class="mt-4 text-base text-gray-500 dark:text-gray-400 leading-relaxed">
-                    {{ __('Distilled from the full guide, which also covers Dokploy, Coolify, Traefik, and a Docker-free manual install.') }}
+                    {{ __('Distilled from the full guide, which also covers Dokploy, Coolify, Laravel Cloud, Traefik, and a Docker-free manual install.') }}
                 </p>
             </div>
 
@@ -258,7 +258,7 @@
                         {{ __('Bring your own provider key') }}
                     </h3>
                     <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                        {{ __('Set :anthropicKey or :openaiKey and the assistant calls Claude or GPT with your own account, at your own usage rates.', ['anthropicKey' => 'ANTHROPIC_API_KEY', 'openaiKey' => 'OPENAI_API_KEY']) }}
+                        {{ __('Set :anthropicKey or :openaiKey and the assistant calls Claude or GPT with your own account, at your own usage rates. Relaticle still meters :credits AI credits a month per workspace by default.', ['anthropicKey' => 'ANTHROPIC_API_KEY', 'openaiKey' => 'OPENAI_API_KEY', 'credits' => number_format(\App\Enums\Plan::Free->credits())]) }}
                     </p>
                 </div>
 

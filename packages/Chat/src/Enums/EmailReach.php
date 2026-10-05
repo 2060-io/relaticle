@@ -29,7 +29,7 @@ enum EmailReach
     {
         return match ($this) {
             self::Off => 'Email: this workspace cannot send email, and neither can you. When asked to email someone, draft the message in your reply for the user to send from their own mail app.',
-            self::NoMailbox => 'Email: you cannot send email yourself, and sending from Relaticle needs a connected Gmail or Microsoft mailbox, which this user has not connected. When asked to email someone, draft the message, then give the "email_accounts" destination link so they can connect one.',
+            self::NoMailbox => 'Email: you cannot send email yourself, and sending from Relaticle needs a connected Google mailbox, which this user has not connected. When asked to email someone, draft the message, then give the "email_accounts" destination link so they can connect one.',
             self::Ready => 'Email: you cannot send email yourself. When asked to email someone, draft the message, then tell the user to select the people or companies in their table and use the Send Email bulk action.',
         };
     }
