@@ -212,7 +212,7 @@ final readonly class EntityFilters
 
 ### Components
 
-All in `app/Queries/`, because REST, MCP and chat share them. Filter classes sit in `app/Queries/Filters/` and the sort in `app/Queries/Sorts/`. They were first built under `app/Support/Filters/`, and `docs/superpowers/plans/2026-10-05-queries-namespace.md` moved them before this shipped:
+All in `app/Queries/`, because REST, MCP and chat share them. Filter classes sit in `app/Queries/Filters/` and the sort in `app/Queries/Sorts/`. `CustomFieldFilter` and `CustomFieldSort` came from `app/Mcp/Filters/`. This branch first put the engine under `app/Support/Filters/`, and `docs/superpowers/plans/2026-10-05-queries-namespace.md` moved it before this shipped:
 
 | Class | Role |
 |---|---|

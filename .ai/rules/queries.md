@@ -47,18 +47,25 @@ imports `App\Queries`.
   never registers an `AllowedFilter` of its own.
 - `CustomFieldFilterSchema::operatorsForType()` owns the operators per field type. A native
   field takes the operators of the custom field type it maps to.
-- `FilterTree` owns the limits: `MAX_CONDITIONS`, `MAX_LOGIC_DEPTH`, `MAX_HOPS`.
+- `FilterTree` owns the tree limits: `MAX_CONDITIONS`, `MAX_LOGIC_DEPTH`, `MAX_HOPS`.
+  `CustomFieldFilterSchema::MAX_LIST_VALUES` owns the cap on a list operand.
+  `EntityFilters::limits()` publishes all four.
 - `FilterVocabulary` builds what one workspace can filter on, and MCP and chat render it. The
   API docs render `EntityFilters::grammar()`, which needs no workspace.
 
-Never write a filter name, an operator or a limit by hand in a tool description or a docs
-page. `tests/Feature/CRM/SurfaceParityTest.php` fails a surface that drifts: "publishes
-exactly the filter names the list action accepts for each entity" and "states every filter
-limit from the constants on every surface".
+Never write a filter name, an operator or a limit by hand in a tool description.
+`tests/Feature/CRM/SurfaceParityTest.php` fails a surface that drifts: "publishes exactly
+the filter names the list action accepts for each entity" and "states every filter limit
+from the constants on every surface".
+
+The MCP guide is the exception. `packages/Documentation/resources/content/docs/guides/mcp.md`
+lists the names, the operators and the limits by hand, and no test reads them. A change to
+any of the three edits that page in the same commit.
 
 ## Adding to it
 
-- **A filter name.** Add one line to `EntityFilters::definitions()`. Every surface picks it up.
+- **A filter name.** Add one line to `EntityFilters::definitions()`. The API reference, MCP
+  and chat pick it up. The MCP guide does not.
 - **A kind of condition.** Add a `FilterKind` case and a class in `Filters`. PHPStan fails a
   `match` over `FilterKind` that has no `default` arm and misses the case.
   `FilterDefinition::operand()`, `NativeFilter` and `FilterTree::walk()` branch on the kind
@@ -66,8 +73,9 @@ limit from the constants on every surface".
 - **An operator.** Add it to `operatorsForType()` and compile it in
   `CustomFieldFilter::applyCondition()`. A native field shares the type's operators, so
   compile it in `NativeFilter` too: its `text()` treats every operator but `$contains` as
-  equality. `SurfaceParityTest` fails until the MCP description names it ("names every custom
-  field filter operator in the mcp list tool description").
+  equality. `ListFilterSurfacesTest` fails until its operator table lists it ("publishes
+  exactly the operators of each custom field type"), and then until a case runs it on every
+  surface ("applies every operator of every custom field type alike on the api and mcp").
 - **A filter parameter on a list tool or endpoint.** Do not add one. A list takes filters only
   as the `filter` tree. `FilterTree::rejectUnknownArguments()` rejects a flat parameter, and
   `FilterTree::REPLACED` names the tree form of each retired one. `ListToolFilterTest` is the
@@ -80,12 +88,16 @@ limit from the constants on every surface".
 ## What the SQL must keep
 
 - Pass the acting `User` in. Never read `auth()` inside `app/Queries`: chat list tools run in
-  queued jobs. Every subquery bounds itself to `$user->currentWorkspace`.
-  `ListFilterSurfacesTest` is the gate ("never reaches another workspace through a relation
-  or a member id on the api and mcp").
+  queued jobs. Every relation subquery and every `$not` complement bounds itself to
+  `$user->currentWorkspace`. A custom field subquery is bound by a field id resolved from
+  that workspace. `ListFilterSurfacesTest` is the gate ("never reaches another workspace
+  through a relation or a member id on the api and mcp").
 - `$not` is a set complement: `NOT EXISTS` over the matching keys. It never compiles as SQL
-  `NOT (...)`, which drops a row whose column is null. `$not_in` and `$has_none` follow the
-  same rule. `ListFilterTest` is the gate ("returns records with an empty value under $not").
+  `NOT (...)`, which drops a row whose column is null. `ListFilterTest` is the gate ("returns
+  records with an empty value under $not").
+- `$not_in` and `$has_none` keep a record whose value is empty too. A relation and a custom
+  field compile them as `NOT EXISTS`. A native column compiles `$not_in` as `whereNotIn` with
+  `orWhereNull`.
 - A scoped query takes no table alias. `whereKey()` and `whereRelation()` qualify columns
   with the table name, which Postgres rejects under an alias.
 
