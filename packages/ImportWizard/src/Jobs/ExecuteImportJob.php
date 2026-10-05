@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\ActivityLog\CurrentImport;
 use App\Support\ActivityLog\CustomFieldChangeLog;
 use App\Support\CurrentSource;
+use App\Support\CustomFields\CanonicalValue;
 use Carbon\CarbonImmutable;
 use Filament\Notifications\Notification;
 use Illuminate\Bus\Batch;
@@ -77,6 +78,9 @@ final class ExecuteImportJob implements ShouldQueue
 
     /** @var array<string, string> Matchable value => record ID for intra-import dedup */
     private array $matchableValueCache = [];
+
+    /** @var array<string, CustomField|null> "{entity}:{code}" => the custom field an entity link matches on */
+    private array $matchingFields = [];
 
     /** @var list<array{row: int, error: string, data?: array<string, mixed>}> */
     private array $failedRows = [];
@@ -389,7 +393,7 @@ final class ExecuteImportJob implements ShouldQueue
             && $matchField instanceof MatchableField
             && $matchSourceColumn !== null
         ) {
-            $cachedRecordId = $this->lookupMatchableValueCache($row, $matchField, $matchSourceColumn);
+            $cachedRecordId = $this->lookupMatchableValueCache($row, $matchField, $matchSourceColumn, $customFieldDefs);
 
             if ($cachedRecordId !== null) {
                 $effectiveAction = RowMatchAction::Update;
@@ -446,7 +450,7 @@ final class ExecuteImportJob implements ShouldQueue
                 }
 
                 if ($isCreate && $matchField instanceof MatchableField && $matchSourceColumn !== null) {
-                    $this->registerInMatchableValueCache($row, $matchField, $matchSourceColumn, (string) $record->getKey());
+                    $this->registerInMatchableValueCache($row, $matchField, $matchSourceColumn, (string) $record->getKey(), $customFieldDefs);
                 }
 
                 $this->storeEntityLinkRelationships($record, $pendingRelationships, $context);
@@ -523,7 +527,7 @@ final class ExecuteImportJob implements ShouldQueue
             $value = $this->convertCustomFieldValue($value, $cf, $customFieldFormatMap[$code] ?? null);
 
             $valueColumn = CustomFieldValue::getValueColumn($cf->type);
-            $safeValue = SafeValueConverter::toDbSafe($value, $cf->type);
+            $safeValue = SafeValueConverter::toDbSafe($value, $cf->type, $cf);
 
             // SafeValueConverter passes string-backed types through untouched, and PostgreSQL
             // rejects a blank string for a date/timestamp column.
@@ -1043,9 +1047,10 @@ final class ExecuteImportJob implements ShouldQueue
         return $mapping?->source;
     }
 
-    private function lookupMatchableValueCache(ImportRow $row, MatchableField $matchField, string $sourceColumn): ?string
+    /** @param  Collection<string, CustomField>  $customFieldDefs */
+    private function lookupMatchableValueCache(ImportRow $row, MatchableField $matchField, string $sourceColumn, Collection $customFieldDefs): ?string
     {
-        foreach ($this->normalizeMatchableValues($row, $matchField, $sourceColumn) as $normalized) {
+        foreach ($this->normalizeMatchableValues($row, $matchField, $sourceColumn, $customFieldDefs) as $normalized) {
             if (isset($this->matchableValueCache[$normalized])) {
                 return $this->matchableValueCache[$normalized];
             }
@@ -1054,22 +1059,25 @@ final class ExecuteImportJob implements ShouldQueue
         return null;
     }
 
-    private function registerInMatchableValueCache(ImportRow $row, MatchableField $matchField, string $sourceColumn, string $recordId): void
+    /** @param  Collection<string, CustomField>  $customFieldDefs */
+    private function registerInMatchableValueCache(ImportRow $row, MatchableField $matchField, string $sourceColumn, string $recordId, Collection $customFieldDefs): void
     {
-        foreach ($this->normalizeMatchableValues($row, $matchField, $sourceColumn) as $normalized) {
+        foreach ($this->normalizeMatchableValues($row, $matchField, $sourceColumn, $customFieldDefs) as $normalized) {
             $this->matchableValueCache[$normalized] = $recordId;
         }
     }
 
     /**
-     * Extract and normalize the matchable values from a row's source column.
+     * Extract the matchable values from a row's source column, each as its lowercased
+     * spelling and, for a custom field, its canonical form, so two spellings of one value
+     * share a cache entry.
      *
      * For multi-value fields (email, phone), splits on commas.
-     * Returns lowercased, trimmed, non-empty strings.
      *
+     * @param  Collection<string, CustomField>  $customFieldDefs
      * @return list<string>
      */
-    private function normalizeMatchableValues(ImportRow $row, MatchableField $matchField, string $sourceColumn): array
+    private function normalizeMatchableValues(ImportRow $row, MatchableField $matchField, string $sourceColumn, Collection $customFieldDefs): array
     {
         $rawValue = $row->getFinalValue($sourceColumn);
 
@@ -1081,10 +1089,25 @@ final class ExecuteImportJob implements ShouldQueue
             ? explode(',', (string) $rawValue)
             : [(string) $rawValue];
 
-        return array_values(array_filter(
-            array_map(fn (string $part): string => mb_strtolower(trim($part)), $parts),
-            fn (string $v): bool => $v !== '',
-        ));
+        $field = str_starts_with($matchField->field, self::CUSTOM_FIELD_PREFIX)
+            ? $customFieldDefs->get(Str::after($matchField->field, self::CUSTOM_FIELD_PREFIX))
+            : null;
+
+        return array_values(array_unique(array_merge(...array_map(
+            fn (string $part): array => $this->lowercasedSpellings($part, $field),
+            $parts,
+        ))));
+    }
+
+    /** @return list<string> */
+    private function lowercasedSpellings(string $value, ?CustomField $field): array
+    {
+        $value = trim($value);
+
+        return array_values(array_filter([
+            mb_strtolower($value),
+            $field instanceof CustomField ? mb_strtolower(CanonicalValue::of($field, $value)) : '',
+        ], fn (string $spelling): bool => $spelling !== ''));
     }
 
     /**
@@ -1160,14 +1183,19 @@ final class ExecuteImportJob implements ShouldQueue
             return null;
         }
 
-        $dedupKey = "{$link->key}:".mb_strtolower($creationName);
+        $dedupKeys = array_map(
+            fn (string $spelling): string => "{$link->key}:{$spelling}",
+            $this->lowercasedSpellings($creationName, $this->matchingCustomField($link, $creationMatch, $context)),
+        );
 
-        if (isset($this->createdRecords[$dedupKey])) {
-            return $this->createdRecords[$dedupKey];
+        foreach ($dedupKeys as $dedupKey) {
+            if (isset($this->createdRecords[$dedupKey])) {
+                return $this->createdRecords[$dedupKey];
+            }
         }
 
         if ($link->storageType === EntityLinkStorage::CustomFieldValue) {
-            return $this->resolveRecordFieldByName($link, $creationName, $context, $dedupKey);
+            return $this->resolveRecordFieldByName($link, $creationName, $context, $dedupKeys);
         }
 
         /** @var Model $record */
@@ -1182,7 +1210,8 @@ final class ExecuteImportJob implements ShouldQueue
         $this->populateMatchingCustomField($record, $link, $creationMatch, $context);
 
         $id = (string) $record->getKey();
-        $this->createdRecords[$dedupKey] = $id;
+
+        $this->rememberCreated($dedupKeys, $id);
 
         return $id;
     }
@@ -1206,33 +1235,20 @@ final class ExecuteImportJob implements ShouldQueue
         RelationshipMatch $match,
         array $context,
     ): void {
-        if ($match->matchField === null) {
-            return;
-        }
+        $cf = $this->matchingCustomField($link, $match, $context);
 
-        if (! str_starts_with($match->matchField, self::CUSTOM_FIELD_PREFIX)) {
-            return;
-        }
-
-        $fieldCode = Str::after($match->matchField, self::CUSTOM_FIELD_PREFIX);
-
-        $cf = CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $context['workspace_id'])
-            ->where('entity_type', $link->targetEntity)
-            ->where('code', $fieldCode)
-            ->first();
-
-        if ($cf === null) {
+        if (! $cf instanceof CustomField) {
             return;
         }
 
         $valueColumn = CustomFieldValue::getValueColumn($cf->type);
         $tenantKey = config('custom-fields.database.column_names.tenant_foreign_key');
-        $value = $match->name;
-
         $isJsonColumn = $valueColumn === 'json_value';
-        $safeValue = $isJsonColumn ? [$value] : $value;
+        $safeValue = SafeValueConverter::toDbSafe($isJsonColumn ? [$match->name] : $match->name, $cf->type, $cf);
+
+        if (blank($safeValue)) {
+            return;
+        }
 
         $this->pendingCustomFieldValues[] = [
             'id' => (string) Str::ulid(),
@@ -1252,16 +1268,39 @@ final class ExecuteImportJob implements ShouldQueue
         ];
     }
 
+    /** @param  array<string, mixed>  $context */
+    private function matchingCustomField(EntityLink $link, RelationshipMatch $match, array $context): ?CustomField
+    {
+        if ($match->matchField === null || ! str_starts_with($match->matchField, self::CUSTOM_FIELD_PREFIX)) {
+            return null;
+        }
+
+        $fieldCode = Str::after($match->matchField, self::CUSTOM_FIELD_PREFIX);
+        $memoKey = "{$link->targetEntity}:{$fieldCode}";
+
+        if (! array_key_exists($memoKey, $this->matchingFields)) {
+            $this->matchingFields[$memoKey] = CustomField::query()
+                ->withoutGlobalScopes()
+                ->where('tenant_id', $context['workspace_id'])
+                ->where('entity_type', $link->targetEntity)
+                ->where('code', $fieldCode)
+                ->first();
+        }
+
+        return $this->matchingFields[$memoKey];
+    }
+
     /**
      * Record custom fields should never auto-create target entities, only match existing ones.
      *
      * @param  array<string, mixed>  $context
+     * @param  list<string>  $dedupKeys
      */
     private function resolveRecordFieldByName(
         EntityLink $link,
         string $name,
         array $context,
-        string $dedupKey,
+        array $dedupKeys,
     ): ?string {
         $record = $link->targetModelClass::query()
             ->where('workspace_id', $context['workspace_id'])
@@ -1273,7 +1312,8 @@ final class ExecuteImportJob implements ShouldQueue
         }
 
         $id = (string) $record->getKey();
-        $this->createdRecords[$dedupKey] = $id;
+
+        $this->rememberCreated($dedupKeys, $id);
 
         return $id;
     }
@@ -1312,6 +1352,16 @@ final class ExecuteImportJob implements ShouldQueue
     ): void {
         foreach ($pendingRelationships as $pending) {
             $pending['strategy']->store($record, $pending['link'], $pending['ids'], $context);
+        }
+    }
+
+    /**
+     * @param  list<string>  $dedupKeys
+     */
+    private function rememberCreated(array $dedupKeys, string $id): void
+    {
+        foreach ($dedupKeys as $dedupKey) {
+            $this->createdRecords[$dedupKey] = $id;
         }
     }
 }

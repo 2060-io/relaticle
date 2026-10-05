@@ -7,8 +7,10 @@ namespace Relaticle\Chat\Services\Tools;
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\PlainText;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -45,29 +47,27 @@ final readonly class CustomFieldsDisplayFormatter
             ->get()
             ->keyBy('code');
 
+        $timezone = $user->effectiveTimezone();
         $rows = [];
-        foreach ($cleanFields as $code => $newValue) {
+        foreach ($cleanFields as $code => $proposedValue) {
             $field = $fields->get($code);
             if (! $field instanceof CustomField) {
                 continue;
             }
 
+            $newValue = $this->storedForm($field, $proposedValue);
             $dataType = CustomFieldsType::getFieldType($field->type)?->dataType;
 
             $row = [
                 'label' => $field->name,
                 'code' => (string) $code,
-                'new' => $this->renderValue($field, $newValue),
+                'new' => $this->renderValue($field, $newValue, $timezone),
                 'type' => $this->displayType($field, $dataType),
             ];
 
             if ($field->type === CustomFieldType::RECORD->value) {
                 $row['values'] = $this->recordNames($field, $newValue);
-            } elseif ($dataType === FieldDataType::MULTI_CHOICE && $field->type !== CustomFieldType::LINK->value && is_array($newValue)) {
-                $row['values'] = $this->optionNames($field, $newValue);
-            }
-
-            if ($field->type === CustomFieldType::LINK->value && is_array($newValue)) {
+            } elseif ($dataType === FieldDataType::MULTI_CHOICE && is_array($newValue)) {
                 $row['values'] = $this->optionNames($field, $newValue);
             }
 
@@ -78,12 +78,12 @@ final readonly class CustomFieldsDisplayFormatter
 
             if ($oldModel instanceof Model) {
                 $oldValue = $this->lookupCurrentValue($field, $oldModel);
-                $row['old'] = $oldValue !== null ? $this->renderValue($field, $oldValue) : null;
+                $row['old'] = $oldValue !== null ? $this->renderValue($field, $oldValue, $timezone) : null;
                 // Raw values ride along so the no-op check compares stored data,
                 // not rendered labels (two options can share a label). The write
                 // base strips them before the row is persisted or displayed.
-                $row['_oldValue'] = $oldValue;
-                $row['_newValue'] = $newValue;
+                $row['_oldValue'] = $this->comparable($field, $oldValue);
+                $row['_newValue'] = $this->comparable($field, $newValue);
             }
 
             $rows[] = $row;
@@ -105,7 +105,7 @@ final readonly class CustomFieldsDisplayFormatter
      * @param  int  $valueLimit  characters kept per free-text value, after whitespace is squeezed onto one line
      * @return list<array{label: string, code: string, value: string, type: string, values?: list<string>}>
      */
-    public function formatStored(Model $model, array $fields, int $valueLimit): array
+    public function formatStored(Model $model, array $fields, int $valueLimit, string $timezone): array
     {
         if ($fields === [] || ! $model->relationLoaded('customFieldValues')) {
             return [];
@@ -125,7 +125,7 @@ final readonly class CustomFieldsDisplayFormatter
             }
 
             $raw = $this->plainValue($stored->{CustomFieldValue::getValueColumn($field->type)});
-            $rendered = $this->renderValue($field, $raw);
+            $rendered = $this->renderValue($field, $raw, $timezone);
 
             if ($rendered === null) {
                 continue;
@@ -217,7 +217,7 @@ final readonly class CustomFieldsDisplayFormatter
         return $limit === null ? $oneLine : Str::limit($oneLine, $limit);
     }
 
-    private function renderValue(CustomField $field, mixed $value): ?string
+    private function renderValue(CustomField $field, mixed $value, string $timezone): ?string
     {
         if (in_array($value, [null, '', []], true)) {
             return null;
@@ -236,7 +236,8 @@ final readonly class CustomFieldsDisplayFormatter
         return match ($dataType) {
             FieldDataType::SINGLE_CHOICE => $this->renderSingleChoice($field, $value),
             FieldDataType::MULTI_CHOICE => $this->renderMultiChoice($field, $value),
-            FieldDataType::DATE, FieldDataType::DATE_TIME => $this->renderDate($value),
+            FieldDataType::DATE => $this->toDate($value)->isoFormat('MMM D, YYYY'),
+            FieldDataType::DATE_TIME => $this->toDate($value)->setTimezone($timezone)->isoFormat('MMM D, YYYY'),
             FieldDataType::TEXT => trim(strip_tags((string) $value)),
             FieldDataType::BOOLEAN => $value ? 'Yes' : 'No',
             default => is_array($value) ? implode(', ', array_map(strval(...), $value)) : (string) $value,
@@ -301,11 +302,29 @@ final readonly class CustomFieldsDisplayFormatter
         }, $ids));
     }
 
-    private function renderDate(mixed $value): string
+    private function toDate(mixed $value): CarbonImmutable
     {
-        $carbon = $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
+        return $value instanceof DateTimeInterface ? Date::instance($value) : Date::parse((string) $value);
+    }
 
-        return $carbon->isoFormat('MMM D, YYYY');
+    private function storedForm(CustomField $field, mixed $value): mixed
+    {
+        return in_array($field->type, [CustomFieldType::LINK->value, CustomFieldType::PHONE->value], true)
+            ? $this->comparable($field, $value)
+            : $value;
+    }
+
+    private function comparable(CustomField $field, mixed $value): mixed
+    {
+        return match (true) {
+            is_string($value) => CanonicalValue::of($field, $value),
+            is_array($value) => collect($value)
+                ->map(fn (mixed $item): mixed => $this->comparable($field, $item))
+                ->unique(strict: true)
+                ->values()
+                ->all(),
+            default => $value,
+        };
     }
 
     /**

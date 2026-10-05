@@ -12,9 +12,11 @@ use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\PhoneSearch;
 use Illuminate\Testing\Fluent\AssertableJson;
+use Tests\Helpers\WorkspaceCustomField;
 
-mutates(SearchTool::class, FetchTool::class);
+mutates(SearchTool::class, FetchTool::class, PhoneSearch::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withPersonalWorkspace()->create();
@@ -202,4 +204,32 @@ it('returns sanitized fetch payload without internal columns', function (): void
                 })
                 ->etc();
         });
+});
+
+it('finds a phone typed in any format', function (string $query, int $count): void {
+    $phone = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana Phone'])->saveCustomFieldValue($phone, ['+1 (415) 555-0100']);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(SearchTool::class, ['query' => $query])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->has('results', $count)
+            ->etc());
+})->with([
+    'dashes' => ['415-555-0100', 1],
+    'brackets and spaces' => ['(415) 555 0100', 1],
+    'fewer than seven digits' => ['415 555', 0],
+]);
+
+it('does not match phone digits held by a field that is not a phone', function (): void {
+    $emails = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'emails');
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Cy Email'])->saveCustomFieldValue($emails, ['cy-415-555-0100@example.com']);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(SearchTool::class, ['query' => '(415) 555 0100'])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->has('results', 0)
+            ->etc());
 });

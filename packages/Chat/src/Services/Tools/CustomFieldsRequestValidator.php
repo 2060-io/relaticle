@@ -20,7 +20,7 @@ final readonly class CustomFieldsRequestValidator
     /**
      * @param  string|int|null  $ignoreEntityId  the record being updated, excluded from unique-value checks
      */
-    public function validate(User $user, string $entityType, mixed $rawCustomFields, bool $isUpdate = true, string|int|null $ignoreEntityId = null): CustomFieldsValidationResult
+    public function validate(User $user, string $entityType, mixed $rawCustomFields, bool $isUpdate = true, string|int|null $ignoreEntityId = null, ?string $viewerZone = null): CustomFieldsValidationResult
     {
         $rawCustomFields = is_array($rawCustomFields) ? $rawCustomFields : [];
 
@@ -33,7 +33,7 @@ final readonly class CustomFieldsRequestValidator
         $workspaceId = $user->currentWorkspace->getKey();
 
         try {
-            $clean = $this->input->normalize($workspaceId, $entityType, $rawCustomFields);
+            $clean = $this->input->normalize($workspaceId, $entityType, $rawCustomFields, $viewerZone);
         } catch (ValidationException $exception) {
             return new CustomFieldsValidationResult(
                 cleanFields: [],

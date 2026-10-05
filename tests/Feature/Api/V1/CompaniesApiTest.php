@@ -20,6 +20,8 @@ use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Models\CustomFieldValue;
 use Relaticle\CustomFields\Services\TenantContextService;
+use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     CompaniesController::class,
@@ -709,6 +711,52 @@ describe('custom fields', function (): void {
             ->assertCreated();
     });
 
+    it('stores company domains as bare hosts', function (): void {
+        Sanctum::actingAs($this->user);
+
+        $id = $this->postJson('/api/v1/companies', [
+            'name' => 'Acme',
+            'custom_fields' => ['domains' => ['https://www.Acme.com/pricing']],
+        ])->assertCreated()->json('data.id');
+
+        $domains = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
+
+        expect(collect(Company::query()->with('customFieldValues.customField')->findOrFail($id)->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
+    });
+
+    it('rejects a domain another company already uses in another format', function (): void {
+        Sanctum::actingAs($this->user);
+
+        $this->postJson('/api/v1/companies', ['name' => 'Acme', 'custom_fields' => ['domains' => ['acme.com']]])->assertCreated();
+
+        $this->postJson('/api/v1/companies', ['name' => 'Acme 2', 'custom_fields' => ['domains' => ['https://www.acme.com/']]])
+            ->assertUnprocessable()
+            ->assertInvalid(['custom_fields.domains']);
+    });
+
+    it('accepts a company resubmitting its own legacy domain while another company holds the canonical form', function (): void {
+        Sanctum::actingAs($this->user);
+
+        ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+
+        $this->putJson("/api/v1/companies/{$own->id}", ['custom_fields' => ['domains' => ['https://acme.com']]])
+            ->assertOk();
+
+        $domains = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
+
+        expect(collect(Company::query()->with('customFieldValues.customField')->findOrFail($own->id)->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
+    });
+
+    it('rejects a domain another company holds in a different spelling', function (): void {
+        Sanctum::actingAs($this->user);
+
+        ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+
+        $this->putJson("/api/v1/companies/{$own->id}", ['custom_fields' => ['domains' => ['https://acme.com', 'www.other.com']]])
+            ->assertUnprocessable()
+            ->assertInvalid(['custom_fields.domains']);
+    });
+
     it('rejects invalid email in email custom field', function (): void {
         Sanctum::actingAs($this->user);
 
@@ -815,7 +863,7 @@ describe('filtering and sorting', function (): void {
         Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme Corp']);
         Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Beta Inc']);
 
-        $response = $this->getJson('/api/v1/companies?filter[name]=Acme');
+        $response = $this->getJson('/api/v1/companies?filter[name][$contains]=Acme');
 
         $response->assertOk();
 
@@ -827,10 +875,10 @@ describe('filtering and sorting', function (): void {
     it('can filter companies by creation source', function (): void {
         Sanctum::actingAs($this->user);
 
-        Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Sample Corp', 'creation_source' => CreationSource::SYSTEM]);
+        Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Sample Corp', 'creation_source' => CreationSource::SAMPLE]);
         Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Real Corp', 'creation_source' => CreationSource::WEB]);
 
-        $names = collect($this->getJson('/api/v1/companies?filter[creation_source]=system')->assertOk()->json('data'))->pluck('attributes.name');
+        $names = collect($this->getJson('/api/v1/companies?filter[creation_source][$eq]=sample')->assertOk()->json('data'))->pluck('attributes.name');
 
         expect($names->all())->toBe(['Sample Corp']);
     });
@@ -871,7 +919,8 @@ describe('filtering and sorting', function (): void {
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/companies?filter[workspace_id]=fake')
-            ->assertStatus(400);
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.workspace_id']);
     });
 
     it('rejects disallowed sort fields', function (): void {

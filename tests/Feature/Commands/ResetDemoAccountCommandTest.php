@@ -408,6 +408,6 @@ it('stamps the rebuilt workspace, its records and their activity, as system', fu
         ->values()
         ->all();
 
-    expect($activitySources)->toBe(['system'])
-        ->and($recordSources)->toBe(['system']);
+    expect($activitySources)->toBe(['sample'])
+        ->and($recordSources)->toBe(['sample']);
 });

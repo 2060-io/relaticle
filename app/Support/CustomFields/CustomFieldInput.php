@@ -6,9 +6,11 @@ namespace App\Support\CustomFields;
 
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
+use App\Queries\Operand;
 use App\Support\Media\RichContentAttachments;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
-use Relaticle\CustomFields\Facades\CustomFieldsType;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
 
 final readonly class CustomFieldInput
@@ -19,7 +21,7 @@ final readonly class CustomFieldInput
      * @param  array<array-key, mixed>  $customFields
      * @return array<array-key, mixed>
      */
-    public function normalize(string $workspaceId, string $entityType, array $customFields): array
+    public function normalize(string $workspaceId, string $entityType, array $customFields, ?string $viewerZone = null): array
     {
         if ($customFields === []) {
             return [];
@@ -47,7 +49,7 @@ final readonly class CustomFieldInput
                 continue;
             }
 
-            $normalized[$code] = $this->normalizeValue($field, $value, $optionMap[(string) $code] ?? ['ids' => [], 'labels' => []]);
+            $normalized[$code] = $this->normalizeValue($field, $value, $optionMap[(string) $code] ?? ['ids' => [], 'labels' => []], $viewerZone);
         }
 
         return $normalized;
@@ -56,7 +58,7 @@ final readonly class CustomFieldInput
     /**
      * @param  array{ids: array<string, list<string>>, labels: list<string>}  $entry
      */
-    private function normalizeValue(CustomField $field, mixed $value, array $entry): mixed
+    private function normalizeValue(CustomField $field, mixed $value, array $entry, ?string $viewerZone): mixed
     {
         return match (CustomFieldType::from($field->type)) {
             CustomFieldType::SELECT,
@@ -65,6 +67,8 @@ final readonly class CustomFieldInput
             CustomFieldType::MULTI_SELECT,
             CustomFieldType::CHECKBOX_LIST => $this->optionList($field, $value, $entry),
             CustomFieldType::RICH_EDITOR => $this->richText($field, $value),
+            CustomFieldType::DATE_TIME => $this->isBlankString($value) ? null : $this->utcDateTime($field, $value, $viewerZone),
+            CustomFieldType::DATE => $this->isBlankString($value) ? null : $value,
             CustomFieldType::TEXT,
             CustomFieldType::NUMBER,
             CustomFieldType::EMAIL,
@@ -76,8 +80,6 @@ final readonly class CustomFieldInput
             CustomFieldType::COLOR_PICKER,
             CustomFieldType::TOGGLE,
             CustomFieldType::CURRENCY,
-            CustomFieldType::DATE,
-            CustomFieldType::DATE_TIME,
             CustomFieldType::FILE_UPLOAD,
             CustomFieldType::RECORD => $value,
         };
@@ -88,7 +90,7 @@ final readonly class CustomFieldInput
      */
     private function singleOption(CustomField $field, mixed $value, array $entry): mixed
     {
-        if ($this->skipsOptionTranslation($field)) {
+        if (! $this->optionMap->translates($field)) {
             return $value;
         }
 
@@ -108,7 +110,7 @@ final readonly class CustomFieldInput
      */
     private function optionList(CustomField $field, mixed $value, array $entry): mixed
     {
-        if ($this->skipsOptionTranslation($field)) {
+        if (! $this->optionMap->translates($field)) {
             return $value;
         }
 
@@ -165,16 +167,22 @@ final readonly class CustomFieldInput
         return RichContentAttachments::forWorkspace((string) $field->tenant_id)->canonicalize($html);
     }
 
+    private function utcDateTime(CustomField $field, mixed $value, ?string $viewerZone): mixed
+    {
+        if (! is_string($value) || Validator::make(['value' => $value], ['value' => ['date']])->fails()) {
+            return $value;
+        }
+
+        if ($viewerZone !== null && Operand::lacksOffset($value)) {
+            $this->fail($field, Operand::offsetRequired($field->code, $value, $viewerZone));
+        }
+
+        return Date::parse($value)->utc()->toDateTimeString();
+    }
+
     private function isBlankString(mixed $value): bool
     {
         return is_string($value) && blank($value);
-    }
-
-    private function skipsOptionTranslation(CustomField $field): bool
-    {
-        $typeData = CustomFieldsType::getFieldType($field->type);
-
-        return $typeData === null || $typeData->acceptsArbitraryValues || $field->lookup_type !== null;
     }
 
     private function fail(CustomField $field, string $message): never

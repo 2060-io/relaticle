@@ -295,7 +295,7 @@ describe('filtering and sorting', function (): void {
         Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Meeting summary']);
         Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Code review']);
 
-        $response = $this->getJson('/api/v1/notes?filter[title]=Meeting');
+        $response = $this->getJson('/api/v1/notes?filter[title][$contains]=Meeting');
 
         $response->assertOk();
 
@@ -340,7 +340,8 @@ describe('filtering and sorting', function (): void {
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/notes?filter[workspace_id]=fake')
-            ->assertStatus(400);
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.workspace_id']);
     });
 
     it('rejects disallowed sort fields', function (): void {

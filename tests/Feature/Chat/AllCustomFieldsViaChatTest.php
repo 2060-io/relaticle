@@ -19,17 +19,18 @@ use App\Support\CustomFields\CustomFieldInput;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Tools\Request;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Models\PendingAction;
-use Relaticle\Chat\Services\Tools\CustomFieldsFilterTranslator;
 use Relaticle\Chat\Services\Tools\CustomFieldsRequestValidator;
 use Relaticle\Chat\Tools\Company\UpdateCompanyTool;
 use Relaticle\Chat\Tools\Note\UpdateNoteTool;
 use Relaticle\Chat\Tools\Opportunity\UpdateOpportunityTool;
 use Relaticle\Chat\Tools\People\UpdatePersonTool;
+use Relaticle\Chat\Tools\Task\ListTasksTool;
 use Relaticle\Chat\Tools\Task\UpdateTaskTool;
+use Relaticle\CustomFields\Services\TenantContextService;
+use Tests\Helpers\LegacyCompanyDomains;
 
 mutates(CustomFieldInput::class);
 
@@ -48,6 +49,10 @@ beforeEach(function (): void {
         'created_at' => now(),
         'updated_at' => now(),
     ]);
+});
+
+afterEach(function (): void {
+    TenantContextService::setTenantId(null);
 });
 
 it('updates the task description via custom_fields and persists as text_value', function (): void {
@@ -88,6 +93,28 @@ it('updates the task due_date via ISO 8601 and persists as datetime_value', func
         ->and((string) $stored)->toContain('2026-06-15');
 });
 
+it('asks for a utc offset on a proposed date-time that has none', function (): void {
+    $this->user->forceFill(['timezone' => 'Asia/Yerevan'])->save();
+    $task = Task::factory()->for($this->workspace)->create(['title' => 'T']);
+    $proposals = PendingAction::query()->count();
+
+    $result = json_decode(runUpdateToolForCustomFieldsTest(UpdateTaskTool::class, $task, ['due_date' => '2026-10-10T15:00:00']), true);
+
+    expect(json_encode($result))->toContain('due_date needs a UTC offset, such as 2026-10-10T15:00:00+04:00')
+        ->and(PendingAction::query()->count())->toBe($proposals);
+});
+
+it('shows a proposed date-time on the calendar day of the viewer', function (): void {
+    $this->user->forceFill(['timezone' => 'America/Los_Angeles'])->save();
+    $task = Task::factory()->for($this->workspace)->create(['title' => 'T']);
+
+    runUpdateToolForCustomFieldsTest(UpdateTaskTool::class, $task, ['due_date' => '2026-10-01T18:00:00-07:00']);
+
+    $card = collect(latestPendingForCustomFieldsTest()->display_data['fields'])->firstWhere('code', 'due_date');
+
+    expect($card['new'])->toBe('Oct 1, 2026');
+});
+
 it('updates company domains via custom_fields and persists as json_value', function (): void {
     $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme']);
 
@@ -97,6 +124,78 @@ it('updates company domains via custom_fields and persists as json_value', funct
     $stored = jsonValueForCustomFieldsTest($company, 'domains');
     expect($stored)->toBe(['acme.com', 'acme.io']);
 });
+
+it('accepts a company keeping its own legacy domain while another company holds the canonical form', function (): void {
+    ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+    TenantContextService::setTenantId($this->workspace->getKey());
+
+    runUpdateToolForCustomFieldsTest(UpdateCompanyTool::class, $own, ['domains' => ['https://acme.com', 'fresh.com']]);
+    resolve(UpdateCompany::class)->execute($this->user, $own, latestPendingForCustomFieldsTest()->action_data);
+
+    expect(jsonValueForCustomFieldsTest($own, 'domains'))->toBe(['acme.com', 'fresh.com']);
+});
+
+it('rejects a domain another company holds in a different spelling', function (): void {
+    ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+    TenantContextService::setTenantId($this->workspace->getKey());
+
+    $response = runUpdateToolForCustomFieldsTest(UpdateCompanyTool::class, $own, ['domains' => ['https://acme.com', 'www.other.com']]);
+
+    expect($response)->toContain('www.other.com')
+        ->and(PendingAction::query()->count())->toBe(0);
+});
+
+it('proposes no change for a domain that only differs by spelling', function (string $spelling): void {
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme']);
+    $company->saveCustomFields(['domains' => ['acme.com']]);
+
+    $response = json_decode(runUpdateToolForCustomFieldsTest(UpdateCompanyTool::class, $company, ['domains' => [$spelling]]), true);
+
+    expect($response['error'])->toContain('Nothing to update')
+        ->and($response['skipped'][0]['reason'])->toContain('Already up to date')
+        ->and(PendingAction::query()->count())->toBe(0);
+})->with([
+    'url with www' => ['https://www.acme.com'],
+    'upper case host with a path' => ['ACME.com/about'],
+]);
+
+it('proposes no change for a list repeating the stored value in another spelling', function (): void {
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme']);
+    $company->saveCustomFields(['domains' => ['acme.com']]);
+
+    $response = json_decode(runUpdateToolForCustomFieldsTest(UpdateCompanyTool::class, $company, ['domains' => ['acme.com', 'www.acme.com']]), true);
+
+    expect($response['error'])->toContain('Nothing to update')
+        ->and(PendingAction::query()->count())->toBe(0);
+});
+
+it('proposes no change for a phone that only differs by formatting', function (): void {
+    $person = People::factory()->for($this->workspace)->create(['name' => 'Ana']);
+    $person->saveCustomFields(['phone_number' => ['+14155550100']]);
+
+    $response = json_decode(runUpdateToolForCustomFieldsTest(UpdatePersonTool::class, $person, ['phone_number' => ['+1 (415) 555-0100']]), true);
+
+    expect($response['error'])->toContain('Nothing to update')
+        ->and(PendingAction::query()->count())->toBe(0);
+});
+
+it('shows the value an approval will store for a link or phone proposal', function (string $toolClass, string $modelClass, string $actionClass, string $code, array $stored, array $proposed): void {
+    $model = $modelClass::factory()->for($this->workspace)->create();
+    $model->saveCustomFields([$code => $stored]);
+
+    runUpdateToolForCustomFieldsTest($toolClass, $model, [$code => $proposed]);
+    $pending = latestPendingForCustomFieldsTest();
+    resolve($actionClass)->execute($this->user, $model, $pending->action_data);
+
+    $card = collect($pending->display_data['fields'])->firstWhere('code', $code);
+    $written = jsonValueForCustomFieldsTest($model, $code);
+
+    expect($card['new'])->toBe(implode(', ', $written))
+        ->and($card['values'])->toBe($written);
+})->with([
+    'company domains' => [UpdateCompanyTool::class, Company::class, UpdateCompany::class, 'domains', ['acme.com'], ['https://www.acme.com/pricing', 'beta.com']],
+    'person phone' => [UpdatePersonTool::class, People::class, UpdatePeople::class, 'phone_number', ['+14155550100'], ['+1 (415) 555-0100', '+1 (415) 555-0200']],
+]);
 
 it('updates the note body via custom_fields and persists as text_value', function (): void {
     $note = Note::factory()->for($this->workspace)->create(['title' => 'N']);
@@ -299,13 +398,15 @@ it('accepts an option label in any casing when writing a choice field', function
 it('resolves an option label identically whether filtering or writing', function (string $label, bool $valid): void {
     Task::factory()->for($this->workspace)->create(['title' => 'T']);
 
-    $readAccepted = true;
-    try {
-        resolve(CustomFieldsFilterTranslator::class)
-            ->translate($this->user, 'task', ['status' => ['eq' => $label]]);
-    } catch (ValidationException) {
-        $readAccepted = false;
-    }
+    TenantContextService::setTenantId($this->workspace->getKey());
+
+    $readResult = json_decode((new ListTasksTool)->handle(new Request([
+        'filter' => ['custom_fields' => ['status' => ['$eq' => $label]]],
+    ])), true);
+
+    TenantContextService::setTenantId(null);
+
+    $readAccepted = ! array_key_exists('error', $readResult);
 
     $writeAccepted = resolve(CustomFieldsRequestValidator::class)
         ->validate($this->user, 'task', ['status' => $label])->error === null;

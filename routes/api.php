@@ -35,11 +35,10 @@ Route::prefix('v1')
             ->middleware(EnsureTokenHasAbility::class.':create,update')
             ->name('people.upsert');
 
-        Route::apiResource('companies', CompaniesController::class);
-        Route::apiResource('people', PeopleController::class);
-        Route::apiResource('opportunities', OpportunitiesController::class);
-        Route::apiResource('tasks', TasksController::class);
-        Route::apiResource('notes', NotesController::class);
+        foreach (['companies' => CompaniesController::class, 'people' => PeopleController::class, 'opportunities' => OpportunitiesController::class, 'tasks' => TasksController::class, 'notes' => NotesController::class] as $resource => $controller) {
+            Route::post("{$resource}/query", [$controller, 'index'])->name("{$resource}.query");
+            Route::apiResource($resource, $controller);
+        }
 
         Route::get('custom-fields', [CustomFieldsController::class, 'index'])->name('custom-fields.index');
     });

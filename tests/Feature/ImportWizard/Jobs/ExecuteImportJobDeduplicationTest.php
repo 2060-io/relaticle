@@ -8,6 +8,7 @@ use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use Filament\Facades\Filament;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -18,12 +19,14 @@ use Relaticle\ImportWizard\Enums\MatchBehavior;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
 use Relaticle\ImportWizard\Jobs\ExecuteImportJob;
 use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
+use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\EntityLinkResolver;
 use Tests\Helpers\ImportExecutionFixture;
+use Tests\Helpers\WorkspaceCustomField;
 
-mutates(ExecuteImportJob::class, EntityLinkResolver::class);
+mutates(ExecuteImportJob::class, EntityLinkResolver::class, CanonicalValue::class);
 
 beforeEach(function (): void {
     Event::fake()->except([WorkspaceCreated::class]);
@@ -129,6 +132,54 @@ it('deduplicates company Create rows by domain', function (): void {
         ->and($companies->first()->name)->toBe('Acme Corp');
 });
 
+it('treats two spellings of one matchable value in a file as one record', function (ImportEntityType $entityType, string $source, string $fieldCode, string $first, string $second): void {
+    $modelClass = $entityType->importer((string) $this->workspace->id)->modelClass();
+
+    ImportExecutionFixture::readyStore($this, ['Name', $source], [
+        ImportExecutionFixture::row(2, ['Name' => 'First', $source => $first], ['match_action' => RowMatchAction::Create->value]),
+        ImportExecutionFixture::row(3, ['Name' => 'Second', $source => $second], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toField(source: $source, target: "custom_fields_{$fieldCode}"),
+    ], $entityType);
+
+    ImportExecutionFixture::run($this);
+
+    expect($this->import->fresh())
+        ->created_rows->toBe(1)
+        ->updated_rows->toBe(1)
+        ->failed_rows->toBe(0)
+        ->and($modelClass::query()->where('workspace_id', $this->workspace->id)->whereIn('name', ['First', 'Second'])->count())->toBe(1);
+})->with([
+    'company url then bare host' => [ImportEntityType::Company, 'Domain', 'domains', 'https://acme.com', 'acme.com'],
+    'company bare host then url with path' => [ImportEntityType::Company, 'Domain', 'domains', 'acme.com', 'https://www.Acme.com/pricing'],
+    'contact formatted phone then canonical phone' => [ImportEntityType::People, 'Phone', 'phone_number', '+1 415 555 0100', '+14155550100'],
+]);
+
+it('creates one linked company for two spellings of a domain in a file', function (string $first, string $second): void {
+    $relationship = fn (string $name): string => json_encode([
+        ['relationship' => 'company', 'action' => 'create', 'id' => null, 'name' => $name, 'behavior' => MatchBehavior::MatchOrCreate->value, 'matchField' => 'custom_fields_domains'],
+    ]);
+
+    ImportExecutionFixture::readyStore($this, ['Name', 'Company'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Ana', 'Company' => $first], ['match_action' => RowMatchAction::Create->value, 'relationships' => $relationship($first)]),
+        ImportExecutionFixture::row(3, ['Name' => 'Ben', 'Company' => $second], ['match_action' => RowMatchAction::Create->value, 'relationships' => $relationship($second)]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toEntityLink(source: 'Company', matcherKey: 'custom_fields_domains', entityLinkKey: 'company'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+
+    $companyIds = People::query()->where('workspace_id', $this->workspace->id)->whereIn('name', ['Ana', 'Ben'])->pluck('company_id')->unique();
+
+    expect(Company::query()->where('workspace_id', $this->workspace->id)->count())->toBe(1)
+        ->and($companyIds)->toHaveCount(1);
+})->with([
+    'url then bare host' => ['https://acme.com', 'acme.com'],
+    'bare host then url with path' => ['acme.com', 'https://www.Acme.com/pricing'],
+]);
+
 it('updates the live record when a deleted record shares its import identity', function (ImportEntityType $entityType, string $fieldCode, string $value, bool $deletedFirst): void {
     $modelClass = $entityType->importer((string) $this->workspace->id)->modelClass();
     $field = CustomField::query()->withoutGlobalScopes()
@@ -178,6 +229,45 @@ it('updates the live record when a deleted record shares its import identity', f
     'contact phone' => [ImportEntityType::People, 'phone_number', '+14155550127'],
     'company domain' => [ImportEntityType::Company, 'domains', 'northline.example'],
 ])->with(['deleted first' => true, 'deleted last' => false]);
+
+it('re-imports a value written in another format as an update of the stored record', function (ImportEntityType $entityType, string $fieldCode, string $stored, string $csvValue): void {
+    $modelClass = $entityType->importer((string) $this->workspace->id)->modelClass();
+    $field = WorkspaceCustomField::byCode($this->workspace->id, $entityType->value, $fieldCode);
+
+    $record = $modelClass::factory()->create(['workspace_id' => $this->workspace->id]);
+
+    CustomFieldValue::factory()->withJsonValue([$stored])->create([
+        'custom_field_id' => $field->id,
+        'entity_type' => $entityType->value,
+        'entity_id' => $record->id,
+        'tenant_id' => $this->workspace->id,
+    ]);
+
+    ImportExecutionFixture::readyStore($this, ['Name', 'Identity'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Updated import record', 'Identity' => $csvValue]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        ColumnData::toField(source: 'Identity', target: "custom_fields_{$fieldCode}"),
+    ], $entityType);
+
+    new ResolveMatchesJob($this->import->id)->handle();
+
+    $row = $this->store->query()->firstOrFail();
+    expect($row->match_action)->toBe(RowMatchAction::Update)
+        ->and($row->matched_id)->toBe((string) $record->id);
+
+    ImportExecutionFixture::run($this);
+
+    expect($this->import->fresh())
+        ->created_rows->toBe(0)
+        ->updated_rows->toBe(1)
+        ->failed_rows->toBe(0)
+        ->and($record->fresh()->name)->toBe('Updated import record')
+        ->and($modelClass::query()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+})->with([
+    'contact phone' => [ImportEntityType::People, 'phone_number', '+14155550100', '+1 415-555-0100'],
+    'company domain' => [ImportEntityType::Company, 'domains', 'northline.example', 'https://www.Northline.example/pricing'],
+]);
 
 // --- Multi-Choice Merge Tests ---
 
@@ -358,6 +448,40 @@ it('populates matching custom field when auto-creating company via domain MatchO
         ->and($cfv->json_value)->toBeInstanceOf(Collection::class)
         ->and($cfv->json_value->all())->toBe(['example.com']);
 });
+
+it('stores an auto-created company domain in its canonical form and matches it on re-import', function (string $csvCell): void {
+    $importCompanyRow = function (string $cell): void {
+        $column = ColumnData::toEntityLink(source: 'Company', matcherKey: 'custom_fields_domains', entityLinkKey: 'company');
+
+        ImportExecutionFixture::readyStore($this, ['Name', 'Company'], [
+            ImportExecutionFixture::row(2, ['Name' => 'John Doe', 'Company' => $cell], ['match_action' => RowMatchAction::Create->value]),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        ImportExecutionFixture::run($this);
+    };
+
+    $importCompanyRow($csvCell);
+    $firstImport = $this->import;
+
+    $importCompanyRow($csvCell);
+    ImportStore::delete($firstImport->id);
+    $firstImport->delete();
+
+    $companies = Company::query()->where('workspace_id', $this->workspace->id)->get();
+    $domainField = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
+
+    expect($companies)->toHaveCount(1)
+        ->and(People::query()->where('workspace_id', $this->workspace->id)->where('company_id', $companies->first()->id)->count())->toBe(2)
+        ->and(collect(ImportExecutionFixture::customFieldValue($this, (string) $companies->first()->id, (string) $domainField->id)->json_value)->all())->toBe(['acme.com']);
+})->with([
+    'url with path' => 'https://www.Acme.com/pricing',
+    'bare host' => 'acme.com',
+]);
 
 it('does not populate custom field when auto-creating via name matcher', function (): void {
     $relationships = json_encode([

@@ -8,6 +8,7 @@ use App\Actions\CustomFields\FindEntitiesByFieldValue;
 use App\Enums\CrmEntity;
 use App\Models\CustomField;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\Collection;
@@ -33,6 +34,8 @@ trait ResolvesUpsertMatch
     // Enough to show a caller which records to merge without hydrating every duplicate.
     private const int REPORTED_MATCH_LIMIT = 25;
 
+    private const int MAX_MATCH_VALUE_LENGTH = 255;
+
     private bool $storesMatchValue = false;
 
     abstract protected function entity(): CrmEntity;
@@ -46,7 +49,7 @@ trait ResolvesUpsertMatch
     public function whileHoldingMatch(Closure $callback): mixed
     {
         $field = $this->matchField();
-        $value = $field instanceof CustomField ? $this->matchValues($field, $this->string('match.value')->toString())[0] : '';
+        $value = $field instanceof CustomField ? CanonicalValue::spellings($field, $this->string('match.value')->toString())[0] : '';
         $key = implode(':', ['upsert', $this->workspaceId(), $this->entity()->value, $this->input('match.field'), mb_strtolower($value)]);
 
         try {
@@ -93,22 +96,22 @@ trait ResolvesUpsertMatch
         return [
             'match' => ['required', 'array'],
             'match.field' => ['required', 'string', Rule::in($this->matchableFields()->keys()->all())],
-            'match.value' => ['required', 'string', 'max:255'],
+            'match.value' => ['required', 'string', 'max:'.self::MAX_MATCH_VALUE_LENGTH],
         ];
     }
 
     protected function resolveMatch(): ?Model
     {
         $field = $this->matchField();
-        $value = $this->input('match.value');
+        $value = $this->submittedMatchValue();
 
         // Resolved before validation runs, so input the rules would reject is skipped here.
-        if (! $field instanceof CustomField || ! is_string($value)) {
+        if (! $field instanceof CustomField || $value === null) {
             return null;
         }
 
         $matches = resolve(FindEntitiesByFieldValue::class)
-            ->execute($this->entity()->model(), $field, $this->matchValues($field, $value), self::REPORTED_MATCH_LIMIT);
+            ->execute($this->entity()->model(), $field, CanonicalValue::spellings($field, $value), self::REPORTED_MATCH_LIMIT);
 
         // Uniqueness is checked on write only, case-sensitively and from the moment it is switched on,
         // so several records can still share a value.
@@ -141,10 +144,10 @@ trait ResolvesUpsertMatch
     private function storeMatchValueOnCreate(): void
     {
         $field = $this->matchField();
-        $value = $this->input('match.value');
+        $value = $this->submittedMatchValue();
         $customFields = $this->input('custom_fields') ?? [];
 
-        if (! $field instanceof CustomField || ! is_string($value) || blank($value) || ! is_array($customFields)) {
+        if (! $field instanceof CustomField || $value === null || blank($value) || ! is_array($customFields)) {
             return;
         }
 
@@ -167,15 +170,11 @@ trait ResolvesUpsertMatch
         return is_string($code) ? $this->matchableFields()->get($code) : null;
     }
 
-    // Panel writes store the field type's form (a link loses its scheme) while the API stores
-    // values as sent, so both spellings can be on file. The stored form comes first.
-    /** @return array<int, string> */
-    private function matchValues(CustomField $field, string $value): array
+    private function submittedMatchValue(): ?string
     {
-        $value = trim($value);
-        $stored = CustomFieldsType::getFieldTypeInstance($field->type)?->setValue($value) ?? $value;
+        $value = $this->input('match.value');
 
-        return array_values(array_unique([$stored, $value]));
+        return is_string($value) && mb_strlen($value) <= self::MAX_MATCH_VALUE_LENGTH ? $value : null;
     }
 
     /** @return Collection<string, CustomField> */

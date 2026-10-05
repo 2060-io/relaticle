@@ -370,17 +370,14 @@ describe('includes', function (): void {
 });
 
 describe('filtering and sorting', function (): void {
-    it('ignores assigned_to_me filter when value is false', function (): void {
+    it('rejects assigned_to_me when the value is false', function (): void {
         Sanctum::actingAs($this->user);
 
-        $unassignedTask = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Unassigned']);
-        $assignedTask = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Assigned']);
-        $assignedTask->assignees()->attach($this->user);
+        Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Unassigned']);
 
-        $this->getJson('/api/v1/tasks?filter[assigned_to_me]=false')
-            ->assertOk()
-            ->assertJsonFragment(['title' => 'Unassigned'])
-            ->assertJsonFragment(['title' => 'Assigned']);
+        $this->getJson('/api/v1/tasks?filter[assigned_to_me][$eq]=false')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.assigned_to_me']);
     });
 
     it('can filter tasks by title', function (): void {
@@ -389,7 +386,7 @@ describe('filtering and sorting', function (): void {
         Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Fix login bug']);
         Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Deploy to staging']);
 
-        $response = $this->getJson('/api/v1/tasks?filter[title]=login');
+        $response = $this->getJson('/api/v1/tasks?filter[title][$contains]=login');
 
         $response->assertOk();
 
@@ -434,7 +431,8 @@ describe('filtering and sorting', function (): void {
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/tasks?filter[workspace_id]=fake')
-            ->assertStatus(400);
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.workspace_id']);
     });
 
     it('rejects disallowed sort fields', function (): void {

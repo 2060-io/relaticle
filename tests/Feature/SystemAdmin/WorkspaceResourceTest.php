@@ -662,7 +662,7 @@ it('creates overview fixture records under a sysadmin session without a creator 
 
     expect($sample->creator_id)->toBeNull()
         ->and($sample->account_owner_id)->toBeNull()
-        ->and($sample->creation_source)->toBe(CreationSource::SYSTEM)
+        ->and($sample->creation_source)->toBe(CreationSource::SAMPLE)
         ->and($own->creator_id)->toBe($owner->getKey())
         ->and($own->account_owner_id)->toBe($owner->getKey())
         ->and($own->creation_source)->toBe(CreationSource::WEB)

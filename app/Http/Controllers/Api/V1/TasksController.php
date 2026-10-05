@@ -37,7 +37,7 @@ final readonly class TasksController
             perPage: $request->safe()->integer('per_page', 15),
             useCursor: $request->safe()->has('cursor'),
             request: $request,
-        ));
+        )->appends($request->query()));
     }
 
     #[ResponseFromApiResource(TaskResource::class, Task::class, status: 201)]

@@ -51,7 +51,7 @@ enum CustomFieldType: string
             self::RICH_EDITOR => 'markdown, or HTML when the value starts with <; stored and returned as HTML',
             self::COLOR_PICKER => 'hex color string',
             self::DATE => 'ISO 8601 date',
-            self::DATE_TIME => 'ISO 8601 datetime string',
+            self::DATE_TIME => 'ISO 8601 datetime string; an offset is converted to UTC',
             self::RECORD => 'array of record IDs of the lookup entity; records must belong to this workspace',
             self::FILE_UPLOAD => 'read-only; the file-upload field type is no longer supported and cannot be written',
         };
@@ -104,6 +104,31 @@ enum CustomFieldType: string
             self::DATE_TIME => '2025-01-15T10:30:00Z',
             self::RECORD => ['01J...'],
             self::FILE_UPLOAD => null,
+        };
+    }
+
+    public function filterMatching(): ?string
+    {
+        return match ($this) {
+            self::EMAIL => 'in any letter case',
+            self::LINK => 'in any letter case, with or without the scheme',
+            self::PHONE => 'in any format, and the operand needs a country code such as +1 415 555 0100',
+            self::TAGS_INPUT => 'the exact stored value',
+            self::DATE_TIME => 'a date without a time, such as 2026-10-01, as that whole day',
+            default => null,
+        };
+    }
+
+    /** @return array<string, mixed> */
+    public function filterExample(): array
+    {
+        return match ($this) {
+            self::TEXT => ['$contains' => $this->example()],
+            self::NUMBER, self::CURRENCY, self::DATE, self::DATE_TIME => ['$gte' => $this->example()],
+            self::CHECKBOX, self::TOGGLE => ['$eq' => $this->example()],
+            self::EMAIL, self::PHONE, self::LINK, self::MULTI_SELECT, self::CHECKBOX_LIST, self::TAGS_INPUT => ['$has_any' => $this->example()],
+            self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => ['$in' => [$this->example()]],
+            default => [],
         };
     }
 

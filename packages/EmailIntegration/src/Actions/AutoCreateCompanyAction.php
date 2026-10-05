@@ -69,7 +69,7 @@ final readonly class AutoCreateCompanyAction
                 'name' => $this->domainToCompanyName($domain),
                 'workspace_id' => $workspaceId,
                 'custom_fields' => [
-                    CompanyField::DOMAINS->value => [$this->toWwwDomain($domain)],
+                    CompanyField::DOMAINS->value => [$domain],
                     CompanyField::ICP->value => false,
                 ],
             ]);
@@ -89,14 +89,5 @@ final readonly class AutoCreateCompanyAction
         $label = $this->publicSuffixList->registrableLabel($domain) ?? explode('.', $domain)[0];
 
         return ucfirst($label);
-    }
-
-    /**
-     * Prefix the bare domain with "www." for display, without a scheme,
-     * e.g. "acme.com" → "www.acme.com". Leaves an existing www. intact.
-     */
-    private function toWwwDomain(string $domain): string
-    {
-        return str_starts_with($domain, 'www.') ? $domain : "www.{$domain}";
     }
 }

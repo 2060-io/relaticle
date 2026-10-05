@@ -9,6 +9,8 @@ use App\Models\CustomFieldSection;
 use App\Models\User;
 use App\Support\ActivityLog\ActivityValue;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 
 beforeEach(function (): void {
@@ -106,7 +108,7 @@ it('does not log when saving an empty value for a previously empty field', funct
     expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
 });
 
-it('does not log a link change that is only a URL-scheme normalization', function (): void {
+it('does not log a link change that is only a host-case and trailing-slash normalization', function (): void {
     $linkField = CustomField::query()->create([
         'tenant_id' => $this->workspace->getKey(),
         'custom_field_section_id' => $this->field->custom_field_section_id,
@@ -123,10 +125,47 @@ it('does not log a link change that is only a URL-scheme normalization', functio
     $company->saveCustomFields(['website' => ['https://airbnb.com']]);
     Activity::withoutGlobalScopes()->delete();
 
-    $company->saveCustomFields(['website' => ['airbnb.com']]);
+    $company->saveCustomFields(['website' => ['HTTPS://Airbnb.com/']]);
 
     expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
 });
+
+it('does not log a domain field rewrite that only normalizes the stored value', function (array $legacy): void {
+    $domains = CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $this->field->custom_field_section_id,
+        'entity_type' => 'company',
+        'code' => 'site_domains',
+        'name' => 'Site domains',
+        'type' => 'link',
+        'sort_order' => 2,
+        'active' => true,
+        'validation_rules' => [],
+        'settings' => new CustomFieldSettingsData(allow_multiple: true, max_values: 5, additional: ['link_variant' => 'domain']),
+    ]);
+    $company = Company::factory()->for($this->workspace)->create();
+
+    DB::table('custom_field_values')->insert([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'company',
+        'entity_id' => $company->getKey(),
+        'custom_field_id' => $domains->getKey(),
+        'json_value' => json_encode($legacy),
+    ]);
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['site_domains' => $legacy]);
+
+    expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
+
+    $company->saveCustomFields(['site_domains' => [...$legacy, 'other.com']]);
+
+    expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(1);
+})->with([
+    'one legacy value' => [['https://www.acme.com']],
+    'two spellings of one domain' => [['https://two.com', 'two.com']],
+]);
 
 it('still logs a genuine link value change', function (): void {
     $linkField = CustomField::query()->create([

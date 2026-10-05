@@ -8,16 +8,21 @@ use App\Http\Controllers\Api\V1\CompaniesUpsertController;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     CompaniesUpsertController::class,
     FindEntitiesByFieldValue::class,
+    CanonicalValue::class,
 );
 
 beforeEach(function (): void {
@@ -57,13 +62,7 @@ function writeCompanyDomains(string $workspaceId, string $companyId, mixed $doma
         'tenant_id' => $workspaceId,
         'entity_type' => 'company',
         'entity_id' => $companyId,
-        'custom_field_id' => CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $workspaceId)
-            ->where('entity_type', 'company')
-            ->where('code', 'domains')
-            ->firstOrFail()
-            ->getKey(),
+        'custom_field_id' => WorkspaceCustomField::byCode($workspaceId, 'company', 'domains')->getKey(),
         'json_value' => json_encode($domains),
     ]);
 }
@@ -153,6 +152,41 @@ it('matches a domain the api stored with its scheme', function (): void {
         ->and(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
 });
 
+it('matches one company however its domain is written', function (string $matchValue): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'acme.com'],
+        'name' => 'Acme Corp',
+    ])->assertCreated();
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => $matchValue],
+        'name' => 'Acme Corporation',
+    ])->assertOk()->assertJsonPath('data.id', $created->json('data.id'));
+
+    expect(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+})->with([
+    'url with www' => 'https://www.acme.com',
+    'www host' => 'www.acme.com',
+    'trailing slash' => 'acme.com/',
+    'url with path' => 'https://acme.com/about',
+]);
+
+it('matches a company whose stored domain still carries the www prefix', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme Corp']);
+    LegacyCompanyDomains::write($this->workspace, $company, ['www.acme.com']);
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => 'https://www.acme.com'],
+        'name' => 'Acme Corporation',
+    ])->assertOk()->assertJsonPath('data.id', $company->getKey());
+
+    expect(Company::query()->withoutGlobalScopes()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+});
+
 it('stores the matched domain on the company it creates', function (): void {
     Sanctum::actingAs($this->user);
 
@@ -220,7 +254,11 @@ it('answers 503 without writing when a concurrent upsert of the same domain hold
     $this->assertDatabaseMissing('companies', ['name' => 'Acme Corp', 'workspace_id' => $this->workspace->id]);
 
     $lock->release();
-})->with(['Acme.com', 'https://ACME.com']);
+})->with([
+    'capitalised host' => ['Acme.com'],
+    'url with an upper case host' => ['https://ACME.com'],
+    'url with www and a path' => ['https://www.acme.com/about'],
+]);
 
 it('matches an existing company on a second domain', function (): void {
     Sanctum::actingAs($this->user);
@@ -375,6 +413,26 @@ it('rejects an unknown match field', function (): void {
     ])
         ->assertUnprocessable()
         ->assertInvalid(['match.field']);
+});
+
+it('rejects a match value longer than the rule allows without looking it up', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $value = str_repeat('abcdefghij', 30);
+    $bound = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$bound): void {
+        $bound = [...$bound, ...array_map(strval(...), $query->bindings)];
+    });
+
+    $this->postJson('/api/v1/companies/upsert', [
+        'match' => ['field' => 'domains', 'value' => $value],
+        'name' => 'Acme Corp',
+    ])
+        ->assertUnprocessable()
+        ->assertInvalid(['match.value']);
+
+    expect(array_filter($bound, fn (string $binding): bool => str_contains($binding, 'abcdefghij')))->toBe([]);
 });
 
 it('rejects a people custom field as a company match field', function (): void {

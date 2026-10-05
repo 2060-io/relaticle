@@ -15,10 +15,12 @@ use App\Mcp\Tools\People\GetPeopleTool;
 use App\Mcp\Tools\People\ListPeopleTool;
 use App\Mcp\Tools\People\UpdatePeopleTool;
 use App\Models\Company;
+use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CurrentWorkspace;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     BaseCreateTool::class,
@@ -155,4 +157,23 @@ describe('workspace scoping', function (): void {
             ])
             ->assertHasErrors();
     });
+});
+
+it('stores a phone written through mcp as e.164', function (): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool(CreatePeopleTool::class, [
+            'name' => 'Ana',
+            'custom_fields' => ['phone_number' => ['+1 (415) 555-0100']],
+        ])
+        ->assertOk();
+
+    $person = People::query()->where('name', 'Ana')->firstOrFail();
+    $field = WorkspaceCustomField::byCode($this->workspace->getKey(), 'people', 'phone_number');
+    $stored = CustomFieldValue::query()
+        ->withoutGlobalScopes()
+        ->where('entity_id', $person->getKey())
+        ->where('custom_field_id', $field->getKey())
+        ->value('json_value');
+
+    expect(collect($stored)->all())->toBe(['+14155550100']);
 });

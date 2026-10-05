@@ -7,6 +7,7 @@ use App\Http\Resources\V1\Concerns\FormatsCustomFields;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\BaseCreateTool;
 use App\Mcp\Tools\BaseUpdateTool;
+use App\Mcp\Tools\Company\UpdateCompanyTool;
 use App\Mcp\Tools\Note\CreateNoteTool;
 use App\Mcp\Tools\Note\GetNoteTool;
 use App\Mcp\Tools\Task\CreateTaskTool;
@@ -31,6 +32,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Relaticle\CustomFields\Services\TenantContextService;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(BaseCreateTool::class, BaseUpdateTool::class, CustomFieldInput::class, CustomFieldOptionMap::class, OwnedLookupRecords::class, ValidCustomFields::class, RecordNameResolver::class, FormatsCustomFields::class);
 
@@ -168,6 +171,36 @@ it('clears a select field sent a blank string', function (string $blank): void {
 
     expect($task->fresh('customFieldValues.customField.options')->getCustomFieldValue($this->status))->toBeNull();
 })->with(['empty' => '', 'whitespace' => '  ']);
+
+it('clears a date or date-time field sent a blank string instead of storing the current time', function (string $code, string $blank): void {
+    $this->travelTo('2026-10-05 12:00:00');
+    $field = WorkspaceCustomField::byCode($this->workspace->getKey(), 'task', 'due_date');
+    $field = $code === 'due_date' ? $field : CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $field->custom_field_section_id,
+        'entity_type' => 'task',
+        'code' => $code,
+        'name' => 'Starts on',
+        'type' => 'date',
+        'sort_order' => 99,
+        'active' => true,
+        'validation_rules' => [],
+        'settings' => $field->settings,
+    ]);
+    $task = Task::factory()->create(['workspace_id' => $this->workspace->getKey()]);
+    $task->saveCustomFieldValue($field, '2026-01-15 09:00:00');
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateTaskTool::class, ['id' => $task->getKey(), 'custom_fields' => [$code => $blank]])
+        ->assertOk();
+
+    expect($task->fresh('customFieldValues.customField')->getCustomFieldValue($field))->toBeNull();
+})->with([
+    'date-time, empty' => ['due_date', ''],
+    'date-time, whitespace' => ['due_date', '  '],
+    'date, empty' => ['starts_on', ''],
+    'date, whitespace' => ['starts_on', '  '],
+]);
 
 it('clears a multi-select field sent an empty string', function (): void {
     $field = CustomField::query()->create([
@@ -526,13 +559,14 @@ it('sets then clears a value for every writable custom field type', function (st
     'currency' => ['currency', 1500.5, 1500.5],
     'email' => ['email', ['ada@example.com'], ['ada@example.com']],
     'phone' => ['phone', ['+14155552671'], ['+14155552671']],
-    'link' => ['link', ['https://example.com'], ['https://example.com']],
+    'link' => ['link', ['https://Example.com/Pricing/'], ['https://example.com/Pricing']],
     'checkbox' => ['checkbox', true, true],
     'toggle' => ['toggle', true, true],
     'tags-input' => ['tags-input', ['priority', 'customer'], ['priority', 'customer']],
     'color-picker' => ['color-picker', '#0A80EA', '#0A80EA'],
     'date' => ['date', '2026-09-10', '2026-09-10T00:00:00+00:00'],
     'date-time' => ['date-time', '2026-09-10T10:30:00Z', '2026-09-10T10:30:00+00:00'],
+    'date-time with an offset' => ['date-time', '2026-09-10T10:30:00+05:00', '2026-09-10T05:30:00+00:00'],
     'rich-editor' => ['rich-editor', '**bold**', "<p><strong>bold</strong></p>\n"],
     'select' => ['select', null, 'OPTION_ID'],
     'radio' => ['radio', null, 'OPTION_ID'],
@@ -604,4 +638,28 @@ describe('rich editor images', function (): void {
             ->assertSee(signedUrlSignature($media->refresh()->getUrl()))
             ->assertDontSee('stale');
     });
+});
+
+it('accepts a company resubmitting its own legacy domain while another company holds the canonical form', function (): void {
+    ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateCompanyTool::class, ['id' => $own->getKey(), 'custom_fields' => ['domains' => ['https://acme.com']]])
+        ->assertOk();
+
+    $domains = CustomField::query()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', 'domains')
+        ->firstOrFail();
+
+    expect(collect($own->fresh('customFieldValues.customField')->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
+});
+
+it('rejects a domain another company holds in a different spelling', function (): void {
+    ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateCompanyTool::class, ['id' => $own->getKey(), 'custom_fields' => ['domains' => ['https://acme.com', 'www.other.com']]])
+        ->assertHasErrors(['The value "www.other.com" is already assigned to another record.']);
 });

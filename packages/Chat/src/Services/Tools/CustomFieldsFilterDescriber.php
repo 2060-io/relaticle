@@ -4,86 +4,122 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Services\Tools;
 
-use App\Mcp\Schema\CustomFieldFilterSchema;
-use App\Models\CustomField;
+use App\Enums\CrmEntity;
+use App\Enums\FilterKind;
 use App\Models\User;
-use App\Models\Workspace;
-use App\Support\CustomFields\WorkspaceCustomFields;
+use App\Queries\CustomFieldFilterSchema;
+use App\Queries\EntityFilters;
+use App\Queries\FilterVocabulary;
+use App\Support\CustomFields\CustomFieldOptionMap;
+use Relaticle\Chat\Support\PromptText;
 
-/**
- * The read-path twin of {@see CustomFieldsSchemaDescriber}.
- *
- * Most of what a CRM user filters on (stage, status, due date, priority, amount)
- * lives in custom fields, so a list tool without them can only ever answer "all of
- * them". This inlines the tenant's filterable codes, their operators and their
- * option labels into the tool's `custom_fields` slot, so the assistant can build a
- * correct filter without a discovery round-trip.
- *
- * Filterability and operators come from {@see CustomFieldFilterSchema}, the same
- * source the MCP server uses, so the two surfaces cannot drift apart.
- */
 final readonly class CustomFieldsFilterDescriber
 {
-    public function __construct(
-        private CustomFieldFilterSchema $filterSchema,
-        private WorkspaceCustomFields $customFields,
-    ) {}
+    public function __construct(private FilterVocabulary $vocabulary) {}
 
     public function describe(User $user, string $entityType): string
     {
-        $schema = $this->filterSchema->build($user, $entityType);
+        $entity = CrmEntity::from($entityType);
+        $vocabulary = $this->vocabulary->for($user, $entity);
+        $customFields = $vocabulary['custom_fields'];
+        $types = $vocabulary['types'];
+        unset($vocabulary['custom_fields'], $vocabulary['types']);
 
-        if ($schema === []) {
-            return 'No filterable custom fields are defined for this entity type.';
-        }
+        $lines = ['Names for this entity type:'];
+        $rules = [];
+        $nestedExample = null;
 
-        $optionLabels = $this->optionLabels($user->currentWorkspace, $entityType, array_keys($schema));
+        foreach ($vocabulary as $name => $entry) {
+            $line = "- {$name} ({$entry['type']}".(isset($entry['entity']) ? " to {$entry['entity']}" : '').'; operators: '.implode(', ', $entry['operators']);
+            $line .= isset($entry['values']) ? '; one of: '.implode(', ', $entry['values']) : '';
 
-        $lines = [
-            'Filter by custom field values. Keys MUST be one of the codes below; each value is an object of operator => operand.',
-            'For choice fields pass the option LABEL exactly as listed, not an ID.',
-            '',
-        ];
-
-        foreach ($schema as $code => $definition) {
-            $operators = implode(', ', array_keys(is_array($definition['properties'] ?? null) ? $definition['properties'] : []));
-            $line = "- {$code} (".($definition['description'] ?? $code)."; operators: {$operators}";
-
-            if (($optionLabels[$code] ?? []) !== []) {
-                $line .= '; one of: "'.implode('", "', $optionLabels[$code]).'"';
+            if (isset($entry['operand']) && $entry['type'] === FilterKind::Computed->value) {
+                $line .= "; takes {$entry['operand']}";
+            } elseif (isset($entry['operand'])) {
+                $rules[$entry['type']] ??= "- {$entry['type']}: takes {$entry['operand']}";
             }
 
+            $line .= '; example: '.$this->exampleJson($entry['example']);
+            $line .= isset($entry['nested_example']) ? '; nested example: '.$this->exampleJson($entry['nested_example']) : '';
             $lines[] = $line.')';
+
+            if (isset($entry['nested_custom_field_example'])) {
+                $nestedExample ??= $this->exampleJson([$name => $entry['nested_custom_field_example']]);
+            }
+        }
+
+        if ($nestedExample !== null && isset($rules['relation'])) {
+            $rules['relation'] .= "; nested custom field example {$nestedExample}";
+        }
+
+        if ($rules !== []) {
+            array_push($lines, '', 'Rules by type:', ...array_values($rules));
         }
 
         $lines[] = '';
-        $lines[] = 'Example: {"'.array_key_first($schema).'": {"eq": "..."}}';
+        $lines[] = 'Example: '.$this->exampleJson(EntityFilters::example($entity));
+
+        $customFieldExample = $this->vocabulary->firstCustomFieldExample($user, $entity);
+
+        if ($customFieldExample === null) {
+            $lines[] = '';
+            $lines[] = 'No filterable custom fields are defined for this entity type.';
+
+            return implode("\n", $lines);
+        }
+
+        array_push($lines, ...$this->customFieldLines($customFields, $types));
+
+        $lines[] = '';
+        $lines[] = 'Custom field example: '.$this->exampleJson($customFieldExample);
 
         return implode("\n", $lines);
     }
 
     /**
-     * The codes accepted by the `sort` slot, alongside the native columns.
-     *
+     * @param  array<string, array<string, mixed>>  $customFields
+     * @param  array<string, array<string, mixed>>  $types
      * @return list<string>
      */
-    public function sortableCodes(User $user, string $entityType): array
+    private function customFieldLines(array $customFields, array $types): array
     {
-        return array_keys($this->filterSchema->build($user, $entityType));
+        $lines = [];
+
+        $lines[] = '';
+        $lines[] = EntityFilters::CUSTOM_FIELDS_RULE.' The keys MUST be one of the codes below, and each type allows only the operators listed under Field types.';
+        $lines[] = CustomFieldOptionMap::choiceRule().' Pass the label as listed.';
+        $lines[] = '';
+        $lines[] = 'Field types:';
+
+        foreach ($types as $type => $entry) {
+            $line = "- {$type}: operators ".implode(', ', $entry['operators']);
+            $line .= isset($entry['sub_fields']) ? '; sub-field domain takes '.implode(', ', $entry['sub_fields']['domain']['operators'])." and matches {$entry['sub_fields']['domain']['matches']}, example ".$this->exampleJson($entry['sub_fields']['domain']['example']) : '';
+            $line .= isset($entry['matching']) ? "; values match {$entry['matching']}" : '';
+            $lines[] = $line.(isset($entry['example']) ? '; example '.$this->exampleJson($entry['example']) : '');
+        }
+
+        $lines[] = '';
+        $lines[] = 'Fields:';
+
+        foreach ($customFields as $code => $entry) {
+            $name = PromptText::sanitize($entry['name'], 120);
+            $options = isset($entry['options']) ? '; one of: "'.implode('", "', array_map(fn (string $option): string => PromptText::sanitize($option, 120), $entry['options'])).'"' : '';
+            $line = "- {$code} ({$name}, {$entry['type']}{$options}";
+            $lines[] = $line.(isset($entry['example']) ? '; example '.$this->exampleJson($entry['example']) : '').')';
+        }
+
+        return $lines;
     }
 
     /**
-     * @param  list<string>  $codes
-     * @return array<string, list<string>>
+     * @param  array<array-key, mixed>  $example
      */
-    private function optionLabels(Workspace $workspace, string $entityType, array $codes): array
+    private function exampleJson(array $example): string
     {
-        return $this->customFields->forEntity($workspace, $entityType)
-            ->where('active', true)
-            ->whereIn('code', $codes)
-            ->mapWithKeys(fn (CustomField $field): array => [
-                (string) $field->code => array_values(array_map(strval(...), $field->options->pluck('name')->all())),
-            ])
-            ->all();
+        array_walk_recursive($example, static function (mixed &$leaf): void {
+            $leaf = is_string($leaf) ? PromptText::sanitize($leaf, 120) : $leaf;
+        });
+
+        return CustomFieldFilterSchema::json($example);
     }
 }

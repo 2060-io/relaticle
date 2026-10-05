@@ -19,7 +19,7 @@ enum CreationSource: string implements HasColor, HasLabel
     /**
      * Sample records seeded when the workspace was created.
      */
-    case SYSTEM = 'system';
+    case SAMPLE = 'sample';
 
     /**
      * Created through bulk data import functionality.
@@ -53,7 +53,7 @@ enum CreationSource: string implements HasColor, HasLabel
     /** @return list<self> */
     public static function automated(): array
     {
-        return [self::SYSTEM, self::MAILBOX];
+        return [self::SAMPLE, self::MAILBOX];
     }
 
     /** @return list<string> */
@@ -62,16 +62,11 @@ enum CreationSource: string implements HasColor, HasLabel
         return array_column(self::cases(), 'value');
     }
 
-    public static function filterDescription(): string
-    {
-        return 'Only return records with this creation source: '.implode(', ', self::values()).'. "'.self::SYSTEM->value.'" marks the sample records seeded when the workspace was created. "'.self::MAILBOX->value.'" marks the people and companies a connected mailbox created from email and calendar sync.';
-    }
-
     public function getColor(): string
     {
         return match ($this) {
             self::WEB => 'info',
-            self::SYSTEM => 'warning',
+            self::SAMPLE => 'warning',
             self::IMPORT => 'success',
             self::API => 'purple',
             self::MCP => 'gray',
@@ -84,7 +79,7 @@ enum CreationSource: string implements HasColor, HasLabel
     {
         return match ($this) {
             self::WEB => 'Web Interface',
-            self::SYSTEM => 'System Process',
+            self::SAMPLE => 'Sample Data',
             self::IMPORT => 'Data Import',
             self::API => 'API',
             self::MCP => 'MCP Agent',

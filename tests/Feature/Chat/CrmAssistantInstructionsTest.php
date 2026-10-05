@@ -12,9 +12,14 @@ use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\CustomFieldFilterSchema;
+use App\Queries\EntityFilters;
+use App\Queries\FilterTree;
 use App\Services\WorkspaceActivationFacts;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Enums\EmailReach;
+use Relaticle\Chat\Tools\BaseReadListTool;
 use Relaticle\Chat\Tools\Company\CreateCompanyTool;
 use Relaticle\Chat\Tools\Company\DeleteCompanyTool;
 use Relaticle\Chat\Tools\Company\UpdateCompanyTool;
@@ -302,7 +307,7 @@ it('removes all sample data in one approval but lets a partial removal use the c
 
     expect($instructions)
         ->toContain('wants all the sample data gone, call RemoveSampleDataTool')
-        ->toContain('To remove only part of it ("just the sample contacts"), list those records with `creation_source: "system"`');
+        ->toContain('To remove only part of it ("just the sample contacts"), list those records with `filter: {"creation_source": {"$eq": "sample"}}`');
 });
 
 it('renders the workspace_state block naming the seeded sample count when the workspace holds only sample records', function (): void {
@@ -311,7 +316,7 @@ it('renders the workspace_state block naming the seeded sample count when the wo
 
     People::factory()->count(2)->create([
         'workspace_id' => $workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     $agent = resolve(CrmAssistant::class)->withWorkspace($workspace);
@@ -327,7 +332,7 @@ it('stops claiming only sample records once the user has a record of their own',
 
     People::factory()->create([
         'workspace_id' => $workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
     People::factory()->create([
         'workspace_id' => $workspace->getKey(),
@@ -770,4 +775,20 @@ it('routes a field deletion through its tool and deactivates an in-use field fir
         ->toContain('propose it through DeleteCustomFieldTool')
         ->toContain('the field is deactivated first and the delete follows')
         ->not->toContain('you CANNOT delete field definitions from chat');
+});
+
+it('states the shared filter rules once in the cached prefix and not in any list tool', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    $assistant = new CrmAssistant;
+    $rules = EntityFilters::rules();
+
+    expect(substr_count($assistant->staticInstructions(), $rules))->toBe(1)
+        ->and($assistant->dynamicInstructions())->not->toContain($rules);
+
+    foreach ($assistant->tools() as $tool) {
+        if ($tool instanceof BaseReadListTool) {
+            expect($tool->schema(new JsonSchemaTypeFactory)['filter']->toArray()['description'])->not->toContain(CustomFieldFilterSchema::EMPTINESS_RULE, FilterTree::MAX_CONDITIONS.' conditions');
+        }
+    }
 });

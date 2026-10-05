@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Schema;
+namespace App\Support\CustomFields;
 
 use App\Enums\CrmEntity;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Owns both per-tenant MCP schema cache keys.
+ * Owns both per-tenant custom field schema cache keys.
  *
  * Nothing else may spell these keys. The TTL is long enough that a missed
  * invalidation reads to the agent as "that field doesn't exist" right after the
  * user created it, and a key rebuilt from a literal in a second class is exactly
  * how that invalidation goes quietly missing.
  */
-final readonly class McpSchemaCache
+final readonly class CustomFieldSchemaCache
 {
     public const int TTL = 60;
 

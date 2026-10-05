@@ -210,7 +210,7 @@ final class ActivityLog extends Page implements HasTable
                 TextColumn::make('causer.name')
                     ->label(__('workspaces.activity.columns.causer'))
                     ->weight(FontWeight::Medium)
-                    ->placeholder(__('workspaces.activity.system')),
+                    ->placeholder(fn (Activity $record): string => $record->causerLabel()),
                 TextColumn::make('source')
                     ->label(__('workspaces.activity.columns.source'))
                     ->badge()
@@ -309,12 +309,10 @@ final class ActivityLog extends Page implements HasTable
      */
     private function changesDescription(Activity $record): string
     {
-        $causer = $record->causer?->getAttribute('name');
-
         return implode(' · ', [
             $this->typeLabel($record->subject_type),
             $this->eventLabel($record->event),
-            is_string($causer) && $causer !== '' ? $causer : __('workspaces.activity.system'),
+            $record->causerLabel(),
             $record->created_at?->copy()->setTimezone(FilamentTimezone::get())->toDayDateTimeString() ?? ActivityValue::EMPTY,
         ]);
     }
