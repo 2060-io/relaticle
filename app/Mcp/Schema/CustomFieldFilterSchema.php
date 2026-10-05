@@ -46,6 +46,7 @@ final readonly class CustomFieldFilterSchema
     {
         return $this->sortableFields($user, $entityType)
             ->map(fn (CustomField $field): AllowedSort => AllowedSort::custom($field->code, new CustomFieldSort($field)))
+            ->values()
             ->all();
     }
 
@@ -55,7 +56,7 @@ final readonly class CustomFieldFilterSchema
     public function sortableCodes(User $user, string $entityType): array
     {
         return $this->sortableFields($user, $entityType)
-            ->map(fn (CustomField $field): string => $field->code)
+            ->keys()
             ->all();
     }
 
@@ -199,14 +200,19 @@ final readonly class CustomFieldFilterSchema
     }
 
     /**
-     * @return Collection<int, CustomField>
+     * @return Collection<string, CustomField>
      */
     private function sortableFields(User $user, string $entityType): Collection
     {
         // Postgres has no ordering operator for the json column that holds list values.
-        return $this->resolveFilterableFields($user, $entityType)
-            ->reject(fn (CustomField $field): bool => $field->getValueColumn() === 'json_value')
-            ->values();
+        return collect(resolve(WorkspaceCustomFields::class)->remember(
+            $user->currentWorkspace,
+            "sortable_fields:{$entityType}",
+            fn (): array => $this->resolveFilterableFields($user, $entityType)
+                ->reject(fn (CustomField $field): bool => $field->getValueColumn() === 'json_value')
+                ->keyBy('code')
+                ->all(),
+        ));
     }
 
     /**
