@@ -96,7 +96,7 @@ it('lists a CRM person once when they are also a recent correspondent', function
         ->assertNoJavaScriptErrors();
 });
 
-it('opens the composer from a record emails tab addressed to the person and closes it', function (): void {
+it('opens the composer from a record emails tab addressed to the person with the caret on the subject', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->currentWorkspace;
     ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
@@ -128,6 +128,7 @@ it('opens the composer from a record emails tab addressed to the person and clos
         ->click('button[x-tooltip][wire\\:click*="composer:open"]')
         ->waitForText(__('filament/emails/composer.title'))
         ->assertScript("{$floatingComposer}.get('to')[0]", 'jane@acme-customer.example')
+        ->assertScript('document.activeElement.id', 'email-composer-subject')
         ->assertScript("{$floatingComposer}.get('linkRecordId')", (string) $person->getKey())
         ->click('button[wire\\:click="close"]')
         ->assertMissing('#email-composer-subject')
@@ -197,4 +198,47 @@ it('closes the composer with escape and keeps the draft', function (): void {
         ->assertNoJavaScriptErrors();
 
     expect(Email::query()->where('status', EmailStatus::DRAFT)->where('subject', 'Escape keeps this draft')->exists())->toBeTrue();
+});
+
+it('puts the caret on the recipient in a new email and on the message in an addressed draft', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'user_id' => $user->id,
+        'workspace_id' => $workspace->id,
+        'sync_cursor' => 'history-done',
+        'last_synced_at' => now(),
+    ]));
+    $draft = Email::query()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $user->id,
+        'connected_account_id' => $account->id,
+        'subject' => 'Addressed and titled',
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::DRAFT,
+        'privacy_tier' => EmailPrivacyTier::PRIVATE,
+        'creation_source' => EmailCreationSource::COMPOSE,
+    ]);
+    EmailParticipant::factory()->create([
+        'email_id' => $draft->id,
+        'email_address' => 'jane@acme-customer.example',
+        'role' => EmailParticipantRole::TO,
+    ]);
+
+    visit('/app/login')
+        ->type('[id="form.email"]', $user->email)
+        ->click('button[type="submit"]')
+        ->type('[id="form.password"]', 'password')
+        ->click('button[type="submit"]')
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/email")
+        ->click(__('filament/concerns/email-compose.actions.compose.label'))
+        ->waitForText(__('filament/emails/composer.title'))
+        ->assertScript('document.activeElement.closest("[data-composer-to]") !== null', true)
+        ->keys('[role="combobox"]', ['Escape'])
+        ->assertMissing('#email-composer-subject')
+        ->click('Addressed and titled')
+        ->assertValue('#email-composer-subject', 'Addressed and titled')
+        ->assertScript('document.activeElement.closest(".email-composer-body-ctn") !== null', true)
+        ->assertNoJavaScriptErrors();
 });

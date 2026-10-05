@@ -83,6 +83,42 @@
         <div
             x-data="{
                 closing: false,
+                init() {
+                    this.$nextTick(() => this.focusFirstEmptyField())
+                },
+                focusFirstEmptyField() {
+                    const recipient = this.$el.querySelector('[data-composer-to] input')
+
+                    if (recipient && this.$wire.to.length === 0) {
+                        return recipient.focus()
+                    }
+
+                    const subject = this.$el.querySelector('#email-composer-subject')
+
+                    if (subject && ! this.$wire.subject) {
+                        return subject.focus()
+                    }
+
+                    this.focusBodyOnceMounted()
+                },
+                focusBodyOnceMounted() {
+                    const body = this.$el.querySelector('.email-composer-body-ctn')
+                    const focusEditor = () => {
+                        const editor = body?.querySelector('.tiptap[contenteditable=\'true\']')
+
+                        editor?.focus()
+
+                        return Boolean(editor)
+                    }
+
+                    if (! body || focusEditor()) {
+                        return
+                    }
+
+                    const observer = new MutationObserver(() => focusEditor() && observer.disconnect())
+
+                    observer.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ['contenteditable'] })
+                },
                 closeOnEscape(event) {
                     if (event.defaultPrevented || document.querySelector('.fi-modal-open, .fi-dropdown-panel[style*=\'display: block\']')) {
                         return

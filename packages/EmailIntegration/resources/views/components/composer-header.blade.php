@@ -48,10 +48,9 @@
                 <x-email-integration::composer-mass-send-to-summary :count="count($massRecipients)" />
             </span>
         @else
-            <div class="min-w-0 flex-1">
+            <div class="min-w-0 flex-1" data-composer-to>
                 <x-email-integration::recipient-chips
                     wire:model="to"
-                    :autofocus="true"
                     :suggestions="$recipientSuggestions"
                     :options="$recipientOptions"
                     class="w-full"
