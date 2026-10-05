@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Data;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 final readonly class ListQuery
 {
@@ -25,11 +26,11 @@ final readonly class ListQuery
 
     public function toRequest(): Request
     {
-        return new Request(array_filter([
+        return new Request(Arr::whereNotNull([
             'filter' => $this->filter,
             'sort' => $this->sort,
             'include' => $this->include,
             'fields' => $this->fields,
-        ], static fn (mixed $value): bool => $value !== null));
+        ]));
     }
 }
