@@ -131,3 +131,20 @@ it('does not match a conversation by the opener of a synthetic message', functio
 
     expect($hits)->toBeEmpty();
 });
+
+it('cleans a stored title in the recent list and in search results', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    DB::table('agent_conversations')->insert([
+        'id' => 'messy',
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $user->currentWorkspace->getKey(),
+        'title' => "  Pipeline\n\n review \u{202E}reversed  ",
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(new ConversationsQuery()->recent($user)->firstWhere('id', 'messy')?->title)->toBe('Pipeline review reversed')
+        ->and(new ConversationsQuery()->search($user, 'pipeline')->firstWhere('id', 'messy')?->title)->toBe('Pipeline review reversed');
+});
