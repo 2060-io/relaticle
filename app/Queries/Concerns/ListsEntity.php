@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Queries\Concerns;
 
 use App\Data\ListQuery;
+use App\Enums\CrmEntity;
 use App\Models\User;
 use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
@@ -13,11 +14,18 @@ use App\Queries\FilterTree;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
+use LogicException;
 use Spatie\QueryBuilder\QueryBuilder;
 use UnexpectedValueException;
 
 trait ListsEntity
 {
+    public static function entity(): CrmEntity
+    {
+        return array_find(CrmEntity::cases(), static fn (CrmEntity $entity): bool => $entity->query() === static::class)
+            ?? throw new LogicException(static::class.' is not the list query of any CrmEntity case.');
+    }
+
     /** @return list<string> */
     public static function sorts(): array
     {
