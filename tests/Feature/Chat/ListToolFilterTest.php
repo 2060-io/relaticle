@@ -490,10 +490,10 @@ it('lists only the records of the requested creation source', function (string $
     $this->actingAs($user);
     $workspace = $user->currentWorkspace;
 
-    $sample = $modelClass::factory()->for($workspace)->create(['creation_source' => CreationSource::SYSTEM]);
+    $sample = $modelClass::factory()->for($workspace)->create(['creation_source' => CreationSource::SAMPLE]);
     $modelClass::factory()->for($workspace)->create(['creation_source' => CreationSource::WEB]);
 
-    $rows = listToolRows(resolve($toolClass)->handle(new Request(['creation_source' => 'system'])));
+    $rows = listToolRows(resolve($toolClass)->handle(new Request(['creation_source' => 'sample'])));
 
     expect(array_column($rows, 'id'))->toBe([$sample->getKey()]);
 })->with([
@@ -510,7 +510,7 @@ it('rejects an unknown creation source instead of returning an empty list', func
 
     Company::factory()->for($user->currentWorkspace)->create();
 
-    $result = json_decode(resolve(ListCompaniesTool::class)->handle(new Request(['creation_source' => 'sample'])), true);
+    $result = json_decode(resolve(ListCompaniesTool::class)->handle(new Request(['creation_source' => 'system'])), true);
 
     expect($result)->toHaveKey('error')
         ->and($result['error'])->toContain('creation_source must be one of');

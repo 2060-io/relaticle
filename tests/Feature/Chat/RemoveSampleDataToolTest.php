@@ -40,7 +40,7 @@ function seedChatSampleRecords(Workspace $workspace, User $owner): void
         $model::factory()->create([
             'workspace_id' => $workspace->getKey(),
             'creator_id' => $owner->getKey(),
-            'creation_source' => CreationSource::SYSTEM,
+            'creation_source' => CreationSource::SAMPLE,
         ]);
     }
 }
@@ -50,7 +50,7 @@ function remainingSampleRecords(Workspace $workspace): int
     return collect([Company::class, People::class, Opportunity::class, Task::class, Note::class])
         ->sum(fn (string $model): int => $model::query()
             ->where('workspace_id', $workspace->getKey())
-            ->where('creation_source', CreationSource::SYSTEM)
+            ->where('creation_source', CreationSource::SAMPLE)
             ->count());
 }
 

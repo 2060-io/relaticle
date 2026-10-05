@@ -57,7 +57,7 @@ final readonly class DigestService
             ->where('t.workspace_id', $workspace->getKey())
             ->where('tu.user_id', $user->getKey())
             ->whereNull('t.deleted_at')
-            ->where('t.creation_source', '!=', CreationSource::SYSTEM->value)
+            ->where('t.creation_source', '!=', CreationSource::SAMPLE->value)
             ->whereNotNull('due.datetime_value')
             ->where('due.datetime_value', '<', $windowEnd)
             ->when($meta['done_option_id'] !== null, function (Builder $query) use ($meta): void {

@@ -65,7 +65,7 @@ function seedSampleRecords(Workspace $workspace, User $owner): void
         $model::factory()->create([
             'workspace_id' => $workspace->getKey(),
             'creator_id' => $owner->getKey(),
-            'creation_source' => CreationSource::SYSTEM,
+            'creation_source' => CreationSource::SAMPLE,
         ]);
     }
 }
@@ -73,7 +73,7 @@ function seedSampleRecords(Workspace $workspace, User $owner): void
 function expectSampleRecordsIntact(Workspace $workspace): void
 {
     foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
-        expect($model::query()->where('workspace_id', $workspace->getKey())->where('creation_source', CreationSource::SYSTEM)->exists())->toBeTrue();
+        expect($model::query()->where('workspace_id', $workspace->getKey())->where('creation_source', CreationSource::SAMPLE)->exists())->toBeTrue();
     }
 }
 
@@ -102,7 +102,7 @@ it('completes the first-record step once the workspace holds a record the worksp
 it('leaves the first-record step incomplete while only seeded demo records exist', function (): void {
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     livewire(ActivationChecklist::class)
@@ -426,7 +426,7 @@ it('mentions sample data only while seeded records remain', function (): void {
 
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
@@ -496,7 +496,7 @@ it('asks what the assistant can do while the workspace holds no records', functi
 it('asks about the pipeline once the workspace holds records, seeded ones included', function (): void {
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
@@ -557,7 +557,7 @@ it('removes every system record and keeps the workspace\'s own', function (): vo
         ->assertRedirect(Dashboard::getUrl());
 
     foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
-        expect($model::query()->where('workspace_id', $this->workspace->getKey())->where('creation_source', CreationSource::SYSTEM)->exists())->toBeFalse();
+        expect($model::query()->where('workspace_id', $this->workspace->getKey())->where('creation_source', CreationSource::SAMPLE)->exists())->toBeFalse();
     }
 
     expect(People::query()->whereKey($own->getKey())->exists())->toBeTrue()

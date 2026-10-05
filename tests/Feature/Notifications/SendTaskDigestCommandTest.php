@@ -122,7 +122,7 @@ it('skips users who never logged in', function (): void {
 it('leaves seeded demo tasks out of the digest', function (): void {
     $this->travelTo(Date::parse('2026-06-29 08:00:00', 'UTC'));
     $user = User::factory()->withPersonalWorkspace()->create(['timezone' => 'UTC', 'last_login_at' => now()]);
-    $task = Task::factory()->for($user->currentWorkspace)->create(['title' => 'Demo task', 'creation_source' => CreationSource::SYSTEM]);
+    $task = Task::factory()->for($user->currentWorkspace)->create(['title' => 'Demo task', 'creation_source' => CreationSource::SAMPLE]);
     $task->assignees()->attach($user);
     digestCmdSetDue($task, $user->currentWorkspace->id, now()->subDay());
 
