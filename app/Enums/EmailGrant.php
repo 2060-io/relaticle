@@ -19,13 +19,12 @@ enum EmailGrant: string
         return Feature::active(EmailIntegration::class) ? self::cases() : [];
     }
 
-    /** @return list<self> */
-    public static function fromValues(mixed $values): array
+    /**
+     * @param  array<int, string>  $values
+     * @return list<self>
+     */
+    public static function fromValues(array $values): array
     {
-        if (! is_array($values)) {
-            return [];
-        }
-
         return array_values(array_filter(
             self::offered(),
             fn (self $grant): bool => in_array($grant->value, $values, true),
@@ -52,18 +51,9 @@ enum EmailGrant: string
     public function consentTitle(): string
     {
         return match ($this) {
-            self::Read => __('mcp.consent.email.read.title'),
-            self::Draft => __('mcp.consent.email.draft.title'),
-            self::Send => __('mcp.consent.email.send.title'),
-        };
-    }
-
-    public function consentDescription(): string
-    {
-        return match ($this) {
-            self::Read => __('mcp.consent.email.read.description'),
-            self::Draft => __('mcp.consent.email.draft.description'),
-            self::Send => __('mcp.consent.email.send.description'),
+            self::Read => __('mcp.consent.permissions.email_read'),
+            self::Draft => __('mcp.consent.permissions.email_draft'),
+            self::Send => __('mcp.consent.permissions.email_send'),
         };
     }
 

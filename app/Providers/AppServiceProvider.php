@@ -303,7 +303,11 @@ final class AppServiceProvider extends ServiceProvider
                 ? $currentWorkspaceId
                 : $workspaces->first(fn (Workspace $workspace): bool => ! in_array((string) $workspace->getKey(), $pausedWorkspaceIds, true))?->getKey();
 
-            $parameters['emailGrants'] = EmailGrant::offered();
+            $parameters['abilitiesByWorkspace'] = $user instanceof User
+                ? $workspaces->mapWithKeys(fn (Workspace $workspace): array => [
+                    (string) $workspace->getKey() => $user->grantableTokenPermissions((string) $workspace->getKey()),
+                ])->all()
+                : [];
 
             return response()->view('mcp.authorize', $parameters);
         });

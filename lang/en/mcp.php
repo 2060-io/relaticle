@@ -9,13 +9,16 @@ return [
 
     'consent' => [
         'title' => 'Authorize :client',
-        'intro' => ':client is asking to connect to your Relaticle workspace.',
+        'intro' => [
+            'one' => ':client is asking to connect to :workspace.',
+            'choose' => ':client is asking to connect to one of your workspaces.',
+        ],
         'redirect' => 'After you authorize, you go back to :host. Continue only if you trust that site.',
-        'signed_in_as' => 'Signed in as',
+        'signed_in_as' => 'Signed in as :email.',
 
         'workspace' => [
             'heading' => 'Which workspace?',
-            'description' => ':client will only see data from the workspace you choose. To use a different one later, revoke this connector on the Access Tokens page in Relaticle and add it again.',
+            'description' => 'To use a different one later, revoke this connector and add it again.',
             'aria_label' => 'Workspace selection',
             'personal' => 'Personal',
             'paused' => 'Paused. Subscribe to connect',
@@ -26,38 +29,14 @@ return [
             ],
         ],
 
-        'email' => [
-            'heading' => 'Email access',
-            'description' => 'Off unless you turn it on here.',
-            'read' => [
-                'title' => 'Read your email',
-                'description' => 'Senders, subjects and message text you can already see in this workspace. Teammates\' email stays at the level they shared.',
-            ],
-            'draft' => [
-                'title' => 'Save email drafts',
-                'description' => 'Drafts land in your Drafts. Nothing is sent until you send it.',
-            ],
-            'send' => [
-                'title' => 'Send email as you',
-                'description' => 'From your connected mailbox. Each email waits five minutes, and you can cancel it from your notifications.',
-            ],
-        ],
-
         'permissions' => [
-            'heading' => 'What it will be able to do',
-            'description' => 'In the workspace above, and nowhere else.',
-            'read' => [
-                'title' => 'Read and search your records',
-                'description' => 'Companies, people, opportunities, tasks and notes.',
-            ],
-            'write' => [
-                'title' => 'Create and update them',
-                'description' => 'Add records, change fields, and link notes and tasks to them.',
-            ],
-            'delete' => [
-                'title' => 'Delete them',
-                'description' => 'Removing a record is permanent.',
-            ],
+            'heading' => ':client will be able to',
+            'read' => 'Read and search your records',
+            'write' => 'Create and update them',
+            'delete' => 'Delete them permanently',
+            'email_read' => 'Read the email you can see in this workspace',
+            'email_draft' => 'Save email drafts for you to review',
+            'email_send' => 'Send email as you, after a hold you can cancel',
             'excluded' => 'It cannot reach your other workspaces, workspace members, billing, or account settings.',
         ],
 
@@ -67,6 +46,6 @@ return [
             'authorizing' => 'Authorizing...',
         ],
 
-        'revoke_hint' => 'You can revoke this connector at any time from the Access Tokens page in Relaticle.',
+        'revoke_hint' => 'Revoke this connector at any time from the Access Tokens page.',
     ],
 ];

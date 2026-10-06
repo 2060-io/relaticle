@@ -57,7 +57,7 @@ Clients that support Dynamic Client Registration (RFC 7591), including Claude.ai
 
 At consent you pick **one workspace** for the connector. That choice is permanent for that connector: to point it at a different workspace, revoke it and connect again. Paused workspaces cannot be selected. Subscribe first, or the connector would have no data to read.
 
-The consent screen also offers **Email access**: **Read your email**, **Save email drafts**, and **Send email as you**. All three are off unless you tick them, and the connector gets only what you tick.
+The consent screen lists what the connector will be able to do, and the list follows your role in the workspace you pick. Where email is on, every role gets reading and drafting, and the Owner, Admin and Member roles get sending. The client cannot ask for more or less. Where email is on, Relaticle shows this screen every time a connector authorizes, so it always holds what its user saw.
 
 Access tokens last 30 days and refresh tokens 90 days; supported clients refresh silently in the background.
 

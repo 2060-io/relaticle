@@ -7,28 +7,32 @@ related: [help/email-and-calendar/choose-who-sees-your-email, help/ai-assistant/
 ---
 
 A connected assistant such as Claude or ChatGPT can work with your synced
-email. You choose what it may do, and it never sees more than you see in
-Relaticle.
+email. It gets what your role in the workspace allows, and it never sees
+more than you see in Relaticle.
 
-Email access is off for every connection until you turn it on.
+A connector you added before email access existed has none until you connect
+it again.
 
-## Turn it on for a connector
+## Give a connector email access
 
 1. If the assistant is already connected, open **Access Tokens** from your
    avatar menu, find it under **AI Connectors**, and click **Revoke**.
 2. Add Relaticle to the assistant again. The steps are in
    [Connect Claude or ChatGPT to Relaticle](/help/ai-assistant/connect-claude-or-chatgpt).
 3. On the Relaticle consent screen, pick the workspace.
-4. Under **Email access**, tick what the assistant may do.
-5. Click **Authorize**.
+4. Read the list of what the assistant will be able to do, then click
+   **Authorize**.
 
-| Option | What the assistant can do |
-|---|---|
-| **Read your email** | Read the email you can already see in this workspace. |
-| **Save email drafts** | Write a draft into your Drafts. Nothing is sent. |
-| **Send email as you** | Send from a mailbox you connected, after a five minute hold. |
+The list follows your role in the workspace you picked.
 
-Leave every box empty and the assistant keeps no email access.
+| On the list | What the assistant can do | Who gets it |
+|---|---|---|
+| **Read the email you can see** | Read the email you can already see in this workspace. | Every role |
+| **Save email drafts** | Write a draft into your Drafts. Nothing is sent. | Every role |
+| **Send email as you** | Send from a mailbox you connected, after a five minute hold. | Owner, Admin, Member |
+
+A connector gets everything on the list. To give an assistant less, use an
+access token.
 
 ## Turn it on for an access token
 
@@ -84,9 +88,10 @@ cannot. See [Manage members and roles](/help/workspace/manage-members-and-roles)
 
 ## Turn it off
 
-For a connector, click **Revoke** under **AI Connectors**, then connect it
-again and leave the **Email access** boxes empty. For an access token, click
-its **Permissions** icon and untick the email boxes.
+For a connector, click **Revoke** under **AI Connectors**. A connector has
+no setting for email alone, so an assistant that should keep your records
+without your email needs an access token with the email boxes empty. For an
+access token, click its **Permissions** icon and untick the email boxes.
 
 ## Before you grant sending
 

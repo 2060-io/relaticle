@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Enums\EmailGrant;
 use App\Features\Billing;
 use App\Features\EmailIntegration;
 use App\Http\Controllers\Mcp\ApproveAuthorizationController;
-use App\Http\Middleware\RequireConsentForOptInScopes;
+use App\Http\Middleware\RequireConsentForEmailGrants;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
 use App\Mcp\Servers\RelaticleServer;
@@ -26,7 +25,7 @@ use Relaticle\SystemAdmin\Models\SystemAdministrator;
 
 mutates(
     ApproveAuthorizationController::class,
-    RequireConsentForOptInScopes::class,
+    RequireConsentForEmailGrants::class,
     AuthCode::class,
     CopyWorkspaceIdToAccessToken::class,
     SetApiWorkspaceContext::class,
@@ -71,26 +70,60 @@ function authorizeUrl(Client $client, array $overrides = []): string
     ]);
 }
 
-it('offers each email grant on the consent screen, unchecked', function (): void {
+it('lists the email access the role allows on the consent screen', function (): void {
     $this->actingAs($this->user);
 
-    $response = $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))->assertOk();
-
-    foreach (EmailGrant::cases() as $grant) {
-        $response
-            ->assertSee('name="scopes[]" value="'.$grant->value.'" form="authorizeForm" class', false)
-            ->assertSee($grant->consentTitle());
-    }
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))
+        ->assertOk()
+        ->assertSee('Read the email you can see in this workspace')
+        ->assertSee('Save email drafts for you to review')
+        ->assertSee('Send email as you, after a hold you can cancel')
+        ->assertSee('data-abilities="read create update delete email:read email:draft email:send"', false);
 });
 
-it('does not offer email access while the email feature is off', function (): void {
+it('lists no sending and no writing for a workspace where the user is a viewer', function (): void {
+    $this->otherWorkspace->users()->updateExistingPivot($this->user->getKey(), ['role' => 'viewer']);
+
+    $this->actingAs($this->user->refresh());
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))
+        ->assertOk()
+        ->assertSee('data-abilities="read email:read email:draft"', false);
+});
+
+it('hides the permissions the role lacks in the preselected workspace', function (): void {
+    $this->otherWorkspace->users()->updateExistingPivot($this->user->getKey(), ['role' => 'viewer']);
+    $this->user->refresh()->switchWorkspace($this->otherWorkspace);
+
+    $this->actingAs($this->user);
+
+    $content = (string) $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))->assertOk()->getContent();
+
+    expect($content)
+        ->toMatch('/data-abilities-any="email:send"\s+hidden/')
+        ->toMatch('/data-abilities-any="delete"\s+hidden/')
+        ->not->toMatch('/data-abilities-any="email:read"\s+hidden/')
+        ->not->toMatch('/data-abilities-any="read"\s+hidden/');
+});
+
+it('lists no email access while the email feature is off', function (): void {
     Feature::define(EmailIntegration::class, false);
 
     $this->actingAs($this->user);
 
     $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))
         ->assertOk()
-        ->assertDontSee('name="scopes[]"', false);
+        ->assertDontSee('Read the email you can see in this workspace')
+        ->assertSee('data-abilities="read create update delete"', false);
+});
+
+it('lists no email access for a REST client', function (): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'read']))
+        ->assertOk()
+        ->assertSee('Read and search your records')
+        ->assertDontSee('Read the email you can see in this workspace');
 });
 
 it('renders the consent view with the user\'s workspaces', function (): void {
@@ -132,8 +165,7 @@ it('spells out what the connector will be able to do, including deletion', funct
     $response->assertOk();
     $response->assertSee('Read and search your records');
     $response->assertSee('Create and update them');
-    $response->assertSee('Delete them');
-    $response->assertSee('Companies, people, opportunities, tasks and notes.');
+    $response->assertSee('Delete them permanently');
 });
 
 it('lists only the permissions a REST client asks for', function (): void {
@@ -380,10 +412,9 @@ it('fails closed with 403 instead of a type error when the resolved caller is no
 /**
  * Consent to the client with a workspace selected, the way Claude opens the picker.
  *
- * @param  list<string>  $emailGrants
  * @return array{code: string, verifier: string}
  */
-function consentToWorkspace(User $user, Client $client, Workspace $workspace, array $emailGrants = [], string $scope = 'mcp:use'): array
+function consentToWorkspace(User $user, Client $client, Workspace $workspace, string $scope = 'mcp:use'): array
 {
     $verifier = Str::random(64);
     $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
@@ -401,7 +432,6 @@ function consentToWorkspace(User $user, Client $client, Workspace $workspace, ar
         'client_id' => $client->getKey(),
         'auth_token' => session('authToken'),
         'workspace_id' => $workspace->getKey(),
-        ...($emailGrants === [] ? [] : ['scopes' => $emailGrants]),
     ])->headers->get('Location');
 
     parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);
@@ -441,12 +471,11 @@ function redeemAuthorizationCode(Client $client, array $consent): array
  * Walk the real OAuth 2.1 + PKCE dance the way Claude does: consent with a workspace
  * selected, then redeem the code at the token endpoint.
  *
- * @param  list<string>  $emailGrants
  * @return array{access_token: string, refresh_token: string}
  */
-function completeOauthFlow(User $user, Client $client, Workspace $workspace, array $emailGrants = [], string $scope = 'mcp:use'): array
+function completeOauthFlow(User $user, Client $client, Workspace $workspace, string $scope = 'mcp:use'): array
 {
-    return redeemAuthorizationCode($client, consentToWorkspace($user, $client, $workspace, $emailGrants, $scope));
+    return redeemAuthorizationCode($client, consentToWorkspace($user, $client, $workspace, $scope));
 }
 
 function whoAmI(string $accessToken): string
@@ -592,6 +621,8 @@ it('refuses an MCP call when a Passport token carries no workspace binding', fun
 });
 
 it('keeps the consented workspace when the client re-authorizes and Passport skips consent', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
     completeOauthFlow($this->user, $this->client, $this->otherWorkspace);
 
     // Passport short-circuits the consent screen (and so our workspace picker) when the
@@ -685,6 +716,8 @@ it('binds each code exchange to the workspace its own consent picked', function 
 });
 
 it('leaves no workspace from a rejected approval for a later authorization', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
     completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     $otherClient = Client::query()->forceCreate([
@@ -741,81 +774,54 @@ function refreshAccessToken(Client $client, string $refreshToken): array
     ];
 }
 
-it('adds the email scopes the consent ticked to the access token', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:send', 'email:read']);
-
-    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read', 'email:send']);
-});
-
-it('issues only the mcp scope when the consent leaves email unticked', function (): void {
+it('adds the email scopes the role allows to the access token', function (): void {
     completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
-    expect(liveTokenScopes())->toBe(['mcp:use']);
+    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read', 'email:draft', 'email:send']);
+});
+
+it('takes the role from the workspace the user picked, not their current one', function (): void {
+    $this->otherWorkspace->users()->updateExistingPivot($this->user->getKey(), ['role' => 'viewer']);
+
+    completeOauthFlow($this->user->refresh(), $this->client, $this->otherWorkspace);
+
+    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read', 'email:draft']);
+});
+
+it('adds no email scope the role lacks when the client asks for it', function (): void {
+    $this->otherWorkspace->users()->updateExistingPivot($this->user->getKey(), ['role' => 'viewer']);
+
+    completeOauthFlow($this->user->refresh(), $this->client, $this->otherWorkspace, 'mcp:use email:send');
+
+    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read', 'email:draft']);
 });
 
 it('keeps the email scopes when the client refreshes its access token', function (): void {
-    $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
-
-    refreshAccessToken($this->client, $tokens['refresh_token']);
-
-    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read']);
-});
-
-it('leaves a connector without email access after a refresh', function (): void {
     $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     refreshAccessToken($this->client, $tokens['refresh_token']);
 
-    expect(liveTokenScopes())->toBe(['mcp:use']);
+    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read', 'email:draft', 'email:send']);
 });
 
-it('does not grant an email scope the client asked for and the user did not tick', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, scope: 'mcp:use email:send email:read');
-
-    expect(liveTokenScopes())->toBe(['mcp:use']);
-});
-
-it('grants only the ticked email scope when the client asked for more', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read'], 'mcp:use email:send email:read');
-
-    expect(liveTokenScopes())->toEqualCanonicalizing(['mcp:use', 'email:read']);
-});
-
-it('drops a ticked email scope while the email feature is off', function (): void {
+it('issues only the mcp scope while the email feature is off', function (): void {
     Feature::define(EmailIntegration::class, false);
 
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, 'mcp:use email:read');
 
     expect(liveTokenScopes())->toBe(['mcp:use']);
 });
 
-it('drops a ticked value that is not an email scope', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['delete', '*', 'email:everything']);
+it('gives a REST client no email scope', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, 'read create');
 
-    expect(liveTokenScopes())->toBe(['mcp:use']);
+    expect(liveTokenScopes())->toEqualCanonicalizing(['read', 'create']);
 });
 
-it('issues no email scope on a silent re-authorization that skips consent', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+it('gives a REST client no email scope when it asks for one', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, 'read email:send');
 
-    $verifier = Str::random(64);
-    $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
-
-    $this->actingAs($this->user);
-
-    $location = $this->get(authorizeUrl($this->client, [
-        'scope' => 'mcp:use',
-        'state' => 'st',
-        'code_challenge' => $challenge,
-    ]))->assertRedirect()->headers->get('Location');
-
-    parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);
-
-    $firstTokenId = Passport::token()->newQuery()->sole()->getKey();
-
-    redeemAuthorizationCode($this->client, ['code' => (string) $query['code'], 'verifier' => $verifier]);
-
-    expect(Passport::token()->newQuery()->whereKeyNot($firstTokenId)->sole()->scopes)->toBe(['mcp:use']);
+    expect(liveTokenScopes())->toBe(['read']);
 });
 
 function reportedAbilities(string $accessToken): array
@@ -823,55 +829,58 @@ function reportedAbilities(string $accessToken): array
     return json_decode(whoAmI($accessToken), true)['result']['structuredContent']['token_abilities'];
 }
 
-it('reports the record abilities and the consented email abilities to the connector', function (): void {
-    $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read', 'email:draft']);
+it('reports the record abilities and the email abilities of the role to the connector', function (): void {
+    $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
-    expect(reportedAbilities($tokens['access_token']))->toBe(['read', 'create', 'update', 'delete', 'email:read', 'email:draft']);
+    expect(reportedAbilities($tokens['access_token']))->toBe(['read', 'create', 'update', 'delete', 'email:read', 'email:draft', 'email:send']);
 });
 
-it('reports only the record abilities to a connector that was given no email access', function (): void {
+it('reports only the record abilities to a connector while the email feature is off', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
     $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     expect(reportedAbilities($tokens['access_token']))->toBe(['read', 'create', 'update', 'delete']);
 });
 
-it('shows consent again when a client asks for an email scope the user granted on another connection', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
-
-    $this->actingAs($this->user);
-
-    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use email:read']))
-        ->assertOk()
-        ->assertSee('name="workspace_id"', false);
-});
-
-it('grants no email scope when a client asks for one and the user approves without ticking it', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
-
-    $firstTokenId = Passport::token()->newQuery()->sole()->getKey();
-
-    completeOauthFlow($this->user, $this->client, $this->otherWorkspace, scope: 'mcp:use email:read');
-
-    $second = Passport::token()->newQuery()->whereKeyNot($firstTokenId)->sole();
-
-    expect($second->scopes)->toBe(['mcp:use'])
-        ->and($second->workspace_id)->toBe($this->otherWorkspace->getKey());
-});
-
-it('shows consent when a connector without email access asks for an email scope', function (): void {
+it('shows consent again on a re-authorization, so the token always holds what the screen listed', function (): void {
     completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     $this->actingAs($this->user);
 
-    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use email:send']))->assertOk();
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))
+        ->assertOk()
+        ->assertSee('name="workspace_id"', false);
 });
 
-it('still skips consent on a re-authorization that names no email scope', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+it('shows consent when a client names an email scope while the email feature is off', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use email:send']))
+        ->assertOk()
+        ->assertSee('name="workspace_id"', false);
+});
+
+it('still skips consent on a re-authorization while the email feature is off', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     $this->actingAs($this->user);
 
     $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))->assertRedirect();
+});
+
+it('still skips consent for a REST client that already holds its scopes', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, 'read');
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'read']))->assertRedirect();
 });
 
 it('refuses an oauth token that lacks the mcp scope, whatever else it holds', function (): void {
@@ -883,11 +892,11 @@ it('refuses an oauth token that lacks the mcp scope, whatever else it holds', fu
 });
 
 it('reads the requested scope from the query string, as the authorization server does', function (): void {
-    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     $this->actingAs($this->user);
 
-    $this->json('GET', authorizeUrl($this->client, ['scope' => 'mcp:use email:read']), ['scope' => 'mcp:use'])
+    $this->json('GET', authorizeUrl($this->client, ['scope' => 'mcp:use']), ['scope' => 'read'])
         ->assertOk()
         ->assertSee('name="workspace_id"', false);
 });
@@ -910,15 +919,26 @@ function listedTools(string $accessToken): array
         ->json('result.tools.*.name');
 }
 
-it('gives the email tools only to a connector that was granted email access', function (): void {
-    $with = completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+it('gives the email tools to a connector whose role allows email', function (): void {
+    $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
-    expect(listedTools($with['access_token']))->toContain('list-emails-tool', 'get-email-tool');
+    expect(listedTools($tokens['access_token']))->toContain('list-emails-tool', 'get-email-tool', 'send-email-tool');
 });
 
-it('keeps the email tools away from a connector authorized without email access', function (): void {
-    $without = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+it('keeps the send tool away from a connector whose role cannot send', function (): void {
+    $this->otherWorkspace->users()->updateExistingPivot($this->user->getKey(), ['role' => 'viewer']);
 
-    expect(listedTools($without['access_token']))->not->toContain('list-emails-tool')
+    $tokens = completeOauthFlow($this->user->refresh(), $this->client, $this->otherWorkspace);
+
+    expect(listedTools($tokens['access_token']))->toContain('list-emails-tool')
+        ->not->toContain('send-email-tool');
+});
+
+it('keeps the email tools away from a connector while the email feature is off', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
+    $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+
+    expect(listedTools($tokens['access_token']))->not->toContain('list-emails-tool')
         ->not->toContain('get-email-tool');
 });
