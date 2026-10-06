@@ -215,7 +215,7 @@ it('suggests the domains field ahead of a link field a user created and ordered'
 
     DB::table('custom_fields')->insert([
         ...(array) $seeded,
-        'id' => (string) Str::ulid(),
+        'id' => strtolower((string) Str::ulid()),
         'code' => 'press_page',
         'name' => 'Press page',
         'sort_order' => 1,
@@ -336,6 +336,20 @@ it('maps a company url column to the link field when a host would lose its conte
 })->with([
     'a path that also appears in the host' => ['https://about.acme.com/about', 'https://globex.com/globex'],
     'a query string and no path' => ['https://maps.example.com/?cid=123', 'https://example.org/?p=42'],
+]);
+
+it('still maps a column of values that are not urls by their type', function (string $header, array $values, string $target): void {
+    createStoreWithHeaders($this, ['Name', $header], [
+        ['Name' => 'Ana', $header => $values[0]],
+        ['Name' => 'Bob', $header => $values[1]],
+    ]);
+
+    $columns = mountMappingStep($this)->get('columns');
+
+    expect($columns[$header]['target'])->toBe($target);
+})->with([
+    'emails' => ['Reach', ['ana@acme.com', 'bob@globex.com'], 'custom_fields_emails'],
+    'phones' => ['Dial', ['+14155550100', '+14155550101'], 'custom_fields_phone_number'],
 ]);
 
 it('mapToField updates column mapping', function (): void {

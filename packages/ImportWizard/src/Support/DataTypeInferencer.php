@@ -227,7 +227,7 @@ final class DataTypeInferencer
             return [];
         }
 
-        $lossyTypes = array_filter($fieldTypeKeys, fn (string $key): bool => $this->dropsThePathOfMost($key, $values));
+        $lossyTypes = array_filter($fieldTypeKeys, fn (string $key): bool => $this->cutsMostValuesShort($key, $values));
 
         return CustomField::query()
             ->withoutGlobalScopes()
@@ -246,7 +246,7 @@ final class DataTypeInferencer
     /**
      * @param  list<string>  $values
      */
-    private function dropsThePathOfMost(string $fieldTypeKey, array $values): bool
+    private function cutsMostValuesShort(string $fieldTypeKey, array $values): bool
     {
         $fieldType = resolve(FieldManager::class)->getFieldTypeInstance($fieldTypeKey);
 
@@ -255,9 +255,15 @@ final class DataTypeInferencer
         }
 
         $dropped = array_filter($values, function (string $value) use ($fieldType): bool {
+            $url = parse_url(trim($value));
+
+            if (! is_array($url) || ! isset($url['host'])) {
+                return false;
+            }
+
             $stored = strtolower($fieldType->setValue($value));
-            $path = strtolower(trim((string) parse_url(trim($value), PHP_URL_PATH), '/'));
-            $query = strtolower((string) parse_url(trim($value), PHP_URL_QUERY));
+            $path = strtolower(trim($url['path'] ?? '', '/'));
+            $query = strtolower(rtrim($url['query'] ?? '', '/'));
 
             if ($path !== '' && ! str_contains($stored, "/{$path}")) {
                 return true;
