@@ -64,7 +64,6 @@ final readonly class VisibleEmailsQuery
 
         return $this->preferredCopies
             ->restrictToVisiblePreferredCopies($query, $viewer)
-            ->withGlobalScope('visible', new VisibleEmailScope($viewer))
             ->with(['participants', 'shares'])
             ->latest('sent_at')
             ->orderByDesc('id')
