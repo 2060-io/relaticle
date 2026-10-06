@@ -1121,7 +1121,7 @@ it('releases a held email to the dispatcher only after the hold passes', functio
     expect(Email::query()->findOrFail($data['id'])->status)->toBe(EmailStatus::SENDING);
 });
 
-it('shows a held email on the scheduled tab of its owner outbox', function (): void {
+it('shows a held email in the default view of its owner outbox', function (): void {
     $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
     $held = Email::query()->findOrFail($data['id']);
 
@@ -1129,9 +1129,9 @@ it('shows a held email on the scheduled tab of its owner outbox', function (): v
     Filament::setTenant($this->workspace);
 
     livewire(OutboxTable::class)
-        ->assertCanNotSeeTableRecords([$held])
+        ->assertCanSeeTableRecords([$held])
         ->filterTable('status_tab', 'scheduled')
-        ->assertCanSeeTableRecords([$held]);
+        ->assertCanNotSeeTableRecords([$held]);
 });
 
 it('sends with the sender default sharing level', function (): void {

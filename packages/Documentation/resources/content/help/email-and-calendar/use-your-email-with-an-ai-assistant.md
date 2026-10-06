@@ -73,8 +73,8 @@ from a mailbox you connected yourself, never a teammate's.
 1. You get a notification, such as "Claude queued an email". It names the
    subject and the recipients.
 2. Click **Cancel send** in that notification to stop it.
-3. You can also open the **Emails** page, then **Outbox**, then the
-   **Scheduled** tab, and cancel the email there.
+3. You can also open the **Emails** page, then **Outbox**, and cancel the
+   email there.
 
 After five minutes the email goes out and cannot be cancelled. It then shows
 in your synced email like any other.
