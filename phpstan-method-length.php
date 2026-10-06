@@ -31,7 +31,6 @@ return [
                 'App\Mcp\Tools\ListActivityTool::handle' => 66,
                 'App\Mcp\Tools\ListCustomFieldsTool::handle' => 64,
                 'App\Mcp\Tools\SearchTool::handle' => 77,
-                'App\Providers\AppServiceProvider::boot' => 85,
                 'App\Providers\AppServiceProvider::configureFilament' => 88,
                 'App\Providers\AppServiceProvider::configureRateLimiting' => 70,
                 'App\Providers\AppServiceProvider::register' => 82,

@@ -35,10 +35,48 @@ enum EmailGrant: string
     /** @return array<string, string> */
     public static function passportScopes(): array
     {
-        return [
-            self::Read->value => 'Read your email',
-            self::Draft->value => 'Save email drafts',
-            self::Send->value => 'Send email as you',
-        ];
+        return collect(self::cases())
+            ->mapWithKeys(fn (self $grant): array => [$grant->value => $grant->consentTitle()])
+            ->all();
+    }
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Read => __('access-tokens.permissions.email_read'),
+            self::Draft => __('access-tokens.permissions.email_draft'),
+            self::Send => __('access-tokens.permissions.email_send'),
+        };
+    }
+
+    public function consentTitle(): string
+    {
+        return match ($this) {
+            self::Read => __('mcp.consent.email.read.title'),
+            self::Draft => __('mcp.consent.email.draft.title'),
+            self::Send => __('mcp.consent.email.send.title'),
+        };
+    }
+
+    public function consentDescription(): string
+    {
+        return match ($this) {
+            self::Read => __('mcp.consent.email.read.description'),
+            self::Draft => __('mcp.consent.email.draft.description'),
+            self::Send => __('mcp.consent.email.send.description'),
+        };
+    }
+
+    /**
+     * @param  array<int, WorkspaceCapability>  $capabilities
+     * @return list<self>
+     */
+    public static function grantableWith(array $capabilities): array
+    {
+        return array_values(array_filter(
+            self::offered(),
+            fn (self $grant): bool => $grant !== self::Send
+                || in_array(WorkspaceCapability::EmailAgentSend, $capabilities, true),
+        ));
     }
 }

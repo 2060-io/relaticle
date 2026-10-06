@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\EmailGrant;
 use App\Features\Billing;
 use App\Features\EmailIntegration;
 use App\Http\Controllers\Mcp\ApproveAuthorizationController;
@@ -69,6 +70,28 @@ function authorizeUrl(Client $client, array $overrides = []): string
         ...$overrides,
     ]);
 }
+
+it('offers each email grant on the consent screen, unchecked', function (): void {
+    $this->actingAs($this->user);
+
+    $response = $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))->assertOk();
+
+    foreach (EmailGrant::cases() as $grant) {
+        $response
+            ->assertSee('name="scopes[]" value="'.$grant->value.'" form="authorizeForm" class', false)
+            ->assertSee($grant->consentTitle());
+    }
+});
+
+it('does not offer email access while the email feature is off', function (): void {
+    Feature::define(EmailIntegration::class, false);
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))
+        ->assertOk()
+        ->assertDontSee('name="scopes[]"', false);
+});
 
 it('renders the consent view with the user\'s workspaces', function (): void {
     $this->actingAs($this->user);

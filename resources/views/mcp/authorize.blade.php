@@ -176,6 +176,27 @@
                             {{ __('mcp.consent.permissions.excluded') }}
                         </p>
                     </div>
+
+                    @if($emailGrants !== [])
+                        <div>
+                            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ __('mcp.consent.email.heading') }}</h2>
+                            <p class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                                {{ __('mcp.consent.email.description') }}
+                            </p>
+
+                            <div class="mt-3 space-y-2">
+                                @foreach($emailGrants as $grant)
+                                    <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition-colors hover:border-gray-300 hover:bg-gray-50 has-[:checked]:border-primary has-[:checked]:bg-primary-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:bg-gray-800/50 dark:has-[:checked]:border-primary-400 dark:has-[:checked]:bg-primary-950/50">
+                                        <input type="checkbox" name="scopes[]" value="{{ $grant->value }}" form="authorizeForm" class="mt-0.5 size-4 shrink-0 accent-primary">
+                                        <span class="min-w-0">
+                                            <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ $grant->consentTitle() }}</span>
+                                            <span class="mt-0.5 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ $grant->consentDescription() }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
                 @else
                     <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/40">
                         <p class="text-sm font-medium text-red-800 dark:text-red-200">{{ __('mcp.consent.workspace.none.heading') }}</p>

@@ -254,6 +254,24 @@ final class AppServiceProvider extends ServiceProvider
         Passport::tokensExpireIn(now()->addDays(30));
         Passport::refreshTokensExpireIn(now()->addDays(90));
 
+        $this->configureConsentScreen();
+
+        $this->configurePolicies();
+        $this->configureModels();
+        $this->configureFilament();
+        $this->configureCommunityCounts();
+        $this->configureLivewire();
+        $this->configureMacros();
+        $this->configureRateLimiting();
+        $this->configureScribe();
+
+        $this->configureActivityLog();
+        $this->configureBlog();
+        $this->configureDevCommands();
+    }
+
+    private function configureConsentScreen(): void
+    {
         Passport::authorizationView(function (array $parameters) {
             $user = $parameters['user'] ?? null;
 
@@ -285,21 +303,10 @@ final class AppServiceProvider extends ServiceProvider
                 ? $currentWorkspaceId
                 : $workspaces->first(fn (Workspace $workspace): bool => ! in_array((string) $workspace->getKey(), $pausedWorkspaceIds, true))?->getKey();
 
+            $parameters['emailGrants'] = EmailGrant::offered();
+
             return response()->view('mcp.authorize', $parameters);
         });
-
-        $this->configurePolicies();
-        $this->configureModels();
-        $this->configureFilament();
-        $this->configureCommunityCounts();
-        $this->configureLivewire();
-        $this->configureMacros();
-        $this->configureRateLimiting();
-        $this->configureScribe();
-
-        $this->configureActivityLog();
-        $this->configureBlog();
-        $this->configureDevCommands();
     }
 
     /**

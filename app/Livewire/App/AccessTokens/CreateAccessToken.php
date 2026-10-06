@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\App\AccessTokens;
 
+use App\Enums\EmailGrant;
 use App\Livewire\BaseLivewireComponent;
 use App\Models\User;
 use DanHarrin\LivewireRateLimiting\Exceptions\TooManyRequestsException;
@@ -196,7 +197,7 @@ final class CreateAccessToken extends BaseLivewireComponent
                 fn (Get $get): array => collect(self::grantablePermissions($get('workspace_id')))
                     ->mapWithKeys(
                         fn (string $permission): array => [
-                            $permission => ucfirst($permission),
+                            $permission => EmailGrant::tryFrom($permission)?->label() ?? ucfirst($permission),
                         ],
                     )
                     ->all(),

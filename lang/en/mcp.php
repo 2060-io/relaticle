@@ -22,6 +22,23 @@ return [
             ],
         ],
 
+        'email' => [
+            'heading' => 'Email access',
+            'description' => 'Off unless you turn it on here.',
+            'read' => [
+                'title' => 'Read your email',
+                'description' => 'Senders, subjects and message text you can already see in this workspace. Teammates\' email stays at the level they shared.',
+            ],
+            'draft' => [
+                'title' => 'Save email drafts',
+                'description' => 'Drafts land in your Drafts. Nothing is sent until you send it.',
+            ],
+            'send' => [
+                'title' => 'Send email as you',
+                'description' => 'From your connected mailbox. Each email waits five minutes, and you can cancel it from your notifications.',
+            ],
+        ],
+
         'permissions' => [
             'heading' => 'What it will be able to do',
             'description' => 'In the workspace above, and nowhere else.',

@@ -159,7 +159,7 @@ test('workspace_id and expiration are required', function () {
         ->assertHasFormErrors(['workspace_id' => 'required', 'expiration' => 'required']);
 })->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
 
-test('a viewer is offered only read, and cannot create a token that writes', function () {
+test('a viewer is offered read and email read and draft, and cannot create a token that writes', function () {
     $owner = User::factory()->withWorkspace()->create();
     $workspace = $owner->currentWorkspace;
     $viewer = User::factory()->create();
@@ -169,7 +169,7 @@ test('a viewer is offered only read, and cannot create a token that writes', fun
 
     livewire(CreateAccessToken::class)
         ->fillForm(['workspace_id' => $workspace->id])
-        ->assertFormFieldExists('permissions', fn (CheckboxList $field): bool => array_keys($field->getOptions()) === ['read'])
+        ->assertFormFieldExists('permissions', fn (CheckboxList $field): bool => array_keys($field->getOptions()) === ['read', 'email:read', 'email:draft'])
         ->fillForm([
             'name' => 'Viewer Token',
             'expiration' => '30',

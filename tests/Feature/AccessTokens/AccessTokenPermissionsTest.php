@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use App\Enums\WorkspaceRole;
+use App\Features\EmailIntegration;
 use App\Livewire\App\AccessTokens\ManageAccessTokens;
 use App\Models\User;
 use Illuminate\Support\Str;
 use Laravel\Jetstream\Features;
+use Laravel\Pennant\Feature;
 
 mutates(User::class);
 
@@ -79,4 +81,52 @@ test('table shows expiration column', function () {
 
     livewire(ManageAccessTokens::class)
         ->assertCanRenderTableColumn('expires_at');
+})->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
+
+function tokenAbilitiesAfterEdit(User $user, string $workspaceId, array $permissions): array
+{
+    $token = $user->tokens()->create([
+        'name' => 'Mail Token '.Str::random(6),
+        'token' => Str::random(40),
+        'abilities' => ['read'],
+        'workspace_id' => $workspaceId,
+    ]);
+
+    livewire(ManageAccessTokens::class)
+        ->callTableAction('permissions', $token, data: [
+            'workspace_id' => $workspaceId,
+            'permissions' => $permissions,
+        ]);
+
+    return $token->fresh()->abilities;
+}
+
+test('a member can give a pinned token every email ability', function () {
+    $this->actingAs($user = User::factory()->withWorkspace()->create());
+
+    expect(tokenAbilitiesAfterEdit($user, $user->currentWorkspace->id, ['read', 'email:read', 'email:draft', 'email:send']))
+        ->toBe(['read', 'email:read', 'email:draft', 'email:send']);
+})->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
+
+test('a viewer can give a token email read and draft but not send', function () {
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $viewer = User::factory()->create();
+    $workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($workspace);
+    $this->actingAs($viewer = $viewer->fresh());
+
+    expect(tokenAbilitiesAfterEdit($viewer, $workspace->id, ['read', 'email:read', 'email:draft']))
+        ->toBe(['read', 'email:read', 'email:draft'])
+        ->and(tokenAbilitiesAfterEdit($viewer, $workspace->id, ['read', 'email:read', 'email:send']))
+        ->toBe(['read']);
+})->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
+
+test('no email ability can be given to a token while the email feature is off', function () {
+    Feature::define(EmailIntegration::class, false);
+
+    $this->actingAs($user = User::factory()->withWorkspace()->create());
+
+    expect(tokenAbilitiesAfterEdit($user, $user->currentWorkspace->id, ['read', 'email:read', 'email:send']))
+        ->toBe(['read']);
 })->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
