@@ -10,7 +10,6 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
-use Spatie\QueryBuilder\QueryBuilder;
 
 interface EntityQuery
 {
@@ -24,9 +23,6 @@ interface EntityQuery
 
     /** @return list<string> */
     public static function sorts(): array;
-
-    /** @return QueryBuilder<Model> */
-    public function for(User $user, ListQuery $list): QueryBuilder;
 
     /** @return CursorPaginator<int, Model>|LengthAwarePaginator<int, Model> */
     public function paginate(User $user, ListQuery $list): CursorPaginator|LengthAwarePaginator;

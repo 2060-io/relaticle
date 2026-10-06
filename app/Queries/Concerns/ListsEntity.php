@@ -33,7 +33,7 @@ trait ListsEntity
     }
 
     /** @return QueryBuilder<Model> */
-    public function for(User $user, ListQuery $list): QueryBuilder
+    private function for(User $user, ListQuery $list): QueryBuilder
     {
         $entity = static::entity();
         $model = $entity->model();
