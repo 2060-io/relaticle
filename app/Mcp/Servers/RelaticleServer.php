@@ -23,6 +23,7 @@ use App\Mcp\Tools\Email\CreateEmailDraftTool;
 use App\Mcp\Tools\Email\GetEmailTool;
 use App\Mcp\Tools\Email\ListEmailAccountsTool;
 use App\Mcp\Tools\Email\ListEmailsTool;
+use App\Mcp\Tools\Email\SendEmailTool;
 use App\Mcp\Tools\FetchTool;
 use App\Mcp\Tools\GetCrmSchemaTool;
 use App\Mcp\Tools\GetCrmSummaryTool;
@@ -122,6 +123,7 @@ final class RelaticleServer extends Server
         GetEmailTool::class,
         ListEmailAccountsTool::class,
         CreateEmailDraftTool::class,
+        SendEmailTool::class,
     ];
 
     /** @var array<int, class-string<Server\Resource>> */

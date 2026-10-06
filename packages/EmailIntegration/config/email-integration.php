@@ -90,6 +90,7 @@ return [
             'daily_send_limit' => (int) env('EMAIL_DEFAULT_DAILY_LIMIT', 200),
         ],
         'undo_send_window_seconds' => (int) env('EMAIL_UNDO_SEND_WINDOW', 5),
+        'agent_send_hold_seconds' => (int) env('EMAIL_AGENT_SEND_HOLD', 300),
         'max_queued_per_user' => (int) env('EMAIL_MAX_QUEUED_PER_USER', 100),
 
         /*

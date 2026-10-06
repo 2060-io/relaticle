@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'connection' => [
+        'fallback_name' => 'An AI assistant',
+    ],
+
     'consent' => [
         'title' => 'Authorize :client',
         'intro' => ':client is asking to connect to your Relaticle workspace.',

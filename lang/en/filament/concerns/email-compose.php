@@ -14,6 +14,9 @@ return [
         'undo' => [
             'label' => 'Undo',
         ],
+        'cancel_send' => [
+            'label' => 'Cancel send',
+        ],
     ],
     'notifications' => [
         'queued' => [
@@ -22,6 +25,10 @@ return [
         ],
         'cancelled' => [
             'title' => 'Send cancelled',
+        ],
+        'held' => [
+            'title' => ':via queued an email',
+            'body' => '":subject" goes to :recipients in :minutes minutes. Cancel it if you did not ask for it.',
         ],
         'too_late' => [
             'title' => 'Too late, the email has already been sent',

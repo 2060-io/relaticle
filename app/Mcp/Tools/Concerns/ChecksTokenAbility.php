@@ -10,6 +10,7 @@ use App\Models\PersonalAccessToken;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Registrar;
 use Laravel\Passport\AccessToken as PassportAccessToken;
+use Laravel\Passport\Passport;
 
 trait ChecksTokenAbility
 {
@@ -61,6 +62,20 @@ trait ChecksTokenAbility
         $held = $this->heldEmailGrants();
 
         return array_any($grants, fn (EmailGrant $grant): bool => in_array($grant, $held, true));
+    }
+
+    protected function connectionName(): string
+    {
+        /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
+        $token = auth()->user()?->currentAccessToken();
+
+        $name = match (true) {
+            $token instanceof PassportAccessToken => Passport::client()->newQuery()->whereKey($token->oauth_client_id)->value('name'),
+            $token instanceof PersonalAccessToken => $token->name,
+            default => null,
+        };
+
+        return is_string($name) && $name !== '' ? $name : __('mcp.connection.fallback_name');
     }
 
     /** @return list<string> */

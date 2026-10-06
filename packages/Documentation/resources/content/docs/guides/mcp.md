@@ -22,7 +22,7 @@ With the Relaticle MCP server, your AI assistant can:
 - **Read entity schemas** to understand your custom fields
 - **Get a CRM overview** with record counts and recent activity
 
-Writes made over MCP apply immediately. The approval card belongs to the assistant built into Relaticle, and an MCP client relies on its own confirmation prompts. The server exposes CRM records only: it does not send email or read synced mail and meetings.
+Writes made over MCP apply immediately. The approval card belongs to the assistant built into Relaticle, and an MCP client relies on its own confirmation prompts. Email tools exist for a connection that was given email access. Meetings are not exposed. A sent email is the one write that does not apply immediately: it is held first and its user can cancel it.
 
 ---
 
@@ -155,7 +155,7 @@ Add this to your VS Code settings (`.vscode/mcp.json`):
 
 ## Available Tools
 
-The server provides 43 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, file uploads, reading synced email, and saving email drafts. A connection without email access sees 39 tools.
+The server provides 44 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, file uploads, reading synced email, saving email drafts, and sending email. A connection without email access sees 39 tools.
 
 ### Cross-entity discovery
 
@@ -238,7 +238,7 @@ The server provides 43 tools. They cover account context, cross-entity discovery
 
 These tools appear only for a connection that was given email access. They show the synced email its user may see, at the sharing level the mailbox owner chose.
 
-The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft.
+The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft. The send tool needs the send permission and a role that may send through an assistant.
 
 | Tool | Description |
 |------|-------------|
@@ -246,6 +246,7 @@ The two reading tools need read access. The mailbox tool appears for a connectio
 | `get-email-tool` | Get one synced email by ID. The body and attachment names appear only at full access, and a long body is cut. |
 | `list-email-accounts-tool` | List the mailboxes the user has connected in this workspace, with the ID to use when drafting and whether each can send. |
 | `create-email-draft-tool` | Save a draft in one of the user's mailboxes, as plain text or markdown, with the default signature unless you turn it off. Nothing is sent: the user reviews the draft in Relaticle. |
+| `send-email-tool` | Send an email from one of the user's mailboxes. Each email waits a few minutes before it leaves, and its user can cancel it from notifications or the Outbox. |
 
 ### Files
 
