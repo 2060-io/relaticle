@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Health\AnthropicModelCheck;
+use App\Health\ChatProviderCheck;
+use App\Health\ChatTurnFailureRateCheck;
 use Illuminate\Support\ServiceProvider;
 use Spatie\CpuLoadHealthCheck\CpuLoadCheck;
 use Spatie\Health\Checks\Checks\CacheCheck;
@@ -35,8 +36,8 @@ final class HealthServiceProvider extends ServiceProvider
             DatabaseCheck::new(),
 
             DatabaseConnectionCountCheck::new()
-                ->warnWhenMoreConnectionsThan(50)
-                ->failWhenMoreConnectionsThan(100),
+                ->warnWhenMoreConnectionsThan(60)
+                ->failWhenMoreConnectionsThan(80),
 
             DatabaseSizeCheck::new()
                 ->failWhenSizeAboveGb(errorThresholdGb: 10.0),
@@ -71,8 +72,8 @@ final class HealthServiceProvider extends ServiceProvider
                 ->failWhenUsedSpaceIsAbovePercentage(90),
 
             CpuLoadCheck::new()
-                ->failWhenLoadIsHigherInTheLast5Minutes(4.0)
-                ->failWhenLoadIsHigherInTheLast15Minutes(2.0),
+                ->failWhenLoadIsHigherInTheLast5Minutes(8.0)
+                ->failWhenLoadIsHigherInTheLast15Minutes(4.0),
 
             DebugModeCheck::new(),
 
@@ -85,8 +86,9 @@ final class HealthServiceProvider extends ServiceProvider
 
             CacheCheck::new(),
 
-            AnthropicModelCheck::new()
-                ->name('Anthropic: Summary Model'),
+            ...ChatProviderCheck::forConfiguredProviders(),
+
+            ChatTurnFailureRateCheck::new(),
         ]);
     }
 

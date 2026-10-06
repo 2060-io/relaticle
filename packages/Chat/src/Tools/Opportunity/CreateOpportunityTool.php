@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools\Opportunity;
 
 use App\Actions\Opportunity\CreateOpportunity;
+use App\Concerns\OperatesOnCrmEntity;
+use App\Enums\CrmEntity;
 use App\Models\Company;
 use App\Models\People;
-use App\Models\Team;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Database\Eloquent\Model;
-use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Tools\BaseWriteCreateTool;
 
 final class CreateOpportunityTool extends BaseWriteCreateTool
 {
+    use OperatesOnCrmEntity;
+
     public function description(): string
     {
         return 'Propose creating a new opportunity/deal. Optionally link to a company and primary contact.';
@@ -26,9 +27,17 @@ final class CreateOpportunityTool extends BaseWriteCreateTool
         return CreateOpportunity::class;
     }
 
-    protected function entityType(): string
+    protected function entity(): CrmEntity
     {
-        return 'opportunity';
+        return CrmEntity::Opportunity;
+    }
+
+    protected function ownedForeignKeys(): array
+    {
+        return [
+            'company_id' => Company::class,
+            'contact_id' => People::class,
+        ];
     }
 
     protected function entitySchema(JsonSchema $schema): array
@@ -40,32 +49,36 @@ final class CreateOpportunityTool extends BaseWriteCreateTool
         ];
     }
 
-    protected function extractActionData(Request $request): array
+    protected function extractRecordData(array $record): array
     {
         return array_filter([
-            'name' => (string) $request->string('name'),
-            'company_id' => $request['company_id'] ?? null,
-            'contact_id' => $request['contact_id'] ?? null,
+            'name' => (string) ($record['name'] ?? ''),
+            'company_id' => $record['company_id'] ?? null,
+            'contact_id' => $record['contact_id'] ?? null,
         ], static fn (mixed $v): bool => $v !== null && $v !== '');
     }
 
-    protected function buildDisplayData(Request $request): array
+    protected function buildRecordDisplay(array $record): array
     {
         /** @var User $user */
         $user = auth()->user();
-        $team = $user->currentTeam;
+        $workspace = $user->currentWorkspace;
 
-        $name = (string) $request->string('name');
+        $name = (string) ($record['name'] ?? '');
         $fields = [['label' => 'Name', 'value' => $name]];
 
-        $companyName = $this->nameForId($this->stringOrNull($request, 'company_id'), Company::class, 'name', $team);
+        $companyId = $record['company_id'] ?? null;
+        $companyId = is_string($companyId) && $companyId !== '' ? $companyId : null;
+        $companyName = $this->recordNames()->name($companyId, Company::class, $workspace);
         if ($companyName !== '') {
             $fields[] = ['label' => 'Company', 'value' => $companyName];
         }
 
-        $contactName = $this->nameForId($this->stringOrNull($request, 'contact_id'), People::class, 'name', $team);
+        $contactId = $record['contact_id'] ?? null;
+        $contactId = is_string($contactId) && $contactId !== '' ? $contactId : null;
+        $contactName = $this->recordNames()->name($contactId, People::class, $workspace);
         if ($contactName !== '') {
-            $fields[] = ['label' => 'Contact', 'value' => $contactName];
+            $fields[] = ['label' => 'Point of Contact', 'value' => $contactName];
         }
 
         return [
@@ -73,29 +86,5 @@ final class CreateOpportunityTool extends BaseWriteCreateTool
             'summary' => "Create opportunity \"{$name}\"",
             'fields' => $fields,
         ];
-    }
-
-    private function stringOrNull(Request $request, string $key): ?string
-    {
-        $value = $request[$key] ?? null;
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
-    /**
-     * @param  class-string<Model>  $modelClass
-     */
-    private function nameForId(?string $id, string $modelClass, string $nameAttribute, ?Team $team): string
-    {
-        if ($id === null) {
-            return '';
-        }
-
-        $query = $modelClass::query()->whereKey($id);
-        if ($team instanceof Team) {
-            $query->where('team_id', $team->getKey());
-        }
-
-        return (string) ($query->value($nameAttribute) ?? '');
     }
 }

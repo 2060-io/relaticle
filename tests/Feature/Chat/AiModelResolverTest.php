@@ -1,0 +1,213 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Enums\Plan;
+use App\Models\User;
+use Relaticle\Chat\Services\AiModelResolver;
+use Relaticle\Chat\Services\ModelAccess;
+use Relaticle\Chat\Services\ModelRegistry;
+use Tests\Helpers\ChatCatalog;
+
+mutates(AiModelResolver::class, ModelRegistry::class);
+
+it('falls back to Sonnet when the users preference is not allowed by their plan', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $user->ai_preferences = ['default_model' => 'claude-opus-5'];
+    $user->save();
+    $user->refresh();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, null);
+
+    expect($resolved['model'])->toBe('claude-sonnet-5');
+});
+
+it('honors the users preference when their plan allows it', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $user->currentWorkspace->plan = Plan::Pro;
+    $user->currentWorkspace->save();
+    $user->ai_preferences = ['default_model' => 'claude-opus-5'];
+    $user->save();
+    $user->refresh();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, null);
+
+    expect($resolved['model'])->toBe('claude-opus-5');
+});
+
+it('falls back to Sonnet when an override is disallowed by the plan', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'gpt-5.5');
+
+    expect($resolved['model'])->toBe('claude-sonnet-5');
+});
+
+it('resolves Auto to Sonnet for any plan', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'auto');
+
+    expect($resolved['model'])->toBe('claude-sonnet-5');
+});
+
+it('falls back to ClaudeSonnet when a Gemini model is requested', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'gemini-3-flash');
+    expect($resolved)->toMatchArray(['provider' => 'anthropic', 'model' => 'claude-sonnet-5']);
+});
+
+it('resolves an explicit Ollama request when Ollama is configured', function (): void {
+    config()->set('chat.ollama.model', 'qwen3:14b');
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'ollama');
+    expect($resolved)->toMatchArray(['provider' => 'ollama', 'model' => 'qwen3:14b']);
+});
+
+it('falls back to Sonnet when Ollama is requested but not configured', function (): void {
+    config()->set('chat.ollama.model', null);
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'ollama');
+    expect($resolved)->toMatchArray(['provider' => 'anthropic', 'model' => 'claude-sonnet-5']);
+});
+
+it('resolves Auto to Ollama when no cloud provider is configured', function (): void {
+    config()->set('ai.providers.anthropic.key', null);
+    config()->set('ai.providers.openai.key', null);
+    config()->set('chat.ollama.model', 'qwen3:14b');
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'auto');
+    expect($resolved)->toMatchArray(['provider' => 'ollama', 'model' => 'qwen3:14b']);
+});
+
+it('resolves Auto to Sonnet when Anthropic is configured alongside Ollama', function (): void {
+    config()->set('chat.ollama.model', 'qwen3:14b');
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'auto');
+    expect($resolved)->toMatchArray(['provider' => 'anthropic', 'model' => 'claude-sonnet-5']);
+});
+
+it('falls back to an available plan-gated model when the plan allows no configured provider', function (): void {
+    config()->set('ai.providers.anthropic.key', null);
+    config()->set('chat.ollama.model', null);
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'auto');
+    expect($resolved)->toMatchArray(['provider' => 'openai', 'model' => 'gpt-5.5']);
+});
+
+it('falls back to Sonnet when no provider is configured at all', function (): void {
+    config()->set('ai.providers.anthropic.key', null);
+    config()->set('ai.providers.openai.key', null);
+    config()->set('chat.ollama.model', null);
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, 'auto');
+    expect($resolved)->toMatchArray(['provider' => 'anthropic', 'model' => 'claude-sonnet-5']);
+});
+
+it('honors an Ollama default-model preference when configured', function (): void {
+    config()->set('chat.ollama.model', 'llama3.1:70b');
+    app()->forgetInstance(ModelRegistry::class);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $user->ai_preferences = ['default_model' => 'ollama'];
+    $user->save();
+    $user->refresh();
+
+    $resolved = resolve(AiModelResolver::class)->resolve($user, null);
+    expect($resolved)->toMatchArray(['provider' => 'ollama', 'model' => 'llama3.1:70b']);
+});
+
+it('labels explicit and auto resolutions', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $explicit = resolve(AiModelResolver::class)->resolve($user, 'claude-sonnet-5');
+    $auto = resolve(AiModelResolver::class)->resolve($user, null);
+
+    expect($explicit['source'])->toBe('explicit')
+        ->and($explicit['id'])->toBe('claude-sonnet-5')
+        ->and($auto['source'])->toBe('auto')
+        ->and($auto['id'])->toBe('claude-sonnet-5');
+});
+
+it('fails over to the next available chain entry', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $next = resolve(AiModelResolver::class)->failoverNext($user, 'claude-sonnet-5');
+
+    expect($next)->not->toBeNull()
+        ->and($next['id'])->toBe('gpt-5.5')
+        ->and($next['provider'])->toBe('openai')
+        ->and($next['source'])->toBe('auto');
+});
+
+it('returns null once the auto chain is exhausted', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $next = resolve(AiModelResolver::class)->failoverNext($user, 'ollama');
+
+    expect($next)->toBeNull();
+});
+
+it('does not fail over to a premium model for a locked trial', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    config()->set('chat.models', [
+        ChatCatalog::entry(),
+        ChatCatalog::entry(['label' => 'Opus 5', 'model' => 'claude-opus-5', 'min_plan' => 'pro', 'auto' => true]),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(14)])->save();
+
+    expect(resolve(AiModelResolver::class)->failoverNext($user, 'claude-sonnet-5'))->toBeNull();
+});
+
+it('fails over to a premium model for a paid Pro workspace', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    config()->set('chat.models', [
+        ChatCatalog::entry(),
+        ChatCatalog::entry(['label' => 'Opus 5', 'model' => 'claude-opus-5', 'min_plan' => 'pro', 'auto' => true]),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+    $user->currentWorkspace->forceFill(['plan' => Plan::Pro])->save();
+
+    $next = resolve(AiModelResolver::class)->failoverNext($user, 'claude-sonnet-5');
+
+    expect($next)->not->toBeNull()
+        ->and($next['id'])->toBe('claude-opus-5');
+});
+
+it('throws a clear error when no chat model is configured', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    config([
+        'chat.models' => [],
+        'chat.auto_chain' => [],
+        'chat.self_hosted' => ['url' => null, 'key' => '', 'models' => null],
+    ]);
+
+    $resolver = new AiModelResolver(new ModelRegistry, new ModelAccess);
+
+    expect(fn (): array => $resolver->resolve($user))
+        ->toThrow(RuntimeException::class, 'No chat model is configured');
+});

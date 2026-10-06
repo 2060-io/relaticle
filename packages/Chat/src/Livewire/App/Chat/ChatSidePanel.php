@@ -4,22 +4,33 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Livewire\App\Chat;
 
-use App\Enums\Plan;
+use App\Filament\Pages\ChatConversation;
+use App\Filament\Pages\Dashboard;
 use App\Livewire\BaseLivewireComponent;
 use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Contracts\View\View;
-use Livewire\Attributes\Computed;
-use Relaticle\Chat\Models\AiCreditBalance;
+use Relaticle\Chat\Actions\DeleteConversation;
 use Relaticle\Chat\Services\ChatContextService;
 
 final class ChatSidePanel extends BaseLivewireComponent
 {
+    /**
+     * Stands in for the conversation id while building the full-page chat URL.
+     * The panel only learns the id of a brand-new conversation client-side, so
+     * the header menu swaps this out in the browser instead of round-tripping.
+     */
+    private const string CONVERSATION_URL_PLACEHOLDER = '__CONVERSATION_ID__';
+
     public bool $isOpen = false;
 
     public ?string $conversationId = null;
 
-    /** @var array<int, array{label: string, prompt: string}> */
-    public array $suggestedPrompts = [];
+    public ?string $recordType = null;
+
+    public ?string $recordId = null;
+
+    public ?string $recordName = null;
 
     /**
      * @var array<string, string>
@@ -32,7 +43,7 @@ final class ChatSidePanel extends BaseLivewireComponent
 
     public function mount(): void
     {
-        $this->refreshContext();
+        $this->refreshContext(request()->fullUrl());
     }
 
     public function openPanel(?string $conversationId = null): void
@@ -55,58 +66,85 @@ final class ChatSidePanel extends BaseLivewireComponent
     }
 
     /**
-     * Called when the dashboard hero input sends a message.
-     * Opens the panel and forwards the message to the embedded chat.
+     * Resolve context for a URL supplied by the browser.
+     *
+     * Null means "no URL available" (a direct call outside a page context),
+     * which clears the binding rather than guessing.
      */
-    public function handleSendFromDashboard(string $message, string $source = 'dashboard'): void
+    public function refreshContext(?string $url = null): void
     {
-        $this->isOpen = true;
-        $this->dispatch('chat:send-message', message: $message);
+        $contextService = resolve(ChatContextService::class);
+
+        $context = $url === null
+            ? ['record_type' => null, 'record_id' => null, 'record_name' => null]
+            : $contextService->getContextForUrl($url);
+
+        $this->recordType = $context['record_type'];
+        $this->recordId = $context['record_id'];
+        $this->recordName = $context['record_name'];
+        $this->dispatch(
+            'chat:context-updated',
+            type: $this->recordType,
+            id: $this->recordId,
+            label: $this->recordName,
+        );
     }
 
     /**
-     * Refresh context from ChatContextService.
-     * Called on mount and after SPA navigation.
+     * Load an existing conversation into the panel. The embedded chat interface
+     * is keyed by conversation, so changing this remounts it against the picked
+     * transcript.
      */
-    public function refreshContext(): void
+    public function openConversation(string $conversationId): void
     {
-        if (! $this->isOpen) {
+        $this->conversationId = $conversationId;
+    }
+
+    /**
+     * Start a fresh transcript in the panel, leaving the record context intact.
+     */
+    public function startNewConversation(): void
+    {
+        $this->conversationId = null;
+    }
+
+    public function deleteConversation(string $conversationId): void
+    {
+        $user = Filament::auth()->user();
+
+        if (! $user instanceof User) {
             return;
         }
 
-        $contextService = resolve(ChatContextService::class);
-        $context = $contextService->getContext();
-        $this->suggestedPrompts = $contextService->getSuggestedPrompts($context);
-    }
-
-    #[Computed]
-    public function plan(): Plan
-    {
-        /** @var User|null $user */
-        $user = auth()->user();
-        $team = $user?->currentTeam;
-
-        return $team !== null ? $team->plan : Plan::default();
-    }
-
-    #[Computed]
-    public function creditsRemaining(): int
-    {
-        /** @var User|null $user */
-        $user = auth()->user();
-        $teamId = $user?->currentTeam?->getKey();
-
-        if ($teamId === null) {
-            return 0;
+        if (! (new DeleteConversation)->execute($user, $conversationId)) {
+            return;
         }
 
-        return AiCreditBalance::query()
-            ->where('team_id', $teamId)
-            ->value('credits_remaining') ?? 0;
+        if ($this->conversationId === $conversationId) {
+            $this->conversationId = null;
+        }
+
+        $this->dispatch('chat:conversation-deleted');
     }
 
     public function render(): View
     {
-        return view('chat::livewire.app.chat.chat-side-panel');
+        /**
+         * The panel also renders on tenant-less pages (workspace creation, email
+         * verification), where the chat routes have no URL to resolve. The
+         * header's full-page link hides itself when these are null.
+         */
+        $tenant = Filament::getTenant();
+
+        return view('chat::livewire.app.chat.chat-side-panel', [
+            /** Home is where a chat starts; the full-page chat only shows saved transcripts. */
+            'newChatUrl' => $tenant === null
+                ? null
+                : Dashboard::getUrl(panel: 'app', tenant: $tenant),
+            'conversationUrlTemplate' => $tenant === null
+                ? null
+                : ChatConversation::getUrl(['conversationId' => self::CONVERSATION_URL_PLACEHOLDER], panel: 'app', tenant: $tenant),
+            'conversationUrlPlaceholder' => self::CONVERSATION_URL_PLACEHOLDER,
+        ]);
     }
 }

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Events\WorkspaceCreated;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Event;
-use Laravel\Jetstream\Events\TeamCreated;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -16,20 +16,21 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Livewire\Steps\MappingStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(MappingStep::class, ColumnData::class, ImportField::class, ImportFieldCollection::class);
 
 beforeEach(function (): void {
-    Event::fake()->except([TeamCreated::class]);
+    Event::fake()->except([WorkspaceCreated::class]);
 
-    $this->user = User::factory()->withTeam()->create();
+    $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
-    $this->team = $this->user->currentTeam;
+    $this->workspace = $this->user->currentWorkspace;
 
-    Filament::setTenant($this->team);
+    Filament::setTenant($this->workspace);
 
-    $this->import = Import::create([
-        'team_id' => (string) $this->team->id,
+    $this->import = Import::factory()->create([
+        'workspace_id' => (string) $this->workspace->id,
         'user_id' => (string) $this->user->id,
         'entity_type' => ImportEntityType::People,
         'file_name' => 'test.csv',
@@ -42,7 +43,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    $this->store->destroy();
+    ImportStore::delete($this->store->id());
     $this->import->delete();
 });
 
@@ -69,6 +70,8 @@ function createStoreWithHeaders(object $context, array $headers, array $rows = [
     }
 
     $context->import->update(['total_rows' => count($rows)]);
+
+    $context->store = ImportExecutionFixture::publish($context->store);
 }
 
 function mountMappingStep(object $context): Testable
@@ -109,6 +112,22 @@ it('auto-maps Company header to company entity link', function (): void {
     expect($columns)->toHaveKey('Company')
         ->and($columns['Company']['entityLink'])->toBe('company');
 });
+
+it('auto-maps the person column of an opportunity export to the contact link', function (string $header): void {
+    $this->import->update(['entity_type' => ImportEntityType::Opportunity]);
+
+    createStoreWithHeaders($this, ['Name', $header], [
+        ['Name' => 'Renewal', $header => 'Jane Roe'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Opportunity,
+    ])->get('columns');
+
+    expect($columns)->toHaveKey($header)
+        ->and($columns[$header]['entityLink'])->toBe('contact');
+})->with(['Point of Contact', 'Contact Person']);
 
 it('mapToField updates column mapping', function (): void {
     createStoreWithHeaders($this, ['Full Name', 'Notes']);
@@ -246,4 +265,36 @@ it('previewValues returns sample values from SQLite', function (): void {
 
     $component->call('previewValues', 'Name')
         ->assertReturned(['John', 'Jane']);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        ImportStore::delete($this->store->id());
+
+        useRemoteImportStore();
+
+        $this->store = ImportStore::create($this->import->id);
+    });
+
+    it('previewValues returns sample values from the remote store', function (): void {
+        createStoreWithHeaders($this, ['Name', 'Email'], [
+            ['Name' => 'John', 'Email' => 'john@test.com'],
+            ['Name' => 'Jane', 'Email' => 'jane@test.com'],
+        ]);
+
+        mountMappingStep($this)->call('previewValues', 'Name')
+            ->assertReturned(['John', 'Jane']);
+    });
+
+    it('keeps a second reader of the same copy working after the first closes', function (): void {
+        createStoreWithHeaders($this, ['Name', 'Email'], [
+            ['Name' => 'John', 'Email' => 'john@test.com'],
+        ]);
+        $first = ImportStore::forRead($this->import->id);
+        $second = ImportStore::forRead($this->import->id);
+
+        $first->close();
+
+        expect($second->query()->count())->toBe(1);
+    });
 });

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Jetstream\Jetstream;
 use Laravel\Jetstream\Membership as JetstreamMembership;
 
+#[Table(name: 'workspace_user')]
 final class Membership extends JetstreamMembership
 {
     /** @use HasFactory<Factory<self>> */
@@ -31,16 +34,19 @@ final class Membership extends JetstreamMembership
     }
 
     /**
-     * @return BelongsTo<Team, $this>
+     * @return BelongsTo<Workspace, $this>
      */
-    public function team(): BelongsTo
+    public function workspace(): BelongsTo
     {
-        return $this->belongsTo(Team::class);
+        return $this->belongsTo(Workspace::class);
     }
 
-    protected function getRoleNameAttribute(): string
+    /**
+     * @return Attribute<string, never>
+     */
+    protected function roleName(): Attribute
     {
         // @phpstan-ignore-next-line nullCoalesce.expr
-        return Jetstream::findRole($this->role)?->name ?? 'Unknown';
+        return Attribute::get(fn (): string => Jetstream::findRole($this->role)?->name ?? 'Unknown');
     }
 }

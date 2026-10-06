@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\CompanyResource\Pages;
 
+use App\Filament\Concerns\HasCustomFieldColumns;
 use App\Filament\Exports\CompanyExporter;
 use App\Filament\Resources\CompanyResource;
+use App\Models\Company;
 use Asmit\ResizedColumn\HasResizableColumn;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -15,13 +17,12 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportCompanies;
 
 final class ListCompanies extends ListRecords
 {
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
 
     /** @var class-string<CompanyResource> */
     protected static string $resource = CompanyResource::class;
@@ -37,8 +38,9 @@ final class ListCompanies extends ListRecords
                 Action::make('import')
                     ->label(__('filament/resources/company.pages.list.actions.import.label'))
                     ->icon('heroicon-o-arrow-up-tray')
-                    ->url(ImportCompanies::getUrl()),
-                ExportAction::make()->exporter(CompanyExporter::class),
+                    ->url(ImportCompanies::getUrl())
+                    ->visible(ImportCompanies::canAccess(...)),
+                ExportAction::make()->exporter(CompanyExporter::class)->authorize('exportAny', Company::class),
             ])
                 ->icon('heroicon-o-arrows-up-down')
                 ->color('gray')

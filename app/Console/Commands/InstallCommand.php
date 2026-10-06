@@ -89,7 +89,7 @@ final class InstallCommand extends Command
         $installDemoData = confirm(
             label: 'Install demo data?',
             default: true,
-            hint: 'Includes sample companies, contacts, and more'
+            hint: 'Includes sample companies, people, and more'
         );
 
         $createSysAdmin = confirm(
@@ -167,10 +167,10 @@ final class InstallCommand extends Command
     private function checkSystemRequirements(): bool
     {
         $requirements = [
-            'PHP 8.4+' => version_compare(PHP_VERSION, '8.3.0', '>='),
+            'PHP 8.5+' => version_compare(PHP_VERSION, '8.5.0', '>='),
             'Composer' => $this->commandExists('composer'),
             'Node.js' => $this->commandExists('node'),
-            'NPM' => $this->commandExists('npm'),
+            'pnpm' => $this->commandExists('pnpm'),
         ];
 
         $extensions = [
@@ -271,10 +271,10 @@ final class InstallCommand extends Command
             return false;
         }
 
-        $npmResult = Process::run('npm ci --silent');
-        if (! $npmResult->successful()) {
-            $this->error('NPM install failed:');
-            $this->line($npmResult->errorOutput());
+        $pnpmResult = Process::run('pnpm install --frozen-lockfile --silent');
+        if (! $pnpmResult->successful()) {
+            $this->error('pnpm install failed:');
+            $this->line($pnpmResult->errorOutput());
 
             return false;
         }
@@ -298,7 +298,7 @@ final class InstallCommand extends Command
 
     private function buildAssets(): bool
     {
-        $result = Process::run('npm run build');
+        $result = Process::run('pnpm run build');
 
         if (! $result->successful()) {
             $this->error('Asset compilation failed:');
@@ -434,7 +434,7 @@ final class InstallCommand extends Command
         if ($config['demo_data']) {
             $this->newLine();
             $this->line('  <options=bold>Demo data included:</>');
-            $this->line('  • Sample companies and contacts');
+            $this->line('  • Sample companies and people');
             $this->line('  • Example opportunities and tasks');
             $this->line('  • Pre-configured custom fields');
         }

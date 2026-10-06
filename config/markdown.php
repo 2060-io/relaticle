@@ -25,7 +25,7 @@ return [
     /*
      * When enabled, anchor links will be added to all titles
      */
-    'add_anchors_to_headings' => true,
+    'add_anchors_to_headings' => false,
 
     /**
      * When enabled, anchors will be rendered as links.
@@ -39,16 +39,24 @@ return [
      * More info: https://spatie.be/docs/laravel-markdown/v1/using-the-blade-component/passing-options-to-commonmark
      */
     'commonmark_options' => [
+        /*
+         * Blog posts are authored through the panel and stored in the database, so
+         * their markdown is untrusted input. Escaping raw HTML stops a stored
+         * <script> (or an <img onerror>) from executing on the public marketing site.
+         */
+        'html_input' => 'escape',
+        'allow_unsafe_links' => false,
+
         'heading_permalink' => [
             'html_class' => 'heading-permalink',
             'id_prefix' => '',
             'fragment_prefix' => '',
             'insert' => 'before',
-            'min_heading_level' => 1,
+            'min_heading_level' => 2,
             'max_heading_level' => 6,
             'title' => 'Permalink',
-            'symbol' => '#',
-            'aria_hidden' => false,
+            'symbol' => '',
+            'aria_hidden' => true,
         ],
     ],
 

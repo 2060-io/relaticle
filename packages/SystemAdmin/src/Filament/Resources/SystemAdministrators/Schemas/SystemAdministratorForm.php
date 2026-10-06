@@ -12,6 +12,8 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Hash;
 use Relaticle\SystemAdmin\Enums\SystemAdministratorRole;
+use Relaticle\SystemAdmin\Models\SystemAdministrator;
+use Relaticle\SystemAdmin\Rules\KeepsALastSuperAdministrator;
 
 final class SystemAdministratorForm
 {
@@ -33,13 +35,9 @@ final class SystemAdministratorForm
                             ->unique(ignoreRecord: true),
 
                         Select::make('role')
-                            ->options(
-                                collect(SystemAdministratorRole::cases())
-                                    ->mapWithKeys(fn (SystemAdministratorRole $role): array => [
-                                        $role->value => $role->getLabel(),
-                                    ])
-                            )
+                            ->options(SystemAdministratorRole::class)
                             ->default(SystemAdministratorRole::SuperAdministrator->value)
+                            ->rule(fn (?SystemAdministrator $record): KeepsALastSuperAdministrator => new KeepsALastSuperAdministrator($record))
                             ->required(),
 
                         DateTimePicker::make('email_verified_at')
@@ -50,7 +48,7 @@ final class SystemAdministratorForm
                         TextInput::make('password')
                             ->password()
                             ->dehydrateStateUsing(fn (?string $state): ?string => in_array($state, [null, '', '0'], true) ? null : Hash::make($state))
-                            ->dehydrated(filled(...))
+                            ->dehydrated(fn (?string $state): bool => filled($state))
                             ->required(fn (Get $get): bool => ! $get('id'))
                             ->maxLength(255)
                             ->confirmed()

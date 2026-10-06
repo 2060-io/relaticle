@@ -65,11 +65,28 @@ return [
             'after_commit' => false,
         ],
 
+        // Must exceed the longest worker timeout on this connection (the imports and
+        // emails-sync supervisors both run 300s), or a slow job is handed to a second
+        // worker while the first still holds it.
         'redis' => [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Must exceed the longest supervisor timeout (emails-sync and emails-import, 330s): Redis re-delivers a job still reserved past it.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 360),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        // Chat turns stream for up to 130s (the chat supervisor's timeout), so
+        // this connection's retry_after must exceed that or a long turn is
+        // re-delivered mid-stream and replayed: a second provider spend and a
+        // superseded proposal the user never decided.
+        'redis-chat' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'chat',
+            'retry_after' => (int) env('CHAT_QUEUE_RETRY_AFTER', 150),
             'block_for' => null,
             'after_commit' => false,
         ],

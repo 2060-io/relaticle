@@ -18,6 +18,9 @@ return [
         'people' => [
             'label' => 'People',
         ],
+        'opportunities' => [
+            'label' => 'Opportunities',
+        ],
         'creator' => [
             'label' => 'Created By',
         ],
@@ -33,6 +36,22 @@ return [
         'creation_source' => [
             'label' => 'Creation Source',
         ],
+    ],
+
+    'created_periods' => [
+        'today' => 'Created today',
+        'this_week' => 'Created this week',
+        'this_month' => 'Created this month',
+        'this_year' => 'Created this year',
+        'earlier' => 'Created earlier',
+    ],
+
+    'cards' => [
+        'untitled' => 'Untitled note',
+        'no_content' => 'This note has no content.',
+        'today' => 'Today',
+        'yesterday' => 'Yesterday',
+        'deleted' => 'Deleted',
     ],
 
     'pages' => [

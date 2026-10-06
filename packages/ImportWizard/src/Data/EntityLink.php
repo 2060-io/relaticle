@@ -159,7 +159,7 @@ final class EntityLink extends Data
             ->foreignKey('contact_id')
             ->guess([
                 'contact', 'contact_name', 'person', 'contact_id',
-                'person_id', 'people_id',
+                'person_id', 'people_id', 'point of contact', 'contact person',
             ]);
     }
 

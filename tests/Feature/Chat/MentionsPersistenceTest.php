@@ -14,13 +14,13 @@ mutates(CrmAssistant::class);
 mutates(ProcessChatMessage::class);
 
 it('persists a clean user message even when mentions are resolved', function (): void {
-    $user = User::factory()->withPersonalTeam()->create();
-    $team = $user->currentTeam;
-    $company = Company::factory()->for($team)->create(['name' => 'Acme Corp']);
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $company = Company::factory()->for($workspace)->create(['name' => 'Acme Corp']);
     $conversationId = '019dded5-eeee-7000-8000-000000000000';
 
-    AiCreditBalance::query()->updateOrCreate(['team_id' => $team->getKey()], [
-        'team_id' => $team->getKey(),
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $workspace->getKey()], [
+        'workspace_id' => $workspace->getKey(),
         'credits_remaining' => 100,
         'credits_used' => 0,
         'period_starts_at' => now()->startOfMonth(),
@@ -29,8 +29,9 @@ it('persists a clean user message even when mentions are resolved', function ():
 
     DB::table('agent_conversations')->insert([
         'id' => $conversationId,
-        'user_id' => $user->getKey(),
-        'team_id' => $team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $workspace->getKey(),
         'title' => 'test',
         'created_at' => now(),
         'updated_at' => now(),
@@ -42,10 +43,10 @@ it('persists a clean user message even when mentions are resolved', function ():
 
     $job = new ProcessChatMessage(
         user: $user,
-        team: $team,
+        workspace: $workspace,
         message: $cleanMessage,
         conversationId: $conversationId,
-        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6'],
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6', 'id' => 'claude-sonnet-4-6', 'source' => 'auto'],
         mentions: [
             ['type' => 'company', 'id' => (string) $company->id, 'label' => 'Acme Corp'],
         ],
@@ -65,13 +66,13 @@ it('persists a clean user message even when mentions are resolved', function ():
 });
 
 it('still gives the LLM the mention context via the system prompt', function (): void {
-    $user = User::factory()->withPersonalTeam()->create();
-    $team = $user->currentTeam;
-    $company = Company::factory()->for($team)->create(['name' => 'Acme Corp']);
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $company = Company::factory()->for($workspace)->create(['name' => 'Acme Corp']);
     $conversationId = '019dded5-ffff-7000-8000-000000000000';
 
-    AiCreditBalance::query()->updateOrCreate(['team_id' => $team->getKey()], [
-        'team_id' => $team->getKey(),
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $workspace->getKey()], [
+        'workspace_id' => $workspace->getKey(),
         'credits_remaining' => 100,
         'credits_used' => 0,
         'period_starts_at' => now()->startOfMonth(),
@@ -80,8 +81,9 @@ it('still gives the LLM the mention context via the system prompt', function ():
 
     DB::table('agent_conversations')->insert([
         'id' => $conversationId,
-        'user_id' => $user->getKey(),
-        'team_id' => $team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $workspace->getKey(),
         'title' => 'test',
         'created_at' => now(),
         'updated_at' => now(),
@@ -91,10 +93,10 @@ it('still gives the LLM the mention context via the system prompt', function ():
 
     $job = new ProcessChatMessage(
         user: $user,
-        team: $team,
+        workspace: $workspace,
         message: 'Tell me about @Acme_Corp',
         conversationId: $conversationId,
-        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6'],
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6', 'id' => 'claude-sonnet-4-6', 'source' => 'auto'],
         mentions: [
             ['type' => 'company', 'id' => (string) $company->id, 'label' => 'Acme Corp'],
         ],

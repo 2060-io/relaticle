@@ -15,12 +15,12 @@ use Tests\Helpers\ChatDocument;
 mutates(ChatController::class);
 
 beforeEach(function (): void {
-    $this->user = User::factory()->withPersonalTeam()->create();
-    $this->team = $this->user->currentTeam;
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->workspace = $this->user->currentWorkspace;
     $this->actingAs($this->user);
 
-    AiCreditBalance::query()->updateOrCreate(['team_id' => $this->team->getKey()], [
-        'team_id' => $this->team->getKey(),
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $this->workspace->getKey()], [
+        'workspace_id' => $this->workspace->getKey(),
         'credits_remaining' => 100,
         'credits_used' => 0,
         'period_starts_at' => now()->startOfMonth(),
@@ -30,8 +30,9 @@ beforeEach(function (): void {
     $this->conversationId = (string) Str::uuid7();
     AgentConversation::query()->insert([
         'id' => $this->conversationId,
-        'user_id' => $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => '',
         'created_at' => now(),
         'updated_at' => now(),
@@ -40,7 +41,7 @@ beforeEach(function (): void {
 
 it('accepts a document field and dispatches with derived text and mentions', function (): void {
     Queue::fake();
-    $company = Company::factory()->for($this->team)->create(['name' => 'Acme']);
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Acme']);
 
     $document = [
         'type' => 'doc',
@@ -91,10 +92,10 @@ it('returns 422 when the parsed text exceeds 5000 characters', function (): void
         ->assertJsonPath('errors.document.0', 'Message is too long.');
 });
 
-it('silently drops mention nodes whose ID does not belong to the current team', function (): void {
+it('silently drops mention nodes whose ID does not belong to the current workspace', function (): void {
     Queue::fake();
-    $foreignTeam = User::factory()->withPersonalTeam()->create()->currentTeam;
-    $foreignCompany = Company::factory()->for($foreignTeam)->create(['name' => 'Foreign']);
+    $foreignWorkspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
+    $foreignCompany = Company::factory()->for($foreignWorkspace)->create(['name' => 'Foreign']);
 
     $document = [
         'type' => 'doc',

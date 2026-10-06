@@ -1,0 +1,308 @@
+---
+title: MCP Server
+description: Read the reference for Relaticle's MCP server, with OAuth and personal access token setup, custom field access and direct writes.
+order: 2
+updated: "2026-10-05"
+---
+
+MCP (Model Context Protocol) lets AI assistants like Claude work directly with your Relaticle CRM data. Instead of copy-pasting between tools, your AI assistant can list companies, create tasks, update people, and more -- all from a natural conversation.
+
+---
+
+## What You Can Do
+
+With the Relaticle MCP server, your AI assistant can:
+
+- **List and search** companies, people, opportunities, tasks, and notes
+- **Get a single record** with full details and relationships
+- **Create new records** directly from a conversation
+- **Update existing records** -- rename a company, reassign a task
+- **Delete records** you no longer need
+- **Attach or detach** tasks and notes to companies, people, and opportunities
+- **Read entity schemas** to understand your custom fields
+- **Get a CRM overview** with record counts and recent activity
+
+Writes made over MCP apply immediately. The approval card belongs to the assistant built into Relaticle, and an MCP client relies on its own confirmation prompts. The server exposes CRM records only: it does not send email or read synced mail and meetings.
+
+---
+
+## Connect to Relaticle
+
+Clients with OAuth support need only the MCP endpoint. ChatGPT and Claude open Relaticle's consent screen and let you choose one workspace.
+
+Clients without OAuth support need a personal access token:
+
+1. Log in to Relaticle
+2. Click your avatar in the top-right corner
+3. Select **Access Tokens**
+4. Click **Create** and give your token a name
+5. Copy the token -- it won't be shown again
+
+The token scopes your access to the workspace you select when creating it. All MCP operations use that workspace's data.
+
+---
+
+## Authentication
+
+Relaticle's MCP server supports two authentication methods:
+
+### OAuth 2.1 (recommended for end users)
+
+The MCP endpoint advertises OAuth metadata at:
+
+- `https://mcp.relaticle.com/.well-known/oauth-authorization-server`
+- `https://mcp.relaticle.com/.well-known/oauth-protected-resource`
+
+Clients that support Dynamic Client Registration (RFC 7591), including Claude.ai, Claude Desktop, Claude Code, and ChatGPT custom connectors, register themselves automatically and walk you through a one-click consent flow. PKCE is required (`S256`).
+
+At consent you pick **one workspace** for the connector. That choice is permanent for that connector: to point it at a different workspace, revoke it and connect again. Paused workspaces cannot be selected. Subscribe first, or the connector would have no data to read.
+
+Access tokens last 30 days and refresh tokens 90 days; supported clients refresh silently in the background.
+
+### Revoking a connector
+
+**Settings → Access Tokens → AI Connectors** lists every assistant you have connected, the workspace each is bound to, and a **Revoke** button. Revoking invalidates the connector's access and refresh tokens immediately.
+
+### Personal access tokens (recommended for developer tools)
+
+For Cursor, VS Code, MCP Inspector, or any client without OAuth support, create a personal access token from your account settings and pass it as `Authorization: Bearer YOUR_TOKEN`.
+
+---
+
+## Setup by Client
+
+The MCP server endpoint is `https://mcp.relaticle.com`. ChatGPT and Claude use OAuth. The remaining examples use a personal access token.
+
+### ChatGPT
+
+1. Open the [Relaticle plugin](https://chatgpt.com/plugins/plugin_asdk_app_6a92c3af04a0819180ed6652ebe09961) in ChatGPT's plugin directory and click **Install plugin**.
+2. Sign in to Relaticle and choose one workspace.
+3. Start a message with **@Relaticle**.
+
+### Claude
+
+1. Open **Customize → Connectors**.
+2. Select the plus button, then **Add custom connector**.
+3. Enter `Relaticle` and `https://mcp.relaticle.com`.
+4. Connect, sign in to Relaticle, and choose one workspace.
+
+### Claude Desktop with a personal access token
+
+Add this to your Claude Desktop configuration file (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "relaticle": {
+      "type": "streamable-http",
+      "url": "https://mcp.relaticle.com",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
+
+### Claude Code with a personal access token
+
+Add the server from your terminal:
+
+```bash
+claude mcp add relaticle \
+  --transport streamable-http \
+  https://mcp.relaticle.com \
+  --header "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Cursor with a personal access token
+
+Add this to your Cursor MCP configuration (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "relaticle": {
+      "type": "streamable-http",
+      "url": "https://mcp.relaticle.com",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
+
+### VS Code with a personal access token
+
+Add this to your VS Code settings (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "relaticle": {
+      "type": "streamable-http",
+      "url": "https://mcp.relaticle.com",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Available Tools
+
+The server provides 39 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, and file uploads.
+
+### Cross-entity discovery
+
+| Tool | Description |
+|------|-------------|
+| `search` | Search across companies, people, opportunities, tasks, and notes. Returns canonical URLs for citation. |
+| `fetch` | Fetch a single record by canonical URL. Pair with `search` for ChatGPT Company Knowledge integration. |
+
+### Account
+
+| Tool | Description |
+|------|-------------|
+| `who-ami-tool` | Get the authenticated user, current workspace, workspace members, and token abilities |
+
+### Workspace intelligence
+
+| Tool | Description |
+|------|-------------|
+| `get-crm-schema-tool` | Get the active schema, custom fields, filters, and relationships for one entity type |
+| `get-crm-summary-tool` | Get record counts, pipeline totals by stage, and task due status in your timezone |
+| `aggregate-opportunities-tool` | Group opportunity counts and amounts by stage or company, with optional date bounds |
+| `list-activity-tool` | List recent CRM changes with actors, record links, and field-level differences |
+| `list-custom-fields-tool` | List active and inactive custom-field definitions, including choice options |
+
+### Companies
+
+| Tool | Description |
+|------|-------------|
+| `list-companies-tool` | List companies with optional search by name and pagination |
+| `get-company-tool` | Get a single company by ID with full details and relationships |
+| `create-company-tool` | Create a new company (requires `name`) |
+| `update-company-tool` | Update a company by ID |
+| `delete-company-tool` | Soft-delete a company by ID |
+
+### People
+
+| Tool | Description |
+|------|-------------|
+| `list-people-tool` | List people with optional search, filter by company |
+| `get-people-tool` | Get a single person by ID with full details and relationships |
+| `create-people-tool` | Create a new person (requires `name`, optional `company_id`) |
+| `update-people-tool` | Update a person by ID |
+| `delete-people-tool` | Soft-delete a person by ID |
+
+### Opportunities
+
+| Tool | Description |
+|------|-------------|
+| `list-opportunities-tool` | List opportunities with optional search, filter by company |
+| `get-opportunity-tool` | Get a single opportunity by ID with full details and relationships |
+| `create-opportunity-tool` | Create a new opportunity (requires `name`, optional `company_id`, `contact_id`) |
+| `update-opportunity-tool` | Update an opportunity by ID |
+| `delete-opportunity-tool` | Soft-delete an opportunity by ID |
+
+### Tasks
+
+| Tool | Description |
+|------|-------------|
+| `list-tasks-tool` | List tasks with optional search by title |
+| `get-task-tool` | Get a single task by ID with full details and relationships |
+| `create-task-tool` | Create a new task (requires `title`) |
+| `update-task-tool` | Update a task by ID |
+| `delete-task-tool` | Soft-delete a task by ID |
+| `attach-task-to-entities-tool` | Link a task to companies, people, opportunities, or assign users. Adds without removing existing links. |
+| `detach-task-from-entities-tool` | Unlink a task from companies, people, opportunities, or unassign users |
+
+### Notes
+
+| Tool | Description |
+|------|-------------|
+| `list-notes-tool` | List notes with optional search by title |
+| `get-note-tool` | Get a single note by ID with full details and relationships |
+| `create-note-tool` | Create a new note (requires `title`) |
+| `update-note-tool` | Update a note by ID |
+| `delete-note-tool` | Soft-delete a note by ID |
+| `attach-note-to-entities-tool` | Link a note to companies, people, or opportunities. Adds without removing existing links. |
+| `detach-note-from-entities-tool` | Unlink a note from companies, people, or opportunities |
+
+### Files
+
+| Tool | Description |
+|------|-------------|
+| `upload-file` | Store a file in the workspace from a public https URL, a base64 body with `filename`, or an `upload_id`. Returns `suggested_markdown` to embed the file in a rich-editor field such as a note body, plus `file_id` for the stored file. Allowed types: pdf, doc, docx, xlsx, pptx, jpg, jpeg, png, gif, webp, up to 10 MB. 60 calls per hour per workspace. |
+| `create-upload-url` | Get a five-minute signed URL to `PUT` a file body to, then pass the returned `upload_id` to `upload-file`. |
+
+Uploads stay pending for 24 hours. Saving a record whose rich-editor body embeds the file claims it; unclaimed files are purged.
+
+Entity list tools support `search`, `per_page` (default 15, maximum 25), and `page`. They also support date filters, custom-field filters, sorting, and selected relationship includes.
+
+List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs.
+
+---
+
+## Schema Resources
+
+The server exposes five schema resources that describe each entity's fields, including any custom fields your workspace has configured, plus a summary resource with record counts:
+
+| Resource URI | Description |
+|---|---|
+| `relaticle://schema/company` | Company fields and custom fields |
+| `relaticle://schema/people` | People fields and custom fields |
+| `relaticle://schema/opportunity` | Opportunity fields and custom fields |
+| `relaticle://schema/task` | Task fields and custom fields |
+| `relaticle://schema/note` | Note fields and custom fields |
+
+Resource support varies by MCP client. Use `get-crm-schema-tool` before a custom-field write when your client does not expose resources automatically.
+
+---
+
+## CRM Overview Prompt
+
+The server includes a built-in prompt called **CRM Overview** that gives your AI assistant a snapshot of your CRM data -- record counts for each entity and recently created companies and people. This is a great starting point for any conversation.
+
+---
+
+## Example Prompts
+
+Once connected, try these in your AI assistant:
+
+- "List all my companies"
+- "Create a new company called Acme Corp"
+- "Show me the people at company X"
+- "Create a task to follow up with John next week"
+- "Give me an overview of my CRM"
+- "Update the name of company X to Y"
+- "Delete the task with ID abc-123"
+
+---
+
+## Troubleshooting
+
+### "Unauthorized" or 401 Error
+
+Your access token may be expired or invalid. Create a new one from **Settings > Access Tokens**.
+
+### No Data Returned
+
+The MCP server scopes all data to the workspace associated with your token. Make sure the token was created for the correct workspace and that the workspace has data.
+
+### Connection Refused
+
+Verify the MCP URL is correct: `https://mcp.relaticle.com`.
+
+### Custom Fields Not Showing
+
+Custom fields are workspace-specific. If you don't see them, confirm they're configured for your workspace in **Settings > Custom Fields**. Then call `get-crm-schema-tool` for the entity type.
+
+### Rate Limiting
+
+MCP tool requests are limited to 120 per minute per authenticated user. OAuth authorization endpoints are limited to 20 per minute per IP address.

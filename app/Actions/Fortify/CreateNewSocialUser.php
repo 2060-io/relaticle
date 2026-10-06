@@ -6,6 +6,8 @@ namespace App\Actions\Fortify;
 
 use App\Contracts\User\CreatesNewSocialUsers;
 use App\Models\User;
+use App\Rules\InvitedEmail;
+use App\Rules\RegistrableEmail;
 use Filament\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +27,7 @@ final readonly class CreateNewSocialUser implements CreatesNewSocialUsers
     {
         Validator::make($input, [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email' => ['required', 'string', ...RegistrableEmail::rules(checkDns: false), 'max:255', 'unique:users', new InvitedEmail],
         ])->validate();
 
         return DB::transaction(fn () => tap(User::query()->create([

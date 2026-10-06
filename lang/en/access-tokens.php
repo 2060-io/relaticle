@@ -18,7 +18,7 @@ return [
 
     'form' => [
         'name' => 'Token Name',
-        'team' => 'Workspace',
+        'workspace' => 'Workspace',
         'expiration' => 'Expiration',
         'expiration_placeholder' => 'Select expiration...',
         'permissions' => 'Permissions',
@@ -28,14 +28,14 @@ return [
     'table' => [
         'columns' => [
             'name' => 'Name',
-            'team' => 'Workspace',
+            'workspace' => 'Workspace',
             'abilities' => 'Permissions',
             'expires_at' => 'Expires',
             'last_used_at' => 'Last Used',
             'created_at' => 'Created',
         ],
         'placeholders' => [
-            'no_team' => '—',
+            'no_workspace' => '—',
             'never' => 'Never',
         ],
     ],
@@ -76,12 +76,40 @@ return [
         'description' => 'Create a token above to get started.',
     ],
 
+    'connectors' => [
+        'title' => 'AI Connectors',
+        'description' => 'Assistants and apps, such as Claude, ChatGPT and Maxforms, that you connected through the consent screen. Revoking one immediately invalidates its access.',
+        'columns' => [
+            'name' => 'Connector',
+            'workspace' => 'Workspace',
+            'active_tokens' => 'Active tokens',
+        ],
+        'actions' => [
+            'revoke' => 'Revoke',
+        ],
+        'modals' => [
+            'revoke' => [
+                'title' => 'Revoke connector',
+                'description' => 'The assistant will lose access to this workspace immediately. You can connect it again at any time.',
+            ],
+        ],
+        'notifications' => [
+            'revoked' => 'Connector revoked.',
+        ],
+        'empty_state' => [
+            'heading' => 'No AI connectors',
+            'description' => 'Connect Relaticle from Claude or ChatGPT and the connector will appear here.',
+        ],
+    ],
+
     'integrations' => [
         'heading' => 'What to do next',
         'api_link' => 'REST API',
         'api_description' => 'Manage CRM data programmatically.',
         'mcp_link' => 'MCP Server',
         'mcp_description' => 'Connect AI assistants like Claude.',
+        'forms_link' => 'Web forms',
+        'forms_description' => 'Turn form submissions into records with Maxforms.',
     ],
 
     'user_menu' => 'Access Tokens',

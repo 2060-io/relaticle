@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Rules;
 
+use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use Closure;
 use Illuminate\Contracts\Database\Query\Builder;
@@ -17,10 +18,16 @@ use Relaticle\CustomFields\Services\ValidationService;
 
 final readonly class ValidCustomFields implements ValidationRule
 {
+    /**
+     * @param  string|int|null  $ignoreEntityId  the record being updated, excluded from
+     *                                           unique-value checks so resubmitting its own
+     *                                           unchanged value never reads as a collision
+     */
     public function __construct(
         private string $tenantId,
         private string $entityType,
         private bool $isUpdate = false,
+        private string|int|null $ignoreEntityId = null,
     ) {}
 
     /**
@@ -41,10 +48,9 @@ final readonly class ValidCustomFields implements ValidationRule
 
             /** @var BaseCustomField $customField */
             foreach ($customFields as $customField) {
-                $fieldRules = $validationService->getValidationRules($customField);
+                $fieldRules = $validationService->getValidationRules($customField, $this->ignoreEntityId);
 
                 if ($fieldRules !== []) {
-                    $fieldRules = $this->ensureNullableForDateFields($customField->type, $fieldRules);
                     $rules["custom_fields.{$customField->code}"] = $fieldRules;
                 }
 
@@ -55,6 +61,10 @@ final readonly class ValidCustomFields implements ValidationRule
                 }
 
                 $this->addChoiceFieldOptionRules($customField, $rules);
+
+                if ($customField->type === CustomFieldType::RECORD->value) {
+                    $rules["custom_fields.{$customField->code}"][] = new OwnedLookupRecords($this->tenantId, (string) $customField->lookup_type, $customField->name);
+                }
             }
         }
 
@@ -89,30 +99,6 @@ final readonly class ValidCustomFields implements ValidationRule
         $unknownList = implode(', ', $unknownKeys);
 
         $fail("Unknown custom field keys: {$unknownList}.");
-    }
-
-    /**
-     * Prepend 'nullable' to validation rules for date/date_time fields so null clears the value.
-     *
-     * The vendor package's ValidationService does not include 'nullable', causing
-     * the 'date' rule to reject null. We fix this at the application layer.
-     *
-     * @param  array<int, mixed>  $fieldRules
-     * @return array<int, mixed>
-     */
-    private function ensureNullableForDateFields(string $fieldType, array $fieldRules): array
-    {
-        $fieldTypeData = CustomFieldsType::getFieldType($fieldType);
-
-        if ($fieldTypeData === null || ! $fieldTypeData->dataType->isDateOrDateTime()) {
-            return $fieldRules;
-        }
-
-        if (in_array('nullable', $fieldRules, true)) {
-            return $fieldRules;
-        }
-
-        return ['nullable', ...$fieldRules];
     }
 
     /**
@@ -158,7 +144,7 @@ final readonly class ValidCustomFields implements ValidationRule
 
     /**
      * @param  array<int, string>  $submittedCodes
-     * @return EloquentCollection<int, BaseCustomField>
+     * @return EloquentCollection<int, CustomField>
      */
     private function resolveCustomFields(array $submittedCodes): EloquentCollection
     {
@@ -179,14 +165,14 @@ final readonly class ValidCustomFields implements ValidationRule
 
         if ($submittedCodes === []) {
             return $baseQuery
-                ->whereJsonContains('validation_rules', [['name' => 'required']])
+                ->where('validation_rules->required', true)
                 ->get();
         }
 
         return $baseQuery
             ->where(function (Builder $query) use ($submittedCodes): void {
                 $query->whereIn('code', $submittedCodes)
-                    ->orWhereJsonContains('validation_rules', [['name' => 'required']]);
+                    ->orWhere('validation_rules->required', true);
             })
             ->get();
     }

@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Actions\Task\CreateTask;
-use App\Enums\CreationSource;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
@@ -19,45 +18,40 @@ mutates(CreateTaskTool::class);
 mutates(CreateTask::class);
 
 beforeEach(function (): void {
-    $this->user = User::factory()->withPersonalTeam()->create();
-    $this->team = $this->user->currentTeam;
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->workspace = $this->user->currentWorkspace;
     Auth::guard('web')->setUser($this->user);
 
     DB::table('agent_conversations')->insert([
         'id' => '019df800-3333-7000-8000-000000000001',
-        'user_id' => (string) $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => (string) $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => '',
         'created_at' => now(),
         'updated_at' => now(),
     ]);
 });
 
-it('CreateTaskTool exposes people_ids, assignee_ids, and other linkage fields in the schema', function (): void {
+it('CreateTaskTool wraps entity fields inside a records[] schema', function (): void {
     $tool = resolve(CreateTaskTool::class);
     $schema = $tool->schema(new JsonSchemaTypeFactory);
 
-    expect($schema)
-        ->toHaveKey('title')
-        ->toHaveKey('people_ids')
-        ->toHaveKey('assignee_ids')
-        ->toHaveKey('company_ids')
-        ->toHaveKey('opportunity_ids');
+    expect($schema)->toHaveKey('records');
 });
 
 it('persists people_ids in the pending action data', function (): void {
-    $angel = People::factory()->for($this->team)->create(['name' => 'Angel']);
+    $angel = People::factory()->for($this->workspace)->create(['name' => 'Angel']);
 
     $tool = resolve(CreateTaskTool::class);
     $tool->setConversationId('019df800-3333-7000-8000-000000000001');
 
     $tool->handle(new Request([
-        'title' => 'Follow up call',
-        'people_ids' => [(string) $angel->id],
+        'records' => [['title' => 'Follow up call', 'people_ids' => [(string) $angel->id]]],
     ]));
 
     $pending = PendingAction::query()
-        ->where('team_id', $this->team->getKey())
+        ->where('workspace_id', $this->workspace->getKey())
         ->latest()
         ->firstOrFail();
 
@@ -67,12 +61,11 @@ it('persists people_ids in the pending action data', function (): void {
 });
 
 it('approving a task with people_ids creates the taskables pivot', function (): void {
-    $angel = People::factory()->for($this->team)->create(['name' => 'Angel']);
+    $angel = People::factory()->for($this->workspace)->create(['name' => 'Angel']);
 
     $task = resolve(CreateTask::class)->execute(
         $this->user,
         ['title' => 'Follow up call', 'people_ids' => [(string) $angel->id]],
-        CreationSource::CHAT,
     );
 
     expect($task)->toBeInstanceOf(Task::class);
@@ -80,33 +73,87 @@ it('approving a task with people_ids creates the taskables pivot', function (): 
 });
 
 it('rejects cross-tenant people_ids at the action layer', function (): void {
-    $other = User::factory()->withPersonalTeam()->create();
-    $foreign = People::factory()->for($other->currentTeam)->create(['name' => 'Mallory']);
+    $other = User::factory()->withPersonalWorkspace()->create();
+    $foreign = People::factory()->for($other->currentWorkspace)->create(['name' => 'Mallory']);
 
     expect(fn () => resolve(CreateTask::class)->execute(
         $this->user,
         ['title' => 'X', 'people_ids' => [(string) $foreign->id]],
-        CreationSource::CHAT,
     ))->toThrow(ValidationException::class);
 });
 
 it('renders linked names in the proposal display data', function (): void {
-    $angel = People::factory()->for($this->team)->create(['name' => 'Angel']);
+    $angel = People::factory()->for($this->workspace)->create(['name' => 'Angel']);
 
     $tool = resolve(CreateTaskTool::class);
     $tool->setConversationId('019df800-3333-7000-8000-000000000001');
 
     $tool->handle(new Request([
-        'title' => 'Follow up',
-        'people_ids' => [(string) $angel->id],
+        'records' => [['title' => 'Follow up', 'people_ids' => [(string) $angel->id]]],
     ]));
 
     $pending = PendingAction::query()
-        ->where('team_id', $this->team->getKey())
+        ->where('workspace_id', $this->workspace->getKey())
         ->latest()
         ->firstOrFail();
 
     $fields = collect($pending->display_data['fields'] ?? []);
     expect($fields->pluck('label')->all())->toContain('Linked people');
     expect($fields->firstWhere('label', 'Linked people')['value'] ?? '')->toContain('Angel');
+});
+
+it('coerces a scalar assignee_ids into a list instead of dropping it', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => 'member']);
+
+    $tool = resolve(CreateTaskTool::class);
+    $tool->setConversationId('019df800-3333-7000-8000-000000000001');
+
+    // LLMs sometimes emit a scalar where an array is declared.
+    $tool->handle(new Request([
+        'records' => [['title' => 'Scalar assignee', 'assignee_ids' => (string) $member->getKey()]],
+    ]));
+
+    $pending = PendingAction::query()
+        ->where('workspace_id', $this->workspace->getKey())
+        ->latest()
+        ->firstOrFail();
+
+    expect($pending->action_data)->toHaveKey('assignee_ids', [(string) $member->getKey()]);
+});
+
+it('shows the assignee row on the card when assignee_ids arrives as a scalar', function (): void {
+    $member = User::factory()->create(['name' => 'Dana Scully']);
+    $this->workspace->users()->attach($member, ['role' => 'member']);
+
+    $tool = resolve(CreateTaskTool::class);
+    $tool->setConversationId('019df800-3333-7000-8000-000000000001');
+
+    $tool->handle(new Request([
+        'records' => [['title' => 'Scalar assignee display', 'assignee_ids' => (string) $member->getKey()]],
+    ]));
+
+    $pending = PendingAction::query()
+        ->where('workspace_id', $this->workspace->getKey())
+        ->latest()
+        ->firstOrFail();
+
+    $fields = collect($pending->display_data['fields'] ?? []);
+    expect($fields->firstWhere('label', 'Assignees')['value'] ?? '')->toContain('Dana Scully');
+});
+
+it('shows a task linked to a contact as having no assignee', function (): void {
+    $angel = People::factory()->for($this->workspace)->create(['name' => 'Angel']);
+
+    $tool = resolve(CreateTaskTool::class);
+    $tool->setConversationId('019df800-3333-7000-8000-000000000001');
+
+    $tool->handle(new Request([
+        'records' => [['title' => 'Call Angel', 'people_ids' => [(string) $angel->id]]],
+    ]));
+
+    $fields = collect(PendingAction::query()->where('workspace_id', $this->workspace->getKey())->latest()->firstOrFail()->display_data['fields']);
+
+    expect($fields->firstWhere('label', 'Linked people')['value'])->toBe('Angel')
+        ->and($fields->firstWhere('label', 'Assignees')['value'])->toBe(__('(none)'));
 });

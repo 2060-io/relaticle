@@ -4,22 +4,24 @@ declare(strict_types=1);
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Jobs\ProcessChatMessage;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Services\CreditService;
 use Relaticle\Chat\Services\TipTapDocumentParser;
+use Tests\Helpers\AnthropicSse;
 
 mutates(ProcessChatMessage::class);
 
 beforeEach(function (): void {
-    $this->user = User::factory()->withPersonalTeam()->create();
-    $this->team = $this->user->currentTeam;
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->workspace = $this->user->currentWorkspace;
     $this->actingAs($this->user);
 
-    AiCreditBalance::query()->updateOrCreate(['team_id' => $this->team->getKey()], [
-        'team_id' => $this->team->getKey(),
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $this->workspace->getKey()], [
+        'workspace_id' => $this->workspace->getKey(),
         'credits_remaining' => 100,
         'credits_used' => 0,
         'period_starts_at' => now()->startOfMonth(),
@@ -31,8 +33,9 @@ it('materializes the assistant message document at stream end', function (): voi
     $conversationId = (string) Str::uuid7();
     DB::table('agent_conversations')->insert([
         'id' => $conversationId,
-        'user_id' => $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => 'Test',
         'created_at' => now(),
         'updated_at' => now(),
@@ -42,10 +45,10 @@ it('materializes the assistant message document at stream end', function (): voi
 
     new ProcessChatMessage(
         user: $this->user,
-        team: $this->team,
+        workspace: $this->workspace,
         message: 'Show me my deals',
         conversationId: $conversationId,
-        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6'],
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6', 'id' => 'claude-sonnet-4-6', 'source' => 'auto'],
         mentions: [],
     )->handle(resolve(CreditService::class));
 
@@ -69,10 +72,45 @@ it('materializes the assistant message document at stream end', function (): voi
     ]);
 });
 
+it('records turn duration in assistant message meta', function (): void {
+    $conversationId = (string) Str::uuid7();
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
+        'title' => 'Test',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    CrmAssistant::fake(['I found 2 deals.']);
+
+    new ProcessChatMessage(
+        user: $this->user,
+        workspace: $this->workspace,
+        message: 'Show me my deals',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-4-6', 'id' => 'claude-sonnet-4-6', 'source' => 'auto'],
+        mentions: [],
+    )->handle(resolve(CreditService::class));
+
+    $meta = json_decode((string) DB::table('agent_conversation_messages')
+        ->where('conversation_id', $conversationId)
+        ->where('role', 'assistant')
+        ->latest()
+        ->orderByDesc('id')
+        ->value('meta'), associative: true);
+
+    expect($meta['duration_ms'])->toBeInt()->toBeGreaterThan(0)
+        ->and($meta['model'])->toBe('claude-sonnet-4-6')
+        ->and($meta['provider'])->toBe('anthropic');
+});
+
 it('TipTapDocumentParser::buildFromText produces the expected stored shape', function (): void {
     $parser = resolve(TipTapDocumentParser::class);
 
-    $document = $parser->buildFromText('I found 2 deals.', [], $this->team);
+    $document = $parser->buildFromText('I found 2 deals.', [], $this->workspace);
 
     expect($document)->toMatchArray([
         'type' => 'doc',
@@ -81,4 +119,41 @@ it('TipTapDocumentParser::buildFromText produces the expected stored shape', fun
             'content' => [['type' => 'text', 'text' => 'I found 2 deals.']],
         ]],
     ]);
+});
+
+it('stores only the reply text when the model thinks before answering', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())
+        ->update(['credits_remaining' => 100, 'credits_used' => 0]);
+
+    DB::table('agent_conversations')->insert([
+        'id' => 'c-thinking',
+        'participant_type' => 'user',
+        'participant_id' => $user->getKey(),
+        'workspace_id' => $workspace->getKey(),
+        'title' => 'Test conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    AnthropicSse::fake(AnthropicSse::thinkingThenReply('The user wrote in Persian, so answer in Persian.', 'سلام! چطور می‌توانم کمک کنم؟', 'claude-sonnet-5'));
+    Queue::fake();
+
+    new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'سلام',
+        conversationId: 'c-thinking',
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'auto'],
+    )->handle(resolve(CreditService::class));
+
+    $reply = DB::table('agent_conversation_messages')
+        ->where('conversation_id', 'c-thinking')
+        ->where('role', 'assistant')
+        ->sole();
+
+    expect($reply->content)->toBe('سلام! چطور می‌توانم کمک کنم؟')
+        ->and($reply->content)->not->toContain('answer in Persian')
+        ->and(json_decode($reply->steps, true)[0]['reasoning'])->toBe('The user wrote in Persian, so answer in Persian.');
 });

@@ -1,0 +1,12 @@
+# Custom Fields
+
+- Models using the `UsesCustomFields` trait handle `custom_fields` automatically. Do NOT manually extract, strip, or call `saveCustomFields()` in actions
+- The trait merges `'custom_fields'` into `$fillable`, intercepts it during `saving`, and persists values during `saved`. Just pass `custom_fields` through in the `$data` array to `create()`/`update()`
+- Tenant context for the custom-fields package is set in `SetApiWorkspaceContext` middleware via `TenantContextService::setTenantId()`. Actions don't need `withTenant()` wrappers
+- In Filament, the package's own `SetTenantContextMiddleware` handles tenant context. No action-level code is needed there either
+- `CustomFieldValidationService` intentionally uses explicit `where('tenant_id', ...)` with `withoutGlobalScopes()`. This is defensive and correct; don't change it to rely on ambient state
+- Every write path that is NOT a Filament panel request or behind `SetApiWorkspaceContext` (chat action approval, queued jobs, webhooks, commands) must set `TenantContextService::setTenantId()` before saving custom fields. Otherwise `saveCustomFields` iterates every tenant (gateway timeouts + cross-tenant writes). Wrap manual calls in try/finally restoring the previous tenant id (mirror `SetApiWorkspaceContext`)
+- Writing null/empty for a custom field is how a value is cleared. Never skip or filter out "empty" values on save; only keys absent from the payload are left untouched. Verify any persistence change in both directions (set a value AND clear it), through both the panel form and the chat/API path
+- Retire a field type through `config('custom-fields.field_type_configuration')->disabled()` and keep its `CustomFieldType` case. Stored rows still need a type name and a write format when a schema lists them, and `CustomFieldType::from()` throws without the case. `FILE_UPLOAD` is the precedent
+- Sections, validation rules, conditional visibility and field width are package features Relaticle does not use. `config/custom-fields.php` disables all four, so the settings form never shows them. They are never a parity gap: do not add them to a chat tool, an MCP tool or the API
+- Deleting a field definition is permanent: the package observer deletes its options and every stored value with it. `CustomFieldDefinitionValidator::forDelete()` owns the gate the settings form applies: never a system-defined field, and an active field only when no record holds a value. `DeleteCustomField` re-checks it inside the approving transaction

@@ -13,7 +13,6 @@ enum PendingActionStatus: string implements HasColor, HasLabel
     case Approved = 'approved';
     case Rejected = 'rejected';
     case Expired = 'expired';
-    case Restored = 'restored';
     case Superseded = 'superseded';
 
     public function getColor(): string
@@ -23,7 +22,6 @@ enum PendingActionStatus: string implements HasColor, HasLabel
             self::Approved => 'success',
             self::Rejected => 'danger',
             self::Expired, self::Superseded => 'gray',
-            self::Restored => 'info',
         };
     }
 
@@ -34,8 +32,18 @@ enum PendingActionStatus: string implements HasColor, HasLabel
             self::Approved => 'Approved',
             self::Rejected => 'Rejected',
             self::Expired => 'Expired',
-            self::Restored => 'Restored',
             self::Superseded => 'Superseded',
+        };
+    }
+
+    public function promptWord(): string
+    {
+        return match ($this) {
+            self::Pending => 'PENDING',
+            self::Approved => 'APPROVED (written)',
+            self::Rejected => 'REJECTED (nothing was written)',
+            self::Expired => 'EXPIRED (nothing was written)',
+            self::Superseded => 'SUPERSEDED (nothing was written)',
         };
     }
 }

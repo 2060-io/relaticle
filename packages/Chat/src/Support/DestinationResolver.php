@@ -1,0 +1,106 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Relaticle\Chat\Support;
+
+use App\Enums\WorkspaceCapability;
+use App\Features\Billing as BillingFeature;
+use App\Features\EmailIntegration;
+use App\Filament\Pages\AccessTokens;
+use App\Filament\Pages\Billing;
+use App\Filament\Pages\Workspace\CustomFields;
+use App\Filament\Pages\Workspace\Members;
+use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
+use App\Filament\Resources\NoteResource\Pages\NotesCards;
+use App\Filament\Resources\OpportunityResource\Pages\ListOpportunities;
+use App\Filament\Resources\PeopleResource\Pages\ListPeople;
+use App\Filament\Resources\TaskResource\Pages\ManageTasks;
+use App\Models\Workspace;
+use Laravel\Pennant\Feature;
+use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
+use Relaticle\ImportWizard\Filament\Pages\ImportCompanies;
+use Relaticle\ImportWizard\Filament\Pages\ImportNotes;
+use Relaticle\ImportWizard\Filament\Pages\ImportOpportunities;
+use Relaticle\ImportWizard\Filament\Pages\ImportPeople;
+use Relaticle\ImportWizard\Filament\Pages\ImportTasks;
+use Throwable;
+
+final readonly class DestinationResolver
+{
+    /** @var list<string> */
+    public const array DESTINATIONS = [
+        'custom_fields',
+        'import_companies',
+        'import_people',
+        'import_opportunities',
+        'import_tasks',
+        'import_notes',
+        'export_companies',
+        'export_people',
+        'export_opportunities',
+        'export_tasks',
+        'export_notes',
+        'workspace_members',
+        'access_tokens',
+        'connect_assistant',
+        'email_accounts',
+        'billing',
+    ];
+
+    /**
+     * Query parameters that open the record list's export modal on page load.
+     *
+     * Filament binds `?action=` to `InteractsWithActions::$defaultAction`, so this
+     * lands the user in the export dialog itself rather than on the list page with
+     * the export button still hidden inside the "Import / Export" dropdown.
+     *
+     * @var array<string, string>
+     */
+    private const array EXPORT_ACTION = ['action' => 'export'];
+
+    public function requiredCapability(string $destination): ?WorkspaceCapability
+    {
+        return match (true) {
+            $destination === 'custom_fields' => WorkspaceCapability::FieldsManage,
+            $destination === 'workspace_members' => WorkspaceCapability::MembersManage,
+            str_starts_with($destination, 'import_') => WorkspaceCapability::DataImport,
+            str_starts_with($destination, 'export_') => WorkspaceCapability::DataExport,
+            default => null,
+        };
+    }
+
+    /**
+     * Resolve a destination key to an absolute app-panel URL for the given workspace.
+     *
+     * Passes the panel and tenant explicitly so this works inside the queued chat
+     * job, where no Filament panel/tenant is bound. Returns null when the
+     * destination is unknown or the URL cannot be built.
+     */
+    public function resolve(string $destination, Workspace $workspace): ?string
+    {
+        try {
+            return match ($destination) {
+                'custom_fields' => CustomFields::getUrl(panel: 'app', tenant: $workspace),
+                'import_companies' => ImportCompanies::getUrl(panel: 'app', tenant: $workspace),
+                'import_people' => ImportPeople::getUrl(panel: 'app', tenant: $workspace),
+                'import_opportunities' => ImportOpportunities::getUrl(panel: 'app', tenant: $workspace),
+                'import_tasks' => ImportTasks::getUrl(panel: 'app', tenant: $workspace),
+                'import_notes' => ImportNotes::getUrl(panel: 'app', tenant: $workspace),
+                'export_companies' => ListCompanies::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
+                'export_people' => ListPeople::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
+                'export_opportunities' => ListOpportunities::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
+                'export_tasks' => ManageTasks::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
+                'export_notes' => NotesCards::getUrl(self::EXPORT_ACTION, panel: 'app', tenant: $workspace),
+                'workspace_members' => Members::getUrl(panel: 'app', tenant: $workspace),
+                'access_tokens' => AccessTokens::getUrl(panel: 'app', tenant: $workspace),
+                'connect_assistant' => url()->getPublicUrl(route('help.show', ['category' => 'ai-assistant', 'slug' => 'connect-claude-or-chatgpt'], absolute: false)),
+                'email_accounts' => Feature::active(EmailIntegration::class) ? EmailAccountsPage::getUrl(panel: 'app', tenant: $workspace) : null,
+                'billing' => Feature::active(BillingFeature::class) ? Billing::getUrl(panel: 'app', tenant: $workspace) : null,
+                default => null,
+            };
+        } catch (Throwable) {
+            return null;
+        }
+    }
+}

@@ -1,0 +1,106 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\Company;
+use App\Models\User;
+use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Laravel\Ai\Tools\Request;
+use Relaticle\Chat\Enums\PendingActionStatus;
+use Relaticle\Chat\Models\PendingAction;
+use Relaticle\Chat\Tools\Task\CreateTaskTool;
+
+beforeEach(function (): void {
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    Auth::guard('web')->setUser($this->user);
+    $this->actingAs($this->user);
+    Filament::setTenant($this->user->currentWorkspace);
+
+    $this->convId = '019df900-4444-7000-8000-000000000001';
+    DB::table('agent_conversations')->insert([
+        'id' => $this->convId,
+        'participant_type' => 'user',
+        'participant_id' => (string) $this->user->getKey(),
+        'workspace_id' => $this->user->currentWorkspace->getKey(),
+        'title' => '',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+});
+
+function proposeTasks(string $convId, array $records): string
+{
+    $tool = resolve(CreateTaskTool::class);
+    $tool->setConversationId($convId);
+
+    return $tool->handle(new Request(['records' => $records]));
+}
+
+it('creates ONE proposal containing all records for a batch', function (): void {
+    proposeTasks($this->convId, [
+        ['title' => 'Task A'],
+        ['title' => 'Task B'],
+        ['title' => 'Task C'],
+    ]);
+
+    $pending = PendingAction::query()->where('conversation_id', $this->convId)->get();
+
+    expect($pending)->toHaveCount(1)
+        ->and($pending->first()->action_data['_batch'])->toBeTrue()
+        ->and($pending->first()->action_data['records'])->toHaveCount(3)
+        ->and($pending->first()->display_data['summary'])->toBe('Create 3 tasks')
+        ->and($pending->first()->display_data['items'])->toHaveCount(3);
+});
+
+it('keeps the flat single-record shape when one record is passed', function (): void {
+    proposeTasks($this->convId, [['title' => 'Solo task']]);
+
+    $action = PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail();
+
+    expect($action->action_data)->toBe(['title' => 'Solo task'])
+        ->and($action->display_data['summary'])->toBe('Create task "Solo task"')
+        ->and($action->display_data)->not->toHaveKey('items');
+});
+
+it('rejects an empty or oversized batch', function (): void {
+    expect(proposeTasks($this->convId, []))->toContain('error')
+        ->and(proposeTasks($this->convId, array_fill(0, 26, ['title' => 'X'])))->toContain('error');
+
+    expect(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
+});
+
+it('collapses an identical re-proposed batch (job retry idempotency)', function (): void {
+    proposeTasks($this->convId, [['title' => 'A'], ['title' => 'B']]);
+    proposeTasks($this->convId, [['title' => 'A'], ['title' => 'B']]);
+
+    expect(PendingAction::query()
+        ->where('conversation_id', $this->convId)
+        ->where('status', PendingActionStatus::Pending)
+        ->count())->toBe(1);
+});
+
+it('rejects a linked record from another workspace at proposal time', function (): void {
+    $foreign = Company::factory()->for(User::factory()->withPersonalWorkspace()->create()->currentWorkspace)->create();
+
+    $result = json_decode(proposeTasks($this->convId, [['title' => 'Call', 'company_ids' => [(string) $foreign->getKey()]]]), true);
+
+    // A rejected record is named by whatever identity the model gave it, not by
+    // its index: the reason is relayed to the user, and "records[0]" means
+    // nothing to them.
+    expect($result['error'])->toContain('Call')->toContain('company_ids')
+        ->and(PendingAction::query()->count())->toBe(0);
+});
+
+it('rejects a missing, blank, or over-length title at proposal time instead of after approval', function (): void {
+    $missing = json_decode(proposeTasks($this->convId, [['custom_fields' => []]]), true);
+    $blank = json_decode(proposeTasks($this->convId, [['title' => '  ']]), true);
+    $tooLong = json_decode(proposeTasks($this->convId, [['title' => str_repeat('x', 256)]]), true);
+
+    // No title to name it by, so it falls back to a 1-based position.
+    expect($missing['error'])->toContain('record 1')->toContain('title is required')
+        ->and($blank['error'])->toContain('title is required')
+        ->and($tooLong['error'])->toContain('longer than 255')
+        ->and(PendingAction::query()->count())->toBe(0);
+});

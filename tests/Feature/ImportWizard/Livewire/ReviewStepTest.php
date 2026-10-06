@@ -2,12 +2,18 @@
 
 declare(strict_types=1);
 
+use App\Events\WorkspaceCreated;
+use App\Models\Company;
+use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Bus\PendingBatch;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
-use Laravel\Jetstream\Events\TeamCreated;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -16,26 +22,29 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Enums\ReviewFilter;
 use Relaticle\ImportWizard\Enums\SortDirection;
 use Relaticle\ImportWizard\Enums\SortField;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ResolveMatchesJob;
+use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
+use Relaticle\ImportWizard\Livewire\Steps\PreviewStep;
 use Relaticle\ImportWizard\Livewire\Steps\ReviewStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 
-mutates(ReviewStep::class);
+mutates(ReviewStep::class, ValidateColumnJob::class);
 
 beforeEach(function (): void {
-    // Override the global Event::fake() from Pest.php to allow TeamCreated through,
-    // so CreateTeamCustomFields listener runs and creates email/phone custom fields.
-    Event::fake()->except([TeamCreated::class]);
+    // Override the global Event::fake() from Pest.php to allow WorkspaceCreated through,
+    // so CreateWorkspaceCustomFields listener runs and creates email/phone custom fields.
+    Event::fake()->except([WorkspaceCreated::class]);
 
-    $this->user = User::factory()->withTeam()->create();
+    $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
-    $this->team = $this->user->currentTeam;
+    $this->workspace = $this->user->currentWorkspace;
 
-    Filament::setTenant($this->team);
+    Filament::setTenant($this->workspace);
 
-    $this->import = Import::create([
-        'team_id' => (string) $this->team->id,
+    $this->import = Import::factory()->create([
+        'workspace_id' => (string) $this->workspace->id,
         'user_id' => (string) $this->user->id,
         'entity_type' => ImportEntityType::People,
         'file_name' => 'test.csv',
@@ -45,7 +54,7 @@ beforeEach(function (): void {
         'column_mappings' => collect([
             ColumnData::toField(source: 'Name', target: 'name'),
             ColumnData::toField(source: 'Emails', target: 'custom_fields_emails'),
-        ])->map(fn (ColumnData $m) => $m->toArray())->all(),
+        ])->map(fn (ColumnData $m): array => $m->toArray())->all(),
     ]);
 
     $this->store = ImportStore::create($this->import->id);
@@ -77,7 +86,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    $this->store->destroy();
+    ImportStore::delete($this->store->id());
     $this->import->delete();
 });
 
@@ -90,6 +99,180 @@ function mountReviewStep(object $context): Testable
         'entityType' => ImportEntityType::People,
     ]);
 }
+
+function reviewCompanyLink(object $context, string $companyId): Testable
+{
+    $context->import->update([
+        'headers' => ['Name', 'Company'],
+        'column_mappings' => [
+            ColumnData::toField(source: 'Name', target: 'name')->toArray(),
+            ColumnData::toEntityLink(source: 'Company', matcherKey: 'id', entityLinkKey: 'company')->toArray(),
+        ],
+    ]);
+    $context->store->query()->where('row_number', 2)->update([
+        'raw_data' => json_encode(['Name' => 'Maya Chen', 'Company' => $companyId]),
+    ]);
+    $context->store->query()->where('row_number', 3)->update([
+        'raw_data' => json_encode(['Name' => 'Leo Grant', 'Company' => $context->controlCompany->id]),
+    ]);
+
+    return Livewire::test(ReviewStep::class, [
+        'storeId' => $context->store->id(),
+        'entityType' => ImportEntityType::People,
+    ])->call('checkProgress')->call('selectColumn', 'Company');
+}
+
+it('keeps company links consistent through Review edits', function (string $scenario, string $expectedCompany): void {
+    $this->originalCompany = Company::factory()->create(['name' => 'Northline Studio', 'workspace_id' => $this->workspace->id]);
+    $this->controlCompany = Company::factory()->create(['name' => 'Cedar Labs', 'workspace_id' => $this->workspace->id]);
+    $replacement = Company::factory()->create(['name' => 'Harbor Works', 'workspace_id' => $this->workspace->id]);
+    $rawValue = $scenario === 'invalid reference' ? 'missing-company' : (string) $this->originalCompany->id;
+    $component = reviewCompanyLink($this, $rawValue);
+
+    $component->call('updateMappedValue', $rawValue, (string) $replacement->id)
+        ->call('checkProgress');
+
+    if ($scenario === 'undo') {
+        $component->call('undoCorrection', $rawValue)->call('checkProgress');
+    }
+
+    if (in_array($scenario, ['skip', 'unskip'], true)) {
+        $component->call('skipValue', $rawValue)->call('checkProgress');
+    }
+
+    if ($scenario === 'unskip') {
+        $component->call('unskipValue', $rawValue)->call('checkProgress');
+    }
+
+    if ($scenario === 'revalidation') {
+        Cache::forget("import-{$this->import->id}-validation");
+        $component = Livewire::test(ReviewStep::class, [
+            'storeId' => $this->store->id(),
+            'entityType' => ImportEntityType::People,
+        ])->call('checkProgress');
+    }
+
+    $component->call('continueToPreview')->assertDispatched('completed');
+
+    $expectedId = match ($expectedCompany) {
+        'Harbor Works' => (string) $replacement->id,
+        'Northline Studio' => (string) $this->originalCompany->id,
+        'none' => null,
+    };
+    $row = $this->store->query()->where('row_number', 2)->firstOrFail();
+    expect($row->relationships?->count() ?? 0)->toBe($expectedId === null ? 0 : 1)
+        ->and($row->relationships?->first()?->id)->toBe($expectedId);
+
+    Livewire::test(PreviewStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::People,
+    ])->call('startImport');
+
+    expect(People::query()->where('name', 'Maya Chen')->sole()->company_id)->toBe($expectedId)
+        ->and(People::query()->where('name', 'Leo Grant')->sole()->company_id)->toBe((string) $this->controlCompany->id)
+        ->and($this->import->fresh()->failed_rows)->toBe(0);
+})->with([
+    'correct invalid reference' => ['invalid reference', 'Harbor Works'],
+    'replace valid reference' => ['replacement', 'Harbor Works'],
+    'undo correction' => ['undo', 'Northline Studio'],
+    'skip corrected reference' => ['skip', 'none'],
+    'restore skipped reference' => ['unskip', 'Northline Studio'],
+    'revalidate corrected reference' => ['revalidation', 'Harbor Works'],
+]);
+
+it('preserves company identity matching when its name mapping is corrected', function (): void {
+    $company = Company::factory()->create(['name' => 'Northline Studio', 'workspace_id' => $this->workspace->id]);
+    $this->import->update([
+        'total_rows' => 1,
+        'headers' => ['Name', 'Company ID', 'Company Name'],
+        'column_mappings' => [
+            ColumnData::toField(source: 'Name', target: 'name')->toArray(),
+            ColumnData::toEntityLink(source: 'Company ID', matcherKey: 'id', entityLinkKey: 'company')->toArray(),
+            ColumnData::toEntityLink(source: 'Company Name', matcherKey: 'name', entityLinkKey: 'company')->toArray(),
+        ],
+    ]);
+    $this->store->query()->where('row_number', 3)->delete();
+    $this->store->query()->where('row_number', 2)->update([
+        'raw_data' => json_encode(['Name' => 'Maya Chen', 'Company ID' => $company->id, 'Company Name' => 'Northline']),
+    ]);
+
+    Livewire::test(ReviewStep::class, ['storeId' => $this->store->id(), 'entityType' => ImportEntityType::People])
+        ->call('checkProgress')
+        ->call('selectColumn', 'Company Name')
+        ->call('updateMappedValue', 'Northline', 'Northline Studio')
+        ->call('checkProgress')
+        ->call('continueToPreview');
+
+    Livewire::test(PreviewStep::class, ['storeId' => $this->store->id(), 'entityType' => ImportEntityType::People])
+        ->call('startImport');
+
+    expect(People::query()->where('name', 'Maya Chen')->sole()->company_id)->toBe((string) $company->id)
+        ->and(Company::query()->where('workspace_id', $this->workspace->id)->count())->toBe(1);
+});
+
+it('blocks Preview after failed relationship revalidation until retry succeeds', function (): void {
+    $this->originalCompany = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+    $this->controlCompany = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+    $component = reviewCompanyLink($this, 'missing-company');
+    Queue::fake([ValidateColumnJob::class]);
+
+    $component->call('updateMappedValue', 'missing-company', (string) $this->originalCompany->id);
+    $batch = Bus::findBatch($component->get('batchIds.Company'));
+    $batch->recordFailedJob('failed-validation', new RuntimeException('Validation worker failed'));
+
+    $component->call('checkProgress')
+        ->call('continueToPreview')
+        ->assertNotDispatched('completed');
+
+    $component = Livewire::test(ReviewStep::class, ['storeId' => $this->store->id(), 'entityType' => ImportEntityType::People]);
+    $component->call('continueToPreview')->assertNotDispatched('completed');
+    $component->call('retryFailedValidation');
+
+    $retryId = $component->get('batchIds.Company');
+    $column = $this->import->getColumnMapping('Company');
+    new ValidateColumnJob($this->import->id, $column)->withBatchId($retryId)->handle();
+    Bus::findBatch($retryId)->recordSuccessfulJob('retried-validation');
+
+    $component->call('checkProgress')->call('continueToPreview')->assertDispatched('completed');
+    expect($this->store->query()->where('row_number', 2)->firstOrFail()->relationships->first()->id)
+        ->toBe((string) $this->originalCompany->id);
+
+    Livewire::test(PreviewStep::class, ['storeId' => $this->store->id(), 'entityType' => ImportEntityType::People])
+        ->assertSee((string) $this->originalCompany->id)
+        ->assertDontSee('missing-company');
+});
+
+it('cancels the superseded validation when a company link is corrected again', function (): void {
+    $this->originalCompany = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+    $this->controlCompany = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+    $component = reviewCompanyLink($this, 'missing-company');
+    Queue::fake([ValidateColumnJob::class]);
+
+    $component->call('updateMappedValue', 'missing-company', (string) $this->originalCompany->id);
+    $superseded = $component->get('batchIds.Company');
+    $component->call('updateMappedValue', 'missing-company', (string) $this->controlCompany->id);
+
+    expect(Bus::findBatch($superseded)->cancelled())->toBeTrue()
+        ->and($component->get('batchIds.Company'))->not->toBe($superseded)
+        ->and(Bus::findBatch($component->get('batchIds.Company'))->cancelled())->toBeFalse();
+});
+
+it('blocks Preview after failed match resolution until retry succeeds', function (): void {
+    $component = Livewire::test(ReviewStep::class, ['storeId' => $this->store->id(), 'entityType' => ImportEntityType::People]);
+    Bus::findBatch($component->get('batchIds.__match_resolution'))
+        ->recordFailedJob('failed-match-resolution', new RuntimeException('Match worker failed'));
+
+    $component->call('checkProgress')
+        ->assertSee('Validation failed. Retry before continuing.')
+        ->call('continueToPreview')
+        ->assertNotDispatched('completed');
+
+    $component->call('retryFailedValidation')
+        ->call('checkProgress')
+        ->assertDontSee('Validation failed. Retry before continuing.')
+        ->call('continueToPreview')
+        ->assertDispatched('completed');
+});
 
 it('renders with correct columns', function (): void {
     $component = mountReviewStep($this);
@@ -150,7 +333,7 @@ it('returns per-item errors for invalid emails in multi-value field', function (
     $component->call('selectColumn', 'Emails');
     $component
         ->call('updateMappedValue', 'john@test.com', 'valid@test.com, not-an-email')
-        ->assertReturned(fn (array $errors) => isset($errors['not-an-email']) && ! isset($errors['valid@test.com']));
+        ->assertReturned(fn (array $errors): bool => isset($errors['not-an-email']) && ! isset($errors['valid@test.com']));
 
     $row = $this->store->query()->where('row_number', 2)->first();
     expect($row->corrections->get('Emails'))->toBe('valid@test.com, not-an-email')
@@ -278,9 +461,14 @@ it('dispatches completed even when unresolved validation errors exist', function
 it('dispatches ResolveMatchesJob batch on mount', function (): void {
     $component = mountReviewStep($this);
 
-    Bus::assertBatched(function ($batch) {
-        return $batch->jobs->contains(fn ($job) => $job instanceof ResolveMatchesJob);
-    });
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob));
+});
+
+it('sends validation and match resolution batches to the imports queue', function (): void {
+    mountReviewStep($this);
+
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob) && $batch->queue() === 'imports');
+    Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ValidateColumnJob) && $batch->queue() === 'imports');
 });
 
 it('includes __match_resolution key in batchIds', function (): void {
@@ -318,7 +506,7 @@ it('clears relationships column on mount', function (): void {
 it('skips dispatching batches when cache hash matches', function (): void {
     mountReviewStep($this);
 
-    Bus::assertBatched(fn () => true);
+    Bus::assertBatched(fn (): true => true);
 
     Bus::fake();
 
@@ -330,17 +518,158 @@ it('skips dispatching batches when cache hash matches', function (): void {
 it('dispatches new batches when mappings hash changes', function (): void {
     mountReviewStep($this);
 
-    Bus::assertBatched(fn () => true);
+    Bus::assertBatched(fn (): true => true);
 
     $this->import->update([
         'column_mappings' => collect([
             ColumnData::toField(source: 'Name', target: 'name'),
-        ])->map(fn (ColumnData $m) => $m->toArray())->all(),
+        ])->map(fn (ColumnData $m): array => $m->toArray())->all(),
     ]);
 
     Bus::fake();
 
     mountReviewStep($this);
 
-    Bus::assertBatched(fn () => true);
+    Bus::assertBatched(fn (): true => true);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        $rows = $this->store->query()->get()->map(fn ($row): array => $row->getRawOriginal())->all();
+        ImportStore::delete($this->store->id());
+
+        useRemoteImportStore();
+
+        $store = ImportStore::create($this->import->id);
+        $store->query()->insert($rows);
+        $store->persist();
+        $store->close();
+
+        $this->store = ImportStore::forRead($this->import->id);
+    });
+
+    it('saves a correction to the remote store and renders it in the same request', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+
+        $component->call('updateMappedValue', 'John', 'Johnny')
+            ->assertSee('Johnny');
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+        expect($row->corrections->get('Name'))->toBe('Johnny');
+    });
+
+    it('notifies the user and writes nothing when another writer holds the store lock', function (): void {
+        $component = mountReviewStep($this);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('skipValue', 'John')
+            ->assertNotified(__('import-wizard-new::store.busy'));
+
+        $held->release();
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+        expect($row->skipped)->toBeNull();
+    });
+
+    it('keeps a correction when the column validates again after it', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['raw_data' => json_encode(['Name' => 'John', 'Emails' => 'bad-email'])]);
+            $store->query()->where('row_number', 3)->update(['raw_data' => json_encode(['Name' => 'Jane', 'Emails' => 'also-bad'])]);
+        });
+        $component = mountReviewStep($this);
+
+        $component->call('selectColumn', 'Emails')
+            ->call('updateMappedValue', 'bad-email', 'ada@example.com');
+        (new ValidateColumnJob($this->import->id, $this->import->getColumnMapping('Emails')))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+        expect($rows[0]->corrections->get('Emails'))->toBe('ada@example.com')
+            ->and($rows[0]->validation)->toBeNull()
+            ->and($rows[1]->hasValidationError('Emails'))->toBeTrue();
+    });
+
+    it('returns null and re-renders the rows when the store stays locked', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('updateMappedValue', 'John', 'Johnny')
+            ->assertReturned(null)
+            ->assertSet('rowRevision', 1)
+            ->assertNotified(__('import-wizard-new::store.busy'))
+            ->assertSeeHtml('wire:key="val-1-');
+
+        $held->release();
+    });
+
+    it('returns null and re-renders the rows when a blank correction finds the store locked', function (): void {
+        $component = mountReviewStep($this)->set('batchIds', []);
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component->call('updateMappedValue', 'John', '')
+            ->assertReturned(null)
+            ->assertSet('rowRevision', 1);
+
+        $held->release();
+    });
+
+    it('holds validation and Preview while the store is locked at mount until the retry clears the stale relationships', function (): void {
+        ImportStore::withWriteLock($this->import->id, function (ImportStore $store): void {
+            $store->query()->where('row_number', 2)->update(['relationships' => json_encode([['relationship' => 'company', 'action' => 'create', 'name' => 'Stale']])]);
+        });
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component = mountReviewStep($this)
+            ->assertSet('failedColumns', ['__reentry' => true])
+            ->assertSee(__('import-wizard-new::store.busy'))
+            ->call('continueToPreview')
+            ->assertNotDispatched('completed');
+
+        Bus::assertNothingBatched();
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull()
+            ->and(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->not->toBeNull();
+
+        $held->release();
+        $component->call('retryFailedValidation')
+            ->assertSet('failedColumns', []);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ValidateColumnJob));
+        expect(ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first()->relationships)->toBeNull();
+    });
+
+    it('keeps the pending re-entry clear when a format change revalidates a column', function (): void {
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.web', 0);
+
+        $component = mountReviewStep($this)->assertSet('failedColumns', ['__reentry' => true]);
+
+        $held->release();
+        $component->call('setColumnFormat', 'date', 'european');
+
+        expect(Cache::get("import-{$this->import->id}-validation"))->toBeNull();
+
+        mountReviewStep($this)->assertSet('failedColumns', []);
+
+        Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->contains(fn (object $job): bool => $job instanceof ResolveMatchesJob));
+    });
+
+    it('does not turn a failed snapshot into a retry notification', function (): void {
+        $component = mountReviewStep($this);
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+        DB::listen(function (QueryExecuted $query): void {
+            if (str_contains($query->sql, 'UPDATE import_rows')) {
+                Cache::lock(importStoreLockName($this->import->id))->forceRelease();
+            }
+        });
+
+        expect(fn () => $component->call('skipValue', 'John'))->toThrow(ImportStoreException::class);
+    });
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Tools;
 
+use App\Enums\WorkspaceCapability;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Collection;
@@ -13,10 +14,14 @@ use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Services\PendingActionService;
+use Relaticle\Chat\Tools\Concerns\LimitsPlanSteps;
+use Relaticle\Chat\Tools\Concerns\RequiresWorkspaceCapability;
 use Relaticle\Chat\Tools\Concerns\WithConversationContext;
 
 abstract class BaseWriteDeleteTool implements Tool
 {
+    use LimitsPlanSteps;
+    use RequiresWorkspaceCapability;
     use WithConversationContext;
 
     /** @return class-string<Model> */
@@ -31,10 +36,7 @@ abstract class BaseWriteDeleteTool implements Tool
 
     abstract public function description(): string;
 
-    protected function nameAttribute(): string
-    {
-        return 'name';
-    }
+    abstract protected function nameAttribute(): string;
 
     public function schema(JsonSchema $schema): array
     {
@@ -42,7 +44,7 @@ abstract class BaseWriteDeleteTool implements Tool
 
         return [
             'ids' => $schema->array()->items($schema->string())->required()
-                ->description("The {$label} IDs to delete. Pass one id to delete a single {$label}, or many to delete them all in one call."),
+                ->description("The {$label} IDs to delete. Pass one id to delete a single {$label}, or many to delete them all in one call. Deleting a {$label} never deletes the records linked to it."),
         ];
     }
 
@@ -51,17 +53,34 @@ abstract class BaseWriteDeleteTool implements Tool
         /** @var User $user */
         $user = auth()->user();
 
+        $capabilityError = $this->capabilityError($user, WorkspaceCapability::RecordsDelete);
+
+        if ($capabilityError !== null) {
+            return $capabilityError;
+        }
+
+        $planLimitError = $this->planStepLimitError();
+
+        if ($planLimitError !== null) {
+            return (string) json_encode(['error' => $planLimitError], JSON_UNESCAPED_SLASHES);
+        }
+
         $requestedIds = $this->requestedIds($request);
 
         if ($requestedIds === []) {
-            return (string) json_encode(['error' => 'Provide `ids` (a non-empty array) of records to delete.']);
+            return (string) json_encode(['error' => 'Provide `ids` (a non-empty array) of records to delete.'], JSON_UNESCAPED_SLASHES);
+        }
+
+        $maxBatchSize = (int) config('chat.max_batch_size');
+
+        if (count($requestedIds) > $maxBatchSize) {
+            return (string) json_encode(['error' => "Too many records: at most {$maxBatchSize} per proposal."], JSON_UNESCAPED_SLASHES);
         }
 
         /** @var Collection<int, Model> $models */
         $models = $this->modelClass()::query()
-            ->whereBelongsTo($user->currentTeam)
+            ->whereBelongsTo($user->currentWorkspace)
             ->whereKey($requestedIds)
-            ->with('team')
             ->get();
 
         $deletable = $models->filter(fn (Model $model): bool => $user->can('delete', $model))->values();
@@ -73,7 +92,7 @@ abstract class BaseWriteDeleteTool implements Tool
             return (string) json_encode([
                 'error' => "No matching {$this->entityLabel()} records you can delete were found.",
                 'skipped' => $skipped,
-            ]);
+            ], JSON_UNESCAPED_SLASHES);
         }
 
         $pending = resolve(PendingActionService::class)->createProposal(
@@ -82,16 +101,15 @@ abstract class BaseWriteDeleteTool implements Tool
             actionClass: $this->actionClass(),
             operation: PendingActionOperation::Delete,
             entityType: $this->entityType(),
-            actionData: [
-                '_record_ids' => $deletable->map(fn (Model $model) => $model->getKey())->all(),
-                '_model_class' => $this->modelClass(),
-            ],
+            actionData: $this->actionData($deletable),
             displayData: $this->displayData($deletable),
+            turnId: $this->resolveTurnId(),
         );
 
         return (string) json_encode([
             'type' => 'pending_action',
             'pending_action_id' => $pending->id,
+            'turn_id' => $pending->turn_id,
             'action' => class_basename($this->actionClass()),
             'entity_type' => $this->entityType(),
             'operation' => 'delete',
@@ -99,7 +117,7 @@ abstract class BaseWriteDeleteTool implements Tool
             'skipped' => $skipped,
             'display' => $pending->display_data,
             'meta' => ['agent_should_stop' => true],
-        ], JSON_PRETTY_PRINT);
+        ], JSON_UNESCAPED_SLASHES);
     }
 
     /** @return list<string> */
@@ -120,30 +138,70 @@ abstract class BaseWriteDeleteTool implements Tool
     }
 
     /**
+     * Single delete stays an all-or-nothing proposal (`_record_ids`); a multi-record
+     * delete becomes a per-item `_batch` (each record self-contained with its own
+     * `_record_id`/`_model_class`) so the dock can approve/skip each one individually,
+     * mirroring create.
+     *
+     * @param  Collection<int, Model>  $models
+     * @return array<string, mixed>
+     */
+    private function actionData(Collection $models): array
+    {
+        if ($models->count() === 1) {
+            return [
+                '_record_ids' => [$models->first()->getKey()],
+                '_model_class' => $this->modelClass(),
+            ];
+        }
+
+        return [
+            '_batch' => true,
+            'records' => $models->values()->map(fn (Model $model): array => [
+                '_record_id' => $model->getKey(),
+                '_model_class' => $this->modelClass(),
+            ])->all(),
+        ];
+    }
+
+    /**
      * @param  Collection<int, Model>  $models
      * @return array<string, mixed>
      */
     private function displayData(Collection $models): array
     {
         $count = $models->count();
-        $isSingle = $count === 1;
-        $plural = Str::plural(strtolower($this->entityLabel()), $count);
 
-        $fields = $models->values()
-            ->map(fn (Model $model, int $i): array => [
-                'label' => $isSingle ? 'Name' : "{$this->entityLabel()} ".($i + 1),
-                'value' => (string) $model->{$this->nameAttribute()},
-            ])
+        if ($count === 1) {
+            $name = (string) $models->first()->{$this->nameAttribute()};
+
+            return [
+                'title' => __('Delete :entity', ['entity' => $this->entityLabel()]),
+                'summary' => __('Delete :entity ":name"', ['entity' => $this->entityLabel(), 'name' => $name]),
+                'fields' => [['label' => __('Name'), 'value' => $name]],
+            ];
+        }
+
+        $items = $models->values()
+            ->map(function (Model $model): array {
+                $name = (string) $model->{$this->nameAttribute()};
+
+                return [
+                    'summary' => __('Delete :entity ":name"', ['entity' => $this->entityLabel(), 'name' => $name]),
+                    'fields' => [['label' => __('Name'), 'value' => $name]],
+                ];
+            })
             ->all();
 
-        $summary = $isSingle
-            ? "Delete {$this->entityLabel()} \"".$models->first()->{$this->nameAttribute()}.'"'
-            : "Delete {$count} {$plural}";
+        $titleNoun = Str::plural(Str::headline($this->entityLabel()), $count);
 
         return [
-            'title' => $isSingle ? "Delete {$this->entityLabel()}" : "Delete {$count} {$plural}",
-            'summary' => $summary,
-            'fields' => $fields,
+            'title' => __('Delete :count :entities', ['count' => $count, 'entities' => $titleNoun]),
+            'summary' => __('Delete :count :entities', [
+                'count' => $count,
+                'entities' => Str::plural(strtolower($this->entityLabel()), $count),
+            ]),
+            'items' => $items,
         ];
     }
 }

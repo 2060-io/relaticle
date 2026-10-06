@@ -2,15 +2,21 @@
 
 declare(strict_types=1);
 
+use App\Events\WorkspaceCreated;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
-use Laravel\Jetstream\Events\TeamCreated;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Livewire\Steps\UploadStep;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
@@ -23,20 +29,20 @@ function makeCsvFile(string $content, string $name = 'test.csv'): UploadedFile
 }
 
 beforeEach(function (): void {
-    Event::fake()->except([TeamCreated::class]);
+    Event::fake()->except([WorkspaceCreated::class]);
 
-    $this->user = User::factory()->withTeam()->create();
+    $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
-    $this->team = $this->user->currentTeam;
+    $this->workspace = $this->user->currentWorkspace;
 
-    Filament::setTenant($this->team);
+    Filament::setTenant($this->workspace);
 
     $this->createdStoreIds = [];
 });
 
 afterEach(function (): void {
     foreach ($this->createdStoreIds as $storeId) {
-        ImportStore::load($storeId)?->destroy();
+        ImportStore::delete($storeId);
     }
 });
 
@@ -142,7 +148,7 @@ it('continueToMapping creates ImportStore with rows', function (): void {
         $this->createdStoreIds[] = $params['storeId'];
 
         $import = Import::find($params['storeId']);
-        $store = ImportStore::load($params['storeId']);
+        $store = ImportStore::forRead($params['storeId']);
 
         expect($import)->not->toBeNull()
             ->and($store)->not->toBeNull()
@@ -204,4 +210,84 @@ it('removeFile resets state', function (): void {
     expect($component->get('isParsed'))->toBeFalse()
         ->and($component->get('headers'))->toBe([])
         ->and($component->get('rowCount'))->toBe(0);
+});
+
+it('parses and loads a csv when temporary uploads live on a disk with no local paths', function (): void {
+    fakeDiskWithoutLocalPaths(FileUploadConfiguration::disk());
+    $csv = makeCsvFile("Name,Email\nJohn,john@test.com\nJane,jane@test.com\n");
+
+    $component = mountUploadStep($this);
+    $component->set('uploadedFile', $csv);
+
+    expect($component->get('isParsed'))->toBeTrue()
+        ->and($component->get('rowCount'))->toBe(2);
+
+    $component->call('continueToMapping')->assertHasNoErrors();
+
+    $import = Import::query()->where('workspace_id', $this->workspace->getKey())->firstOrFail();
+    $this->createdStoreIds[] = $import->id;
+
+    expect($import->total_rows)->toBe(2);
+});
+
+it('reports a csv whose local copy cannot be written instead of parsing it as empty', function (): void {
+    Exceptions::fake();
+    $fake = Storage::fake(FileUploadConfiguration::disk());
+    Storage::set(FileUploadConfiguration::disk(), new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+    {
+        public function readStream(mixed $path): mixed
+        {
+            return fopen('php://output', 'w');
+        }
+    });
+
+    $component = mountUploadStep($this);
+    $component->set('uploadedFile', makeCsvFile("Name,Email\nJohn,john@test.com\n"));
+
+    expect($component->get('isParsed'))->toBeFalse();
+    $component->assertHasErrors(['uploadedFile' => 'Unable to process this file. Please check the format and try again.']);
+    Exceptions::assertReported(RuntimeException::class);
+});
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        useRemoteImportStore();
+    });
+
+    it('keeps the uploaded rows on the store disk and nothing under storage', function (): void {
+        mountUploadStep($this)
+            ->set('uploadedFile', makeCsvFile("Name,Email\nAda,ada@example.com\nGrace,grace@example.com\n"))
+            ->call('continueToMapping')
+            ->assertHasNoErrors();
+
+        $import = Import::query()->where('workspace_id', $this->workspace->getKey())->firstOrFail();
+        $this->createdStoreIds[] = $import->id;
+
+        Storage::disk('s3')->assertExists("imports/{$import->id}.sqlite");
+
+        expect(File::exists(config('import-wizard.storage_path')."/{$import->id}"))->toBeFalse()
+            ->and(ImportStore::forRead($import->id)?->query()->count())->toBe(2);
+    });
+
+    it('removes the remote file and the import when the upload to the store disk fails', function (): void {
+        Exceptions::fake();
+        $fake = Storage::disk('s3');
+        Storage::set('s3', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig()) extends FilesystemAdapter
+        {
+            public function writeStream(mixed $path, mixed $resource, array $options = []): bool
+            {
+                return false;
+            }
+        });
+
+        $component = mountUploadStep($this)
+            ->set('uploadedFile', makeCsvFile("Name\nAda\n"))
+            ->call('continueToMapping');
+
+        $component->assertHasErrors(['uploadedFile' => 'Unable to process this file. Please try again or use a different file.']);
+        Exceptions::assertReported(ImportStoreException::class);
+
+        expect(Import::query()->where('workspace_id', $this->workspace->getKey())->exists())->toBeFalse()
+            ->and(Storage::disk('s3')->allFiles('imports'))->toBe([]);
+    });
 });

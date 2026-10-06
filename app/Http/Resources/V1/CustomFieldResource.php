@@ -6,16 +6,16 @@ namespace App\Http\Resources\V1;
 
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\JsonApi\JsonApiResource;
-use Illuminate\Support\Carbon;
 use Relaticle\CustomFields\Services\ValidationService;
 
 /**
  * @mixin CustomField
  *
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  */
 final class CustomFieldResource extends JsonApiResource
 {
@@ -32,6 +32,7 @@ final class CustomFieldResource extends JsonApiResource
             'type' => $this->type,
             'entity_type' => $this->entity_type,
             'required' => $validationService->isRequired($this->resource),
+            'unique' => $this->settings->unique_per_entity_type,
             'options' => $this->whenLoaded('options', fn () => $this->options->map(fn (CustomFieldOption $option): array => [
                 'label' => $option->name,
                 'value' => $option->id,

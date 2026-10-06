@@ -9,6 +9,7 @@ use Filament\Support\Contracts\HasLabel;
 enum OnboardingReferralSource: string implements HasLabel
 {
     case Google = 'google';
+    case GitHub = 'github';
     case LinkedIn = 'linkedin';
     case X = 'x';
     case Reddit = 'reddit';
@@ -23,6 +24,7 @@ enum OnboardingReferralSource: string implements HasLabel
     {
         return match ($this) {
             self::Google => 'Google',
+            self::GitHub => 'GitHub',
             self::LinkedIn => 'LinkedIn',
             self::X => 'X.com',
             self::Reddit => 'Reddit',
@@ -35,6 +37,23 @@ enum OnboardingReferralSource: string implements HasLabel
         };
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function getSubOptions(): array
+    {
+        return match ($this) {
+            self::AI => [
+                'chatgpt' => 'ChatGPT',
+                'claude' => 'Claude',
+                'gemini' => 'Gemini',
+                'perplexity' => 'Perplexity',
+                'other' => 'Another assistant',
+            ],
+            default => [],
+        };
+    }
+
     public function toSubscriberTag(): string
     {
         return "referral:{$this->value}";
@@ -44,6 +63,7 @@ enum OnboardingReferralSource: string implements HasLabel
     {
         return match ($this) {
             self::Google => 'ri-google-fill',
+            self::GitHub => 'ri-github-fill',
             self::LinkedIn => 'ri-linkedin-fill',
             self::X => 'ri-twitter-x-fill',
             self::Reddit => 'ri-reddit-fill',

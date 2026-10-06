@@ -5,11 +5,27 @@
     $nextAction = $getAction('next');
     $steps = $getChildSchema()->getComponents();
     $isHeaderHidden = $isHeaderHidden();
+
+    $stepCount = collect($steps)
+        ->filter(static fn (\Filament\Schemas\Components\Wizard\Step $step): bool => $step->isVisible())
+        ->count();
+
+    if (count($steps) > 1 && $nextAction->getLivewireTarget() === 'callSchemaComponentMethod') {
+        $nextActionTargetKey = \Illuminate\Support\Js::from($key)->toHtml();
+
+        $nextAction->livewireTarget(
+            collect(range(0, count($steps) - 2))
+                ->map(static fn (int $stepIndex): string => "callSchemaComponentMethod({$nextActionTargetKey}, 'nextStep', ".\Illuminate\Support\Js::from(['currentStepIndex' => $stepIndex])->toHtml().')')
+                ->implode(', '),
+        );
+    }
+
 @endphp
 {{-- Custom wizard view for onboarding. Removes the previous/cancel action
      divs from the footer that Filament's default view hardcodes.
      Source: vendor/filament/schemas/resources/views/components/wizard.blade.php
-     Diff: only the footer section (fi-sc-wizard-footer) is simplified. --}}
+     Diff: the footer is simplified, and the next action's loading target is narrowed
+     the way Filament's own renderer does it. --}}
 
 <div
     x-load
@@ -22,9 +38,29 @@
                 stepQueryStringKey: @js($getStepQueryStringKey()),
             })"
     x-on:next-wizard-step.window="if ($event.detail.key === @js($key)) goToNextStep()"
+    x-on:form-validation-error.window="
+        if ($event.detail.livewireId === $wire.$id) {
+            requestAnimationFrame(() => $el
+                .querySelector('[data-validation-error]')
+                ?.closest('[data-field-wrapper]')
+                ?.querySelector('input:not([type=hidden]):not([type=file]), textarea, select')
+                ?.focus())
+        }
+    "
     x-on:go-to-wizard-step.window="$event.detail.key === @js($key) && goToStep($event.detail.step)"
+    {{-- Enter advances the step; on the last one it submits via requestSubmit
+         so native validation still runs. Without this the wizard was mouse-only. --}}
+    x-on:keydown.enter="
+        if ($event.target.matches('input:not([type=checkbox]):not([type=radio])')) {
+            $event.preventDefault()
+            isLastStep() ? $el.closest('form').requestSubmit() : requestNextStep()
+        }
+    "
     wire:ignore.self
     x-effect="window.dispatchEvent(new CustomEvent('onboarding-step-changed', { detail: { index: getStepIndex(step) } }))"
+    {{-- x-effect only re-runs when the step changes, so a listener that mounts mid-wizard
+         never hears one. This lets it ask. --}}
+    x-on:onboarding-step-request.window="window.dispatchEvent(new CustomEvent('onboarding-step-changed', { detail: { index: getStepIndex(step) } }))"
     {{
         $attributes
             ->merge([
@@ -152,6 +188,23 @@
         </ol>
     @endif
 
+    @if ($isHeaderHidden && $stepCount > 1)
+        <div x-show="! isFirstStep()" x-cloak class="mb-6">
+            <button
+                type="button"
+                x-on:click="goToPreviousStep()"
+                class="flex items-center gap-x-1 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+                {{ \Filament\Support\generate_icon_html(
+                    \Filament\Support\Icons\Heroicon::OutlinedArrowLeft,
+                    attributes: new \Illuminate\View\ComponentAttributeBag(['class' => 'h-3.5 w-3.5']),
+                ) }}
+
+                {{ __('filament/pages/workspaces.create_workspace.actions.back') }}
+            </button>
+        </div>
+    @endif
+
     @foreach ($steps as $step)
         {{ $step }}
     @endforeach
@@ -171,13 +224,17 @@
             {{ $getSubmitAction() }}
         </div>
 
-        <div x-show="! isFirstStep() && step !== 'onboarding-use-case'" x-cloak class="mt-3 text-center">
+        {{-- Only the attribution step is optional: the first step and the last
+             (use case) are required. --}}
+        <div x-cloak class="mt-3 text-center">
             <button
+                x-show="! isFirstStep() && ! isLastStep()"
                 type="button"
-                x-on:click="isLastStep() ? $wire.register() : goToNextStep()"
+                x-on:click="goToNextStep()"
                 class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                x-text="isLastStep() ? 'Skip for now' : 'Skip'"
-            ></button>
+            >
+                {{ __('filament/pages/workspaces.create_workspace.actions.skip') }}
+            </button>
         </div>
     </div>
 </div>

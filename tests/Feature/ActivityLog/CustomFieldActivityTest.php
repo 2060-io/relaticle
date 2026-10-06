@@ -1,0 +1,198 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\ActivityLog\Activity;
+use App\Models\Company;
+use App\Models\CustomField;
+use App\Models\CustomFieldSection;
+use App\Models\User;
+use App\Support\ActivityLog\ActivityValue;
+use Filament\Facades\Filament;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+
+beforeEach(function (): void {
+    $this->user = User::factory()->withWorkspace()->create();
+    $this->actingAs($this->user);
+    $this->workspace = $this->user->currentWorkspace;
+    Filament::setTenant($this->workspace);
+
+    $section = CustomFieldSection::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'company',
+        'code' => 'general',
+        'name' => 'General',
+        'type' => 'section',
+        'sort_order' => 0,
+        'active' => true,
+    ]);
+
+    $this->field = CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $section->getKey(),
+        'entity_type' => 'company',
+        'code' => 'lead_source',
+        'name' => 'Lead source',
+        'type' => 'text',
+        'sort_order' => 1,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+});
+
+it('logs a custom_field_changes activity when a value is created', function (): void {
+    $company = Company::factory()->for($this->workspace)->create();
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['lead_source' => 'referral']);
+
+    $activity = Activity::query()->latest('id')->first();
+
+    expect($activity)->not->toBeNull()
+        ->and($activity->event)->toBe('custom_field_changes')
+        ->and($activity->properties['custom_field_changes'][0]['code'])->toBe('lead_source')
+        ->and($activity->properties['custom_field_changes'][0]['new']['label'])->toBe('referral')
+        ->and($activity->properties['custom_field_changes'][0]['old']['value'])->toBeNull();
+});
+
+it('logs a custom_field_changes activity when a value is updated', function (): void {
+    $company = Company::factory()->for($this->workspace)->create();
+    $company->saveCustomFields(['lead_source' => 'referral']);
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['lead_source' => 'linkedin']);
+
+    $activity = Activity::query()->latest('id')->first();
+
+    expect($activity)->not->toBeNull()
+        ->and($activity->event)->toBe('custom_field_changes')
+        ->and($activity->properties['custom_field_changes'][0]['old']['label'])->toBe('referral')
+        ->and($activity->properties['custom_field_changes'][0]['new']['label'])->toBe('linkedin');
+});
+
+it('renders link-field values as plain URLs, not escaped JSON', function (): void {
+    $linkField = CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $this->field->custom_field_section_id,
+        'entity_type' => 'company',
+        'code' => 'website',
+        'name' => 'Website',
+        'type' => 'link',
+        'sort_order' => 2,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    $company = Company::factory()->for($this->workspace)->create();
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['website' => ['https://www.linkedin.com/company/airbnb']]);
+
+    $activity = Activity::query()->latest('id')->first();
+    $change = $activity->properties['custom_field_changes'][0];
+
+    expect($change['code'])->toBe('website')
+        ->and($change['new']['label'])->toBe('https://www.linkedin.com/company/airbnb')
+        ->and($change['new']['label'])->not->toContain('\\/')
+        ->and($change['new']['label'])->not->toContain('[');
+});
+
+it('does not log when saving an empty value for a previously empty field', function (): void {
+    $company = Company::factory()->for($this->workspace)->create();
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['lead_source' => null]);
+
+    expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
+});
+
+it('does not log a link change that is only a URL-scheme normalization', function (): void {
+    $linkField = CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $this->field->custom_field_section_id,
+        'entity_type' => 'company',
+        'code' => 'website',
+        'name' => 'Website',
+        'type' => 'link',
+        'sort_order' => 2,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    $company = Company::factory()->for($this->workspace)->create();
+    $company->saveCustomFields(['website' => ['https://airbnb.com']]);
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['website' => ['airbnb.com']]);
+
+    expect(Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->count())->toBe(0);
+});
+
+it('still logs a genuine link value change', function (): void {
+    $linkField = CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $this->field->custom_field_section_id,
+        'entity_type' => 'company',
+        'code' => 'website',
+        'name' => 'Website',
+        'type' => 'link',
+        'sort_order' => 2,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    $company = Company::factory()->for($this->workspace)->create();
+    $company->saveCustomFields(['website' => ['airbnb.com']]);
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['website' => ['google.com']]);
+
+    $activity = Activity::withoutGlobalScopes()->where('event', 'custom_field_changes')->latest('id')->first();
+
+    expect($activity)->not->toBeNull()
+        ->and($activity->properties['custom_field_changes'][0]['old']['label'])->toBe('airbnb.com')
+        ->and($activity->properties['custom_field_changes'][0]['new']['label'])->toBe('google.com');
+});
+
+it('logs a first value of false on a toggle, where normalizing alone would read it as empty', function (): void {
+    $toggle = CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $this->field->custom_field_section_id,
+        'entity_type' => 'company',
+        'code' => 'is_partner',
+        'name' => 'Is partner',
+        'type' => 'toggle',
+        'sort_order' => 2,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    $company = Company::factory()->for($this->workspace)->create();
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFieldValue($toggle, false);
+
+    $activity = Activity::query()->where('event', 'custom_field_changes')->latest('id')->firstOrFail();
+
+    expect($activity->properties['custom_field_changes'][0]['new']['label'])->toBe('No');
+});
+
+it('never writes the plaintext of an encrypted field value', function (): void {
+    $this->field->update(['settings' => new CustomFieldSettingsData(encrypted: true)]);
+    $company = Company::factory()->for($this->workspace)->create();
+    Activity::withoutGlobalScopes()->delete();
+
+    $company->saveCustomFields(['lead_source' => 'first secret']);
+    $company->refresh()->saveCustomFields(['lead_source' => 'second secret']);
+
+    $changes = Activity::withoutGlobalScopes()
+        ->where('event', 'custom_field_changes')
+        ->oldest('id')
+        ->get()
+        ->map(fn (Activity $activity): array => $activity->properties['custom_field_changes'][0]);
+
+    expect($changes)->toHaveCount(2)
+        ->and(json_encode($changes))->not->toContain('first secret')->not->toContain('second secret')
+        ->and($changes[1]['old']['label'])->toBe(ActivityValue::REDACTED)
+        ->and($changes[1]['new']['label'])->toBe(ActivityValue::REDACTED);
+});

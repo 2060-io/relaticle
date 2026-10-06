@@ -1,0 +1,586 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Enums\Notifications\NotificationChannel;
+use App\Enums\Notifications\NotificationType;
+use App\Enums\Plan;
+use App\Enums\SocialiteProvider;
+use App\Enums\SubscriberTagEnum;
+use App\Enums\WorkspaceRole;
+use App\Models\User;
+use App\Models\UserSocialAccount;
+use App\Models\Workspace;
+use Carbon\CarbonImmutable;
+use Filament\Actions\Testing\TestAction;
+use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Hash;
+use Relaticle\SystemAdmin\Actions\UpdateCustomerRecord;
+use Relaticle\SystemAdmin\Enums\SystemAdministratorRole;
+use Relaticle\SystemAdmin\Filament\Pages\EditCustomerRecord;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\CreateUser;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\EditUser;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ListUsers;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ViewUser;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\RelationManagers\OwnedWorkspacesRelationManager;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\RelationManagers\SocialAccountsRelationManager;
+use Relaticle\SystemAdmin\Filament\Resources\UserResource\RelationManagers\WorkspacesRelationManager;
+use Relaticle\SystemAdmin\Filament\Support\Impersonate;
+use Relaticle\SystemAdmin\Models\SystemAdministrator;
+use Tests\Helpers\OverviewData;
+
+mutates(UpdateCustomerRecord::class, EditCustomerRecord::class, UserResource::class, Impersonate::class);
+
+beforeEach(function (): void {
+    $this->actingAs(SystemAdministrator::factory()->create(), 'sysadmin');
+    Filament::setCurrentPanel(Filament::getPanel('sysadmin'));
+});
+
+it('rejects administrator changes to customer authentication fields', function (string $field, string $value): void {
+    $this->actingAs(SystemAdministrator::factory()->administrator()->create(), 'sysadmin');
+    $user = User::factory()->unverified()->create();
+    $original = $user->getRawOriginal($field);
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->set("data.{$field}", $value)
+        ->call('save')
+        ->assertForbidden();
+
+    expect($user->refresh()->getRawOriginal($field))->toBe($original);
+})->with([
+    'email' => ['email', 'controlled@example.test'],
+    'password' => ['password', 'controlled-password'],
+    'email verification' => ['email_verified_at', '2026-09-15 12:00:00'],
+]);
+
+it('lets administrators edit ordinary customer details', function (): void {
+    $this->actingAs(SystemAdministrator::factory()->administrator()->create(), 'sysadmin');
+    $user = User::factory()->create();
+    $originalPassword = $user->password;
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['name' => 'Updated Customer'])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertSet('record.name', 'Updated Customer');
+
+    expect($user->refresh()->name)->toBe('Updated Customer')
+        ->and($user->password)->toBe($originalPassword);
+});
+
+it('rejects customer authentication changes after the acting administrator is demoted', function (): void {
+    $actor = SystemAdministrator::factory()->create();
+    $this->actingAs($actor, 'sysadmin');
+    $user = User::factory()->create();
+    $email = $user->email;
+    $component = livewire(EditUser::class, ['record' => $user->getKey()]);
+    SystemAdministrator::query()->whereKey($actor->getKey())->update(['role' => SystemAdministratorRole::Administrator]);
+
+    $component
+        ->set('data.email', 'controlled@example.test')
+        ->call('save')
+        ->assertForbidden();
+
+    expect($user->refresh()->email)->toBe($email);
+});
+
+it('lets super administrators update customer email and verification', function (): void {
+    $user = User::factory()->unverified()->create();
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['email' => 'updated@example.test', 'email_verified_at' => '2026-09-15 12:00:00'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($user->refresh()->email)->toBe('updated@example.test')
+        ->and($user->email_verified_at)->not->toBeNull();
+});
+
+it('lets administrators create customer accounts', function (): void {
+    $this->actingAs(SystemAdministrator::factory()->administrator()->create(), 'sysadmin');
+
+    livewire(CreateUser::class)
+        ->fillForm([
+            'name' => 'New Customer',
+            'email' => 'new-customer@example.test',
+            'password' => 'creation-password',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $user = User::query()->where('email', 'new-customer@example.test')->firstOrFail();
+
+    expect(Hash::check('creation-password', $user->password))->toBeTrue();
+});
+
+it('rejects administrator account changes through edit actions', function (string $pageClass): void {
+    $this->actingAs(SystemAdministrator::factory()->administrator()->create(), 'sysadmin');
+    $user = User::factory()->create();
+    $email = $user->email;
+    $action = TestAction::make('edit');
+
+    if ($pageClass === ListUsers::class) {
+        $action->table($user);
+    }
+
+    livewire($pageClass, ['record' => $user->getKey()])
+        ->callAction($action, data: ['email' => 'controlled@example.test'])
+        ->assertHasNoActionErrors();
+
+    expect($user->refresh()->email)->toBe($email);
+})->with([ListUsers::class, ViewUser::class]);
+
+it('saves a user without touching the password when the field is left blank', function (): void {
+    $user = User::factory()->create();
+    $originalPassword = $user->password;
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['name' => 'Renamed'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $user->refresh();
+
+    expect($user->name)->toBe('Renamed')
+        ->and($user->password)->toBe($originalPassword);
+});
+
+it('hashes a new password when one is entered', function (): void {
+    $user = User::factory()->create();
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['password' => 'new-password'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $user->refresh();
+
+    expect($user->password)->not->toBe('new-password')
+        ->and(Hash::check('new-password', $user->password))->toBeTrue();
+});
+
+it('lets the user authenticate with a password set by a sysadmin', function (): void {
+    $user = User::factory()->create();
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['password' => 'admin-set-password'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect(Auth::guard('web')->attempt([
+        'email' => $user->email,
+        'password' => 'admin-set-password',
+    ]))->toBeTrue();
+});
+
+it('keeps the old password working when the field is left blank', function (): void {
+    $user = User::factory()->create(['password' => 'original-password']);
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['name' => 'Renamed'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect(Auth::guard('web')->attempt([
+        'email' => $user->email,
+        'password' => 'original-password',
+    ]))->toBeTrue();
+});
+
+it('lets a sysadmin-created user authenticate with the password given at creation', function (): void {
+    livewire(CreateUser::class)
+        ->fillForm([
+            'name' => 'Created By Admin',
+            'email' => 'created-by-admin@example.test',
+            'password' => 'creation-password',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $created = User::query()->where('email', 'created-by-admin@example.test')->firstOrFail();
+
+    expect($created->password)->not->toBe('creation-password')
+        ->and(Auth::guard('web')->attempt([
+            'email' => 'created-by-admin@example.test',
+            'password' => 'creation-password',
+        ]))->toBeTrue();
+});
+
+it('exposes a notification toggle for every type and channel', function (): void {
+    $user = User::factory()->create();
+
+    $component = livewire(EditUser::class, ['record' => $user->getKey()]);
+
+    foreach (NotificationType::cases() as $type) {
+        foreach ($type->channels() as $channel) {
+            $component->assertFormFieldExists("notification_preferences.{$type->value}.{$channel->value}");
+        }
+    }
+});
+
+it('hydrates notification toggles from the enum defaults', function (): void {
+    $user = User::factory()->create(['notification_preferences' => null]);
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->assertFormSet([
+            'notification_preferences' => [
+                'task_assigned' => ['in_app' => true, 'email' => false],
+                'task_digest' => ['email' => true],
+            ],
+        ]);
+});
+
+it('disables notifications for a single user', function (): void {
+    $user = User::factory()->create(['notification_preferences' => null]);
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm([
+            'notification_preferences' => [
+                'task_assigned' => ['in_app' => false, 'email' => false],
+                'task_digest' => ['email' => false],
+            ],
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $user->refresh();
+
+    expect($user->wantsNotification(NotificationType::TaskAssigned, NotificationChannel::InApp))->toBeFalse()
+        ->and($user->wantsNotification(NotificationType::TaskAssigned, NotificationChannel::Email))->toBeFalse()
+        ->and($user->wantsNotification(NotificationType::TaskDigest, NotificationChannel::Email))->toBeFalse();
+});
+
+it('leaves other users untouched when one user is muted', function (): void {
+    $muted = User::factory()->create(['notification_preferences' => null]);
+    $other = User::factory()->create(['notification_preferences' => null]);
+
+    livewire(EditUser::class, ['record' => $muted->getKey()])
+        ->fillForm([
+            'notification_preferences' => [
+                'task_assigned' => ['in_app' => false, 'email' => false],
+                'task_digest' => ['email' => false],
+            ],
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($other->fresh()->wantsNotification(NotificationType::TaskAssigned, NotificationChannel::InApp))->toBeTrue()
+        ->and($other->fresh()->wantsNotification(NotificationType::TaskDigest, NotificationChannel::Email))->toBeTrue();
+});
+
+describe('workspace relation managers', function (): void {
+    it('links member-of workspaces to the workspace view page using the workspace key, not the pivot key', function (): void {
+        $owner = User::factory()->withPersonalWorkspace()->create();
+        $workspace = $owner->ownedWorkspaces()->first();
+
+        $member = User::factory()->withPersonalWorkspace()->create();
+        $workspace->users()->attach($member, ['role' => 'admin']);
+
+        livewire(WorkspacesRelationManager::class, [
+            'ownerRecord' => $member,
+            'pageClass' => ViewUser::class,
+        ])
+            ->assertSuccessful()
+            ->assertSeeHtml("workspaces/{$workspace->getKey()}");
+    });
+
+    it('links owned workspaces to the workspace view page', function (): void {
+        $owner = User::factory()->withPersonalWorkspace()->create();
+        $workspace = $owner->ownedWorkspaces()->first();
+
+        livewire(OwnedWorkspacesRelationManager::class, [
+            'ownerRecord' => $owner,
+            'pageClass' => ViewUser::class,
+        ])
+            ->assertSuccessful()
+            ->assertSeeHtml("workspaces/{$workspace->getKey()}");
+    });
+});
+
+describe('social providers relation manager', function (): void {
+    it('lists only the linked providers belonging to the user', function (): void {
+        $user = User::factory()->create();
+        $own = UserSocialAccount::factory()->for($user)->create(['provider_name' => 'google']);
+        $someoneElses = UserSocialAccount::factory()->create(['provider_name' => 'microsoft']);
+
+        livewire(SocialAccountsRelationManager::class, [
+            'ownerRecord' => $user,
+            'pageClass' => ViewUser::class,
+        ])
+            ->assertSuccessful()
+            ->assertCanSeeTableRecords([$own])
+            ->assertCanNotSeeTableRecords([$someoneElses]);
+    });
+
+    it('renders a provider the SocialiteProvider enum no longer offers', function (): void {
+        $user = User::factory()->create();
+        UserSocialAccount::factory()->for($user)->create(['provider_name' => 'facebook']);
+
+        expect(SocialiteProvider::tryFrom('facebook'))->toBeNull();
+
+        livewire(SocialAccountsRelationManager::class, [
+            'ownerRecord' => $user,
+            'pageClass' => ViewUser::class,
+        ])
+            ->assertSuccessful()
+            ->assertSee('Facebook');
+    });
+
+    it('is reachable from the user view page', function (): void {
+        $user = User::factory()->create();
+        UserSocialAccount::factory()->for($user)->create(['provider_name' => 'google']);
+
+        livewire(ViewUser::class, ['record' => $user->getKey()])
+            ->assertSuccessful()
+            ->assertSee('Social Providers');
+    });
+
+    it('renders without a table when the user has linked nothing', function (): void {
+        livewire(SocialAccountsRelationManager::class, [
+            'ownerRecord' => User::factory()->create(),
+            'pageClass' => ViewUser::class,
+        ])
+            ->assertSuccessful()
+            ->assertSee('No social providers linked');
+    });
+});
+
+it('deletes a user through the Jetstream deleter so their workspaces are not orphaned', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->firstOrFail();
+
+    livewire(EditUser::class, ['record' => $user->getKey()])
+        ->callAction('delete')
+        ->assertHasNoActionErrors();
+
+    expect(User::query()->find($user->getKey()))->toBeNull()
+        ->and(Workspace::query()->find($workspace->getKey()))->toBeNull();
+});
+
+it('deletes users in bulk through the Jetstream deleter so their workspaces are not orphaned', function (): void {
+    $first = User::factory()->withPersonalWorkspace()->create();
+    $second = User::factory()->withPersonalWorkspace()->create();
+    $workspaceIds = [$first->ownedWorkspaces()->firstOrFail()->getKey(), $second->ownedWorkspaces()->firstOrFail()->getKey()];
+
+    livewire(ListUsers::class)
+        ->selectTableRecords([$first->getKey(), $second->getKey()])
+        ->callAction([['name' => 'delete', 'context' => ['table' => true, 'bulk' => true]]])
+        ->assertHasNoActionErrors();
+
+    expect(User::query()->whereKey([$first->getKey(), $second->getKey()])->count())->toBe(0)
+        ->and(Workspace::query()->whereKey($workspaceIds)->count())->toBe(0);
+});
+
+it('renders the engagement badge derived from the last login timestamp', function (): void {
+    $this->travelTo(Date::parse('2026-08-30 12:00:00'));
+
+    $active = User::factory()->create(['last_login_at' => now()->subDays(3)]);
+    $dormant = User::factory()->create(['last_login_at' => now()->subDays(90)]);
+    $never = User::factory()->create(['last_login_at' => null]);
+
+    livewire(ListUsers::class)
+        ->assertTableColumnStateSet('engagement', SubscriberTagEnum::Active7d->value, record: $active)
+        ->assertTableColumnStateSet('engagement', SubscriberTagEnum::Dormant->value, record: $dormant)
+        ->assertTableColumnStateSet('engagement', null, record: $never);
+});
+
+it('filters to exactly the users whose subscriber profile Mailcoach rejected', function (): void {
+    $rejected = User::factory()->create(['rejected_subscriber_profile_hash' => 'hash-of-a-dead-domain']);
+    $healthy = User::factory()->create(['rejected_subscriber_profile_hash' => null]);
+
+    livewire(ListUsers::class)
+        ->filterTable('rejected_subscriber_profile_hash', true)
+        ->assertCanSeeTableRecords([$rejected])
+        ->assertCanNotSeeTableRecords([$healthy]);
+
+    livewire(ListUsers::class)
+        ->filterTable('rejected_subscriber_profile_hash', false)
+        ->assertCanSeeTableRecords([$healthy])
+        ->assertCanNotSeeTableRecords([$rejected]);
+});
+
+it('flags rejected users in the Mailcoach column and leaves healthy ones unflagged', function (): void {
+    $rejected = User::factory()->create(['rejected_subscriber_profile_hash' => 'hash-of-a-dead-domain']);
+    $healthy = User::factory()->create(['rejected_subscriber_profile_hash' => null]);
+
+    livewire(ListUsers::class)
+        ->assertTableColumnStateSet('rejected_subscriber_profile_hash', true, record: $rejected)
+        ->assertTableColumnStateSet('rejected_subscriber_profile_hash', false, record: $healthy);
+});
+
+it('shows both rejected and healthy users when the Mailcoach filter is unset', function (): void {
+    $rejected = User::factory()->create(['rejected_subscriber_profile_hash' => 'hash-of-a-dead-domain']);
+    $healthy = User::factory()->create(['rejected_subscriber_profile_hash' => null]);
+
+    livewire(ListUsers::class)->assertCanSeeTableRecords([$rejected, $healthy]);
+});
+
+it('filters to exactly the users whose email bounced', function (): void {
+    $bounced = User::factory()->create(['email_bounced_at' => now()]);
+    $deliverable = User::factory()->create(['email_bounced_at' => null]);
+
+    livewire(ListUsers::class)
+        ->filterTable('email_bounced_at', true)
+        ->assertCanSeeTableRecords([$bounced])
+        ->assertCanNotSeeTableRecords([$deliverable]);
+
+    livewire(ListUsers::class)
+        ->filterTable('email_bounced_at', false)
+        ->assertCanSeeTableRecords([$deliverable])
+        ->assertCanNotSeeTableRecords([$bounced]);
+});
+
+it('shows when a user email bounced in the bounced column', function (): void {
+    $this->travelTo(Date::parse('2026-09-22 14:30:00'));
+
+    $bounced = User::factory()->create(['email_bounced_at' => now()]);
+    $deliverable = User::factory()->create(['email_bounced_at' => null]);
+
+    livewire(ListUsers::class)
+        ->assertTableColumnStateSet('email_bounced_at', $bounced->email_bounced_at, record: $bounced)
+        ->assertTableColumnStateNotSet('email_bounced_at', $bounced->email_bounced_at, record: $deliverable);
+});
+
+it('lists exactly the users whose engagement badge matches the selected filter', function (): void {
+    $this->travelTo(Date::parse('2026-08-30 12:00:00'));
+
+    $users = collect([3.0, 7.5, 20.0, 30.5, 45.0, 61.0, 90.0])
+        ->map(fn (float $daysAgo): User => User::factory()->create([
+            'last_login_at' => now()->subMinutes((int) round($daysAgo * 1440)),
+        ]));
+
+    foreach ([SubscriberTagEnum::Active7d, SubscriberTagEnum::Active30d, SubscriberTagEnum::Dormant] as $bucket) {
+        $matching = $users->filter(
+            fn (User $user): bool => SubscriberTagEnum::recencyBucketFor($user->last_login_at) === $bucket,
+        );
+
+        livewire(ListUsers::class)
+            ->filterTable('engagement', $bucket->value)
+            ->assertCanSeeTableRecords($matching->values())
+            ->assertCanNotSeeTableRecords($users->diff($matching)->values());
+    }
+});
+
+it('offers impersonation to super administrators only', function (): void {
+    $user = User::factory()->create();
+
+    livewire(ViewUser::class, ['record' => $user->getKey()])
+        ->assertActionVisible('impersonate');
+
+    livewire(ListUsers::class)
+        ->assertActionVisible(TestAction::make('impersonate')->table($user));
+
+    $this->actingAs(SystemAdministrator::factory()->administrator()->create(), 'sysadmin');
+
+    livewire(ViewUser::class, ['record' => $user->getKey()])
+        ->assertActionHidden('impersonate');
+
+    livewire(ListUsers::class)
+        ->assertActionHidden(TestAction::make('impersonate')->table($user));
+});
+
+it('mints a single-use impersonation link addressed to the app', function (): void {
+    $user = User::factory()->create();
+
+    $link = livewire(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('impersonate')
+        ->effects['redirect'];
+
+    parse_str((string) parse_url($link, PHP_URL_QUERY), $query);
+
+    expect($link)->toStartWith(url()->getPublicUrl("impersonate/{$user->getKey()}?"))
+        ->and($query)->toHaveKeys(['administrator', 'nonce', 'expires', 'signature'])
+        ->and($query['administrator'])->toBe(Auth::guard('sysadmin')->id());
+});
+
+it('filters genuine signups and leaves out invited teammates, unverified users and administrators', function (): void {
+    $genuine = OverviewData::owner();
+    $unverified = OverviewData::owner(attributes: ['email_verified_at' => null]);
+    $administrator = OverviewData::internalOwner();
+
+    $invited = User::factory()->create(['created_at' => now()->subHour()]);
+    OverviewData::workspaceOf($genuine)->users()->attach($invited, ['role' => WorkspaceRole::Member->value, 'created_at' => now()]);
+
+    livewire(ListUsers::class)
+        ->filterTable('genuine_signup')
+        ->assertCanSeeTableRecords([$genuine])
+        ->assertCanNotSeeTableRecords([$unverified, $administrator, $invited]);
+});
+
+it('filters genuine signups who added their own data within seven days', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-01 12:00:00'));
+
+    $fast = OverviewData::owner(CarbonImmutable::parse('2026-09-15 10:00:00'));
+    OverviewData::ownRecord(OverviewData::workspaceOf($fast), $fast, CarbonImmutable::parse('2026-09-20 10:00:00'));
+
+    $slow = OverviewData::owner(CarbonImmutable::parse('2026-09-15 10:00:00'));
+    OverviewData::ownRecord(OverviewData::workspaceOf($slow), $slow, CarbonImmutable::parse('2026-09-25 10:00:00'));
+
+    $chatOnly = OverviewData::owner(CarbonImmutable::parse('2026-09-15 10:00:00'));
+    OverviewData::typedMessage(OverviewData::workspaceOf($chatOnly), $chatOnly, CarbonImmutable::parse('2026-09-16 10:00:00'));
+
+    livewire(ListUsers::class)
+        ->filterTable('reached_first_value')
+        ->assertCanSeeTableRecords([$fast])
+        ->assertCanNotSeeTableRecords([$slow, $chatOnly]);
+});
+
+it('filters users by signup date', function (): void {
+    $inside = OverviewData::owner(CarbonImmutable::parse('2026-09-16 10:00:00'));
+    $outside = OverviewData::owner(CarbonImmutable::parse('2026-09-23 10:00:00'));
+
+    livewire(ListUsers::class)
+        ->filterTable('signed_up', ['from' => '2026-09-15', 'until' => '2026-09-21'])
+        ->assertCanSeeTableRecords([$inside])
+        ->assertCanNotSeeTableRecords([$outside])
+        ->assertSee('Signed up from: 2026-09-15')
+        ->assertSee('Signed up until: 2026-09-21');
+});
+
+it('shows how each user signed up', function (): void {
+    $password = OverviewData::owner();
+    $google = OverviewData::owner();
+    UserSocialAccount::factory()->create(['user_id' => $google->getKey(), 'provider_name' => 'google']);
+
+    livewire(ListUsers::class)
+        ->assertTableColumnStateSet('signup_method', 'Password', $password)
+        ->assertTableColumnStateSet('signup_method', 'Google', $google);
+});
+
+it('keeps trial farmers out of genuine signups once their trial has ended', function (): void {
+    config()->set('system-admin.abuse_timezones', ['Asia/Tehran']);
+
+    $farmer = OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran']);
+    $builder = OverviewData::owner(attributes: ['timezone' => 'Asia/Tehran']);
+    OverviewData::ownRecord(OverviewData::workspaceOf($builder), $builder, now());
+
+    foreach ([$farmer, $builder] as $owner) {
+        OverviewData::trial(OverviewData::workspaceOf($owner))
+            ->forceFill(['plan' => Plan::Free, 'trial_ends_at' => now()->subDay()])
+            ->save();
+    }
+
+    livewire(ListUsers::class)
+        ->filterTable('genuine_signup')
+        ->assertCanSeeTableRecords([$builder])
+        ->assertCanNotSeeTableRecords([$farmer]);
+});
+
+it('shows a password signup who linked a social account later as Password', function (): void {
+    $user = OverviewData::owner(CarbonImmutable::parse('2026-09-01 10:00:00'));
+    UserSocialAccount::factory()->create([
+        'user_id' => $user->getKey(),
+        'provider_name' => 'google',
+        'created_at' => CarbonImmutable::parse('2026-09-20 10:00:00'),
+    ]);
+
+    livewire(ListUsers::class)
+        ->assertTableColumnStateSet('signup_method', 'Password', $user);
+});
+
+it('shows the signup method column without toggling it on', function (): void {
+    expect(livewire(ListUsers::class)->instance()->isTableColumnToggledHidden('signup_method'))->toBeFalse();
+});

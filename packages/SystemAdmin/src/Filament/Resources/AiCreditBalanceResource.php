@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Relaticle\SystemAdmin\Filament\Resources;
 
+use App\Enums\BillingStatus;
 use App\Enums\Plan;
+use Carbon\CarbonInterface;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -25,7 +27,6 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Override;
 use Relaticle\Chat\Models\AiCreditBalance;
@@ -33,6 +34,8 @@ use Relaticle\Chat\Services\CreditService;
 use Relaticle\SystemAdmin\Filament\Resources\AiCreditBalanceResource\Pages\EditAiCreditBalance;
 use Relaticle\SystemAdmin\Filament\Resources\AiCreditBalanceResource\Pages\ListAiCreditBalances;
 use Relaticle\SystemAdmin\Filament\Resources\AiCreditBalanceResource\Pages\ViewAiCreditBalance;
+use Relaticle\SystemAdmin\Filament\Support\RecordLink;
+use Relaticle\SystemAdmin\Filament\Support\ViewerTime;
 
 final class AiCreditBalanceResource extends Resource
 {
@@ -57,7 +60,8 @@ final class AiCreditBalanceResource extends Resource
             ->components([
                 TextInput::make('credits_remaining')
                     ->numeric()
-                    ->minValue(0)
+                    ->minValue(fn (?AiCreditBalance $record): int => $record?->purchased_credits ?? 0)
+                    ->helperText('Cannot go below purchased credits. The DB enforces purchased_credits <= credits_remaining.')
                     ->required(),
                 TextInput::make('credits_used')
                     ->numeric()
@@ -77,9 +81,16 @@ final class AiCreditBalanceResource extends Resource
         return $schema
             ->components([
                 Section::make([
-                    TextEntry::make('team.name')->label('Team'),
+                    TextEntry::make('workspace.name')
+                        ->label('Workspace')
+                        ->color('primary')
+                        ->url(RecordLink::to(WorkspaceResource::class, 'workspace')),
                     TextEntry::make('credits_remaining')->numeric(),
                     TextEntry::make('credits_used')->numeric(),
+                    TextEntry::make('purchased_credits')
+                        ->numeric()
+                        ->label('Purchased credits')
+                        ->helperText('Floor for credits_remaining. The DB rejects a lower value.'),
                     TextEntry::make('period_starts_at')->dateTime(),
                     TextEntry::make('period_ends_at')->dateTime(),
                     TextEntry::make('updated_at')->dateTime(),
@@ -93,10 +104,17 @@ final class AiCreditBalanceResource extends Resource
         return $table
             ->defaultSort('credits_remaining', 'asc')
             ->columns([
-                TextColumn::make('team.name')
-                    ->label('Team')
+                TextColumn::make('workspace.name')
+                    ->label('Workspace')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->color('primary')
+                    ->url(RecordLink::to(WorkspaceResource::class, 'workspace')),
+                TextColumn::make('billing_status')
+                    ->label('Billing')
+                    ->state(fn (AiCreditBalance $record): BillingStatus => $record->workspace->billingStatus())
+                    ->tooltip(fn (BillingStatus $state): string => $state->getDescription())
+                    ->badge(),
                 TextColumn::make('credits_remaining')
                     ->numeric()
                     ->sortable()
@@ -109,14 +127,27 @@ final class AiCreditBalanceResource extends Resource
                 TextColumn::make('credits_used')
                     ->numeric()
                     ->sortable(),
+                TextColumn::make('purchased_credits')
+                    ->label('Purchased')
+                    ->numeric()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                /**
+                 * A date-only column resolves its zone to config('app.timezone'),
+                 * not FilamentTimezone, so the period bounds have to name the
+                 * viewer's zone or the table shows a different day than the
+                 * infolist does for the same record.
+                 */
                 TextColumn::make('period_starts_at')
                     ->date()
+                    ->timezone(fn (): string => ViewerTime::timezone())
                     ->sortable(),
                 TextColumn::make('period_ends_at')
                     ->date()
+                    ->timezone(fn (): string => ViewerTime::timezone())
                     ->sortable()
                     ->badge()
-                    ->color(fn (?Carbon $state): string => $state?->isPast() ? 'danger' : 'gray'),
+                    ->color(fn (?CarbonInterface $state): string => $state?->isPast() ? 'danger' : 'gray'),
                 TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
@@ -129,8 +160,12 @@ final class AiCreditBalanceResource extends Resource
                 Filter::make('period_expired')
                     ->label('Period expired')
                     ->query(fn (Builder $query): Builder => $query->where('period_ends_at', '<', now())),
-                SelectFilter::make('team')
-                    ->relationship('team', 'name')
+                Filter::make('trialing')
+                    ->label('Trialing')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas('workspace', fn (Builder $workspace): Builder => BillingStatus::Trialing->applyToQuery($workspace))),
+                SelectFilter::make('workspace')
+                    ->relationship('workspace', 'name')
                     ->searchable(),
             ])
             ->recordActions([
@@ -154,6 +189,15 @@ final class AiCreditBalanceResource extends Resource
             'view' => ViewAiCreditBalance::route('/{record}'),
             'edit' => EditAiCreditBalance::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * @return Builder<AiCreditBalance>
+     */
+    #[Override]
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with('workspace.subscriptions');
     }
 
     private static function adjustAction(): Action
@@ -180,7 +224,7 @@ final class AiCreditBalanceResource extends Resource
                 $sysadminId = (string) auth('sysadmin')->id();
 
                 $service->adjust(
-                    team: $record->team,
+                    workspace: $record->workspace,
                     delta: (int) $data['delta'],
                     reason: (string) $data['reason'],
                     sysadminId: $sysadminId,
@@ -202,7 +246,10 @@ final class AiCreditBalanceResource extends Resource
             ->authorize('update')
             ->requiresConfirmation()
             ->modalHeading('Reset billing period')
-            ->modalDescription('Wipes credits_used and grants the allowance for the chosen plan. Starts a fresh monthly period.')
+            ->modalDescription(fn (AiCreditBalance $record): string => 'Wipes credits_used and grants the allowance for the chosen plan. Starts a fresh monthly period.'
+                .(($record->workspace->subscription()?->valid() ?? false)
+                    ? ' WARNING: this workspace has an active Stripe subscription, so webhook sync will re-assert the subscribed plan. Cancel the subscription in Stripe first.'
+                    : ''))
             ->schema([
                 Select::make('plan')
                     ->options(self::planOptions())
@@ -210,18 +257,18 @@ final class AiCreditBalanceResource extends Resource
             ])
             ->action(function (array $data, AiCreditBalance $record, CreditService $service): void {
                 $planString = (string) $data['plan'];
-                $team = $record->team;
+                $workspace = $record->workspace;
                 $sysadminId = (string) auth('sysadmin')->id();
 
-                DB::transaction(function () use ($team, $planString, $service, $sysadminId): void {
-                    $team->plan = Plan::from($planString);
-                    $team->save();
-                    $service->resetPeriod($team, $sysadminId);
+                DB::transaction(function () use ($workspace, $planString, $service, $sysadminId): void {
+                    $workspace->plan = Plan::from($planString);
+                    $workspace->save();
+                    $service->resetPeriod($workspace, $sysadminId);
                 });
 
                 Notification::make()
                     ->title('Billing period reset')
-                    ->body("Granted {$team->plan->credits()} credits.")
+                    ->body("Granted {$workspace->plan->credits()} credits.")
                     ->success()
                     ->send();
             });
@@ -235,7 +282,7 @@ final class AiCreditBalanceResource extends Resource
             ->color('danger')
             ->authorize('update')
             ->requiresConfirmation()
-            ->modalHeading('Reset billing period for selected teams')
+            ->modalHeading('Reset billing period for selected workspaces')
             ->schema([
                 Select::make('plan')
                     ->options(self::planOptions())
@@ -250,16 +297,16 @@ final class AiCreditBalanceResource extends Resource
                 DB::transaction(function () use ($records, $plan, $service, $sysadminId): void {
                     foreach ($records as $record) {
                         /** @var AiCreditBalance $record */
-                        $team = $record->team;
-                        $team->plan = $plan;
-                        $team->save();
-                        $service->resetPeriod($team, $sysadminId);
+                        $workspace = $record->workspace;
+                        $workspace->plan = $plan;
+                        $workspace->save();
+                        $service->resetPeriod($workspace, $sysadminId);
                     }
                 });
 
                 Notification::make()
                     ->title('Billing periods reset')
-                    ->body("Granted {$plan->credits()} credits to {$count} teams.")
+                    ->body("Granted {$plan->credits()} credits to {$count} workspaces.")
                     ->success()
                     ->send();
             })
@@ -272,7 +319,7 @@ final class AiCreditBalanceResource extends Resource
     private static function planOptions(): array
     {
         return collect(Plan::cases())
-            ->mapWithKeys(fn (Plan $plan): array => [$plan->value => $plan->label()])
+            ->mapWithKeys(fn (Plan $plan): array => [$plan->value => $plan->getLabel()])
             ->all();
     }
 }

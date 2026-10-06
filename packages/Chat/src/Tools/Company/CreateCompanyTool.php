@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools\Company;
 
 use App\Actions\Company\CreateCompany;
+use App\Concerns\OperatesOnCrmEntity;
+use App\Enums\CrmEntity;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Laravel\Ai\Tools\Request;
+use Relaticle\Chat\Support\WorkspaceMembersContext;
 use Relaticle\Chat\Tools\BaseWriteCreateTool;
 
 final class CreateCompanyTool extends BaseWriteCreateTool
 {
+    use OperatesOnCrmEntity;
+
     public function description(): string
     {
         return 'Propose creating a new company in the CRM. Returns a proposal for user approval.';
@@ -22,37 +26,58 @@ final class CreateCompanyTool extends BaseWriteCreateTool
         return CreateCompany::class;
     }
 
-    protected function entityType(): string
+    protected function entity(): CrmEntity
     {
-        return 'company';
+        return CrmEntity::Company;
     }
 
     protected function entitySchema(JsonSchema $schema): array
     {
         return [
             'name' => $schema->string()->description('The company name.')->required(),
+            'account_owner_id' => $schema->string()->description(
+                'OPTIONAL. The workspace member who owns this company (a user id from the'
+                .' list workspace members tool, never a contact/person). Defaults to the current user.',
+            ),
         ];
     }
 
-    protected function extractActionData(Request $request): array
+    protected function validateRecord(array $record, User $user): ?string
+    {
+        return WorkspaceMembersContext::memberFieldError($user, 'account_owner_id', $record['account_owner_id'] ?? null);
+    }
+
+    protected function extractRecordData(array $record): array
     {
         /** @var User $user */
         $user = auth()->user();
 
+        $ownerId = $record['account_owner_id'] ?? null;
+
         return [
-            'name' => (string) $request->string('name'),
-            'account_owner_id' => $user->getKey(),
+            'name' => (string) ($record['name'] ?? ''),
+            'account_owner_id' => is_string($ownerId) && $ownerId !== '' ? $ownerId : $user->getKey(),
         ];
     }
 
-    protected function buildDisplayData(Request $request): array
+    protected function buildRecordDisplay(array $record): array
     {
-        $name = (string) $request->string('name');
+        $name = (string) ($record['name'] ?? '');
+        $fields = [['label' => 'Name', 'value' => $name]];
+
+        $ownerId = $record['account_owner_id'] ?? null;
+
+        if (is_string($ownerId) && $ownerId !== '') {
+            $fields[] = [
+                'label' => 'Account Owner',
+                'value' => WorkspaceMembersContext::nameOf($ownerId) ?? $ownerId,
+            ];
+        }
 
         return [
             'title' => 'Create Company',
             'summary' => "Create company \"{$name}\"",
-            'fields' => [['label' => 'Name', 'value' => $name]],
+            'fields' => $fields,
         ];
     }
 }

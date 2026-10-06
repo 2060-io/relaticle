@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 use App\Models\Task;
 use App\Models\User;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Illuminate\JsonSchema\Serializer;
 use Illuminate\Support\Facades\Bus;
 use Laravel\Ai\Tools\Request;
-use Relaticle\Chat\Jobs\ContinueChatMessage;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\PendingActionService;
 use Relaticle\Chat\Tools\BaseWriteDeleteTool;
@@ -17,15 +18,15 @@ mutates(DeleteTaskTool::class);
 mutates(PendingActionService::class);
 
 beforeEach(function (): void {
-    Bus::fake([ContinueChatMessage::class]);
+    Bus::fake();
 
-    $this->user = User::factory()->withPersonalTeam()->create();
-    $this->user->switchTeam($this->user->ownedTeams()->first());
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->user->switchWorkspace($this->user->ownedWorkspaces()->first());
     $this->actingAs($this->user);
 });
 
-it('builds ONE proposal holding every requested record id', function (): void {
-    $tasks = Task::factory()->count(3)->for($this->user->currentTeam)->create();
+it('builds ONE per-item batch proposal holding every requested record id', function (): void {
+    $tasks = Task::factory()->count(3)->for($this->user->currentWorkspace)->create();
     $ids = $tasks->pluck('id')->all();
 
     $json = app(DeleteTaskTool::class)->handle(new Request(['ids' => $ids]));
@@ -35,18 +36,20 @@ it('builds ONE proposal holding every requested record id', function (): void {
 
     $pending = PendingAction::query()->where('user_id', $this->user->getKey())->firstOrFail();
 
-    expect($pending->action_data['_record_ids'])->toEqualCanonicalizing($ids)
-        ->and($pending->action_data['_model_class'])->toBe(Task::class)
-        ->and($pending->action_data)->not->toHaveKey('_record_id')
+    expect($pending->action_data['_batch'])->toBeTrue()
+        ->and($pending->action_data['records'])->toHaveCount(3)
+        ->and(collect($pending->action_data['records'])->pluck('_record_id')->all())->toEqualCanonicalizing($ids)
+        ->and($pending->action_data['records'][0]['_model_class'])->toBe(Task::class)
+        ->and($pending->action_data)->not->toHaveKey('_record_ids')
         ->and($pending->display_data['summary'])->toContain('3 tasks')
-        ->and($pending->display_data['fields'])->toHaveCount(3)
+        ->and($pending->display_data['items'])->toHaveCount(3)
         ->and($payload['operation'])->toBe('delete')
         ->and($payload['data']['ids'])->toEqualCanonicalizing($ids)
         ->and($payload['meta']['agent_should_stop'])->toBeTrue();
 });
 
 it('treats a single-element ids array as one record (_record_ids with one entry, Name field)', function (): void {
-    $task = Task::factory()->for($this->user->currentTeam)->create(['title' => 'Solo']);
+    $task = Task::factory()->for($this->user->currentWorkspace)->create(['title' => 'Solo']);
 
     app(DeleteTaskTool::class)->handle(new Request(['ids' => [$task->getKey()]]));
 
@@ -59,10 +62,10 @@ it('treats a single-element ids array as one record (_record_ids with one entry,
         ->and($pending->display_data['fields'][0]['label'])->toBe('Name');
 });
 
-it('skips ids that are missing or in another team and reports them, proposing the rest', function (): void {
-    $mine = Task::factory()->count(2)->for($this->user->currentTeam)->create();
-    $otherTeamUser = User::factory()->withPersonalTeam()->create();
-    $foreign = Task::factory()->for($otherTeamUser->currentTeam)->create();
+it('skips ids that are missing or in another workspace and reports them, proposing the rest', function (): void {
+    $mine = Task::factory()->count(2)->for($this->user->currentWorkspace)->create();
+    $otherWorkspaceUser = User::factory()->withPersonalWorkspace()->create();
+    $foreign = Task::factory()->for($otherWorkspaceUser->currentWorkspace)->create();
 
     $ids = [...$mine->pluck('id')->all(), $foreign->getKey(), 'does-not-exist'];
 
@@ -71,7 +74,7 @@ it('skips ids that are missing or in another team and reports them, proposing th
 
     $pending = PendingAction::query()->where('user_id', $this->user->getKey())->firstOrFail();
 
-    expect($pending->action_data['_record_ids'])->toEqualCanonicalizing($mine->pluck('id')->all())
+    expect(collect($pending->action_data['records'])->pluck('_record_id')->all())->toEqualCanonicalizing($mine->pluck('id')->all())
         ->and($payload['skipped'])->toEqualCanonicalizing([$foreign->getKey(), 'does-not-exist']);
 });
 
@@ -88,33 +91,43 @@ it('returns an error when ids is empty or missing', function (): void {
     expect($payload)->toHaveKey('error');
 });
 
-it('deletes every record in the proposal on approval (all-or-nothing)', function (): void {
-    $tasks = Task::factory()->count(3)->for($this->user->currentTeam)->create();
+it('deletes each approved item and leaves skipped ones, per-item', function (): void {
+    $tasks = Task::factory()->count(3)->for($this->user->currentWorkspace)->create();
 
     app(DeleteTaskTool::class)->handle(new Request(['ids' => $tasks->pluck('id')->all()]));
     $pending = PendingAction::query()->firstOrFail();
+    $records = $pending->action_data['records'];
 
-    app(PendingActionService::class)->approve($pending, $this->user);
+    $service = app(PendingActionService::class);
+    $service->approveItem($pending, $this->user, 0); // delete item 0
+    $service->rejectItem($pending, $this->user, 1);               // skip item 1
+    $result = $service->approveItem($pending, $this->user, 2); // delete item 2 -> finalizes
 
-    foreach ($tasks as $task) {
-        expect(Task::query()->whereKey($task->getKey())->exists())->toBeFalse();
-    }
+    expect($result['finalized'])->toBeTrue()
+        ->and(Task::query()->whereKey($records[1]['_record_id'])->exists())->toBeTrue()
+        ->and(Task::query()->whereIn('id', [$records[0]['_record_id'], $records[2]['_record_id']])->count())->toBe(0);
     expect($pending->refresh()->status->value)->toBe('approved');
 });
 
-it('rolls back the whole batch if one record disappears before approval', function (): void {
-    $tasks = Task::factory()->count(3)->for($this->user->currentTeam)->create();
+it('fails only the item whose record vanished, leaving siblings deletable', function (): void {
+    $tasks = Task::factory()->count(3)->for($this->user->currentWorkspace)->create();
 
     app(DeleteTaskTool::class)->handle(new Request(['ids' => $tasks->pluck('id')->all()]));
     $pending = PendingAction::query()->firstOrFail();
+    $records = $pending->action_data['records'];
 
-    $tasks[1]->forceDelete();
+    Task::query()->whereKey($records[1]['_record_id'])->forceDelete();
 
-    expect(fn () => app(PendingActionService::class)->approve($pending, $this->user))
-        ->toThrow(RuntimeException::class);
+    $service = app(PendingActionService::class);
+    $service->approveItem($pending, $this->user, 0);
+    expect(fn () => $service->approveItem($pending, $this->user, 1))->toThrow(RuntimeException::class);
+    $service->approveItem($pending, $this->user, 2);
 
-    expect(Task::query()->whereKey($tasks[0]->getKey())->exists())->toBeTrue()
-        ->and(Task::query()->whereKey($tasks[2]->getKey())->exists())->toBeTrue();
+    expect(Task::query()->whereIn('id', [$records[0]['_record_id'], $records[2]['_record_id']])->count())->toBe(0);
+});
 
-    expect($pending->refresh()->status->value)->toBe('pending');
+it('tells the model a delete never removes the records linked to it', function (): void {
+    $ids = (new Serializer)->serialize(app(DeleteTaskTool::class)->schema(new JsonSchemaTypeFactory)['ids']);
+
+    expect($ids['description'])->toContain('Deleting a task never deletes the records linked to it.');
 });

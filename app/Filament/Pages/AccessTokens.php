@@ -4,23 +4,44 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Features\Billing;
+use App\Features\Documentation;
+use App\Filament\Clusters\Settings;
 use App\Livewire\App\AccessTokens\CreateAccessToken;
 use App\Livewire\App\AccessTokens\ManageAccessTokens;
+use App\Livewire\App\AccessTokens\ManageOAuthConnectors;
+use Filament\Clusters\Cluster;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Schema;
+use Laravel\Jetstream\Features;
+use Laravel\Pennant\Feature;
 use Override;
 
 final class AccessTokens extends Page
 {
+    protected string $view = 'filament.pages.access-tokens';
+
+    protected static string $layout = 'filament.layouts.settings';
+
+    protected static ?string $slug = 'access-tokens';
+
+    protected static ?int $navigationSort = 4;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-key';
 
-    protected string $view = 'filament.pages.access-tokens';
+    /** @var class-string<Cluster>|null */
+    protected static ?string $cluster = Settings::class;
 
     #[Override]
     public static function shouldRegisterNavigation(): bool
     {
-        return false;
+        return Features::hasApiFeatures();
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return __('access-tokens.title');
     }
 
     public function form(Schema $schema): Schema
@@ -28,7 +49,13 @@ final class AccessTokens extends Page
         return $schema->components([
             Livewire::make(CreateAccessToken::class),
             Livewire::make(ManageAccessTokens::class),
+            Livewire::make(ManageOAuthConnectors::class),
         ]);
+    }
+
+    public function offersWebForms(): bool
+    {
+        return Feature::active(Billing::class) && Feature::active(Documentation::class);
     }
 
     public static function getLabel(): string
