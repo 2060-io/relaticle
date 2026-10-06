@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Livewire\App\AccessTokens;
 
-use App\Enums\EmailGrant;
 use App\Livewire\BaseLivewireComponent;
 use App\Models\PersonalAccessToken;
 use Filament\Actions\Action;
@@ -53,7 +52,7 @@ final class ManageAccessTokens extends BaseLivewireComponent implements HasTable
                     ->formatStateUsing(
                         fn (string $state): string => $state === '*'
                             ? __('access-tokens.permissions.all')
-                            : (EmailGrant::tryFrom($state)?->label() ?? ucfirst($state)),
+                            : CreateAccessToken::permissionLabel($state),
                     ),
                 TextColumn::make('expires_at')
                     ->label(__('access-tokens.table.columns.expires_at'))

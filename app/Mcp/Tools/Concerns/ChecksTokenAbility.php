@@ -50,7 +50,7 @@ trait ChecksTokenAbility
 
     protected function denyIfTokenLacks(EmailGrant $grant): ?Response
     {
-        if (in_array($grant, $this->heldEmailGrants(), true)) {
+        if ($this->holdsAnyEmailGrant($grant)) {
             return null;
         }
 
@@ -107,25 +107,15 @@ trait ChecksTokenAbility
     {
         $token = $this->currentToken();
 
-        if ($token instanceof PassportAccessToken && ! $token->can(Registrar::OAUTH_SCOPE)) {
-            return [];
-        }
-
-        $carriesAbilities = $token instanceof PassportAccessToken
-            || ($token instanceof PersonalAccessToken && $token->getKey());
-
-        if (! $carriesAbilities) {
-            return EmailGrant::offered();
-        }
-
-        $literalScopes = $token instanceof PassportAccessToken
-            ? (array) $token->oauth_scopes
-            : (array) $token->abilities;
-
-        return EmailGrant::fromValues($literalScopes);
+        return match (true) {
+            $token instanceof PassportAccessToken => $token->can(Registrar::OAUTH_SCOPE)
+                ? EmailGrant::fromValues((array) $token->oauth_scopes)
+                : [],
+            $token instanceof PersonalAccessToken && (bool) $token->getKey() => EmailGrant::fromValues((array) $token->abilities),
+            default => EmailGrant::offered(),
+        };
     }
 
-    /** @return PersonalAccessToken|PassportAccessToken|object|null */
     private function currentToken(): ?object
     {
         return auth()->user()?->currentAccessToken();
