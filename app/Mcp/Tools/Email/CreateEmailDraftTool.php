@@ -17,11 +17,11 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Relaticle\EmailIntegration\Actions\SaveEmailDraftAction;
 use Relaticle\EmailIntegration\Enums\EmailCreationSource;
+use Relaticle\EmailIntegration\Exceptions\EmptyDraft;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
 use Relaticle\EmailIntegration\Support\AgentEmailBody;
-use RuntimeException;
 
 #[Title('Create Email Draft')]
 #[Description('Save an email draft in one of the current user\'s mailboxes. Nothing is sent: the user reviews and sends it from Drafts in Relaticle. Write `body` as plain text or markdown. The mailbox signature is added unless `include_signature` is false.')]
@@ -72,7 +72,7 @@ final class CreateEmailDraftTool extends Tool
 
         $account = ConnectedAccount::query()
             ->ownedBy($user, $user->currentWorkspace)
-            ->active()
+            ->connected()
             ->whereKey($validated['connected_account_id'])
             ->first();
 
@@ -100,9 +100,9 @@ final class CreateEmailDraftTool extends Tool
                 'cc' => $validated['cc'] ?? [],
                 'bcc' => $validated['bcc'] ?? [],
                 'source_email_id' => $replyTo?->getKey(),
-                'creation_source' => $replyTo instanceof Email ? EmailCreationSource::REPLY : EmailCreationSource::MCP,
+                'creation_source' => filled($replyTo?->rfc_message_id) ? EmailCreationSource::REPLY : EmailCreationSource::MCP,
             ]);
-        } catch (RuntimeException $exception) {
+        } catch (EmptyDraft $exception) {
             return Response::error($exception->getMessage());
         }
 
@@ -124,11 +124,11 @@ final class CreateEmailDraftTool extends Tool
         return [
             'connected_account_id' => ['required', 'string', 'max:64'],
             'to' => ['sometimes', 'array', 'list', 'max:20'],
-            'to.*' => ['email'],
+            'to.*' => ['required', 'string', 'email', 'max:255'],
             'cc' => ['sometimes', 'array', 'list', 'max:20'],
-            'cc.*' => ['email'],
+            'cc.*' => ['required', 'string', 'email', 'max:255'],
             'bcc' => ['sometimes', 'array', 'list', 'max:20'],
-            'bcc.*' => ['email'],
+            'bcc.*' => ['required', 'string', 'email', 'max:255'],
             'subject' => ['sometimes', 'nullable', 'string', 'max:255'],
             'body' => ['sometimes', 'nullable', 'string', 'max:50000'],
             'include_signature' => ['sometimes', 'boolean'],

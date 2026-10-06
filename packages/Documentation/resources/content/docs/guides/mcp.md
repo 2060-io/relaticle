@@ -236,7 +236,7 @@ The server provides 44 tools. They cover account context, cross-entity discovery
 
 ### Email
 
-These tools appear only for a connection that was given email access. They show the synced email its user may see, at the sharing level the mailbox owner chose.
+These tools appear only for a connection that was given email access. The reading tools show the synced email its user may see, at the sharing level the mailbox owner chose. The mailbox, draft and send tools work on the user's own mailboxes.
 
 The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft. The send tool needs the send permission and a role that may send through an assistant.
 

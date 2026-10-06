@@ -52,7 +52,7 @@ final class ListEmailAccountsTool extends Tool
 
         $items = ConnectedAccount::query()
             ->ownedBy($user, $user->currentWorkspace)
-            ->active()
+            ->connected()
             ->defaultFirst()
             ->get()
             ->map(fn (ConnectedAccount $account): array => [
