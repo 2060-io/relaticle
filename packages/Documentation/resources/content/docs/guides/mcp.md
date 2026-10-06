@@ -57,6 +57,8 @@ Clients that support Dynamic Client Registration (RFC 7591), including Claude.ai
 
 At consent you pick **one workspace** for the connector. That choice is permanent for that connector: to point it at a different workspace, revoke it and connect again. Paused workspaces cannot be selected. Subscribe first, or the connector would have no data to read.
 
+The consent screen also offers **Email access**: **Read your email**, **Save email drafts**, and **Send email as you**. All three are off unless you tick them, and the connector gets only what you tick.
+
 Access tokens last 30 days and refresh tokens 90 days; supported clients refresh silently in the background.
 
 ### Revoking a connector
@@ -66,6 +68,8 @@ Access tokens last 30 days and refresh tokens 90 days; supported clients refresh
 ### Personal access tokens (recommended for developer tools)
 
 For Cursor, VS Code, MCP Inspector, or any client without OAuth support, create a personal access token from your account settings and pass it as `Authorization: Bearer YOUR_TOKEN`.
+
+A token gets email access through its permissions: **Read email**, **Draft email**, and **Send email**. A new token has none of them until you tick one.
 
 ---
 
