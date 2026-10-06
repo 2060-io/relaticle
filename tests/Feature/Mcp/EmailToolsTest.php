@@ -271,6 +271,7 @@ it('lists nothing for a record in another workspace', function (): void {
     ($this->emailFrom)($this->viewer);
 
     $local->emails()->attach($linked->id, ['link_source' => 'manual']);
+    $foreign->emails()->attach($linked->id, ['link_source' => 'manual']);
 
     expect(listedEmails($this->viewer, ['record_type' => 'people', 'record_id' => $foreign->id]))->toBe([])
         ->and(array_column(listedEmails($this->viewer, ['record_type' => 'people', 'record_id' => $local->id]), 'id'))->toBe([$linked->id]);
@@ -809,4 +810,43 @@ it('lists the mailbox and draft tools only for a token that holds the draft gran
         ->and(listedToolNames($this->viewer, ['read', 'email:draft']))
         ->toContain('create-email-draft-tool', 'list-email-accounts-tool')
         ->not->toContain('list-emails-tool');
+});
+
+it('reads an html-only email whose style block is very large', function (): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    EmailBody::query()->create([
+        'email_id' => $email->id,
+        'body_text' => null,
+        'body_html' => '<html><head><title>Ignored title</title><style>'.str_repeat('a{b:c}', 300_000).'</style></head><body><p>Real message</p></body></html>',
+    ]);
+
+    expect(fetchedEmail($this->viewer, $email->id)['body_text'])->toBe('Real message');
+});
+
+it('keeps style and script source out of the text whatever the closing tag looks like', function (string $html): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    EmailBody::query()->create(['email_id' => $email->id, 'body_text' => null, 'body_html' => $html]);
+
+    expect(fetchedEmail($this->viewer, $email->id)['body_text'])
+        ->toContain('Hi')
+        ->not->toContain('color:red')
+        ->not->toContain('alert(');
+})->with([
+    'space before the closing bracket' => '<p>Hi</p><style>p{color:red}</style ><p>Body</p>',
+    'unclosed style' => '<p>Hi</p><style>p{color:red}',
+    'uppercase script' => '<p>Hi</p><SCRIPT>alert(1)</SCRIPT><p>Body</p>',
+]);
+
+it('separates table cells and line breaks in derived text', function (): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    EmailBody::query()->create([
+        'email_id' => $email->id,
+        'body_text' => null,
+        'body_html' => '<table><tr><th>Name</th><th>Amount</th></tr><tr><td>Acme</td><td>$40</td></tr></table>First<br clear="all">Second&nbsp;&nbsp;line',
+    ]);
+
+    expect(fetchedEmail($this->viewer, $email->id)['body_text'])->toBe("Name Amount\nAcme $40\nFirst\nSecond line");
 });

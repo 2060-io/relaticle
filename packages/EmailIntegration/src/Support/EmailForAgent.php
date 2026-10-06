@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Support;
 
 use App\Models\User;
+use Dom\HTMLDocument;
 use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
@@ -115,14 +116,26 @@ final readonly class EmailForAgent
 
     private function textFromHtml(string $html): string
     {
-        $text = Str::of($html)
-            ->replaceMatches('#<(style|script)\b[^>]*>.*?</\1>#is', '')
-            ->replaceMatches('#<br\s*/?>|</(?:p|div|li|tr|h[1-6])>#i', "\n")
-            ->stripTags()
-            ->pipe(fn (string $stripped): string => html_entity_decode($stripped, ENT_QUOTES | ENT_HTML5, 'UTF-8'))
-            ->replaceMatches('/[ \t]+/', ' ');
+        $document = HTMLDocument::createFromString($html, LIBXML_NOERROR, 'UTF-8');
 
-        $lines = $text
+        foreach ($document->querySelectorAll('head, style, script, template, noscript') as $hidden) {
+            $hidden->remove();
+        }
+
+        foreach ($document->querySelectorAll('br') as $lineBreak) {
+            $lineBreak->replaceWith("\n");
+        }
+
+        foreach ($document->querySelectorAll('td, th') as $cell) {
+            $cell->append(' ');
+        }
+
+        foreach ($document->querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, blockquote') as $block) {
+            $block->append("\n");
+        }
+
+        $lines = Str::of((string) $document->body?->textContent)
+            ->replaceMatches('/[ \t\x{00A0}]+/u', ' ')
             ->explode("\n")
             ->map(fn (string $line): string => trim($line))
             ->implode("\n");
