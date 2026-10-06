@@ -81,12 +81,12 @@ for a scope written as a query class.
   that `phpstan.neon` does not list ("guards every Queries folder against writes in
   phpstan.neon"). The rule does not read a write through Spatie's builder or the `DB` facade, so
   a reviewer does.
-- A list query authorizes with `viewAny` and bounds itself to the workspace inside `for()`, so a
-  transport cannot forget either. `tests/Feature/CRM/SurfaceParityTest.php` fails a surface that
+- A list query authorizes with `viewAny` and bounds itself to the workspace inside the trait, so
+  a transport cannot forget either. `tests/Feature/CRM/SurfaceParityTest.php` fails a surface that
   lists for a user the policy denies ("refuses the list to a user with an unverified email on
   the api, mcp and chat").
-- `paginate()` returns a page. `get()`, `find()`, `recent()` and `search()` return results.
-  `for()` returns the builder `paginate()` runs.
+- `paginate()` returns a page. `get()`, `find()`, `recent()` and `search()` return results. The
+  builder behind `paginate()` is the private `for()`.
 
 The five list queries (`CompaniesQuery`, `PeopleQuery`, `OpportunitiesQuery`, `TasksQuery` and
 `NotesQuery`) implement `App\Queries\Contracts\EntityQuery` and use
@@ -96,7 +96,7 @@ extends" and "avoid inheritance" in `tests/Arch/ArchTest.php`).
 
 Each list query declares two facts: `fields()` and `includes()`. A count include is a name in
 `includes()` that ends in `Count`, and the query builder derives the count from the name. The
-trait owns `entity()`, `sorts()`, `for()` and `paginate()`. `entity()` reads
+trait owns `entity()`, `sorts()` and `paginate()`. `entity()` reads
 `CrmEntity::query()`, the one owner of which query lists which entity. Each transport maps its
 own input to `App\Data\ListQuery`, a plain readonly class, and calls `paginate()`.
 
@@ -120,6 +120,12 @@ imports `App\Queries`.
 - `FilterTree` owns the tree limits: `MAX_CONDITIONS`, `MAX_LOGIC_DEPTH`, `MAX_HOPS`.
   `CustomFieldFilterSchema::MAX_LIST_VALUES` owns the cap on a list operand.
   `EntityFilters::limits()` publishes all four.
+- `ListQuery::MAX_PAGE` owns the largest page a list serves. REST rejects a larger one, the
+  chat tools clamp it, and the MCP list tool and the API reference read the constant.
+  `tests/Feature/Api/V1/ListFilterTest.php` fails a REST list that takes one ("rejects a page
+  number past the last one a list serves"), and `tests/Feature/Chat/ListToolFilterTest.php`
+  fails a chat tool that throws on one ("serves an empty page for a page number no list can
+  reach").
 - `FilterVocabulary` builds what one workspace can filter on, and MCP and chat render it. The
   API docs render `EntityFilters::grammar()`, which needs no workspace.
 
@@ -162,14 +168,14 @@ the REST guide. Update those by hand.
   `FilterTree::REPLACED` names the tree form of each retired one.
   `tests/Feature/Chat/ListToolFilterTest.php` and `tests/Feature/Mcp/McpReadToolsTest.php` are
   the gate ("rejects an argument a list tool does not take instead of listing every record").
-- **A caller that wants more than a page.** Call `for($user, $list)` on the entity's query
-  class and refine the builder. It is authorized and workspace-bound already. Refine it with
-  `where` and `whereHas` only, and put any `or` inside a `where(fn ...)` group. A top-level
-  `orWhere` escapes the workspace bound wherever `CurrentWorkspace` is not set, such as a queued
-  job. Never call `withTrashed()` or `withoutGlobalScopes()` on it. No caller refines the
-  builder yet and no test reads for this, so a reviewer does. Never rebuild the allowlists in
-  the caller: `tests/Arch/ArchTest.php` fails a Spatie query built outside a query layer
-  ("builds a list query only in a query layer").
+- **A caller that wants more than a page.** None exists, so `ListsEntity::for()` is private.
+  Make it public in the change that adds the first caller, with a test for that caller. The
+  builder is authorized and workspace-bound already. Refine it with `where` and `whereHas`
+  only, and put any `or` inside a `where(fn ...)` group. A top-level `orWhere` escapes the
+  workspace bound wherever `CurrentWorkspace` is not set, such as a queued job. Never call
+  `withTrashed()` or `withoutGlobalScopes()` on it. Never rebuild the allowlists in the caller:
+  `tests/Arch/ArchTest.php` fails a Spatie query built outside a query layer ("builds a list
+  query only in a query layer").
 
 ## What the SQL must keep
 

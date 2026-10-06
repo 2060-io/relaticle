@@ -121,8 +121,8 @@ $page = $query->paginate($user, $request->toListQuery());
   fails it ("takes the acting user and reads no ambient user, request or workspace")
 - `CrmEntity::query()` owns which query lists which entity. A list query declares `fields()` and
   `includes()`, and the trait derives the rest
-- A caller that wants more than a page calls `for($user, $list)` and refines the builder with
-  `where` only. A top-level `orWhere` escapes the workspace bound in a queued job
+- `paginate()` is the one entry. The builder behind it stays private until a caller needs more
+  than a page, and `.ai/rules/queries.md` says how to open it
 - A query class never writes. `EloquentWriteOutsideActionRule` (PHPStan) covers every `Queries`
   folder, and `tests/Arch/ConventionsTest.php` fails one that `phpstan.neon` does not list
 - `.ai/rules/queries.md` holds the filter grammar and the rest of the rules

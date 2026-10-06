@@ -366,8 +366,11 @@ above differs.
 - **The chat list tool reads its sort names from the query class.** Its own copy is gone.
 - **A package read stays in its package.** `ConversationsQuery` is called from `app/Filament`
   and cannot move to `app/Queries`, which may not import a package.
-- **Refining `for()` has a rule.** `where` and `whereHas` only, with any `or` grouped. A
-  top-level `orWhere` escapes the workspace bound in a queued job. No caller refines it yet.
+- **`for()` is private until a caller needs it.** Nothing calls it but `paginate()`, and a
+  caller's top-level `orWhere` would escape the workspace bound in a queued job. The first
+  caller makes it public, with its own test.
+- **One page cap.** `ListQuery::MAX_PAGE` is 1,000,000 on REST, MCP and chat. A larger page
+  overflowed the offset and returned 500 on `main`.
 - **Gates read the folders.** Readonly covers every class under `app/Queries`. One gate fails a
   Spatie query built outside a query layer. A convention test fails a `Queries` folder that
   `phpstan.neon` does not guard.
