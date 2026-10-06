@@ -242,7 +242,7 @@ The server provides 44 tools. They cover account context, cross-entity discovery
 
 These tools appear only for a connection that was given email access. The reading tools show the synced email its user may see, at the sharing level the mailbox owner chose. The mailbox, draft and send tools work on the user's own mailboxes.
 
-The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft. The send tool needs the send permission and a role that may send through an assistant.
+The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft. The send tool needs the send permission and a role that may send through an assistant. An email goes to at most 20 recipients in total across To, CC and BCC. A user can have up to 10 assistant emails waiting at once.
 
 | Tool | Description |
 |------|-------------|

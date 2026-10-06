@@ -88,6 +88,7 @@ final class CreateEmailDraftTool extends Tool
             return Response::error("Email with ID [{$validated['in_reply_to_email_id']}] not found.");
         }
 
+        $threadsOnReply = filled($replyTo?->rfc_message_id);
         $markdown = (string) ($validated['body'] ?? '');
         $includeSignature = ($validated['include_signature'] ?? true) && trim($markdown) !== '';
 
@@ -99,8 +100,8 @@ final class CreateEmailDraftTool extends Tool
                 'to' => $validated['to'] ?? [],
                 'cc' => $validated['cc'] ?? [],
                 'bcc' => $validated['bcc'] ?? [],
-                'source_email_id' => $replyTo?->getKey(),
-                'creation_source' => filled($replyTo?->rfc_message_id) ? EmailCreationSource::REPLY : EmailCreationSource::MCP,
+                'source_email_id' => $threadsOnReply ? $replyTo->getKey() : null,
+                'creation_source' => $threadsOnReply ? EmailCreationSource::REPLY : EmailCreationSource::MCP,
             ]);
         } catch (EmptyDraft $exception) {
             return Response::error($exception->getMessage());

@@ -11,21 +11,27 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Validation\ValidationException;
 use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailPriority;
+use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Exceptions\AgentOutboxFull;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
 use Relaticle\EmailIntegration\Services\PrivacyService;
 use Relaticle\EmailIntegration\Support\AgentEmailBody;
 use Relaticle\EmailIntegration\Support\QueuedSendNotifier;
+use Throwable;
 
 final readonly class QueueAgentEmailAction
 {
+    private const int MIN_HOLD_SECONDS = 60;
+
     public function __construct(
         private SendEmailAction $sendEmail,
         private AgentEmailBody $body,
         private VisibleEmailsQuery $emails,
         private PrivacyService $privacy,
         private QueuedSendNotifier $notifier,
+        private CancelQueuedEmailAction $cancelEmail,
     ) {}
 
     /**
@@ -70,6 +76,10 @@ final readonly class QueueAgentEmailAction
             ]);
         }
 
+        $this->assertUnderAgentLimit($user);
+
+        $holdSeconds = $this->holdSeconds();
+
         $email = $this->sendEmail->execute($user, [
             'connected_account_id' => (string) $account->getKey(),
             'subject' => $data['subject'],
@@ -82,12 +92,36 @@ final readonly class QueueAgentEmailAction
             'privacy_tier' => $this->privacy->defaultTierForUser($user, $workspace),
             'batch_id' => null,
             'priority' => EmailPriority::PRIORITY,
-            'scheduled_for' => now()->addSeconds(Config::integer('email-integration.outbox.agent_send_hold_seconds')),
+            'scheduled_for' => now()->addSeconds($holdSeconds),
         ]);
 
-        $this->notifier->sendHeld($email, $user, $via);
+        try {
+            $this->notifier->sendHeld($email, $user, $workspace, $via, $holdSeconds);
+        } catch (Throwable $exception) {
+            $this->cancelEmail->execute($email);
+
+            throw $exception;
+        }
 
         return $email;
+    }
+
+    private function holdSeconds(): int
+    {
+        return max(self::MIN_HOLD_SECONDS, Config::integer('email-integration.outbox.agent_send_hold_seconds'));
+    }
+
+    private function assertUnderAgentLimit(User $user): void
+    {
+        $limit = Config::integer('email-integration.outbox.agent_max_held_per_user');
+
+        $held = Email::query()
+            ->where('user_id', $user->getKey())
+            ->where('status', EmailStatus::QUEUED)
+            ->where('creation_source', EmailCreationSource::MCP)
+            ->count();
+
+        throw_if($held >= $limit, AgentOutboxFull::atLimit($limit));
     }
 
     /**

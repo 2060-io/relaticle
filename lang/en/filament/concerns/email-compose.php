@@ -28,10 +28,14 @@ return [
         ],
         'held' => [
             'title' => ':via queued an email',
-            'body' => '":subject" goes to :recipients in :minutes minutes. Cancel it if you did not ask for it.',
+            'body' => '":subject" goes to :recipients in :minutes. Workspace: :workspace. Cancel it if you did not ask for it.',
+            'minutes' => ':count minute|:count minutes',
         ],
         'too_late' => [
             'title' => 'Too late, the email has already been sent',
+        ],
+        'not_found' => [
+            'title' => 'That email could not be found',
         ],
     ],
     'fields' => [

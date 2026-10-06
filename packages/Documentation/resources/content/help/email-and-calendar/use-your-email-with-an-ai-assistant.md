@@ -36,9 +36,6 @@ Open **Access Tokens** from your avatar menu. Tick **Read email**,
 **Draft email**, or **Send email** when you create a token. For a token you
 already have, click its **Permissions** icon, change the boxes, and save.
 
-An older token that shows **All** under **Permissions** includes email
-access. Open its permissions and save only the boxes you want.
-
 ## What the assistant can read
 
 The assistant reads an email at the sharing level that email has for you.

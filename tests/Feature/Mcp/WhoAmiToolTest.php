@@ -84,14 +84,14 @@ describe('token abilities', function (): void {
     });
 });
 
-it('lists every email ability for a token that holds the wildcard', function (): void {
+it('reports no email ability for a token that holds the wildcard', function (): void {
     $this->user->withAccessToken($this->user->createToken('test', ['*'])->accessToken);
 
     RelaticleServer::actingAs($this->user)
         ->tool(WhoAmiTool::class)
         ->assertOk()
         ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
-            ->where('token_abilities', ['*', 'email:read', 'email:draft', 'email:send'])
+            ->where('token_abilities', ['*'])
             ->etc());
 });
 

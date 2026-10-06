@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -26,6 +27,7 @@ use Laravel\Passport\Client;
 use Laravel\Passport\Passport;
 use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Actions\QueueAgentEmailAction;
+use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
@@ -112,6 +114,18 @@ function listedToolNames(User $user, array $abilities): array
 
     return test()
         ->withToken($user->createToken('test-'.Str::random(6), $abilities)->plainTextToken)
+        ->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'])
+        ->assertOk()
+        ->json('result.tools.*.name');
+}
+
+function listedToolNamesIn(User $user, array $abilities, Workspace $workspace): array
+{
+    auth()->forgetGuards();
+
+    return test()
+        ->withToken($user->createToken('test-'.Str::random(6), $abilities)->plainTextToken)
+        ->withHeader('X-Workspace-Id', $workspace->id)
         ->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'])
         ->assertOk()
         ->json('result.tools.*.name');
@@ -830,13 +844,14 @@ it('threads a reply draft onto an email the caller may view', function (): void 
 });
 
 it('stamps a reply draft as a plain assistant draft when the original has no message id to thread on', function (): void {
-    $original = ($this->emailFrom)($this->viewer, ['rfc_message_id' => null]);
+    $original = ($this->emailFrom)($this->viewer, ['rfc_message_id' => null, 'thread_id' => 'thread-1']);
 
     $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['in_reply_to_email_id' => $original->id]));
 
     $draft = Email::query()->findOrFail($data['id']);
 
     expect($draft->in_reply_to)->toBeNull()
+        ->and($draft->thread_id)->toBeNull()
         ->and($draft->creation_source)->toBe(EmailCreationSource::MCP);
 });
 
@@ -878,7 +893,7 @@ it('leaves the signature out of a draft that has no body', function (): void {
         ->not->toContain('data-id="'.SignatureBlock::ID.'"');
 });
 
-it('refuses blank and oversized recipients in a draft', function (array $overrides): void {
+it('refuses blank recipients in a draft', function (array $overrides): void {
     RelaticleServer::actingAs($this->viewer)
         ->tool(CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['subject' => null, 'body' => null, ...$overrides]))
         ->assertHasErrors();
@@ -889,8 +904,15 @@ it('refuses blank and oversized recipients in a draft', function (array $overrid
     'blank to' => [['to' => [' ']]],
     'empty cc' => [['cc' => ['']]],
     'empty bcc' => [['bcc' => ['']]],
-    'address over 255 characters' => [['to' => [str_repeat('a', 250).'@acme.test']]],
 ]);
+
+it('refuses an address over 255 characters in a draft', function (): void {
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['to' => [str_repeat('a', 250).'@acme.test']]))
+        ->assertHasErrors(['The to.0 field must not be greater than 255 characters.']);
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+});
 
 it('does not turn an unrelated runtime failure into a message for the client when drafting', function (): void {
     config(['app.debug' => false]);
@@ -922,15 +944,15 @@ it('replaces markdown images with their alt text in assistant bodies', function 
     'data image' => ['![chart](data:image/png;base64,iVBORw0KGgo=)'],
 ]);
 
-it('renders a deeply nested body quickly', function (): void {
-    $startedAt = microtime(true);
-
+it('caps the nesting of a deeply nested body', function (): void {
     $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, [
         'body' => str_repeat('>', 49_999).'x',
     ]));
 
+    $html = Email::query()->with('body')->findOrFail($data['id'])->body->body_html;
+
     expect($data['status'])->toBe('draft')
-        ->and(microtime(true) - $startedAt)->toBeLessThan(2.0);
+        ->and(substr_count($html, '<blockquote'))->toBeLessThanOrEqual(20);
 });
 
 function toolCallOverHttp(User $user, array $abilities, string $tool, array $arguments): TestResponse
@@ -950,14 +972,14 @@ function toolCallOverHttp(User $user, array $abilities, string $tool, array $arg
 it('refuses a draft call from a token without the draft grant', function (): void {
     $response = toolCallOverHttp($this->viewer, ['read', 'email:read'], 'create-email-draft-tool', draftArguments($this->viewerAccount));
 
-    expect($response->json('error'))->not->toBeNull()
+    expect($response->json('error.message'))->toBe('Tool [create-email-draft-tool] not found.')
         ->and(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
 });
 
 it('refuses a mailbox list call from a token without a draft or send grant', function (): void {
     $response = toolCallOverHttp($this->viewer, ['read', 'email:read'], 'list-email-accounts-tool', []);
 
-    expect($response->json('error'))->not->toBeNull()
+    expect($response->json('error.message'))->toBe('Tool [list-email-accounts-tool] not found.')
         ->and($response->json('result'))->toBeNull();
 });
 
@@ -1038,7 +1060,7 @@ function sendOverHttp(User $user, array $abilities, string $tokenName, array $ar
 {
     auth()->forgetGuards();
 
-    test()
+    $response = test()
         ->withToken($user->createToken($tokenName, $abilities)->plainTextToken)
         ->postJson('/mcp', [
             'jsonrpc' => '2.0',
@@ -1046,8 +1068,10 @@ function sendOverHttp(User $user, array $abilities, string $tokenName, array $ar
             'method' => 'tools/call',
             'params' => ['name' => 'send-email-tool', 'arguments' => $arguments],
         ])
-        ->assertOk()
-        ->assertJsonMissingPath('error');
+        ->assertOk();
+
+    expect($response->json('error'))->toBeNull()
+        ->and($response->json('result.isError'))->not->toBeTrue();
 }
 
 it('queues the email and holds it for the configured window', function (): void {
@@ -1247,10 +1271,54 @@ it('refuses to send from a mailbox the caller does not own or that cannot send',
     foreach ([$this->coworkerAccount, $receiveOnly] as $account) {
         RelaticleServer::actingAs($this->viewer)
             ->tool(SendEmailTool::class, sendArguments($account))
-            ->assertHasErrors();
+            ->assertHasErrors(['Pick one of your own mailboxes that can send. List your mailboxes to find one.']);
     }
 
     expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+});
+
+it('refuses to send from the caller own mailbox in another workspace', function (): void {
+    $elsewhere = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'workspace_id' => Workspace::factory()->create()->id,
+        'user_id' => $this->viewer->id,
+    ]));
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($elsewhere))
+        ->assertHasErrors(['Pick one of your own mailboxes that can send. List your mailboxes to find one.']);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+});
+
+it('refuses to send from a mailbox that needs reconnecting', function (EmailAccountStatus $status): void {
+    $this->viewerAccount->update(['status' => $status]);
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($this->viewerAccount))
+        ->assertHasErrors(['Pick one of your own mailboxes that can send. List your mailboxes to find one.']);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+})->with([
+    'reauth required' => EmailAccountStatus::REAUTH_REQUIRED,
+    'error' => EmailAccountStatus::ERROR,
+]);
+
+it('refuses a reply aimed at the caller own draft', function (): void {
+    $draft = ($this->emailFrom)($this->viewer, ['status' => EmailStatus::DRAFT]);
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($this->viewerAccount, ['in_reply_to_email_id' => $draft->id]))
+        ->assertHasErrors(["Email with ID [{$draft->id}] not found."]);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+});
+
+it('follows the workspace an unpinned token names in a header for the send role', function (): void {
+    $other = Workspace::factory()->create();
+    $other->users()->attach($this->viewer, ['role' => WorkspaceRole::Viewer->value]);
+
+    expect(listedToolNamesIn($this->viewer, ['read', 'email:send'], $this->workspace))->toContain('send-email-tool')
+        ->and(listedToolNamesIn($this->viewer, ['read', 'email:send'], $other))->not->toContain('send-email-tool');
 });
 
 it('requires a recipient, a subject and a body', function (array $missing): void {
@@ -1281,10 +1349,17 @@ it('rejects empty and wrongly typed arguments', function (array $overrides): voi
     'subject as a list' => [['subject' => ['Next steps']]],
     'invalid cc' => [['cc' => ['nope']]],
     'blank recipient' => [['to' => [' ']]],
-    'address over 255 characters' => [['to' => [str_repeat('a', 250).'@acme.test']]],
     'signature flag as text' => [['include_signature' => 'maybe']],
     'body over the limit' => [['body' => str_repeat('a', 50001)]],
 ]);
+
+it('refuses an address over 255 characters in a send', function (): void {
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($this->viewerAccount, ['to' => [str_repeat('a', 250).'@acme.test']]))
+        ->assertHasErrors(['The to.0 field must not be greater than 255 characters.']);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+});
 
 it('reports the outbox cap instead of queuing past it', function (): void {
     config(['email-integration.outbox.max_queued_per_user' => 0]);
@@ -1313,7 +1388,7 @@ it('keeps the send tool from a viewer who holds the send grant', function (): vo
 
     RelaticleServer::actingAs($viewer)
         ->tool(SendEmailTool::class, sendArguments($mailbox))
-        ->assertHasErrors();
+        ->assertHasErrors(['Tool [send-email-tool] not found.']);
 
     expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
 });
@@ -1365,6 +1440,174 @@ it('lists no email tool while the email feature is off', function (): void {
 
     expect(array_values(array_filter(
         listedToolNames($this->viewer, ['read', 'email:read', 'email:draft', 'email:send']),
+        fn (string $name): bool => str_contains($name, 'email'),
+    )))->toBe([]);
+});
+
+it('cancels a held email from another workspace of the same user', function (): void {
+    $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    $elsewhere = Workspace::factory()->create();
+    $elsewhere->users()->attach($this->viewer, ['role' => WorkspaceRole::Member->value]);
+    $this->viewer->switchWorkspace($elsewhere);
+
+    $this->actingAs($this->viewer->fresh());
+    Filament::setTenant($elsewhere);
+
+    livewire(EmailAccessNotificationHandler::class)
+        ->dispatch('undo-queued-send', emailId: $data['id']);
+
+    expect(Email::query()->findOrFail($data['id'])->status)->toBe(EmailStatus::CANCELLED);
+});
+
+it('escapes the subject and the connection name in the notice', function (): void {
+    sendOverHttp($this->viewer, ['read', 'email:send'], '<b>Bot</b>', sendArguments($this->viewerAccount, [
+        'subject' => 'Lunch<span style="display:none">',
+    ]));
+
+    $data = $this->viewer->notifications()->sole()->data;
+
+    expect($data['title'])->toContain('&lt;b&gt;')->not->toContain('<b>')
+        ->and($data['body'])->toContain('&lt;span')->not->toContain('<span');
+});
+
+it('escapes every recipient in the notice', function (): void {
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount, ['to' => ['"<i>x</i>"@acme.test']]));
+
+    expect($this->viewer->notifications()->sole()->data['body'])->toContain('&lt;i&gt;')->not->toContain('<i>');
+});
+
+it('names every recipient in the notice', function (): void {
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount, [
+        'to' => ['self@acme.test'],
+        'cc' => ['boss@acme.test'],
+        'bcc' => ['outsider@other.test'],
+    ]));
+
+    expect($this->viewer->notifications()->sole()->data['body'])
+        ->toContain('self@acme.test')
+        ->toContain('boss@acme.test')
+        ->toContain('outsider@other.test');
+});
+
+it('names the workspace in the notice', function (): void {
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect($this->viewer->notifications()->sole()->data['body'])->toContain(e($this->workspace->name));
+});
+
+it('says one minute for a hold of sixty seconds', function (): void {
+    config(['email-integration.outbox.agent_send_hold_seconds' => 60]);
+
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect($this->viewer->notifications()->sole()->data['body'])->toContain('in 1 minute.');
+});
+
+it('says five minutes for the default hold', function (): void {
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect($this->viewer->notifications()->sole()->data['body'])->toContain('in 5 minutes.');
+});
+
+it('rounds the minutes in the notice down', function (): void {
+    config(['email-integration.outbox.agent_send_hold_seconds' => 150]);
+
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect($this->viewer->notifications()->sole()->data['body'])->toContain('in 2 minutes.');
+});
+
+it('holds for at least a minute whatever the config says', function (int $configured): void {
+    config(['email-integration.outbox.agent_send_hold_seconds' => $configured]);
+    $this->travelTo(now()->startOfSecond());
+
+    $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect(Email::query()->findOrFail($data['id'])->scheduled_for->equalTo(now()->addSeconds(60)))->toBeTrue()
+        ->and($this->viewer->notifications()->sole()->data['body'])->toContain('in 1 minute.');
+})->with([
+    'zero' => 0,
+    'negative' => -5,
+]);
+
+it('cancels the email when the notice cannot be stored', function (): void {
+    config(['app.debug' => false]);
+    DatabaseNotification::creating(fn (): never => throw new RuntimeException('notifications down'));
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($this->viewerAccount))
+        ->assertHasErrors(['An internal server error occurred.']);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0)
+        ->and(Email::query()->where('status', EmailStatus::CANCELLED)->count())->toBe(1);
+});
+
+it('stops an assistant from holding more than ten emails at once', function (): void {
+    foreach (range(1, 10) as $number) {
+        Email::factory()->outbound()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->viewer->id,
+            'connected_account_id' => $this->viewerAccount->getKey(),
+            'status' => EmailStatus::QUEUED,
+            'creation_source' => EmailCreationSource::MCP,
+            'scheduled_for' => now()->addMinutes(5),
+        ]);
+    }
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($this->viewerAccount))
+        ->assertHasErrors(['The user already has 10 assistant emails waiting to send. Wait until they send or the user cancels them.']);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(10);
+});
+
+it('does not count the user own queued mail toward the assistant cap', function (): void {
+    foreach (range(1, 10) as $number) {
+        Email::factory()->outbound()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->viewer->id,
+            'connected_account_id' => $this->viewerAccount->getKey(),
+            'status' => EmailStatus::QUEUED,
+            'creation_source' => EmailCreationSource::COMPOSE,
+            'scheduled_for' => now()->addMinutes(5),
+        ]);
+    }
+
+    $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect($data['status'])->toBe('queued');
+});
+
+it('refuses more than twenty recipients across to, cc and bcc', function (): void {
+    $addresses = fn (string $prefix, int $count): array => array_map(fn (int $number): string => "{$prefix}{$number}@acme.test", range(1, $count));
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(SendEmailTool::class, sendArguments($this->viewerAccount, [
+            'to' => $addresses('to', 10),
+            'cc' => $addresses('cc', 6),
+            'bcc' => $addresses('bcc', 5),
+        ]))
+        ->assertHasErrors(['An email can go to at most 20 recipients in total across to, cc and bcc.']);
+
+    expect(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+});
+
+it('accepts twenty recipients across to, cc and bcc', function (): void {
+    $addresses = fn (string $prefix, int $count): array => array_map(fn (int $number): string => "{$prefix}{$number}@acme.test", range(1, $count));
+
+    $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount, [
+        'to' => $addresses('to', 10),
+        'cc' => $addresses('cc', 5),
+        'bcc' => $addresses('bcc', 5),
+    ]));
+
+    expect($data['status'])->toBe('queued');
+});
+
+it('gives a wildcard token no email tool', function (): void {
+    expect(array_values(array_filter(
+        listedToolNames($this->viewer, ['*']),
         fn (string $name): bool => str_contains($name, 'email'),
     )))->toBe([]);
 });

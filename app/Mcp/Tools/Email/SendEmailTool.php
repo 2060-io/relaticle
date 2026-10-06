@@ -9,6 +9,7 @@ use App\Enums\WorkspaceCapability;
 use App\Mcp\Tools\Concerns\ChecksTokenAbility;
 use App\Mcp\Tools\Concerns\HasExplicitToolAnnotations;
 use App\Models\User;
+use Closure;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -18,6 +19,7 @@ use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Relaticle\EmailIntegration\Actions\QueueAgentEmailAction;
 use Relaticle\EmailIntegration\Enums\EmailCreationSource;
+use Relaticle\EmailIntegration\Exceptions\AgentOutboxFull;
 use Relaticle\EmailIntegration\Exceptions\OutboxFull;
 
 #[Title('Send Email')]
@@ -26,6 +28,8 @@ final class SendEmailTool extends Tool
 {
     use ChecksTokenAbility;
     use HasExplicitToolAnnotations;
+
+    private const int MAX_RECIPIENTS = 20;
 
     public function shouldRegister(): bool
     {
@@ -36,7 +40,7 @@ final class SendEmailTool extends Tool
     {
         return [
             'connected_account_id' => $schema->string()->description('The mailbox to send from, from the list email accounts tool. It must have can_send true.')->required(),
-            'to' => $schema->array()->items($schema->string())->description('Recipient email addresses, 1 to 20.')->required(),
+            'to' => $schema->array()->items($schema->string())->description('Recipient email addresses. At most 20 recipients in total across to, cc and bcc.')->required(),
             'cc' => $schema->array()->items($schema->string())->description('CC email addresses.'),
             'bcc' => $schema->array()->items($schema->string())->description('BCC email addresses.'),
             'subject' => $schema->string()->description('Subject line, up to 255 characters.')->required(),
@@ -69,7 +73,7 @@ final class SendEmailTool extends Tool
         $user = auth()->user();
 
         /** @var array{connected_account_id: string, to: list<string>, cc?: list<string>, bcc?: list<string>, subject: string, body: string, include_signature?: bool|int|string, in_reply_to_email_id?: string} $validated */
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules($request));
 
         if (array_key_exists('include_signature', $validated)) {
             $validated['include_signature'] = (bool) $validated['include_signature'];
@@ -77,7 +81,7 @@ final class SendEmailTool extends Tool
 
         try {
             $email = $queueEmail->execute($user, $validated, EmailCreationSource::MCP, $this->connectionName());
-        } catch (OutboxFull $exception) {
+        } catch (OutboxFull|AgentOutboxFull $exception) {
             return Response::error($exception->getMessage());
         }
 
@@ -93,12 +97,12 @@ final class SendEmailTool extends Tool
         return true;
     }
 
-    /** @return array<string, list<string>> */
-    private function rules(): array
+    /** @return array<string, list<string|Closure>> */
+    private function rules(Request $request): array
     {
         return [
             'connected_account_id' => ['required', 'string', 'max:64'],
-            'to' => ['required', 'array', 'list', 'min:1', 'max:20'],
+            'to' => ['required', 'array', 'list', 'min:1', 'max:20', $this->withinRecipientLimit($request)],
             'to.*' => ['required', 'string', 'email', 'max:255'],
             'cc' => ['sometimes', 'array', 'list', 'max:20'],
             'cc.*' => ['required', 'string', 'email', 'max:255'],
@@ -109,6 +113,20 @@ final class SendEmailTool extends Tool
             'include_signature' => ['sometimes', 'boolean'],
             'in_reply_to_email_id' => ['sometimes', 'string', 'max:64'],
         ];
+    }
+
+    private function withinRecipientLimit(Request $request): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($request): void {
+            $total = array_sum(array_map(
+                fn (string $field): int => is_array($request->get($field)) ? count($request->get($field)) : 0,
+                ['to', 'cc', 'bcc'],
+            ));
+
+            if ($total > self::MAX_RECIPIENTS) {
+                $fail('An email can go to at most '.self::MAX_RECIPIENTS.' recipients in total across to, cc and bcc.');
+            }
+        };
     }
 
     private function roleAllowsSending(): bool

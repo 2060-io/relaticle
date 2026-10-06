@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tool;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
 #[Title('List Email Accounts')]
-#[Description('List the mailboxes the current user has connected in this workspace. Use an `id` as `connected_account_id` when drafting or sending. `can_send` is false for a mailbox that can only receive.')]
+#[Description('List the mailboxes the current user has connected in this workspace. Use an `id` as `connected_account_id` when drafting or sending. `can_send` is false for a mailbox that cannot send right now, such as one that only receives or needs reconnecting.')]
 final class ListEmailAccountsTool extends Tool
 {
     use ChecksTokenAbility;

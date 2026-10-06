@@ -94,7 +94,7 @@ return [
                 'Relaticle\EmailIntegration\Livewire\DraftsTable::table' => 96,
                 'Relaticle\EmailIntegration\Livewire\EmailComposer::companyTeamRecipientOptions' => 62,
                 'Relaticle\EmailIntegration\Livewire\EmailComposer::openReply' => 61,
-                'Relaticle\EmailIntegration\Livewire\EmailComposer::send' => 94,
+                'Relaticle\EmailIntegration\Livewire\EmailComposer::send' => 73,
                 'Relaticle\EmailIntegration\Livewire\EmailComposer::sendMass' => 89,
                 'Relaticle\EmailIntegration\Livewire\OutboxTable::table' => 100,
                 'Relaticle\EmailIntegration\Services\EmailInlineImageEmbedder::embed' => 77,

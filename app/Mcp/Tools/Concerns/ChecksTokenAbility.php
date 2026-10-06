@@ -121,9 +121,13 @@ trait ChecksTokenAbility
             return EmailGrant::offered();
         }
 
+        $literalScopes = $token instanceof PassportAccessToken
+            ? (array) $token->oauth_scopes
+            : (array) $token->abilities;
+
         return array_values(array_filter(
             EmailGrant::offered(),
-            fn (EmailGrant $grant): bool => $token->can($grant->value),
+            fn (EmailGrant $grant): bool => in_array($grant->value, $literalScopes, true),
         ));
     }
 }
