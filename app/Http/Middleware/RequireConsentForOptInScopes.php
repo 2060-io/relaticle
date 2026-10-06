@@ -15,7 +15,8 @@ final readonly class RequireConsentForOptInScopes
     // scopes, whichever workspace that token was consented for.
     public function handle(Request $request, Closure $next): Response
     {
-        $requested = explode(' ', $request->string('scope')->value());
+        $scope = $request->query('scope');
+        $requested = is_string($scope) ? explode(' ', $scope) : [];
 
         if (array_any($requested, fn (string $scope): bool => EmailGrant::tryFrom($scope) instanceof EmailGrant)) {
             $request->merge(['prompt' => 'consent']);

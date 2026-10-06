@@ -851,10 +851,28 @@ it('still skips consent on a re-authorization that names no email scope', functi
     $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))->assertRedirect();
 });
 
-it('refuses an oauth token that holds an email scope without the mcp scope', function (): void {
+it('refuses an oauth token that lacks the mcp scope, whatever else it holds', function (): void {
     Passport::actingAs($this->user, ['email:read']);
 
     RelaticleServer::actingAs($this->user)
         ->tool(WhoAmiTool::class)
         ->assertHasErrors(['Invalid ability provided.']);
+});
+
+it('reads the requested scope from the query string, as the authorization server does', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+
+    $this->actingAs($this->user);
+
+    $this->json('GET', authorizeUrl($this->client, ['scope' => 'mcp:use email:read']), ['scope' => 'mcp:use'])
+        ->assertOk()
+        ->assertSee('name="workspace_id"', false);
+});
+
+it('leaves a malformed scope parameter to the authorization server', function (): void {
+    $this->actingAs($this->user);
+
+    $response = $this->get(authorizeUrl($this->client, ['scope' => null]).'&scope[]=email:read');
+
+    expect($response->getStatusCode())->toBeLessThan(500);
 });
