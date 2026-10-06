@@ -7,6 +7,9 @@ return [
     'password' => 'The provided password is incorrect.',
     'throttle' => 'Too many login attempts. Please try again in :seconds seconds.',
     'throttle_long' => 'Too many attempts. Please try again later.',
+    'signup' => [
+        'invitation_only' => 'Sign-ups are by invitation only. Ask a workspace administrator to invite you.',
+    ],
     'login' => [
         'welcome' => 'Welcome to Relaticle',
         'continue' => 'Continue',

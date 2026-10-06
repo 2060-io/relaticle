@@ -436,6 +436,24 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
         return in_array($capability, $this->workspaceCapabilities($workspaceId), true);
     }
 
+    /**
+     * Whether the user owns, or holds the Admin role in, at least one workspace.
+     * Gates workspace creation when relaticle.workspaces.creation_admins_only is
+     * on, so a fresh account cannot open workspaces of its own.
+     */
+    public function administersAnyWorkspace(): bool
+    {
+        if ($this->ownedWorkspaces()->exists()) {
+            return true;
+        }
+
+        $this->loadMissing('workspaces');
+
+        return $this->workspaces->contains(
+            fn (Workspace $workspace): bool => WorkspaceRole::keyIsAdmin($workspace->membership?->role),
+        );
+    }
+
     private function membershipRoleFor(string $workspaceId): ?WorkspaceRole
     {
         $this->loadMissing('workspaces');

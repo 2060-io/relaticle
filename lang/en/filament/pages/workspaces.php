@@ -64,6 +64,10 @@ return [
                 'title' => 'Workspace limit reached',
                 'body' => 'You already own the maximum number of workspaces. Delete one, or ask to be invited to an existing workspace.',
             ],
+            'workspace_creation_admins_only' => [
+                'title' => 'Workspace creation is restricted',
+                'body' => 'Only owners and administrators of an existing workspace can create new ones here. Ask to be invited to a workspace instead.',
+            ],
         ],
         'preview' => [
             'company_placeholder' => 'Your company',

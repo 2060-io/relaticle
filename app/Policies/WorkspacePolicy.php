@@ -34,6 +34,10 @@ final readonly class WorkspacePolicy
      */
     public function create(User $user): bool
     {
+        if (config('relaticle.workspaces.creation_admins_only') && ! $user->administersAnyWorkspace()) {
+            return false;
+        }
+
         return $user->ownedWorkspaces()->count() < (int) config('relaticle.workspaces.max_owned_per_user');
     }
 

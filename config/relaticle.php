@@ -31,10 +31,32 @@ return [
     | belong to someone else and never count. A workspace scheduled for
     | deletion still occupies a slot until the grace period above elapses.
     |
+    | creation_admins_only limits new workspaces to users who already own, or
+    | administer, one. Off by default so the first workspace of a fresh
+    | instance can be created by whoever signs up first.
+    |
     */
 
     'workspaces' => [
         'max_owned_per_user' => (int) env('RELATICLE_MAX_OWNED_WORKSPACES', 10),
+        'creation_admins_only' => (bool) env('RELATICLE_WORKSPACE_CREATION_ADMINS_ONLY', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Registration
+    |--------------------------------------------------------------------------
+    |
+    | When invitation_only is true, a new account can only be opened for an
+    | email that holds an unexpired workspace invitation, or by a visitor who
+    | arrived through an active workspace invite link. Password and social
+    | sign-up are both covered; existing users are unaffected. Off by default
+    | so the first account of a fresh instance can be created.
+    |
+    */
+
+    'registration' => [
+        'invitation_only' => (bool) env('RELATICLE_REGISTRATION_INVITATION_ONLY', false),
     ],
 
     /*

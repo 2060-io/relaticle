@@ -11,6 +11,7 @@ use App\Enums\SocialiteProvider;
 use App\Features\SocialAuth;
 use App\Models\User;
 use App\Models\WorkspaceInvitation;
+use App\Rules\InvitedEmail;
 use App\Rules\RegistrableEmail;
 use App\Rules\TurnstileChallenge;
 use App\Support\EmailAddress;
@@ -407,6 +408,7 @@ final class Login extends \Filament\Auth\Pages\Login
             ->dehydrateStateUsing(fn (?string $state): string => EmailAddress::canonicalize((string) $state))
             ->default(fn (): ?string => $this->getWorkspaceInvitationFromSession()?->email)
             ->rules(RegistrableEmail::rules(), condition: fn (): bool => $this->authMethod === 'signup')
+            ->rule(new InvitedEmail, condition: fn (): bool => $this->authMethod === 'signup')
             ->unique(table: fn (): ?string => $this->authMethod === 'signup' ? 'users' : null)
             ->live(onBlur: true)
             ->afterStateUpdated(function (): void {

@@ -71,6 +71,19 @@ final class WorkspaceInvitation extends Model
     }
 
     /**
+     * Whether a canonical email has at least one unexpired invitation waiting.
+     * Gates invitation-only signup, so an invitation with no expiry (legacy
+     * rows) does not count: isExpired() treats those as expired too.
+     */
+    public static function hasPendingInvitationFor(string $email): bool
+    {
+        return self::query()
+            ->where('email', $email)
+            ->where('expires_at', '>', now())
+            ->exists();
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function inviter(): BelongsTo

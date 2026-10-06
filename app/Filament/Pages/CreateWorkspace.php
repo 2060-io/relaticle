@@ -66,9 +66,15 @@ final class CreateWorkspace extends RegisterTenant
         // Filament answers an over-cap visit with a bare 404, which reads as a broken
         // link rather than a limit the user can act on.
         if (! self::canView()) {
+            /** @var User|null $user */
+            $user = Filament::auth()->user();
+            $reason = config('relaticle.workspaces.creation_admins_only') && ! $user?->administersAnyWorkspace()
+                ? 'workspace_creation_admins_only'
+                : 'workspace_limit_reached';
+
             Notification::make()
-                ->title(__('filament/pages/workspaces.create_workspace.notifications.workspace_limit_reached.title'))
-                ->body(__('filament/pages/workspaces.create_workspace.notifications.workspace_limit_reached.body'))
+                ->title(__("filament/pages/workspaces.create_workspace.notifications.{$reason}.title"))
+                ->body(__("filament/pages/workspaces.create_workspace.notifications.{$reason}.body"))
                 ->warning()
                 ->send();
 

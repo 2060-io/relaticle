@@ -192,6 +192,17 @@ Toggle features on or off. All are enabled by default unless noted. Useful for f
 | `RELATICLE_FEATURE_EMAIL_INTEGRATION` | `false` | Enable email and calendar sync for Google and Microsoft accounts, the email composer, and the Email & calendar help pages. Requires `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET`. Microsoft accounts also need `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`. |
 | `RELATICLE_FEATURE_SIGNUP_CHALLENGE` | `false` | Ask new sign-ups to pass a Cloudflare Turnstile check. Stays hidden for normal browsers and shows a checkbox only when Cloudflare needs one. Requires `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`. |
 
+### Access Control
+
+Restrict who can sign up and who can create workspaces on a private instance. Both default to `false` so the very first account and workspace can be created on a fresh install; enable them once your workspace and its administrators exist.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RELATICLE_REGISTRATION_INVITATION_ONLY` | `false` | When `true`, a new account can only be opened for an email address that has an **unexpired workspace invitation**, or by a visitor who arrived through an **active invite link**. Applies to password and social sign-up alike. Existing users are unaffected. |
+| `RELATICLE_WORKSPACE_CREATION_ADMINS_ONLY` | `false` | When `true`, only a user who owns or is an Administrator of at least one existing workspace may create new workspaces. Invited members and viewers cannot. |
+
+> **Bootstrap note:** keep both flags at `false` until your first workspace and administrators exist, then enable them and restart. Turning them on against an empty instance would prevent anyone from creating the first account or workspace.
+
 ---
 
 ## Architecture
