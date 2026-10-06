@@ -237,7 +237,7 @@ final class DataTypeInferencer
             ->active()
             ->orderBy('id')
             ->get(['code', 'type'])
-            ->sortBy(fn (CustomField $field): bool => in_array($field->type, $lossyTypes, true))
+            ->reject(fn (CustomField $field): bool => in_array($field->type, $lossyTypes, true))
             ->map(fn (CustomField $field): string => "custom_fields_{$field->code}")
             ->values()
             ->all();
@@ -255,9 +255,15 @@ final class DataTypeInferencer
         }
 
         $dropped = array_filter($values, function (string $value) use ($fieldType): bool {
+            $stored = strtolower($fieldType->setValue($value));
             $path = strtolower(trim((string) parse_url(trim($value), PHP_URL_PATH), '/'));
+            $query = strtolower((string) parse_url(trim($value), PHP_URL_QUERY));
 
-            return $path !== '' && ! str_contains(strtolower($fieldType->setValue($value)), $path);
+            if ($path !== '' && ! str_contains($stored, "/{$path}")) {
+                return true;
+            }
+
+            return $query !== '' && ! str_contains($stored, "?{$query}");
         });
 
         return count($dropped) * 2 > count($values);

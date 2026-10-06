@@ -302,6 +302,42 @@ it('keeps a homepage column on domains when a few of its values are deep links',
     expect($columns['Site']['target'])->toBe('custom_fields_domains');
 });
 
+it('leaves a second profile column unmapped instead of reducing it to a domain', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Profile', 'Feed'], [
+        ['Name' => 'Acme', 'Profile' => 'https://linkedin.com/company/acme', 'Feed' => 'https://twitter.com/acme'],
+        ['Name' => 'Globex', 'Profile' => 'https://linkedin.com/company/globex', 'Feed' => 'https://twitter.com/globex'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Profile']['target'])->toBe('custom_fields_linkedin')
+        ->and($columns)->not->toHaveKey('Feed');
+});
+
+it('maps a company url column to the link field when a host would lose its content', function (string $first, string $second): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Page'], [
+        ['Name' => 'Acme', 'Page' => $first],
+        ['Name' => 'Globex', 'Page' => $second],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Page']['target'])->toBe('custom_fields_linkedin');
+})->with([
+    'a path that also appears in the host' => ['https://about.acme.com/about', 'https://globex.com/globex'],
+    'a query string and no path' => ['https://maps.example.com/?cid=123', 'https://example.org/?p=42'],
+]);
+
 it('mapToField updates column mapping', function (): void {
     createStoreWithHeaders($this, ['Full Name', 'Notes']);
 

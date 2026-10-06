@@ -76,10 +76,12 @@ already registered from that folder.
 - The import wizard infers a column's type from those rules, one type per rule
   (`DataTypeInferencer`). Two types now share the URL rule, so the inferencer keeps `link` as
   the inferred type and suggests the fields of every type that shares the rule.
-- The path of the values decides which field comes first. A type that would drop the path of
-  most sample values is suggested last, so a column of LinkedIn profile URLs maps to
-  `linkedin` and a column of homepages maps to `domains`. Fields of equal standing keep the
-  order they were created in. A header match still wins before any of this runs.
+- The content of the values decides which fields are offered. A type that would drop the
+  path or the query string of most sample values is not suggested for that column. A column
+  of LinkedIn profile URLs maps to `linkedin` and never to `domains`, and a column of
+  homepages maps to `domains`. When no fitting field is free the column stays unmapped.
+  Fields that fit keep the order they were created in. A header match still wins before any
+  of this runs.
 - `setValue()` holds the host logic that `LinkFieldType::normalize()` has at tag `v3.13.1`,
   moved as it is. The base `normalize()` calls it, so the type needs no field setting.
 - `equivalentValues()` returns the host plus the link type's spellings of the typed value
