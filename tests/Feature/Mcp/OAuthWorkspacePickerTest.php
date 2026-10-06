@@ -374,7 +374,7 @@ function consentToWorkspace(User $user, Client $client, Workspace $workspace, ar
         'client_id' => $client->getKey(),
         'auth_token' => session('authToken'),
         'workspace_id' => $workspace->getKey(),
-        ...($emailGrants === [] ? [] : ['email_grants' => $emailGrants]),
+        ...($emailGrants === [] ? [] : ['scopes' => $emailGrants]),
     ])->headers->get('Location');
 
     parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);

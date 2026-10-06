@@ -19,8 +19,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * MCP-aware approve handler. Validates that the user has selected exactly one
  * workspace they belong to, stashes the workspace_id in the session so the AuthCode
- * model's creating hook can persist it, then completes the request with the email
- * scopes the user ticked and none the client asked for on its own.
+ * model's creating hook can persist it, then completes the request. An opt-in scope
+ * reaches the token only when the user ticked it, never because the client asked.
  */
 final class ApproveAuthorizationController extends BaseApproveAuthorizationController
 {
@@ -35,8 +35,8 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
     {
         $validated = $request->validate([
             'workspace_id' => ['required', 'string', 'size:26'],
-            'email_grants' => ['sometimes', 'array', 'list'],
-            'email_grants.*' => ['string'],
+            'scopes' => ['sometimes', 'array', 'list'],
+            'scopes.*' => ['string'],
         ]);
 
         /** @var User $user */
@@ -56,7 +56,7 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
 
         try {
             $authRequest = $this->getAuthRequestFromSession($request);
-            $authRequest->setScopes($this->consentedScopes($authRequest->getScopes(), $validated['email_grants'] ?? []));
+            $authRequest->setScopes($this->consentedScopes($authRequest->getScopes(), $validated['scopes'] ?? []));
             $authRequest->setAuthorizationApproved(true);
 
             return $this->withErrorHandling(fn (): Response => $this->convertResponse(
@@ -73,13 +73,13 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
      */
     private function consentedScopes(array $requested, mixed $ticked): array
     {
-        $withoutEmail = array_filter(
+        $alwaysGranted = array_filter(
             $requested,
             fn (ScopeEntityInterface $scope): bool => EmailGrant::tryFrom($scope->getIdentifier()) === null,
         );
 
         return [
-            ...array_values($withoutEmail),
+            ...array_values($alwaysGranted),
             ...array_map(fn (EmailGrant $grant): Scope => new Scope($grant->value), EmailGrant::fromValues($ticked)),
         ];
     }
