@@ -7,6 +7,7 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -189,6 +190,37 @@ it('suggests the domains field for a url column after its row moved in the heap'
         ->all();
 
     expect($physicalOrder)->toBe(['linkedin', 'domains']);
+
+    createStoreWithHeaders($this, ['Name', 'Site'], [
+        ['Name' => 'Acme', 'Site' => 'https://acme.com'],
+        ['Name' => 'Globex', 'Site' => 'https://globex.com'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Site']['target'])->toBe('custom_fields_domains');
+});
+
+it('suggests the domains field ahead of a link field a user created and ordered', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    $seeded = DB::table('custom_fields')
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', 'linkedin')
+        ->first();
+
+    DB::table('custom_fields')->insert([
+        ...(array) $seeded,
+        'id' => (string) Str::ulid(),
+        'code' => 'press_page',
+        'name' => 'Press page',
+        'sort_order' => 1,
+        'system_defined' => false,
+    ]);
 
     createStoreWithHeaders($this, ['Name', 'Site'], [
         ['Name' => 'Acme', 'Site' => 'https://acme.com'],
