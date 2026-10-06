@@ -467,6 +467,7 @@ foreach (['App', 'Relaticle\ImportWizard', 'Relaticle\OnboardSeed', 'Relaticle\D
             'App\Models\CustomFieldOption',
             'App\Models\CustomFieldSection',
             'App\Models\CustomFieldValue',
+            'App\Filament\CustomFields\DomainFieldType',
             // Slipped past while one check spanned all four layers and could not fail
             // (found 2026-10-04). Review each, then unlist:
             'App\Filament\CustomFields\DateTimeColumn',

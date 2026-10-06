@@ -156,6 +156,10 @@ return [
 
     'edit_workspace' => 'Workspace Settings',
 
+    'custom_field_types' => [
+        'domain' => 'Domain',
+    ],
+
     'tabs' => [
         'general' => 'General',
         'members' => 'Members',

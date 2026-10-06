@@ -110,7 +110,7 @@ Relaticle stores some custom field values in one form, whatever spelling a reque
 | Field | Stored as |
 |---|---|
 | Phone | E.164, such as `+14155550100`. An extension is kept as `;ext=12` |
-| A link that holds domains, such as a company's `domains` | The bare host in lower case, with no scheme, `www.` or path |
+| A domain field, such as a company's `domains` | The bare host in lower case, with no scheme, `www.` or path |
 | Other links | The URL, with its host in lower case |
 | Date and time | The UTC instant. `2026-10-01T13:00:00+05:00` is stored as 08:00 UTC |
 
