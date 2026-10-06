@@ -21,6 +21,7 @@ use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAttachment;
+use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\EmailBody;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
@@ -206,12 +207,13 @@ it('shows bcc recipients to the mailbox owner only', function (): void {
 });
 
 it('lists one row for a message held in two mailboxes', function (): void {
-    ($this->emailFrom)($this->viewer, ['rfc_message_id' => '<same@acme.test>']);
-    ($this->emailFrom)($this->coworker, ['rfc_message_id' => '<same@acme.test>', 'privacy_tier' => EmailPrivacyTier::FULL]);
+    $own = ($this->emailFrom)($this->viewer, ['rfc_message_id' => '<same@acme.test>']);
+    ($this->emailFrom)($this->coworker, ['rfc_message_id' => '<same@acme.test>', 'privacy_tier' => EmailPrivacyTier::METADATA_ONLY]);
 
     $items = listedEmails($this->viewer);
 
     expect($items)->toHaveCount(1)
+        ->and($items[0]['id'])->toBe($own->id)
         ->and($items[0]['access'])->toBe('full');
 });
 
@@ -258,8 +260,14 @@ it('lists nothing for a record whose mailbox the workspace protects', function (
 
 it('lists nothing for a record in another workspace', function (): void {
     $foreign = People::factory()->create();
+    $local = People::factory()->recycle([$this->viewer, $this->workspace])->create();
+    $linked = ($this->emailFrom)($this->viewer);
+    ($this->emailFrom)($this->viewer);
 
-    expect(listedEmails($this->viewer, ['record_type' => 'people', 'record_id' => $foreign->id]))->toBe([]);
+    $local->emails()->attach($linked->id, ['link_source' => 'manual']);
+
+    expect(listedEmails($this->viewer, ['record_type' => 'people', 'record_id' => $foreign->id]))->toBe([])
+        ->and(array_column(listedEmails($this->viewer, ['record_type' => 'people', 'record_id' => $local->id]), 'id'))->toBe([$linked->id]);
 });
 
 it('filters by search, direction and sent date', function (): void {
@@ -288,9 +296,9 @@ it('lists newest first and pages', function (): void {
         ->assertOk()
         ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
             ->where('items.0.id', $newer->id)
-            ->where('total', 2)
             ->where('has_more', true)
             ->where('next_page', 2)
+            ->missing('total')
             ->etc());
 
     expect(array_column(listedEmails($this->viewer, ['per_page' => 1, 'page' => 2]), 'id'))->toBe([$older->id]);
@@ -313,7 +321,7 @@ it('keeps a full page of teammate email under a fixed query budget', function ()
     DB::disableQueryLog();
 
     expect($items)->toHaveCount(25)
-        ->and($queries)->toBeLessThan(77);
+        ->and($queries)->toBeLessThan(76);
 });
 
 it('lists the email tool only for a token that holds the grant', function (): void {
@@ -324,7 +332,8 @@ it('lists the email tool only for a token that holds the grant', function (): vo
 it('does not list the email tool while the email feature is off', function (): void {
     Feature::define(EmailIntegration::class, false);
 
-    expect(listedToolNames($this->viewer, ['read', 'email:read']))->not->toContain('list-emails-tool');
+    expect(listedToolNames($this->viewer, ['read', 'email:read']))->not->toContain('list-emails-tool')
+        ->not->toContain('get-email-tool');
 });
 
 function fetchedEmail(User $user, string $id): array
@@ -400,4 +409,228 @@ it('answers not found for an email the caller may not see', function (): void {
 it('lists the get email tool only for a token that holds the grant', function (): void {
     expect(listedToolNames($this->viewer, ['read']))->not->toContain('get-email-tool')
         ->and(listedToolNames($this->viewer, ['read', 'email:read']))->toContain('get-email-tool');
+});
+
+it('keeps a teammate internal email out of the list even when it is shared in full', function (): void {
+    $email = ($this->emailFrom)($this->coworker, ['is_internal' => true, 'privacy_tier' => EmailPrivacyTier::FULL]);
+
+    EmailShare::factory()->tier(EmailPrivacyTier::FULL)->create([
+        'workspace_id' => $this->workspace->id,
+        'email_id' => $email->id,
+        'shared_with' => $this->viewer->id,
+        'shared_by' => $this->coworker->id,
+    ]);
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(ListEmailsTool::class)
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('items', [])
+            ->where('has_more', false)
+            ->etc());
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(GetEmailTool::class, ['id' => $email->id])
+        ->assertHasErrors(["Email with ID [{$email->id}] not found."]);
+});
+
+it('does not let a hidden internal email take a place on the page', function (): void {
+    $hidden = ($this->emailFrom)($this->coworker, ['is_internal' => true, 'privacy_tier' => EmailPrivacyTier::FULL, 'sent_at' => now()->subHour()]);
+    $own = ($this->emailFrom)($this->viewer, ['sent_at' => now()->subHours(2)]);
+
+    EmailShare::factory()->tier(EmailPrivacyTier::FULL)->create([
+        'workspace_id' => $this->workspace->id,
+        'email_id' => $hidden->id,
+        'shared_with' => $this->viewer->id,
+        'shared_by' => $this->coworker->id,
+    ]);
+
+    expect(array_column(listedEmails($this->viewer, ['per_page' => 1]), 'id'))->toBe([$own->id]);
+});
+
+it('still lists the caller own internal email', function (): void {
+    $email = ($this->emailFrom)($this->viewer, ['is_internal' => true]);
+
+    expect(array_column(listedEmails($this->viewer), 'id'))->toBe([$email->id]);
+});
+
+it('returns text for an html-only body', function (): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    EmailBody::query()->create([
+        'email_id' => $email->id,
+        'body_text' => null,
+        'body_html' => '<style>p{color:red}</style><p>Hello <b>Dana</b>,</p><p>See you &amp; the team<br>Monday</p><script>x()</script>',
+    ]);
+
+    $text = fetchedEmail($this->viewer, $email->id)['body_text'];
+
+    expect($text)->toContain('Hello Dana,')
+        ->toContain("See you & the team\nMonday")
+        ->not->toContain('color:red')
+        ->not->toContain('x()');
+});
+
+it('returns a null body for an email with no body row', function (): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    expect(fetchedEmail($this->viewer, $email->id)['body_text'])->toBeNull();
+});
+
+it('cuts a very large html-only body and says so', function (): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    EmailBody::query()->create(['email_id' => $email->id, 'body_text' => null, 'body_html' => '<p>'.str_repeat('a', 50_000).'</p>']);
+
+    $data = fetchedEmail($this->viewer, $email->id);
+
+    expect(mb_strlen($data['body_text']))->toBe(20_000)
+        ->and($data['body_truncated'])->toBeTrue();
+});
+
+it('accepts numeric strings for the page arguments', function (): void {
+    ($this->emailFrom)($this->viewer);
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(ListEmailsTool::class, ['per_page' => '10', 'page' => '1'])
+        ->assertOk();
+});
+
+it('lists cc recipients only where the body is shared', function (): void {
+    $email = ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::METADATA_ONLY]);
+
+    foreach ([EmailParticipantRole::TO, EmailParticipantRole::CC] as $role) {
+        EmailParticipant::query()->create([
+            'email_id' => $email->id,
+            'email_address' => "{$role->value}@acme.test",
+            'name' => null,
+            'role' => $role,
+        ]);
+    }
+
+    $roles = fn (): array => collect(listedEmails($this->viewer)[0]['participants'])->pluck('role')->all();
+
+    expect($roles())->toEqualCanonicalizing(['from', 'to']);
+
+    $email->forceFill(['privacy_tier' => EmailPrivacyTier::FULL])->save();
+
+    expect($roles())->toEqualCanonicalizing(['from', 'to', 'cc']);
+});
+
+it('treats an empty string argument as not given', function (): void {
+    ($this->emailFrom)($this->viewer, ['direction' => 'inbound']);
+    ($this->emailFrom)($this->viewer, ['direction' => 'inbound']);
+    ($this->emailFrom)($this->viewer, ['direction' => 'outbound']);
+
+    $expected = array_column(listedEmails($this->viewer, ['direction' => 'inbound']), 'id');
+
+    expect($expected)->toHaveCount(2)
+        ->and(array_column(listedEmails($this->viewer, ['search' => '', 'sent_after' => '', 'thread_id' => '', 'direction' => 'inbound']), 'id'))->toEqualCanonicalizing($expected);
+});
+
+it('lists a private teammate email the viewer was shared in full', function (): void {
+    $email = ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::PRIVATE]);
+
+    EmailShare::factory()->tier(EmailPrivacyTier::FULL)->create([
+        'workspace_id' => $this->workspace->id,
+        'email_id' => $email->id,
+        'shared_with' => $this->viewer->id,
+        'shared_by' => $this->coworker->id,
+    ]);
+
+    $items = listedEmails($this->viewer);
+
+    expect(array_column($items, 'id'))->toBe([$email->id])
+        ->and($items[0]['access'])->toBe('full');
+});
+
+it('reads a teammate copy in full when the caller holds a synced copy of the message', function (): void {
+    ($this->emailFrom)($this->viewer, ['rfc_message_id' => '<held@acme.test>']);
+    $teammateCopy = ($this->emailFrom)($this->coworker, ['rfc_message_id' => '<held@acme.test>', 'privacy_tier' => EmailPrivacyTier::METADATA_ONLY]);
+
+    expect(fetchedEmail($this->viewer, $teammateCopy->id)['access'])->toBe('full');
+});
+
+it('hides mail from a blocked address, even from the mailbox owner', function (): void {
+    WorkspaceEmailBlocklist::factory()->blocked()->email('blocked@acme.test')->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => $this->viewer->id,
+    ]);
+
+    $email = ($this->emailFrom)($this->viewer, [], 'blocked@acme.test');
+
+    expect(listedEmails($this->viewer))->toBe([]);
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(GetEmailTool::class, ['id' => $email->id])
+        ->assertHasErrors(["Email with ID [{$email->id}] not found."]);
+});
+
+it('hides a teammate email whose only participant is protected', function (): void {
+    WorkspaceEmailBlocklist::factory()->protected()->email('vip@acme.test')->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => $this->viewer->id,
+    ]);
+
+    ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::FULL], 'vip@acme.test');
+
+    expect(listedEmails($this->viewer))->toBe([]);
+});
+
+it('hides a teammate email that matches the mailbox blocklist', function (): void {
+    EmailBlocklist::factory()->email('spam@acme.test')->create([
+        'user_id' => $this->coworker->id,
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->coworkerAccount->getKey(),
+    ]);
+
+    ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::FULL], 'spam@acme.test');
+
+    expect(listedEmails($this->viewer))->toBe([]);
+});
+
+it('hides a teammate email from a disconnected mailbox', function (): void {
+    ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::FULL]);
+
+    $this->coworkerAccount->delete();
+
+    expect(listedEmails($this->viewer))->toBe([]);
+});
+
+it('does not let search guess a subject or snippet the viewer cannot see', function (): void {
+    ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::METADATA_ONLY, 'subject' => 'Acquisition plan', 'snippet' => 'Budget']);
+    ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::SUBJECT, 'subject' => 'Weekly sync', 'snippet' => 'Layoffs coming']);
+
+    expect(listedEmails($this->viewer, ['search' => 'Acquisition plan']))->toBe([])
+        ->and(listedEmails($this->viewer, ['search' => 'Layoffs']))->toBe([]);
+});
+
+it('filters by thread', function (): void {
+    $inThread = ($this->emailFrom)($this->viewer, ['thread_id' => 'thread-one']);
+    ($this->emailFrom)($this->viewer, ['thread_id' => 'thread-two']);
+
+    expect(array_column(listedEmails($this->viewer, ['thread_id' => 'thread-one']), 'id'))->toBe([$inThread->id]);
+});
+
+it('rejects a record type without its id', function (): void {
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(ListEmailsTool::class, ['record_type' => 'people'])
+        ->assertHasErrors();
+});
+
+it('shows bcc recipients of one email to the mailbox owner only', function (): void {
+    $own = ($this->emailFrom)($this->viewer);
+    $teammates = ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::FULL]);
+
+    foreach ([$own, $teammates] as $email) {
+        EmailParticipant::query()->create([
+            'email_id' => $email->id,
+            'email_address' => 'hidden@acme.test',
+            'name' => null,
+            'role' => EmailParticipantRole::BCC,
+        ]);
+    }
+
+    expect(collect(fetchedEmail($this->viewer, $own->id)['participants'])->pluck('role'))->toContain('bcc')
+        ->and(collect(fetchedEmail($this->viewer, $teammates->id)['participants'])->pluck('role'))->not->toContain('bcc');
 });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Support;
 
 use App\Models\User;
+use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
@@ -51,7 +52,7 @@ final readonly class EmailForAgent
             'snippet' => $tier->showsBody() ? $email->snippet : null,
             'has_attachments' => (bool) $email->has_attachments,
             'participants' => array_values($email->participants
-                ->filter(fn (EmailParticipant $participant): bool => $ownsMailbox || $participant->role !== EmailParticipantRole::BCC)
+                ->filter(fn (EmailParticipant $participant): bool => $this->isListed($participant->role, $tier, $ownsMailbox))
                 ->map(fn (EmailParticipant $participant): array => [
                     'role' => $participant->role->value,
                     'name' => $participant->name,
@@ -71,7 +72,7 @@ final readonly class EmailForAgent
         }
 
         $showsBody = EmailPrivacyTier::from($summary['access'])->showsBody();
-        $body = $showsBody ? (string) $email->body?->body_text : null;
+        $body = $showsBody ? $this->bodyText($email) : null;
 
         return [
             ...$summary,
@@ -88,5 +89,47 @@ final readonly class EmailForAgent
                     ->all()
                 : [],
         ];
+    }
+
+    private function isListed(EmailParticipantRole $role, EmailPrivacyTier $tier, bool $ownsMailbox): bool
+    {
+        return match ($role) {
+            EmailParticipantRole::BCC => $ownsMailbox,
+            EmailParticipantRole::CC => $tier->showsBody(),
+            default => true,
+        };
+    }
+
+    private function bodyText(Email $email): ?string
+    {
+        if ($email->body === null) {
+            return null;
+        }
+
+        if (filled($email->body->body_text)) {
+            return $email->body->body_text;
+        }
+
+        return $this->textFromHtml((string) $email->body->body_html);
+    }
+
+    private function textFromHtml(string $html): string
+    {
+        $text = Str::of($html)
+            ->replaceMatches('#<(style|script)\b[^>]*>.*?</\1>#is', '')
+            ->replaceMatches('#<br\s*/?>|</(?:p|div|li|tr|h[1-6])>#i', "\n")
+            ->stripTags()
+            ->pipe(fn (string $stripped): string => html_entity_decode($stripped, ENT_QUOTES | ENT_HTML5, 'UTF-8'))
+            ->replaceMatches('/[ \t]+/', ' ');
+
+        $lines = $text
+            ->explode("\n")
+            ->map(fn (string $line): string => trim($line))
+            ->implode("\n");
+
+        return Str::of($lines)
+            ->replaceMatches('/\n{3,}/', "\n\n")
+            ->trim()
+            ->toString();
     }
 }

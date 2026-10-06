@@ -8,7 +8,7 @@ use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
@@ -42,11 +42,11 @@ final readonly class VisibleEmailsQuery
 
     /**
      * @param  array{search?: string, record_type?: string, record_id?: string, direction?: string, thread_id?: string, sent_after?: string, sent_before?: string}  $filters
-     * @return LengthAwarePaginator<int, Email>
+     * @return Paginator<int, Email>
      */
-    public function paginate(User $viewer, array $filters, int $perPage, int $page): LengthAwarePaginator
+    public function paginate(User $viewer, array $filters, int $perPage, int $page): Paginator
     {
-        $query = $this->delivered();
+        $query = $this->deliveredTo($viewer);
 
         if (isset($filters['search'])) {
             $this->search->applyToQuery($query, $viewer, $filters['search']);
@@ -68,12 +68,12 @@ final readonly class VisibleEmailsQuery
             ->with(['participants', 'shares'])
             ->latest('sent_at')
             ->orderByDesc('id')
-            ->paginate($perPage, ['*'], 'page', $page);
+            ->simplePaginate($perPage, ['*'], 'page', $page);
     }
 
     public function find(User $viewer, string $id): ?Email
     {
-        return $this->delivered()
+        return $this->deliveredTo($viewer)
             ->withGlobalScope('visible', new VisibleEmailScope($viewer))
             ->with(['participants', 'shares', 'body', 'attachments'])
             ->whereKey($id)
@@ -81,9 +81,13 @@ final readonly class VisibleEmailsQuery
     }
 
     /** @return Builder<Email> */
-    private function delivered(): Builder
+    private function deliveredTo(User $viewer): Builder
     {
-        return Email::query()->whereIn('status', [EmailStatus::SYNCED, EmailStatus::SENT]);
+        $query = Email::query()->whereIn('status', [EmailStatus::SYNCED, EmailStatus::SENT]);
+
+        return $query->where(fn (Builder $visible): Builder => $visible
+            ->where($query->qualifyColumn('user_id'), $viewer->getKey())
+            ->orWhere($query->qualifyColumn('is_internal'), false));
     }
 
     /** @param  Builder<Email>  $query */
