@@ -1295,8 +1295,9 @@ html.fi-record-stacked .fi-record-layout {
         }
     }
 
+    /* Positioned, so a card's screen-reader labels scroll with the column instead of stretching the page. */
     .flowforge-column-content {
-        @apply px-2 pt-0 pb-2;
+        @apply relative px-2 pt-0 pb-2;
 
         /* The empty state is a hint, not a drop zone the size of the column. */
         & > .border-dashed {
