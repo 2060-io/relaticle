@@ -6,11 +6,13 @@ namespace App\Support\Workspaces;
 
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
+use App\Features\Documentation;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Actions\Action;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Laravel\Pennant\Feature;
 
 final readonly class RoleOptions
 {
@@ -81,13 +83,17 @@ final readonly class RoleOptions
             ->modalCancelAction(fn (Action $action): Action => $action
                 ->label(__('workspaces.actions.close'))
                 ->extraAttributes(['autofocus' => true]))
+            // The help pages only exist while the Documentation feature is on; a
+            // self-hosted install with it off would otherwise crash this page on
+            // route('help.show').
             ->extraModalFooterActions([
                 Action::make('readRolesHelp')
+                    ->visible(fn (): bool => Feature::active(Documentation::class))
                     ->label(__('workspaces.actions.compare_roles_help_link'))
                     ->icon('heroicon-m-arrow-top-right-on-square')
                     ->iconPosition('after')
                     ->link()
-                    ->url(url()->getPublicUrl(route('help.show', ['category' => 'workspace', 'slug' => 'manage-members-and-roles'], false)))
+                    ->url(fn (): string => url()->getPublicUrl(route('help.show', ['category' => 'workspace', 'slug' => 'manage-members-and-roles'], false)))
                     ->openUrlInNewTab()
                     ->extraAttributes(['aria-label' => __('workspaces.actions.compare_roles_help_link').' '.__('workspaces.role_matrix.opens_in_new_tab')]),
             ]);
