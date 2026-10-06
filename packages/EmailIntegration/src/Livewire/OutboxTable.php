@@ -29,7 +29,6 @@ use Livewire\Component;
 use Relaticle\EmailIntegration\Actions\CancelQueuedEmailAction;
 use Relaticle\EmailIntegration\Actions\RescheduleQueuedEmailAction;
 use Relaticle\EmailIntegration\Actions\RetryFailedEmailAction;
-use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Enums\OutboxTab;
@@ -212,12 +211,12 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
         return match ($tab) {
             OutboxTab::SCHEDULED => $query->where('status', EmailStatus::QUEUED)
                 ->whereNotNull('scheduled_for')->where('scheduled_for', '>', $dueCutoff)
-                ->where('creation_source', '!=', EmailCreationSource::MCP),
+                ->whereNot(fn (Builder $held): Builder => $held->createdOverMcp()),
             OutboxTab::QUEUED => $query->where('status', EmailStatus::QUEUED)
                 ->where(fn (Builder $dueQuery): Builder => $dueQuery
                     ->whereNull('scheduled_for')
                     ->orWhere('scheduled_for', '<=', $dueCutoff)
-                    ->orWhere('creation_source', EmailCreationSource::MCP)),
+                    ->orWhere(fn (Builder $held): Builder => $held->createdOverMcp())),
             OutboxTab::SENDING => $query->where('status', EmailStatus::SENDING),
             OutboxTab::FAILED => $query->where('status', EmailStatus::FAILED),
             OutboxTab::SENT => $query->where('status', EmailStatus::SENT)->where('sent_at', '>=', now()->subDay()),

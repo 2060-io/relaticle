@@ -118,7 +118,7 @@ final readonly class QueueAgentEmailAction
         $held = Email::query()
             ->where('user_id', $user->getKey())
             ->where('status', EmailStatus::QUEUED)
-            ->where('creation_source', EmailCreationSource::MCP)
+            ->createdOverMcp()
             ->count();
 
         throw_if($held >= $limit, AgentOutboxFull::atLimit($limit));
