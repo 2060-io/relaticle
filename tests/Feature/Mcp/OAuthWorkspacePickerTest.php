@@ -860,6 +860,12 @@ it('asks the user to sign in again when a client sends prompt=login', function (
         ->assertRedirect(route('login'));
 
     $this->assertGuest();
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'prompt' => 'login']))
+        ->assertOk()
+        ->assertSee('name="workspace_id"', false);
 });
 
 it('shows consent on a re-authorization that sends prompt=none', function (): void {
