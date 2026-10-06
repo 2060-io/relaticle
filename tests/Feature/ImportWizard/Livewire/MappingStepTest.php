@@ -252,6 +252,56 @@ it('maps a second url column of a company import to the other link field', funct
         ->and($columns['Profile']['target'])->toBe('custom_fields_linkedin');
 });
 
+it('maps a company url column whose values carry a path to the link field', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Profile'], [
+        ['Name' => 'Acme', 'Profile' => 'https://www.linkedin.com/company/acme'],
+        ['Name' => 'Globex', 'Profile' => 'https://www.linkedin.com/company/globex'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Profile']['target'])->toBe('custom_fields_linkedin');
+});
+
+it('maps a profile column before a homepage column to the link field and the homepage to domains', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Profile', 'Site'], [
+        ['Name' => 'Acme', 'Profile' => 'https://linkedin.com/company/acme', 'Site' => 'https://www.acme.com/'],
+        ['Name' => 'Globex', 'Profile' => 'https://linkedin.com/company/globex', 'Site' => 'https://globex.com'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Profile']['target'])->toBe('custom_fields_linkedin')
+        ->and($columns['Site']['target'])->toBe('custom_fields_domains');
+});
+
+it('keeps a homepage column on domains when a few of its values are deep links', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Site'], [
+        ['Name' => 'Acme', 'Site' => 'https://acme.com'],
+        ['Name' => 'Globex', 'Site' => 'https://globex.com/about'],
+        ['Name' => 'Initech', 'Site' => 'https://initech.com'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Site']['target'])->toBe('custom_fields_domains');
+});
+
 it('mapToField updates column mapping', function (): void {
     createStoreWithHeaders($this, ['Full Name', 'Notes']);
 

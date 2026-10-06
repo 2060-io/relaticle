@@ -7,6 +7,7 @@ namespace Relaticle\ImportWizard\Support;
 use Illuminate\Support\Facades\Validator;
 use Relaticle\CustomFields\Contracts\FieldTypeDefinitionInterface;
 use Relaticle\CustomFields\Enums\FieldDataType;
+use Relaticle\CustomFields\FieldTypeSystem\BaseFieldType;
 use Relaticle\CustomFields\FieldTypeSystem\FieldManager;
 use Relaticle\CustomFields\Models\CustomField;
 use Relaticle\ImportWizard\Data\InferenceResult;
@@ -82,7 +83,7 @@ final class DataTypeInferencer
         return new InferenceResult(
             type: $topType,
             confidence: $confidence,
-            suggestedFields: $this->getSuggestedFieldsForType($this->fieldTypesSharingKeyOf($topType)),
+            suggestedFields: $this->getSuggestedFieldsForType($this->fieldTypesSharingKeyOf($topType), array_values($nonEmptyValues)),
         );
     }
 
@@ -216,20 +217,18 @@ final class DataTypeInferencer
     }
 
     /**
-     * Get suggested field keys for the detected field types.
-     *
-     * Queries actual custom fields configured for the entity.
-     *
      * @param  list<string>  $fieldTypeKeys
+     * @param  list<string>  $values
      * @return array<string>
      */
-    private function getSuggestedFieldsForType(array $fieldTypeKeys): array
+    private function getSuggestedFieldsForType(array $fieldTypeKeys, array $values): array
     {
         if ($this->entityName === null || $this->workspaceId === null) {
             return [];
         }
 
-        // Query custom fields of this type for the entity
+        $lossyTypes = array_filter($fieldTypeKeys, fn (string $key): bool => $this->dropsThePathOfMost($key, $values));
+
         return CustomField::query()
             ->withoutGlobalScopes()
             ->where('entity_type', $this->entityName)
@@ -237,8 +236,30 @@ final class DataTypeInferencer
             ->whereIn('type', $fieldTypeKeys)
             ->active()
             ->orderBy('id')
-            ->pluck('code')
-            ->map(fn (string $code): string => "custom_fields_{$code}")
+            ->get(['code', 'type'])
+            ->sortBy(fn (CustomField $field): bool => in_array($field->type, $lossyTypes, true))
+            ->map(fn (CustomField $field): string => "custom_fields_{$field->code}")
+            ->values()
             ->all();
+    }
+
+    /**
+     * @param  list<string>  $values
+     */
+    private function dropsThePathOfMost(string $fieldTypeKey, array $values): bool
+    {
+        $fieldType = resolve(FieldManager::class)->getFieldTypeInstance($fieldTypeKey);
+
+        if (! $fieldType instanceof BaseFieldType) {
+            return false;
+        }
+
+        $dropped = array_filter($values, function (string $value) use ($fieldType): bool {
+            $path = strtolower(trim((string) parse_url(trim($value), PHP_URL_PATH), '/'));
+
+            return $path !== '' && ! str_contains(strtolower($fieldType->setValue($value)), $path);
+        });
+
+        return count($dropped) * 2 > count($values);
     }
 }

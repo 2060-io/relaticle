@@ -75,8 +75,11 @@ already registered from that folder.
 - `defaultItemValidationRules()` carries the same two rules the link type has.
 - The import wizard infers a column's type from those rules, one type per rule
   (`DataTypeInferencer`). Two types now share the URL rule, so the inferencer keeps `link` as
-  the inferred type and suggests the fields of every type that shares the rule. A URL column
-  on a company still offers `domains` and `linkedin`, as it does today.
+  the inferred type and suggests the fields of every type that shares the rule.
+- The path of the values decides which field comes first. A type that would drop the path of
+  most sample values is suggested last, so a column of LinkedIn profile URLs maps to
+  `linkedin` and a column of homepages maps to `domains`. Fields of equal standing keep the
+  order they were created in. A header match still wins before any of this runs.
 - `setValue()` holds the host logic that `LinkFieldType::normalize()` has at tag `v3.13.1`,
   moved as it is. The base `normalize()` calls it, so the type needs no field setting.
 - `equivalentValues()` returns the host plus the link type's spellings of the typed value
