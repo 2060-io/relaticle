@@ -20,11 +20,8 @@ use Relaticle\ImportWizard\Data\InferenceResult;
  */
 final class DataTypeInferencer
 {
-    /** @var array<string, string> Validation rule key => field type key */
-    private array $validationToFieldType = [];
-
-    /** @var array<string, list<string>> Validation rule key => every field type key that shares it */
-    private array $validationToSharingFieldTypes = [];
+    /** @var array<string, list<string>> Validation rule key => the field type keys that share it, the detected one first */
+    private array $validationToFieldTypes = [];
 
     /** @var array<string, string> FieldDataType value => field type key */
     private array $dataTypeToFieldType = [];
@@ -52,7 +49,7 @@ final class DataTypeInferencer
         }
 
         $allTypes = array_merge(
-            array_values($this->validationToFieldType),
+            array_column($this->validationToFieldTypes, 0),
             array_values($this->dataTypeToFieldType),
             ['text']
         );
@@ -111,8 +108,7 @@ final class DataTypeInferencer
                 foreach ($itemRules as $rule) {
                     $validationKey = $this->extractValidationKey($rule);
                     if ($validationKey !== null) {
-                        $this->validationToFieldType[$validationKey] ??= $data->key;
-                        $this->validationToSharingFieldTypes[$validationKey][] = $data->key;
+                        $this->validationToFieldTypes[$validationKey][] = $data->key;
                         break;
                     }
                 }
@@ -149,9 +145,9 @@ final class DataTypeInferencer
     private function detectType(string $value): string
     {
         // Check validation-based types (email, phone, url/link)
-        foreach ($this->validationToFieldType as $validationKey => $fieldTypeKey) {
+        foreach ($this->validationToFieldTypes as $validationKey => $fieldTypeKeys) {
             if ($this->passesValidation($value, $validationKey)) {
-                return $fieldTypeKey;
+                return $fieldTypeKeys[0];
             }
         }
 
@@ -207,7 +203,7 @@ final class DataTypeInferencer
      */
     private function fieldTypesSharingKeyOf(string $fieldTypeKey): array
     {
-        foreach ($this->validationToSharingFieldTypes as $fieldTypeKeys) {
+        foreach ($this->validationToFieldTypes as $fieldTypeKeys) {
             if (in_array($fieldTypeKey, $fieldTypeKeys, true)) {
                 return $fieldTypeKeys;
             }
@@ -255,7 +251,7 @@ final class DataTypeInferencer
         $dropped = array_filter($values, function (string $value) use ($fieldType): bool {
             $url = parse_url(trim($value));
 
-            if (! is_array($url) || ! isset($url['host'])) {
+            if (! isset($url['host'])) {
                 return false;
             }
 
@@ -263,11 +259,8 @@ final class DataTypeInferencer
             $path = strtolower(trim($url['path'] ?? '', '/'));
             $query = strtolower(rtrim($url['query'] ?? '', '/'));
 
-            if ($path !== '' && ! str_contains($stored, "/{$path}")) {
-                return true;
-            }
-
-            return $query !== '' && ! str_contains($stored, "?{$query}");
+            return ($path !== '' && ! str_contains($stored, "/{$path}"))
+                || ($query !== '' && ! str_contains($stored, "?{$query}"));
         });
 
         return count($dropped) * 2 > count($values);
