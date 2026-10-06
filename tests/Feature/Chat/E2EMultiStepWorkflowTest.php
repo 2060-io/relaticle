@@ -10,23 +10,23 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Enums\PendingActionStatus;
-use Relaticle\Chat\Jobs\ContinueChatMessage;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\PendingActionService;
 use Relaticle\Chat\Tools\People\CreatePersonTool;
 use Relaticle\Chat\Tools\Task\CreateTaskTool;
 
-it('multi-step workflow: create person -> approve -> continuation creates linked task', function (): void {
-    $user = User::factory()->withPersonalTeam()->create();
+it('multi-step workflow: create person -> approve -> create linked task -> approve', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
     Auth::guard('web')->setUser($user);
-    Filament::setTenant($user->currentTeam);
+    Filament::setTenant($user->currentWorkspace);
 
     $convId = '019df800-5555-7000-8000-000000000001';
     DB::table('agent_conversations')->insert([
         'id' => $convId,
-        'user_id' => (string) $user->getKey(),
-        'team_id' => $user->currentTeam->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => (string) $user->getKey(),
+        'workspace_id' => $user->currentWorkspace->getKey(),
         'title' => '',
         'created_at' => now(),
         'updated_at' => now(),
@@ -34,7 +34,7 @@ it('multi-step workflow: create person -> approve -> continuation creates linked
 
     $personTool = resolve(CreatePersonTool::class);
     $personTool->setConversationId($convId);
-    $personTool->handle(new Request(['name' => 'Angel']));
+    $personTool->handle(new Request(['records' => [['name' => 'Angel']]]));
 
     $personPending = PendingAction::query()
         ->where('conversation_id', $convId)
@@ -46,7 +46,6 @@ it('multi-step workflow: create person -> approve -> continuation creates linked
 
     Bus::fake();
     $approved = resolve(PendingActionService::class)->approve($personPending, $user);
-    Bus::assertDispatched(ContinueChatMessage::class);
 
     expect($approved->status)->toBe(PendingActionStatus::Approved);
     $angelId = $approved->result_data['id'] ?? null;
@@ -55,8 +54,7 @@ it('multi-step workflow: create person -> approve -> continuation creates linked
     $taskTool = resolve(CreateTaskTool::class);
     $taskTool->setConversationId($convId);
     $taskTool->handle(new Request([
-        'title' => 'Follow up call for tomorrow',
-        'people_ids' => [(string) $angelId],
+        'records' => [['title' => 'Follow up call for tomorrow', 'people_ids' => [(string) $angelId]]],
     ]));
 
     $taskPending = PendingAction::query()

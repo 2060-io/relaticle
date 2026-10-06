@@ -1,0 +1,181 @@
+---
+title: Contributing Guide
+description: Get Relaticle development setup steps and a guide to its PHP 8.5, Laravel 13 and Filament 5 codebase.
+order: 4
+updated: "2026-10-05"
+---
+
+Technical documentation for developers and contributors.
+
+---
+
+## Quick Start
+
+```
+git clone https://github.com/Relaticle/relaticle.git
+cd relaticle && composer app-install
+composer run dev
+```
+
+Visit `http://localhost:8000` to access the application.
+
+---
+
+## Tech Stack
+
+| Component | Technology                            |
+|-----------|---------------------------------------|
+| Backend | PHP 8.5, Laravel 13                   |
+| Admin UI | Filament 5                            |
+| Frontend | Livewire 4, Alpine.js, Tailwind CSS 4 |
+| Database | PostgreSQL                             |
+| Queue | Laravel Horizon                       |
+| Testing | Pest v5                               |
+| Static Analysis | PHPStan (Level 7)                     |
+| Code Style | Laravel Pint, Rector                  |
+| Auth | Laravel Jetstream                     |
+
+---
+
+## Architecture
+
+### Core Models
+
+```
+Workspace ─┬─ User (via Membership)
+           ├─ Company ─┬─ People
+           │           └─ Opportunity ─── People
+           ├─ Task (many-to-many with Company, People, Opportunity)
+           └─ Note (many-to-many with Company, People, Opportunity)
+```
+
+### Multi-Tenancy
+
+All workspace data is isolated via the `HasWorkspace` trait. Every query automatically scopes to the current workspace.
+
+### Key Traits
+
+| Trait | Purpose |
+|-------|---------|
+| `HasWorkspace` | Workspace isolation |
+| `HasCreator` | Tracks record creator |
+| `HasNotes` | Polymorphic notes relationship |
+
+---
+
+## Development Setup
+
+### Requirements
+
+- **PHP 8.5+** with extensions: pdo_pgsql, gd, bcmath, mbstring, xml
+- **PostgreSQL 17+**
+- **Node.js 22+** with pnpm
+- **Composer 2+**
+
+### Manual Installation
+
+```
+git clone https://github.com/Relaticle/relaticle.git
+cd relaticle
+composer install
+pnpm install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan storage:link
+pnpm run build
+composer run dev
+```
+
+### Environment Config
+
+For PostgreSQL:
+```
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=relaticle
+DB_USERNAME=postgres
+DB_PASSWORD=your_password
+```
+
+---
+
+## Quality Tools
+
+```
+composer lint          # Format with Pint + Rector
+composer test:lint     # Check formatting
+composer test:types    # PHPStan analysis
+composer test:pest     # Run tests
+composer test          # All checks (required before PR)
+```
+
+### Git Hooks
+
+Enable pre-commit checks:
+```
+git config core.hooksPath .githooks
+```
+
+---
+
+## Testing
+
+All contributions require:
+- Feature tests through real entry points for new behaviour
+- Feature tests for user interactions
+- 100% type coverage
+
+Run specific tests:
+```
+php artisan test tests/Feature/ExampleTest.php
+php artisan test --filter="test_method_name"
+```
+
+---
+
+## Custom Fields
+
+Relaticle includes a custom fields system for extending entities without migrations.
+
+- **License**: AGPL-3.0 (free for open source) or Commercial
+- **Docs**: [Custom Fields Documentation](https://relaticle.github.io/custom-fields/)
+
+---
+
+## Deployment
+
+For production deployment instructions, including Docker setup, environment configuration, reverse proxy, and platform-specific guides (Dokploy, Coolify), see the **Self-Hosting Guide**.
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Queue not processing | `php artisan queue:restart` |
+| File upload errors | `chmod -R 775 storage bootstrap/cache` |
+| View cache issues | `php artisan view:clear && pnpm run build` |
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/your-feature`
+3. Make changes following coding standards
+4. Run tests: `composer test`
+5. Commit with conventional messages
+6. Open a Pull Request
+
+PRs must pass all checks before merge.
+
+---
+
+## Resources
+
+- [Laravel Docs](https://laravel.com/docs/13.x)
+- [Filament Docs](https://filamentphp.com/docs)
+- [Livewire Docs](https://livewire.laravel.com/)
+- [Pest Docs](https://pestphp.com/)

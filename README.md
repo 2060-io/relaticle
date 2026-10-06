@@ -4,13 +4,13 @@
   </a>
 </p>
 
-<h1 align="center">The Open-Source CRM Built for AI Agents</h1>
+<h1 align="center">The Open-Source CRM Built for People and AI-Powered Work</h1>
 
 <p align="center">
-  <a href="https://github.com/Relaticle/relaticle/actions"><img src="https://img.shields.io/github/actions/workflow/status/Relaticle/relaticle/deploy.yml?style=for-the-badge&label=tests" alt="Tests"></a>
-  <a href="https://relaticle.com/docs/mcp"><img src="https://img.shields.io/badge/MCP_Tools-30-8A2BE2?style=for-the-badge" alt="30 MCP Tools"></a>
-  <a href="https://laravel.com/docs/12.x"><img src="https://img.shields.io/badge/Laravel-12.x-FF2D20?style=for-the-badge&logo=laravel" alt="Laravel 12"></a>
-  <a href="https://php.net"><img src="https://img.shields.io/badge/PHP-8.4-777BB4?style=for-the-badge&logo=php" alt="PHP 8.4"></a>
+  <a href="https://github.com/Relaticle/relaticle/actions/workflows/tests.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/Relaticle/relaticle/tests.yml?branch=main&style=for-the-badge&label=tests" alt="Tests"></a>
+  <a href="https://relaticle.com/docs/mcp"><img src="https://img.shields.io/badge/MCP-Server-8A2BE2?style=for-the-badge" alt="MCP Server"></a>
+  <a href="https://laravel.com/docs/13.x"><img src="https://img.shields.io/badge/Laravel-13.x-FF2D20?style=for-the-badge&logo=laravel" alt="Laravel 13"></a>
+  <a href="https://php.net"><img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=for-the-badge&logo=php" alt="PHP 8.5"></a>
   <a href="https://github.com/Relaticle/relaticle/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="https://relaticle.com/images/github-preview-light.png?v=3" alt="Relaticle Dashboard - Manage contacts, companies, and opportunities in a modern interface" />
+  <img src="https://relaticle.com/images/github-preview-light.png?v=5" alt="Relaticle Home - Rela the AI assistant, chat history, and your open tasks in one view" />
   <br>
   <sub>Clean, modern interface built with Filament 5 and Livewire 4</sub>
 </p>
@@ -32,23 +32,23 @@
 
 # About Relaticle
 
-Relaticle is a self-hosted CRM with a production-grade MCP server. Connect any AI agent -- Claude, GPT, or open-source models -- with 30 tools for full CRM operations. 22 custom field types, REST API, and multi-team isolation.
+Relaticle is a self-hosted CRM your AI agents can work in. Connect Claude, ChatGPT, or an open-source model over MCP to read, write, and analyze your CRM data. Custom fields, REST API, and multi-workspace isolation.
 
 **Perfect for:** Developer-led teams, AI-forward startups, and SMBs who want AI agent integration without vendor lock-in.
 
 **Core Strengths:**
 
-- **Agent-Native Infrastructure** - MCP server with 30 tools, REST API with full CRUD, schema discovery for AI agents
-- **Customizable Data Model** - 22 field types including entity relationships, conditional visibility, and per-field encryption. No migrations needed.
-- **Multi-Team Isolation** - 5-layer authorization with team-scoped data and workspaces
-- **Modern Tech Stack** - Laravel 12, Filament 5, PHP 8.4, 1,100+ automated tests
+- **Agent-Native Infrastructure** - MCP server and REST API with full CRUD, schema access, activity history, and pipeline analysis
+- **Customizable Data Model** - Custom fields for text, dates, currency, selects, and links between records, with per-field encryption. No migrations needed.
+- **Multi-Workspace Isolation** - Workspace-scoped data with role-based permissions
+- **Modern Tech Stack** - Laravel 13, Filament 5, PHP 8.5, with an automated test suite on every change
 - **Privacy-First** - Self-hosted, AGPL-3.0, your data stays on your server
 
 # Requirements
 
-- PHP 8.4+
+- PHP 8.5+
 - PostgreSQL 17+
-- Composer 2 and Node.js 20+
+- Composer 2 and Node.js 22+
 - Redis for queues (optional for development)
 
 # Installation
@@ -97,4 +97,4 @@ Relaticle is open-source software licensed under the [AGPL-3.0 license](LICENSE)
 
 # Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Relaticle/relaticle&type=Date)](https://www.star-history.com/#Relaticle/relaticle&Date)
+[![Star History Chart](https://api.star-history.com/chart?repos=relaticle/relaticle&type=date&legend=top-left&sealed_token=c38GyCHd6M75Bak3QvcMoEfYHGDlV1lAIyuGyJoQ8AA1kyVwXhZR7A1qYLuGDZg9H0LsvERRX3YUEkOWkjt4q0N0y-mlHVm2NI3mDb74NKAka4KPxMrBBA)](https://www.star-history.com/?repos=relaticle%2Frelaticle&type=date&legend=top-left)

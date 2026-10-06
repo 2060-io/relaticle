@@ -9,6 +9,8 @@ use Relaticle\CustomFields\Enums\CustomFieldWidth;
 
 enum TaskField: string
 {
+    public const string DONE_STATUS = 'Done';
+
     use CustomFieldTrait;
 
     /**
@@ -110,7 +112,7 @@ enum TaskField: string
             self::STATUS => [
                 'To do',
                 'In progress',
-                'Done',
+                self::DONE_STATUS,
             ],
             self::PRIORITY => [
                 'Low',
@@ -128,7 +130,7 @@ enum TaskField: string
      * emotional resonance and semantic meaning. Based on latest color trends including
      * Digital Lavender, Mocha Mousse sophistication, and retro-futuristic aesthetics.
      *
-     * @return array<int|string, string>|null Array of option => color mappings or null if not applicable
+     * @return array<string, string>|null Array of option => color mappings or null if not applicable
      */
     public function getOptionColors(): ?array
     {
@@ -136,7 +138,7 @@ enum TaskField: string
             self::STATUS => [
                 'To do' => '#c4b5fd',       // Soft Periwinkle - Digital Lavender inspired calm potential
                 'In progress' => '#0A80EA', // Professional Blue - Clear active progress state
-                'Done' => '#2A9764',        // Success Green - Confident completion achievement
+                self::DONE_STATUS => '#2A9764',        // Success Green - Confident completion achievement
             ],
             self::PRIORITY => [
                 'Low' => '#94a3b8',         // Sage Whisper - Natural earth tone, subtle presence

@@ -6,61 +6,116 @@ namespace Relaticle\Chat\Services;
 
 use App\Enums\Plan;
 use App\Models\User;
-use Relaticle\Chat\Enums\AiModel;
+use Relaticle\Chat\Support\ModelDescriptor;
+use RuntimeException;
 
 final readonly class AiModelResolver
 {
+    public function __construct(private ModelRegistry $registry, private ModelAccess $access) {}
+
     /**
-     * Resolve the provider and model for a chat request.
+     * Resolve the provider and model for a chat request. An available,
+     * plan-allowed explicit choice (or stored user preference) is honored;
+     * anything else falls to the Auto chain: first available + plan-allowed, then
+     * first available regardless of plan (self-hosted infrastructure is not
+     * plan-gated), then the head of the chain even though nothing can serve it,
+     * so the caller gets a named model to report rather than an exception. No
+     * model id is hardcoded here: the catalog is editable without a deploy, so a
+     * literal one would be a code change on the next vendor retirement.
      *
-     * `Auto` always resolves to Claude Sonnet. Smaller models like Haiku
-     * cannot be trusted to call CRM write tools reliably -- they tend to
-     * hallucinate "task created" without invoking the tool.
+     * `source` records whether the resolution was the user's explicit pick or
+     * the auto chain: ProcessChatMessage only fails over to the next chain
+     * entry when it is 'auto'. An explicit pick that fails must surface as an
+     * error, never a silent swap to a different (differently priced) model.
      *
-     * @return array{provider: string|null, model: string|null}
+     * @return array{provider: string|null, model: string|null, id: string|null, source: string}
      */
     public function resolve(User $user, ?string $override = null): array
     {
-        $aiModel = $this->resolveModel($user, $override);
+        $plan = $this->access->planFor($user->currentWorkspace);
+        $requested = $override ?? ($user->ai_preferences['default_model'] ?? 'auto');
 
-        $team = $user->currentTeam;
-        $plan = $team !== null ? $team->plan : Plan::default();
+        if (is_string($requested) && $requested !== 'auto') {
+            $descriptor = $this->registry->find($requested);
 
-        if (! $plan->allowsModel($aiModel)) {
-            $aiModel = AiModel::ClaudeSonnet;
-        }
-
-        if ($aiModel->provider() === 'gemini') {
-            $aiModel = AiModel::ClaudeSonnet;
-        }
-
-        if ($aiModel === AiModel::Auto) {
-            $aiModel = AiModel::ClaudeSonnet;
-        }
-
-        return [
-            'provider' => $aiModel->provider(),
-            'model' => $aiModel->modelId(),
-        ];
-    }
-
-    private function resolveModel(User $user, ?string $override): AiModel
-    {
-        if ($override !== null) {
-            $model = AiModel::tryFrom($override);
-
-            if ($model !== null && $model !== AiModel::Auto) {
-                return $model;
+            if ($descriptor instanceof ModelDescriptor && $descriptor->isAvailable() && $descriptor->allowedForPlan($plan)) {
+                return $this->describe($descriptor, 'explicit');
             }
         }
 
-        $preference = $user->ai_preferences['default_model'] ?? 'auto';
-        $model = AiModel::tryFrom($preference);
+        return $this->describe($this->autoPick($plan), 'auto');
+    }
 
-        if ($model !== null && $model !== AiModel::Auto) {
-            return $model;
+    /**
+     * The next available, plan-allowed model after $failedId in the auto
+     * chain, or null once the chain is exhausted. Only ever used for an
+     * 'auto' resolution. An explicit pick never calls this.
+     *
+     * @return array{provider: string|null, model: string|null, id: string|null, source: string}|null
+     */
+    public function failoverNext(User $user, string $failedId): ?array
+    {
+        $plan = $this->access->planFor($user->currentWorkspace);
+        $passed = false;
+
+        foreach ($this->registry->autoChain() as $descriptor) {
+            if ($descriptor->id === $failedId) {
+                $passed = true;
+
+                continue;
+            }
+
+            if ($passed && $descriptor->isAvailable() && $descriptor->allowedForPlan($plan)) {
+                return $this->describe($descriptor, 'auto');
+            }
         }
 
-        return AiModel::Auto;
+        return null;
+    }
+
+    public function autoOffersAnotherModel(User $user, string $failedId): bool
+    {
+        $plan = $this->access->planFor($user->currentWorkspace);
+
+        return array_any(
+            $this->registry->autoChain(),
+            static fn (ModelDescriptor $descriptor): bool => $descriptor->id !== $failedId
+                && $descriptor->isAvailable()
+                && $descriptor->allowedForPlan($plan),
+        );
+    }
+
+    private function autoPick(Plan $plan): ModelDescriptor
+    {
+        $chain = $this->registry->autoChain();
+
+        foreach ($chain as $descriptor) {
+            if ($descriptor->isAvailable() && $descriptor->allowedForPlan($plan)) {
+                return $descriptor;
+            }
+        }
+
+        foreach ($chain as $descriptor) {
+            if ($descriptor->isAvailable()) {
+                return $descriptor;
+            }
+        }
+
+        return $chain[0]
+            ?? $this->registry->all()[0]
+            ?? throw new RuntimeException('No chat model is configured; add one at /sysadmin/ai-models or seed one in config/chat.php.');
+    }
+
+    /**
+     * @return array{provider: string|null, model: string|null, id: string|null, source: string}
+     */
+    private function describe(ModelDescriptor $descriptor, string $source): array
+    {
+        return [
+            'provider' => $descriptor->provider,
+            'model' => $descriptor->model,
+            'id' => $descriptor->id,
+            'source' => $source,
+        ];
     }
 }

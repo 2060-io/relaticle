@@ -27,8 +27,9 @@ it('rejects null document on insert', function (): void {
 
     DB::table('agent_conversations')->insert([
         'id' => $conversationId,
-        'user_id' => null,
-        'team_id' => null,
+        'participant_type' => 'user',
+        'participant_id' => null,
+        'workspace_id' => null,
         'title' => 'test',
         'created_at' => now(),
         'updated_at' => now(),
@@ -45,8 +46,7 @@ it('rejects null document on insert', function (): void {
             'content' => 'hi',
             'document' => null,
             'attachments' => '[]',
-            'tool_calls' => '[]',
-            'tool_results' => '[]',
+            'steps' => '[]',
             'usage' => '{}',
             'meta' => '{}',
             'created_at' => now(),

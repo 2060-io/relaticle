@@ -4,20 +4,27 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Tools\Task;
 
+use App\Concerns\OperatesOnCrmEntity;
+use App\Enums\CrmEntity;
+use App\Http\Resources\V1\CompanyResource;
+use App\Http\Resources\V1\OpportunityResource;
+use App\Http\Resources\V1\PeopleResource;
 use App\Http\Resources\V1\TaskResource;
-use App\Models\Task;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Relaticle\Chat\Tools\BaseReadShowTool;
 
 final class GetTaskTool extends BaseReadShowTool
 {
+    use OperatesOnCrmEntity;
+
     public function description(): string
     {
         return 'Get a single task by ID with full details.';
     }
 
-    protected function modelClass(): string
+    protected function entity(): CrmEntity
     {
-        return Task::class;
+        return CrmEntity::Task;
     }
 
     protected function resourceClass(): string
@@ -25,14 +32,19 @@ final class GetTaskTool extends BaseReadShowTool
         return TaskResource::class;
     }
 
-    protected function entityLabel(): string
-    {
-        return 'Task';
-    }
-
     /** @return array<int, string> */
     protected function eagerLoad(): array
     {
         return ['assignees', 'customFieldValues.customField.options'];
+    }
+
+    /** @return array<string, class-string<JsonResource>> */
+    protected function availableIncludes(): array
+    {
+        return [
+            'companies' => CompanyResource::class,
+            'people' => PeopleResource::class,
+            'opportunities' => OpportunityResource::class,
+        ];
     }
 }

@@ -4,36 +4,58 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Services;
 
-use App\Actions\Chat\SeedTeamCreditBalance;
-use App\Models\Team;
+use App\Actions\Chat\SeedWorkspaceCreditBalance;
+use App\Enums\Plan;
 use App\Models\User;
+use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Ai\Ai;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Relaticle\Chat\Enums\AiCreditType;
-use Relaticle\Chat\Enums\AiModel;
+use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 
 final readonly class CreditService
 {
-    public function hasCredits(Team $team): bool
+    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods) {}
+
+    public function hasCredits(Workspace $workspace): bool
     {
-        $balance = $this->ensureBalance($team);
+        $balance = $this->ensureBalance($workspace);
 
         return $balance->credits_remaining > 0;
     }
 
     /**
      * Atomically reserve one credit up-front. Prevents concurrent requests from
-     * bypassing a non-atomic credit gate when the team has a small balance.
+     * bypassing a non-atomic credit gate when the workspace has a small balance.
+     *
+     * With a $reservationKey ("reserve-{turnId}") the reservation is journaled
+     * as a ledger row and becomes idempotent: a retried job (e.g. released by
+     * WithoutOverlapping before handle() ran) re-calls this and gets `true`
+     * without decrementing twice. The row also lets the orphan sweeper refund
+     * reservations whose turn crashed between reserve and settle (R2).
      */
-    public function reserveCredit(Team $team): bool
+    public function reserveCredit(Workspace $workspace, ?string $reservationKey = null, ?string $conversationId = null, ?string $userId = null): bool
     {
-        $this->ensureBalance($team);
+        $this->ensureBalance($workspace);
 
-        return DB::transaction(function () use ($team): bool {
+        return DB::transaction(function () use ($workspace, $reservationKey, $conversationId, $userId): bool {
+            if ($reservationKey !== null) {
+                $alreadyReserved = AiCreditTransaction::query()
+                    ->where('workspace_id', $workspace->getKey())
+                    ->where('idempotency_key', $reservationKey)
+                    ->exists();
+
+                if ($alreadyReserved) {
+                    return true;
+                }
+            }
+
             $balance = AiCreditBalance::query()
-                ->where('team_id', $team->getKey())
+                ->where('workspace_id', $workspace->getKey())
                 ->lockForUpdate()
                 ->first();
 
@@ -41,10 +63,30 @@ final readonly class CreditService
                 return false;
             }
 
+            $newRemaining = $balance->credits_remaining - 1;
+
             $balance->update([
-                'credits_remaining' => $balance->credits_remaining - 1,
+                'credits_remaining' => $newRemaining,
                 'credits_used' => $balance->credits_used + 1,
+                'purchased_credits' => $this->purchasedAfter($balance, $newRemaining),
             ]);
+
+            if ($reservationKey !== null) {
+                AiCreditTransaction::query()->insertOrIgnore([
+                    'id' => (string) Str::ulid(),
+                    'workspace_id' => $workspace->getKey(),
+                    'user_id' => $userId,
+                    'conversation_id' => $conversationId,
+                    'idempotency_key' => $reservationKey,
+                    'type' => AiCreditType::Reservation->value,
+                    'model' => 'system',
+                    'input_tokens' => 0,
+                    'output_tokens' => 0,
+                    'credits_charged' => 1,
+                    'metadata' => json_encode(['reason' => 'upfront_reservation'], JSON_THROW_ON_ERROR),
+                    'created_at' => now(),
+                ]);
+            }
 
             return true;
         });
@@ -55,10 +97,10 @@ final readonly class CreditService
      * work. Idempotent on $resolutionKey and mutually exclusive with settlement
      * (both write the same unique key).
      */
-    public function refundReservation(Team $team, int $credits = 1, string $resolutionKey = '', ?string $conversationId = null): void
+    public function refundReservation(Workspace $workspace, int $credits = 1, string $resolutionKey = '', ?string $conversationId = null): void
     {
         $this->recordResolution(
-            team: $team,
+            workspace: $workspace,
             resolutionKey: $resolutionKey,
             type: AiCreditType::Refund,
             model: 'system',
@@ -73,10 +115,10 @@ final readonly class CreditService
         );
     }
 
-    public function getBalance(Team $team): int
+    public function getBalance(Workspace $workspace): int
     {
         $balance = AiCreditBalance::query()
-            ->where('team_id', $team->getKey())
+            ->where('workspace_id', $workspace->getKey())
             ->first();
 
         if (! $balance instanceof AiCreditBalance) {
@@ -86,19 +128,87 @@ final readonly class CreditService
         return $balance->credits_remaining;
     }
 
-    private function ensureBalance(Team $team): AiCreditBalance
+    /**
+     * Grant prepaid credits from a completed pack checkout. Idempotent on
+     * $idempotencyKey (the Stripe checkout session id) via the ledger's
+     * (workspace_id, idempotency_key) unique index, so webhook replays are a no-op.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public function addPurchasedCredits(Workspace $workspace, int $credits, string $idempotencyKey, array $metadata = []): bool
     {
-        $balance = AiCreditBalance::query()->where('team_id', $team->getKey())->first();
+        $this->ensureBalance($workspace);
+
+        return DB::transaction(function () use ($workspace, $credits, $idempotencyKey, $metadata): bool {
+            $inserted = AiCreditTransaction::query()->insertOrIgnore([
+                'id' => (string) Str::ulid(),
+                'workspace_id' => $workspace->getKey(),
+                'user_id' => null,
+                'conversation_id' => null,
+                'idempotency_key' => $idempotencyKey,
+                'type' => AiCreditType::Purchase->value,
+                'model' => 'stripe',
+                'input_tokens' => 0,
+                'output_tokens' => 0,
+                'credits_charged' => $credits,
+                'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+
+            if ($inserted === 0) {
+                return false;
+            }
+
+            $balance = AiCreditBalance::query()
+                ->where('workspace_id', $workspace->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $balance->update([
+                'credits_remaining' => $balance->credits_remaining + $credits,
+                'purchased_credits' => $balance->purchased_credits + $credits,
+            ]);
+
+            return true;
+        });
+    }
+
+    /**
+     * The prepaid portion of a balance once `credits_remaining` moves to
+     * $newRemaining, keeping the `purchased_credits <= credits_remaining`
+     * invariant the DB enforces.
+     *
+     * Spending drains the monthly allowance first, so the prepaid bucket only
+     * shrinks once the allowance is gone. A refund has to reverse that: when
+     * every remaining credit was prepaid, the credit came out of the prepaid
+     * bucket and must go back there. Otherwise it silently becomes an
+     * allowance credit that the next period reset wipes.
+     */
+    private function purchasedAfter(AiCreditBalance $balance, int $newRemaining): int
+    {
+        $wasFullyPrepaid = $balance->purchased_credits > 0
+            && $balance->purchased_credits === $balance->credits_remaining;
+
+        if ($wasFullyPrepaid && $newRemaining > $balance->credits_remaining) {
+            return $newRemaining;
+        }
+
+        return min($balance->purchased_credits, $newRemaining);
+    }
+
+    private function ensureBalance(Workspace $workspace): AiCreditBalance
+    {
+        $balance = AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->first();
 
         if ($balance instanceof AiCreditBalance) {
             return $balance;
         }
 
-        return resolve(SeedTeamCreditBalance::class)->handle($team);
+        return resolve(SeedWorkspaceCreditBalance::class)->execute($workspace);
     }
 
     public function deduct(
-        Team $team,
+        Workspace $workspace,
         User $user,
         AiCreditType $type,
         string $model,
@@ -109,7 +219,7 @@ final readonly class CreditService
         ?string $idempotencyKey = null,
     ): void {
         if ($idempotencyKey !== null && AiCreditTransaction::query()
-            ->where('team_id', $team->getKey())
+            ->where('workspace_id', $workspace->getKey())
             ->where('idempotency_key', $idempotencyKey)
             ->exists()
         ) {
@@ -118,29 +228,35 @@ final readonly class CreditService
 
         $creditsCharged = $this->calculateCredits($model, $toolCallsCount);
 
-        DB::transaction(function () use ($team, $user, $type, $model, $inputTokens, $outputTokens, $creditsCharged, $toolCallsCount, $conversationId, $idempotencyKey): void {
+        DB::transaction(function () use ($workspace, $user, $type, $model, $inputTokens, $outputTokens, $creditsCharged, $toolCallsCount, $conversationId, $idempotencyKey): void {
             $balance = AiCreditBalance::query()
-                ->where('team_id', $team->getKey())
+                ->where('workspace_id', $workspace->getKey())
                 ->lockForUpdate()
                 ->first();
 
             if (! $balance instanceof AiCreditBalance) {
+                $bounds = $this->periods->boundsFor($workspace);
+
                 $balance = AiCreditBalance::query()->create([
-                    'team_id' => $team->getKey(),
+                    'workspace_id' => $workspace->getKey(),
                     'credits_remaining' => 0,
                     'credits_used' => 0,
-                    'period_starts_at' => now()->startOfMonth(),
-                    'period_ends_at' => now()->endOfMonth(),
+                    'purchased_credits' => 0,
+                    'period_starts_at' => $bounds['start'],
+                    'period_ends_at' => $bounds['end'],
                 ]);
             }
 
+            $newRemaining = max($balance->credits_remaining - $creditsCharged, 0);
+
             $balance->update([
-                'credits_remaining' => max($balance->credits_remaining - $creditsCharged, 0),
+                'credits_remaining' => $newRemaining,
                 'credits_used' => $balance->credits_used + $creditsCharged,
+                'purchased_credits' => $this->purchasedAfter($balance, $newRemaining),
             ]);
 
             AiCreditTransaction::query()->create([
-                'team_id' => $team->getKey(),
+                'workspace_id' => $workspace->getKey(),
                 'user_id' => $user->getKey(),
                 'conversation_id' => $conversationId,
                 'idempotency_key' => $idempotencyKey ?? 'deduct-'.Str::ulid(),
@@ -160,7 +276,7 @@ final readonly class CreditService
      * and the already-reserved credits. Idempotent on $resolutionKey.
      */
     public function settleReservation(
-        Team $team,
+        Workspace $workspace,
         User $user,
         AiCreditType $type,
         string $model,
@@ -175,7 +291,7 @@ final readonly class CreditService
         $adjustment = $creditsCharged - $reservedCredits;
 
         $this->recordResolution(
-            team: $team,
+            workspace: $workspace,
             resolutionKey: $resolutionKey,
             type: $type,
             model: $model,
@@ -196,20 +312,41 @@ final readonly class CreditService
      * the user already received is paid for. Idempotent on $resolutionKey.
      */
     public function settleReservedMinimum(
-        Team $team,
+        Workspace $workspace,
         User $user,
         ?string $conversationId,
         string $resolutionKey,
         string $reason,
         int $reservedCredits = 1,
+        ?string $model = null,
+        ?TextUsage $usage = null,
     ): void {
+        if ($model === null || ! $usage instanceof TextUsage) {
+            $this->recordResolution(
+                workspace: $workspace,
+                resolutionKey: $resolutionKey,
+                type: AiCreditType::Chat,
+                model: 'incomplete',
+                inputTokens: 0,
+                outputTokens: 0,
+                creditsCharged: $reservedCredits,
+                remainingDelta: 0,
+                usedDelta: 0,
+                userId: (string) $user->getKey(),
+                conversationId: $conversationId,
+                metadata: ['reason' => $reason],
+            );
+
+            return;
+        }
+
         $this->recordResolution(
-            team: $team,
+            workspace: $workspace,
             resolutionKey: $resolutionKey,
             type: AiCreditType::Chat,
-            model: 'incomplete',
-            inputTokens: 0,
-            outputTokens: 0,
+            model: $model,
+            inputTokens: $usage->uncachedInputTokens(),
+            outputTokens: $usage->outputTokens,
             creditsCharged: $reservedCredits,
             remainingDelta: 0,
             usedDelta: 0,
@@ -219,9 +356,34 @@ final readonly class CreditService
         );
     }
 
+    public function recordInternalUsage(string $conversationId, ?string $provider, TextUsage $usage, ?string $reportedModel): void
+    {
+        $conversation = AgentConversation::query()->find($conversationId);
+
+        if (! $conversation instanceof AgentConversation || $conversation->workspace_id === null) {
+            return;
+        }
+
+        $model = rescue(fn (): string => Ai::textProvider($provider)->cheapestTextModel(), $reportedModel) ?: 'unknown';
+
+        AiCreditTransaction::query()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'user_id' => $conversation->participant_id,
+            'conversation_id' => $conversationId,
+            'idempotency_key' => 'internal-'.Str::ulid(),
+            'type' => AiCreditType::Internal,
+            'model' => $model,
+            'input_tokens' => $usage->uncachedInputTokens(),
+            'output_tokens' => $usage->outputTokens,
+            'credits_charged' => 0,
+            'metadata' => [],
+            'created_at' => now(),
+        ]);
+    }
+
     public function calculateCredits(string $model, int $toolCallsCount): int
     {
-        $multiplier = AiModel::multiplierForModelId($model);
+        $multiplier = $this->registry->multiplierFor($model);
         $toolBonus = (float) config('chat.tool_call_credit_bonus', 0.5);
 
         $raw = ($multiplier) + ($toolCallsCount * $toolBonus);
@@ -231,14 +393,14 @@ final readonly class CreditService
 
     /**
      * Idempotently record a reservation resolution (settle or refund) and apply
-     * its balance delta. The (team_id, idempotency_key) unique index makes a
+     * its balance delta. The (workspace_id, idempotency_key) unique index makes a
      * duplicate or concurrent call a silent no-op. Returns true when this call
      * was the one that resolved the reservation.
      *
      * @param  array<string, mixed>  $metadata
      */
     private function recordResolution(
-        Team $team,
+        Workspace $workspace,
         string $resolutionKey,
         AiCreditType $type,
         string $model,
@@ -252,12 +414,12 @@ final readonly class CreditService
         array $metadata,
     ): bool {
         return DB::transaction(function () use (
-            $team, $resolutionKey, $type, $model, $inputTokens, $outputTokens,
+            $workspace, $resolutionKey, $type, $model, $inputTokens, $outputTokens,
             $creditsCharged, $remainingDelta, $usedDelta, $userId, $conversationId, $metadata,
         ): bool {
             $inserted = AiCreditTransaction::query()->insertOrIgnore([
                 'id' => (string) Str::ulid(),
-                'team_id' => $team->getKey(),
+                'workspace_id' => $workspace->getKey(),
                 'user_id' => $userId,
                 'conversation_id' => $conversationId,
                 'idempotency_key' => $resolutionKey,
@@ -276,23 +438,29 @@ final readonly class CreditService
 
             if ($remainingDelta !== 0 || $usedDelta !== 0) {
                 $balance = AiCreditBalance::query()
-                    ->where('team_id', $team->getKey())
+                    ->where('workspace_id', $workspace->getKey())
                     ->lockForUpdate()
                     ->first();
 
                 if (! $balance instanceof AiCreditBalance) {
+                    $bounds = $this->periods->boundsFor($workspace);
+
                     $balance = AiCreditBalance::query()->create([
-                        'team_id' => $team->getKey(),
+                        'workspace_id' => $workspace->getKey(),
                         'credits_remaining' => 0,
                         'credits_used' => 0,
-                        'period_starts_at' => now()->startOfMonth(),
-                        'period_ends_at' => now()->endOfMonth(),
+                        'purchased_credits' => 0,
+                        'period_starts_at' => $bounds['start'],
+                        'period_ends_at' => $bounds['end'],
                     ]);
                 }
 
+                $newRemaining = max($balance->credits_remaining + $remainingDelta, 0);
+
                 $balance->update([
-                    'credits_remaining' => max($balance->credits_remaining + $remainingDelta, 0),
+                    'credits_remaining' => $newRemaining,
                     'credits_used' => max($balance->credits_used + $usedDelta, 0),
+                    'purchased_credits' => $this->purchasedAfter($balance, $newRemaining),
                 ]);
             }
 
@@ -300,29 +468,44 @@ final readonly class CreditService
         });
     }
 
-    public function resetPeriod(Team $team, ?string $sysadminId = null): void
+    public function allowanceFor(Workspace $workspace): int
     {
-        DB::transaction(function () use ($team, $sysadminId): void {
-            $plan = $team->plan;
-            $allowance = $plan->credits();
+        $workspace->loadMissing('subscriptions');
+
+        if ($workspace->plan !== Plan::Enterprise && $workspace->subscription()?->pastDue() === true) {
+            return Plan::Free->credits();
+        }
+
+        return $workspace->plan->credits();
+    }
+
+    public function resetPeriod(Workspace $workspace, ?string $sysadminId = null): void
+    {
+        DB::transaction(function () use ($workspace, $sysadminId): void {
+            $plan = $workspace->plan;
+            $allowance = $this->allowanceFor($workspace);
 
             $previous = AiCreditBalance::query()
-                ->where('team_id', $team->getKey())
+                ->where('workspace_id', $workspace->getKey())
                 ->lockForUpdate()
                 ->first();
 
+            $bounds = $this->periods->boundsFor($workspace);
+            $purchased = $previous instanceof AiCreditBalance ? $previous->purchased_credits : 0;
+
             AiCreditBalance::query()->updateOrCreate(
-                ['team_id' => $team->getKey()],
+                ['workspace_id' => $workspace->getKey()],
                 [
-                    'credits_remaining' => $allowance,
+                    'credits_remaining' => $allowance + $purchased,
                     'credits_used' => 0,
-                    'period_starts_at' => now()->startOfMonth(),
-                    'period_ends_at' => now()->endOfMonth(),
+                    'purchased_credits' => $purchased,
+                    'period_starts_at' => $bounds['start'],
+                    'period_ends_at' => $bounds['end'],
                 ],
             );
 
             AiCreditTransaction::query()->create([
-                'team_id' => $team->getKey(),
+                'workspace_id' => $workspace->getKey(),
                 'user_id' => null,
                 'conversation_id' => null,
                 'idempotency_key' => 'sysadmin-reset-'.Str::ulid(),
@@ -344,25 +527,28 @@ final readonly class CreditService
         });
     }
 
-    public function adjust(Team $team, int $delta, string $reason, string $sysadminId): void
+    public function adjust(Workspace $workspace, int $delta, string $reason, string $sysadminId): void
     {
         if ($delta === 0) {
             return;
         }
 
-        DB::transaction(function () use ($team, $delta, $reason, $sysadminId): void {
+        DB::transaction(function () use ($workspace, $delta, $reason, $sysadminId): void {
             $balance = AiCreditBalance::query()
-                ->where('team_id', $team->getKey())
+                ->where('workspace_id', $workspace->getKey())
                 ->lockForUpdate()
                 ->first();
 
             if (! $balance instanceof AiCreditBalance) {
+                $bounds = $this->periods->boundsFor($workspace);
+
                 $balance = AiCreditBalance::query()->create([
-                    'team_id' => $team->getKey(),
+                    'workspace_id' => $workspace->getKey(),
                     'credits_remaining' => 0,
                     'credits_used' => 0,
-                    'period_starts_at' => now()->startOfMonth(),
-                    'period_ends_at' => now()->endOfMonth(),
+                    'purchased_credits' => 0,
+                    'period_starts_at' => $bounds['start'],
+                    'period_ends_at' => $bounds['end'],
                 ]);
             }
 
@@ -372,13 +558,16 @@ final readonly class CreditService
                 ]);
             } else {
                 $revoke = abs($delta);
+                $newRemaining = max($balance->credits_remaining - $revoke, 0);
+
                 $balance->update([
-                    'credits_remaining' => max($balance->credits_remaining - $revoke, 0),
+                    'credits_remaining' => $newRemaining,
+                    'purchased_credits' => $this->purchasedAfter($balance, $newRemaining),
                 ]);
             }
 
             AiCreditTransaction::query()->create([
-                'team_id' => $team->getKey(),
+                'workspace_id' => $workspace->getKey(),
                 'user_id' => null,
                 'conversation_id' => null,
                 'idempotency_key' => 'sysadmin-adjust-'.Str::ulid(),

@@ -4,22 +4,28 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\CompanyResource\RelationManagers;
 
+use App\Filament\Components\Tables\RelatedRecordColumns;
+use App\Filament\Concerns\CountsRelatedRecords;
+use App\Filament\Resources\PeopleResource;
+use App\Models\People;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Relaticle\CustomFields\Facades\CustomFields;
 
 final class PeopleRelationManager extends RelationManager
 {
+    use CountsRelatedRecords;
+
     protected static string $relationship = 'people';
 
     protected static ?string $modelLabel = null;
@@ -49,19 +55,14 @@ final class PeopleRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('name')
-            ->columns([
-                TextColumn::make('name'),
-
-                ...CustomFields::table()->forModel($table->getModel())->columns(),
-            ])
-            ->filters([
-                //
-            ])
+            ->columns(RelatedRecordColumns::people())
             ->headerActions([
                 CreateAction::make()->icon('heroicon-o-plus')->size(Size::Small),
             ])
             ->recordActions([
                 ActionGroup::make([
+                    ViewAction::make()
+                        ->url(fn (People $record): string => PeopleResource::getUrl('view', ['record' => $record])),
                     EditAction::make(),
                     DeleteAction::make(),
                 ]),

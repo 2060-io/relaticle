@@ -7,6 +7,7 @@
                 <pattern id="dots-top" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#6B7280"/></pattern>
                 <rect width="100%" height="100%" fill="url(#dots-top)"/>
             </svg>
+            <x-marketing.interactive-dot-grid-glow/>
             <div class="absolute inset-0 bg-gradient-to-b from-transparent to-white dark:to-gray-950"></div>
         </div>
         @foreach([['left', 'br'], ['right', 'bl']] as [$side, $dir])
@@ -15,6 +16,7 @@
                     <pattern id="dots-{{ $side }}" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#6B7280"/></pattern>
                     <rect width="100%" height="100%" fill="url(#dots-{{ $side }})"/>
                 </svg>
+                <x-marketing.interactive-dot-grid-glow/>
                 <div class="absolute inset-0 bg-gradient-to-{{ $dir }} from-transparent via-white/50 to-white dark:via-gray-950/50 dark:to-gray-950"></div>
             </div>
         @endforeach
@@ -24,11 +26,11 @@
                 Your CRM, Your Rules
             </h2>
             <p class="text-base md:text-lg text-gray-500 dark:text-gray-400 mb-8 max-w-sm mx-auto leading-relaxed">
-                Self-hosted. Agent-native. Full control over your data and your AI.
+                Self-host it or let us run it. Either way, your data stays yours.
             </p>
 
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
-                <x-marketing.button href="{{ route('register') }}">
+                <x-marketing.button href="{{ route('login') }}">
                     Start for free
                 </x-marketing.button>
 

@@ -3,7 +3,12 @@
 declare(strict_types=1);
 
 return [
-    'navigation_label' => 'Board',
+    'view_switcher' => [
+        'label' => 'Switch view',
+        'list' => 'List',
+        'board' => 'Board',
+        'cards' => 'Cards',
+    ],
 
     'opportunities' => [
         'title' => 'Opportunities',
@@ -14,7 +19,7 @@ return [
         ],
         'filters' => [
             'company' => 'Company',
-            'contact' => 'Contact',
+            'contact' => 'Point of Contact',
         ],
         'form' => [
             'name_placeholder' => 'Enter opportunity title',

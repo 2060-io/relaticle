@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace Relaticle\ImportWizard\Jobs;
 
 use Illuminate\Bus\Batchable;
-use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\MatchResolver;
@@ -21,10 +19,7 @@ use Relaticle\ImportWizard\Support\MatchResolver;
 final class ResolveMatchesJob implements ShouldQueue
 {
     use Batchable;
-    use Dispatchable;
-    use InteractsWithQueue;
     use Queueable;
-    use SerializesModels;
 
     public function __construct(
         private readonly string $importId,
@@ -39,14 +34,18 @@ final class ResolveMatchesJob implements ShouldQueue
         }
 
         $import = Import::query()->findOrFail($this->importId);
-        $store = ImportStore::load($this->importId);
-
-        if (! $store instanceof ImportStore) {
-            return;
-        }
-
         $importer = $import->getImporter();
 
-        new MatchResolver($store, $import, $importer)->resolve();
+        try {
+            ImportStore::withWriteLock($this->importId, function (ImportStore $store) use ($import, $importer): void {
+                if ($this->batch()?->cancelled()) {
+                    return;
+                }
+
+                new MatchResolver($store, $import, $importer)->resolve();
+            });
+        } catch (ImportStoreException $e) {
+            throw_unless($e->isNotFound(), $e);
+        }
     }
 }

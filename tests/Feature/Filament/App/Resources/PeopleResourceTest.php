@@ -5,19 +5,24 @@ declare(strict_types=1);
 use App\Filament\Resources\PeopleResource;
 use App\Filament\Resources\PeopleResource\Pages\ListPeople;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager;
+use App\Filament\Resources\PeopleResource\RelationManagers\MeetingsRelationManager;
+use App\Models\CustomField;
 use App\Models\People;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Model;
 
 mutates(PeopleResource::class);
 
 beforeEach(function () {
-    $this->user = User::factory()->withTeam()->create();
+    $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
-    $this->team = $this->user->currentTeam;
-    Filament::setTenant($this->team);
+    $this->workspace = $this->user->currentWorkspace;
+    Filament::setTenant($this->workspace);
+    Filament::setCurrentPanel(Filament::getPanel('app'));
 });
 
 it('can render the index page', function (): void {
@@ -26,34 +31,48 @@ it('can render the index page', function (): void {
 });
 
 it('can render the view page', function (): void {
-    $record = People::factory()->recycle([$this->user, $this->team])->create();
+    $record = People::factory()->recycle([$this->user, $this->workspace])->create();
 
     livewire(ViewPeople::class, ['record' => $record->getKey()])
         ->assertOk();
 });
 
-it('can render `:dataset` column', function (string $column): void {
-    livewire(ListPeople::class)
-        ->assertCanRenderTableColumn($column);
-})->with(['name', 'company.name', 'creator.name']);
+it('registers the emails and meetings relation managers on the person view page', function (): void {
+    $record = People::factory()->recycle([$this->user, $this->workspace])->create();
 
-it('cannot render `:dataset` column', function (string $column): void {
-    livewire(ListPeople::class)
-        ->assertCanNotRenderTableColumn($column);
-})->with(['created_at', 'updated_at', 'deleted_at']);
+    $managers = livewire(ViewPeople::class, ['record' => $record->getKey()])
+        ->instance()
+        ->getRelationManagers();
 
-it('has `:dataset` column', function (string $column): void {
-    livewire(ListPeople::class)
-        ->assertTableColumnExists($column);
-})->with(['name', 'company.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at']);
+    expect($managers)->toContain(EmailsRelationManager::class)
+        ->and($managers)->toContain(MeetingsRelationManager::class);
+});
 
-it('shows `:dataset` column', function (string $column): void {
-    livewire(ListPeople::class)
-        ->assertTableColumnVisible($column);
-})->with(['name', 'company.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at']);
+// Column metadata is checked against a single mounted table rather than one
+// dataset case per column: mounting the page dominates the cost, and Filament's
+// assertion messages already name the offending column.
+it('exposes the expected table columns', function (): void {
+    $table = livewire(ListPeople::class);
+
+    foreach (['name', 'company.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
+        $table->assertTableColumnExists($column);
+    }
+
+    foreach (['name', 'company.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
+        $table->assertTableColumnVisible($column);
+    }
+
+    foreach (['name', 'company.name', 'creator.name'] as $column) {
+        $table->assertCanRenderTableColumn($column);
+    }
+
+    foreach (['created_at', 'updated_at', 'deleted_at'] as $column) {
+        $table->assertCanNotRenderTableColumn($column);
+    }
+});
 
 it('can sort `:dataset` column', function (string $column): void {
-    $records = People::factory(3)->recycle([$this->user, $this->team])->create();
+    $records = People::factory(3)->recycle([$this->user, $this->workspace])->create();
 
     $sortingKey = data_get($records->first(), $column) instanceof BackedEnum
         ? fn (Model $record) => data_get($record, $column)->value
@@ -67,7 +86,7 @@ it('can sort `:dataset` column', function (string $column): void {
 })->with(['company.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at']);
 
 it('can search `:dataset` column', function (string $column): void {
-    $records = People::factory(3)->recycle([$this->user, $this->team])->create();
+    $records = People::factory(3)->recycle([$this->user, $this->workspace])->create();
     $search = data_get($records->first(), $column);
 
     livewire(ListPeople::class)
@@ -77,8 +96,8 @@ it('can search `:dataset` column', function (string $column): void {
 })->with(['name', 'company.name', 'creator.name']);
 
 it('cannot display trashed records by default', function (): void {
-    $records = People::factory()->count(4)->recycle([$this->user, $this->team])->create();
-    $trashedRecords = People::factory()->trashed()->count(6)->recycle([$this->user, $this->team])->create();
+    $records = People::factory()->count(4)->recycle([$this->user, $this->workspace])->create();
+    $trashedRecords = People::factory()->trashed()->count(6)->recycle([$this->user, $this->workspace])->create();
 
     livewire(ListPeople::class)
         ->assertCanSeeTableRecords($records)
@@ -87,16 +106,16 @@ it('cannot display trashed records by default', function (): void {
 });
 
 it('can paginate records', function (): void {
-    $records = People::factory(20)->recycle([$this->user, $this->team])->create();
+    $records = People::factory(30)->recycle([$this->user, $this->workspace])->create();
 
     livewire(ListPeople::class)
-        ->assertCanSeeTableRecords($records->take(10), inOrder: true)
+        ->assertCanSeeTableRecords($records->take(25), inOrder: true)
         ->call('gotoPage', 2)
-        ->assertCanSeeTableRecords($records->skip(10)->take(10), inOrder: true);
+        ->assertCanSeeTableRecords($records->skip(25), inOrder: true);
 });
 
 it('can bulk delete records', function (): void {
-    $records = People::factory(5)->recycle([$this->user, $this->team])->create();
+    $records = People::factory(5)->recycle([$this->user, $this->workspace])->create();
 
     livewire(ListPeople::class)
         ->assertCanSeeTableRecords($records)
@@ -119,12 +138,12 @@ it('can create a person', function (): void {
 
     $this->assertDatabaseHas(People::class, [
         'name' => 'Jane Doe',
-        'team_id' => $this->team->id,
+        'workspace_id' => $this->workspace->id,
     ]);
 });
 
 it('can edit a person', function (): void {
-    $record = People::factory()->recycle([$this->user, $this->team])->create();
+    $record = People::factory()->recycle([$this->user, $this->workspace])->create();
 
     livewire(ListPeople::class)
         ->callAction(TestAction::make('edit')->table($record), data: [
@@ -136,12 +155,77 @@ it('can edit a person', function (): void {
 });
 
 it('can delete a person', function (): void {
-    $record = People::factory()->recycle([$this->user, $this->team])->create();
+    $record = People::factory()->recycle([$this->user, $this->workspace])->create();
 
     livewire(ListPeople::class)
         ->callAction(TestAction::make('delete')->table($record));
 
     $this->assertSoftDeleted($record);
+});
+
+function personWithEmails(User $user, string $name, array $emails, bool $trashed = false): People
+{
+    $person = People::factory()->recycle([$user, $user->currentWorkspace])->create(['name' => $name]);
+    $emailsField = CustomField::query()->withoutGlobalScopes()
+        ->where('tenant_id', $user->currentWorkspace->getKey())
+        ->where('entity_type', 'people')
+        ->where('code', 'emails')
+        ->firstOrFail();
+
+    $person->saveCustomFieldValue($emailsField, $emails, $user->currentWorkspace);
+
+    if ($trashed) {
+        $person->delete();
+    }
+
+    return $person;
+}
+
+it('restores a deleted person whose email is still free', function (): void {
+    $person = personWithEmails($this->user, 'Grace Hopper', ['grace@navy.mil'], trashed: true);
+
+    livewire(ListPeople::class)
+        ->filterTable('trashed', false)
+        ->callAction(TestAction::make('restore')->table($person));
+
+    expect($person->fresh()->trashed())->toBeFalse();
+});
+
+it('refuses to restore a deleted person whose email another person now holds', function (): void {
+    $person = personWithEmails($this->user, 'Grace Hopper', ['grace@navy.mil'], trashed: true);
+    personWithEmails($this->user, 'Grace Returns', ['grace@navy.mil']);
+
+    livewire(ListPeople::class)
+        ->filterTable('trashed', false)
+        ->callAction(TestAction::make('restore')->table($person))
+        ->assertNotified(
+            Notification::make()
+                ->danger()
+                ->title('Grace Hopper can\'t be restored')
+                ->body('grace@navy.mil in Emails now belongs to Grace Returns. Change or remove it there, then restore.'),
+        );
+
+    expect($person->fresh()->trashed())->toBeTrue();
+});
+
+it('bulk restores the free people and names the ones it skipped', function (): void {
+    $free = personWithEmails($this->user, 'Ada Lovelace', ['ada@example.test'], trashed: true);
+    $blocked = personWithEmails($this->user, 'Grace Hopper', ['grace@navy.mil'], trashed: true);
+    personWithEmails($this->user, 'Grace Returns', ['grace@navy.mil']);
+
+    livewire(ListPeople::class)
+        ->filterTable('trashed', false)
+        ->selectTableRecords([$free, $blocked])
+        ->callAction([['name' => 'restore', 'context' => ['table' => true, 'bulk' => true]]])
+        ->assertNotified(
+            Notification::make()
+                ->warning()
+                ->title('1 record wasn\'t restored')
+                ->body('Grace Hopper: grace@navy.mil in Emails now belongs to Grace Returns.'),
+        );
+
+    expect($free->fresh()->trashed())->toBeFalse()
+        ->and($blocked->fresh()->trashed())->toBeTrue();
 });
 
 it('validates name is required on create', function (): void {
@@ -157,7 +241,7 @@ it('has `:dataset` filter', function (string $filter): void {
         ->assertTableFilterExists($filter);
 })->with(['creation_source', 'trashed']);
 
-it('sets creator_id and team_id via observer when creating a person', function (): void {
+it('sets creator_id and workspace_id via observer when creating a person', function (): void {
     livewire(ListPeople::class)
         ->callAction('create', data: [
             'name' => 'Observer Test Person',
@@ -167,23 +251,23 @@ it('sets creator_id and team_id via observer when creating a person', function (
     $person = People::query()->where('name', 'Observer Test Person')->first();
 
     expect($person->creator_id)->toBe($this->user->id)
-        ->and($person->team_id)->toBe($this->team->id);
+        ->and($person->workspace_id)->toBe($this->workspace->id);
 });
 
-it('authorizes team member to view and update own team person', function (): void {
-    $record = People::factory()->recycle([$this->user, $this->team])->create();
+it('authorizes workspace member to view and update own workspace person', function (): void {
+    $record = People::factory()->recycle([$this->user, $this->workspace])->create();
 
     expect($this->user->can('view', $record))->toBeTrue()
         ->and($this->user->can('update', $record))->toBeTrue()
         ->and($this->user->can('delete', $record))->toBeTrue();
 });
 
-it('denies non-team-member from viewing another team person', function (): void {
-    $otherUser = User::factory()->withTeam()->create();
-    $otherTeam = $otherUser->currentTeam;
+it('denies non-workspace-member from viewing another workspace person', function (): void {
+    $otherUser = User::factory()->withWorkspace()->create();
+    $otherWorkspace = $otherUser->currentWorkspace;
 
     $this->actingAs($otherUser);
-    $record = People::factory()->for($otherTeam)->create();
+    $record = People::factory()->for($otherWorkspace)->create();
     $this->actingAs($this->user);
 
     expect($this->user->can('view', $record))->toBeFalse()

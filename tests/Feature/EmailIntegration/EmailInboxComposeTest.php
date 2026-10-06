@@ -1,0 +1,141 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\User;
+use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
+use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
+use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
+use Relaticle\EmailIntegration\Livewire\DraftsTable;
+use Relaticle\EmailIntegration\Livewire\OutboxTable;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+
+mutates(EmailInboxPage::class, DraftsTable::class, OutboxTable::class);
+
+beforeEach(function (): void {
+    $this->user = User::factory()->withWorkspace()->create();
+    $this->actingAs($this->user);
+    $this->workspace = $this->user->currentWorkspace;
+    Filament::setTenant($this->workspace);
+
+    $this->account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'email_address' => 'sender@example.com',
+        'display_name' => 'Test Sender',
+    ]));
+});
+
+it('shows only the gmail connect prompt when no account is connected', function (): void {
+    $this->account->forceDelete();
+
+    livewire(EmailInboxPage::class)
+        ->assertDontSee(__('filament/pages/email-inbox.tabs.drafts'))
+        ->assertDontSee(__('filament/pages/email-inbox.tabs.outbox'))
+        ->assertDontSee(__('filament/pages/email-inbox.tabs.failed'))
+        ->assertDontSee(__('filament/pages/email-inbox.tabs.templates'))
+        ->assertSee(__('filament/pages/email-accounts.not_connected.inbox.heading'))
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_gmail'))
+        ->tap(fn ($component) => assertActionHasMailboxOAuthUrl($component, 'connectMailbox', 'gmail', $this->account->workspace));
+});
+
+it('offers a microsoft mailbox on the emails page once its client is configured', function (): void {
+    config()->set('services.azure.client_id', 'azure-client');
+    $this->account->forceDelete();
+
+    livewire(EmailInboxPage::class)
+        ->assertSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionVisible('connectAzure')
+        ->tap(fn ($component) => assertActionHasMailboxOAuthUrl($component, 'connectAzure', 'azure', $this->account->workspace));
+});
+
+it('hides the microsoft mailbox on the emails page without a microsoft client', function (): void {
+    config()->set('services.azure.client_id');
+    $this->account->forceDelete();
+
+    livewire(EmailInboxPage::class)
+        ->assertDontSee(__('filament/pages/email-accounts.actions.connect_azure'))
+        ->assertActionHidden('connectAzure');
+});
+
+it('shows the inbox instead of the prompt once an account is connected', function (): void {
+    livewire(EmailInboxPage::class)
+        ->assertDontSee(__('filament/pages/email-accounts.not_connected.inbox.heading'));
+});
+
+it('does not expose compose as a page header action', function (): void {
+    livewire(EmailInboxPage::class)
+        ->assertActionDoesNotExist('composeEmail');
+});
+
+it('opens the floating composer from the drafts table header', function (): void {
+    $drafts = livewire(DraftsTable::class)->assertTableHeaderActionsExistInOrder(['composeEmail']);
+
+    expect($drafts->instance()->getTable()->getAction('composeEmail')->getLivewireClickHandler())
+        ->toBe("\$dispatch('composer:open')");
+});
+
+it('checks for a connected mailbox once per drafts table render', function (): void {
+    DB::enableQueryLog();
+
+    livewire(DraftsTable::class);
+
+    $mailboxLookups = collect(DB::getQueryLog())
+        ->filter(fn (array $query): bool => str_starts_with($query['query'], 'select exists(select * from "connected_accounts"'));
+
+    expect($mailboxLookups)->toHaveCount(1);
+});
+
+it('does not put compose on the outbox table header', function (): void {
+    expect(livewire(OutboxTable::class)->instance()->getTable()->getHeaderActions())
+        ->toBeEmpty();
+});
+
+it('hides the compose action when no account is connected', function (): void {
+    $this->account->forceDelete();
+
+    livewire(DraftsTable::class)
+        ->assertDontSee(__('filament/concerns/email-compose.actions.compose.label'));
+});
+
+it('keeps the compose action when the mailbox cannot send', function (): void {
+    $this->account->update([
+        'capabilities' => [
+            'email' => true,
+            'send' => false,
+            'calendar' => false,
+        ],
+    ]);
+
+    livewire(DraftsTable::class)
+        ->assertSee(__('filament/concerns/email-compose.actions.compose.label'))
+        ->assertTableActionVisible('composeEmail')
+        ->assertDontSee(__('filament/pages/email-accounts.not_connected.inbox.heading'));
+});
+
+it('keeps compose and the drafts empty copy when the mailbox has a sync error', function (): void {
+    $this->account->update([
+        'status' => EmailAccountStatus::ERROR,
+        'capabilities' => [
+            'email' => true,
+            'send' => false,
+            'calendar' => false,
+        ],
+    ]);
+
+    livewire(DraftsTable::class)
+        ->assertSee(__('filament/concerns/email-compose.actions.compose.label'))
+        ->assertSee(__('filament/pages/email-inbox.drafts.empty.heading'))
+        ->assertDontSee(__('filament/pages/email-accounts.not_connected.inbox.heading'));
+});
+
+it('hides the compose action when the mailbox is disconnected', function (): void {
+    $this->account->update([
+        'status' => EmailAccountStatus::DISCONNECTED,
+    ]);
+
+    livewire(DraftsTable::class)
+        ->assertDontSee(__('filament/concerns/email-compose.actions.compose.label'))
+        ->assertSee(__('filament/pages/email-accounts.not_connected.inbox.heading'));
+});

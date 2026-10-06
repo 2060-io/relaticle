@@ -5,22 +5,28 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools\Company;
 
 use App\Actions\Company\UpdateCompany;
+use App\Concerns\OperatesOnCrmEntity;
+use App\Enums\CrmEntity;
 use App\Models\Company;
+use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Ai\Tools\Request;
+use Relaticle\Chat\Support\WorkspaceMembersContext;
 use Relaticle\Chat\Tools\BaseWriteUpdateTool;
 
 final class UpdateCompanyTool extends BaseWriteUpdateTool
 {
+    use OperatesOnCrmEntity;
+
     public function description(): string
     {
-        return 'Propose updating an existing company. Returns a proposal for user approval.';
+        return 'Propose updating an existing company (name, account owner, custom fields). Returns a proposal for user approval.';
     }
 
-    protected function modelClass(): string
+    protected function entity(): CrmEntity
     {
-        return Company::class;
+        return CrmEntity::Company;
     }
 
     protected function actionClass(): string
@@ -28,31 +34,59 @@ final class UpdateCompanyTool extends BaseWriteUpdateTool
         return UpdateCompany::class;
     }
 
-    protected function entityType(): string
-    {
-        return 'company';
-    }
-
-    protected function entityLabel(): string
-    {
-        return 'Company';
-    }
-
     protected function entitySchema(JsonSchema $schema): array
     {
-        return ['name' => $schema->string()->description('The new company name.')];
+        return [
+            'name' => $schema->string()->description('The new company name.'),
+            'account_owner_id' => $schema->string()->description(
+                'Set the account owner, the workspace member responsible for this company.'
+                .' MUST be a user id from the list workspace members tool (contacts/people are not valid).'
+                .' Pass null to unassign the owner.',
+            ),
+        ];
+    }
+
+    protected function validateRequest(Request $request, User $user): ?string
+    {
+        return WorkspaceMembersContext::memberFieldError($user, 'account_owner_id', $request['account_owner_id'] ?? null);
     }
 
     protected function extractActionData(Request $request): array
     {
-        return array_filter(['name' => $request['name'] ?? null], fn (mixed $v): bool => $v !== null);
+        $data = array_filter([
+            'name' => $request['name'] ?? null,
+        ], fn (mixed $v): bool => $v !== null);
+
+        $owner = $this->requestedOwner($request);
+
+        if ($owner !== false) {
+            $data['account_owner_id'] = $owner;
+        }
+
+        return $data;
     }
 
     protected function buildDisplayData(Request $request, Model $model): array
     {
         $fields = [];
+
         if (($request['name'] ?? null) !== null) {
             $fields[] = ['label' => 'Name', 'old' => $model->getAttribute('name'), 'new' => $request['name']];
+        }
+
+        $owner = $this->requestedOwner($request);
+
+        if ($owner !== false) {
+            /** @var Company $company */
+            $company = $model;
+
+            $fields[] = [
+                'label' => 'Account Owner',
+                'old' => $company->accountOwner->name ?? __('(none)'),
+                'new' => $owner === null ? __('(none)') : (WorkspaceMembersContext::nameOf($owner) ?? $owner),
+                '_oldValue' => $company->getAttribute('account_owner_id'),
+                '_newValue' => $owner,
+            ];
         }
 
         return [
@@ -60,5 +94,20 @@ final class UpdateCompanyTool extends BaseWriteUpdateTool
             'summary' => "Update company \"{$model->getAttribute('name')}\"",
             'fields' => $fields,
         ];
+    }
+
+    /**
+     * Tri-state owner param: false = not provided, null = unassign (null or
+     * an empty string on the wire), string = the new owner's user id.
+     */
+    private function requestedOwner(Request $request): string|null|false
+    {
+        if (! array_key_exists('account_owner_id', $request->all())) {
+            return false;
+        }
+
+        $raw = $request['account_owner_id'];
+
+        return $raw === null || $raw === '' ? null : (string) $raw;
     }
 }

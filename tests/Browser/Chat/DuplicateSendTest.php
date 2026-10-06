@@ -3,24 +3,22 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Tests\Helpers\ChatBrowser;
 
 it('does not push two user messages when sendMessage is called twice in the same tick', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
-    $userCount = (int) $page->script(<<<'JS'
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $userCount = (int) $page->script(<<<JS
         (async () => {
-            const host = Array.from(document.querySelectorAll('[x-data^="chatInterface"]'))
-                .find((el) => el.offsetParent !== null);
-            const data = Alpine.$data(host);
+            {$resolveInterface}
 
             // sendMessage() reads the composer via localEditor().getText().
             data.localEditor().setText('race test');

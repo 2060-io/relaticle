@@ -1,6 +1,7 @@
 .DS_Store
 .superpowers
 /.phpunit.cache
+/.cache
 .scribe
 /node_modules
 /public/build
@@ -11,6 +12,7 @@
 /vendor
 .env
 .env.backup
+.env.bak*
 .env.production
 .phpactor.json
 .phpunit.result.cache
@@ -21,13 +23,16 @@ Homestead.yaml
 auth.json
 npm-debug.log
 yarn-error.log
-AGENTS.md
-boost.json
+/.conductor/settings.local.toml
 .mcp.json
 /.ai/*
 !/.ai/guidelines/
 /.ai/guidelines/*
 !/.ai/guidelines/relaticle/
+!/.ai/guidelines/laravel/
+!/.ai/guidelines/pest/
+!/.ai/guidelines/php/
+!/.ai/rules/
 /.github/skills
 /.fleet
 /.idea
@@ -43,6 +48,7 @@ boost.json
 /.playwright-mcp
 /docs/*
 !/docs/i18n.md
+!/docs/billing.md
 api.json
 .scribe/
 /public/vendor/scribe
@@ -50,6 +56,8 @@ api.json
 /storage/app/scribe
 /tests/Feature/Scribe
 .context
+/bin/setup-preview.sh
+/packages/filament
 .gstack/
 test-results.xml
 
@@ -60,3 +68,9 @@ test-results.xml
 /.gemini
 /.amp
 /.agents
+
+# business-review regression ledger is machine-local (~/.claude/business-review/); never commit it
+.claude/skills/business-review/regressions.json
+
+# Pest browser plugin writes a PNG here for every failed assertion
+/tests/Browser/Screenshots

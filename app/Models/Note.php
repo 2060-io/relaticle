@@ -5,53 +5,58 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\CreationSource;
-use App\Models\Concerns\BelongsToTeamCreator;
+use App\Enums\CrmEntity;
+use App\Enums\MediaCollection;
+use App\Models\Concerns\BelongsToWorkspaceCreator;
 use App\Models\Concerns\HasCreator;
-use App\Models\Concerns\HasTeam;
-use App\Models\Concerns\InvalidatesRelatedAiSummaries;
-use App\Observers\NoteObserver;
+use App\Models\Concerns\HasWorkspace;
+use App\Models\Pivots\Noteable;
+use App\Models\Scopes\WorkspaceScope;
+use App\Support\Media\UploadAllowlist;
+use Carbon\CarbonImmutable;
 use Database\Factories\NoteFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Carbon;
+use Relaticle\ActivityLog\Concerns\InteractsWithTimeline;
+use Relaticle\ActivityLog\Contracts\HasTimeline;
+use Relaticle\ActivityLog\Timeline\TimelineBuilder;
 use Relaticle\CustomFields\Models\Concerns\UsesCustomFields;
 use Relaticle\CustomFields\Models\Contracts\HasCustomFields;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
 /**
- * @property Carbon|null $deleted_at
+ * @property CarbonImmutable|null $deleted_at
  * @property CreationSource $creation_source
  */
-#[ObservedBy(NoteObserver::class)]
+#[ScopedBy(WorkspaceScope::class)]
 #[Fillable([
     'creation_source',
 ])]
-final class Note extends Model implements HasCustomFields
+final class Note extends Model implements HasCustomFields, HasMedia, HasTimeline
 {
-    use BelongsToTeamCreator;
+    use BelongsToWorkspaceCreator;
     use HasCreator;
 
     /** @use HasFactory<NoteFactory> */
     use HasFactory;
 
-    use HasTeam;
     use HasUlids;
-    use InvalidatesRelatedAiSummaries;
+    use HasWorkspace;
+    use InteractsWithMedia;
+    use InteractsWithTimeline;
+    use LogsActivity;
     use SoftDeletes;
     use UsesCustomFields;
-
-    /**
-     * @var array<string, mixed>
-     */
-    protected $attributes = [
-        'creation_source' => CreationSource::WEB,
-    ];
 
     /**
      * The attributes that should be cast.
@@ -66,43 +71,37 @@ final class Note extends Model implements HasCustomFields
     }
 
     /**
-     * @return MorphToMany<Company, $this>
+     * @return MorphToMany<Company, $this, Noteable>
      */
     public function companies(): MorphToMany
     {
-        return $this->morphedByMany(Company::class, 'noteable');
+        return $this->morphedByMany(Company::class, 'noteable')->using(Noteable::class);
     }
 
     /**
-     * @return MorphToMany<People, $this>
+     * @return MorphToMany<People, $this, Noteable>
      */
     public function people(): MorphToMany
     {
-        return $this->morphedByMany(People::class, 'noteable');
+        return $this->morphedByMany(People::class, 'noteable')->using(Noteable::class);
     }
 
     /**
-     * @return MorphToMany<Opportunity, $this>
+     * @return MorphToMany<Opportunity, $this, Noteable>
      */
     public function opportunities(): MorphToMany
     {
-        return $this->morphedByMany(Opportunity::class, 'noteable');
+        return $this->morphedByMany(Opportunity::class, 'noteable')->using(Noteable::class);
     }
 
     /** @param Builder<self> $query */
     #[Scope]
     protected function forNotableType(Builder $query, string $type): void
     {
-        $relationMap = [
-            'company' => 'companies',
-            'people' => 'people',
-            'opportunity' => 'opportunities',
-        ];
+        $entity = CrmEntity::tryFrom($type);
 
-        $relation = $relationMap[$type] ?? null;
-
-        if ($relation) {
-            $query->whereHas($relation);
+        if (in_array($entity, [CrmEntity::Company, CrmEntity::People, CrmEntity::Opportunity], true)) {
+            $query->whereHas($entity->relationName());
         }
     }
 
@@ -115,5 +114,30 @@ final class Note extends Model implements HasCustomFields
                 ->orWhereHas('people', fn (Builder $sub) => $sub->where('noteables.noteable_id', $id))
                 ->orWhereHas('opportunities', fn (Builder $sub) => $sub->where('noteables.noteable_id', $id));
         });
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection(MediaCollection::Attachments->value)
+            ->acceptsMimeTypes(UploadAllowlist::mimeTypes());
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logAll()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->logExcept([
+                'id', 'workspace_id', 'creator_id', 'creation_source', 'custom_fields',
+                'created_at', 'updated_at', 'deleted_at',
+            ])
+            ->useLogName('crm')
+            ->setDescriptionForEvent(fn (string $eventName): string => $eventName);
+    }
+
+    public function timeline(): TimelineBuilder
+    {
+        return TimelineBuilder::make($this)->fromActivityLog(mergedRenderer: 'merged-activity');
     }
 }

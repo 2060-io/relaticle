@@ -1,0 +1,83 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Support\ActivityLog;
+
+use App\Enums\CreationSource;
+use App\Models\ActivityLog\Activity;
+use Illuminate\Contracts\View\View;
+use Relaticle\ActivityLog\Contracts\TimelineRenderer;
+use Relaticle\ActivityLog\Support\ActivityLogSummary;
+use Relaticle\ActivityLog\Timeline\TimelineEntry;
+
+/**
+ * Renders one same-save group (native column changes and custom-field changes
+ * that shared a `batch_uuid`) as a single timeline entry. The package's
+ * batch-merge unions every grouped row's payload into `$entry->properties`, so
+ * both the native `attributes`/`old` maps and the `custom_field_changes` list
+ * arrive here together.
+ */
+final readonly class MergedActivityRenderer implements TimelineRenderer
+{
+    public function render(TimelineEntry $entry): View
+    {
+        $summary = ActivityLogSummary::from($entry);
+
+        $importFile = $entry->properties['import_file'] ?? null;
+
+        return view('activity-log.merged-activity', [
+            'entry' => $entry,
+            'summary' => $summary,
+            'rows' => $this->rows($entry, $summary),
+            'importFile' => is_string($importFile) ? $importFile : null,
+            'viaSource' => $this->viaSource(Activity::sourceFrom($entry->properties)),
+        ]);
+    }
+
+    private function viaSource(?CreationSource $source): ?string
+    {
+        if (! $source instanceof CreationSource) {
+            return null;
+        }
+
+        if (in_array($source, [CreationSource::WEB, CreationSource::IMPORT], true)) {
+            return null;
+        }
+
+        return __('workspaces.activity.via_source', ['source' => $source->getLabel()]);
+    }
+
+    /**
+     * Flatten native diff rows and custom-field changes into one ordered list of
+     * label / old / new triples for the diff table.
+     *
+     * @return list<array{label: string, old: string, new: string}>
+     */
+    private function rows(TimelineEntry $entry, ActivityLogSummary $summary): array
+    {
+        $rows = [];
+
+        foreach ($summary->diffRows as $row) {
+            $rows[] = [
+                'label' => $row->label,
+                'old' => ActivityValue::display($row->formattedOld()),
+                'new' => ActivityValue::display($row->formattedNew()),
+            ];
+        }
+
+        /** @var list<array<string, mixed>> $changes */
+        $changes = $entry->properties['custom_field_changes'] ?? [];
+
+        foreach ($changes as $change) {
+            $label = $change['label'] ?? $change['code'] ?? '';
+            $rows[] = [
+                'label' => is_string($label) ? $label : '',
+                'old' => ActivityValue::display($change['old'] ?? null),
+                'new' => ActivityValue::display($change['new'] ?? null),
+            ];
+        }
+
+        return $rows;
+    }
+}

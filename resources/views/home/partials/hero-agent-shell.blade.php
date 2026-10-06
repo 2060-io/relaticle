@@ -1,95 +1,92 @@
-{{-- Mock Filament app shell sidebar — visible from md: up, hidden on mobile.
-     Visually mirrors app.relaticle.test: white bg, dark workspace chip, light-gray
-     active state with primary icon (not primary-tinted bg), and a "Chats" group
-     at the bottom containing the active conversation.
-     Icons use Heroicon outline to match the real Filament app exactly (the rest of
-     the marketing site uses Remix Icon per project convention). --}}
-<aside class="hero-agent-shell hidden md:flex md:w-48 lg:w-56 shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-    {{-- Workspace switcher.
-         The mark is a pixel-art "N" constructed from 13 discrete <rect>
-         squares on a 5×5 grid: two full vertical columns plus three diagonal
-         stair-step squares between them. Each cell is 4 units wide with a
-         1-unit gap on a 24×24 viewBox, so the squares read as separate
-         pixels rather than a solid letter. --}}
-    <div class="flex items-center gap-2 px-3 py-2.5">
-        <div class="flex h-6 w-6 items-center justify-center rounded bg-gray-900 shrink-0 dark:bg-white/[0.1]">
-            <svg viewBox="0 0 24 24" class="h-3 w-3 text-white" fill="currentColor" aria-hidden="true" shape-rendering="crispEdges">
-                {{-- Left column --}}
-                <rect x="0"  y="0"  width="4" height="4"/>
-                <rect x="0"  y="5"  width="4" height="4"/>
-                <rect x="0"  y="10" width="4" height="4"/>
-                <rect x="0"  y="15" width="4" height="4"/>
-                <rect x="0"  y="20" width="4" height="4"/>
-                {{-- Diagonal stair --}}
-                <rect x="5"  y="5"  width="4" height="4"/>
-                <rect x="10" y="10" width="4" height="4"/>
-                <rect x="15" y="15" width="4" height="4"/>
-                {{-- Right column --}}
-                <rect x="20" y="0"  width="4" height="4"/>
-                <rect x="20" y="5"  width="4" height="4"/>
-                <rect x="20" y="10" width="4" height="4"/>
-                <rect x="20" y="15" width="4" height="4"/>
-                <rect x="20" y="20" width="4" height="4"/>
-            </svg>
+{{-- Mock of the app panel's sidebar, shown from md: up. Greys are spelled zinc because the
+     marketing bundle's gray is Tailwind's cool gray, and the app panel's gray is zinc. --}}
+@php
+    $navRow = 'group flex items-center gap-2 rounded-lg px-2 py-1.5 font-medium text-zinc-700 data-active:bg-[var(--surface-sidebar-active-bg)] data-active:text-zinc-950 dark:text-zinc-300 dark:data-active:text-white';
+    $navIcon = 'w-4 h-4 shrink-0 text-zinc-500 group-data-active:text-zinc-950 dark:text-zinc-400 dark:group-data-active:text-white';
+    $chatRow = 'group flex items-center gap-2 rounded-lg px-2 py-1.5 text-zinc-600 data-active:bg-[var(--surface-sidebar-active-bg)] data-active:text-zinc-950 dark:text-zinc-400 dark:data-active:text-white';
+    $chatIcon = 'w-4 h-4 shrink-0 text-zinc-400 group-data-active:text-zinc-950 dark:text-zinc-500 dark:group-data-active:text-white';
+@endphp
+
+<aside class="hero-agent-shell hidden md:flex md:w-48 lg:w-56 shrink-0 flex-col border-r border-zinc-200/60 bg-[var(--surface-sidebar-bg)] dark:border-white/10 [&_svg]:stroke-[1.75]">
+    {{-- Workspace switcher. The real tenant avatar (fi-tenant-avatar) is a
+         generated SVG: a solid black square with the workspace initials in
+         white, centred. Reproduced here as markup rather than a data URI so it
+         picks up the same dark-mode treatment as the rest of the mock. --}}
+    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-zinc-200/60 px-3 dark:border-white/10">
+        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900 dark:bg-white/[0.1]">
+            <span class="text-pico font-bold leading-none text-white">NW</span>
         </div>
-        <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-gray-900 dark:text-white truncate">Northwind</div>
-        </div>
-        <x-heroicon-o-chevron-down class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500"/>
+        <div class="min-w-0 flex-1 truncate text-sm font-medium text-zinc-950 dark:text-white">Northwind</div>
+        <x-heroicon-o-chevron-down class="w-3.5 h-3.5 shrink-0 text-zinc-400 dark:text-zinc-500"/>
+        <x-ri-sidebar-fold-line class="ms-1 h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500"/>
     </div>
 
-    {{-- Top-level nav items — icons match app/Filament/Resources/*Resource.php $navigationIcon.
-         Home is the active page (mirrors the dashboard greeting "Good morning, …"); fi-active
-         renders as a light-gray bg + primary icon, matching the real Filament sidebar. --}}
+    {{-- Global search + notifications row, mirroring the real sidebar's
+         fi-sidebar-search-ctn (GlobalSearch field + inbox trigger). --}}
+    <div class="flex items-center gap-1.5 px-2 pt-2.5 pb-1.5">
+        <div class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-white px-2 shadow-xs ring-1 ring-zinc-950/10 dark:bg-white/5 dark:ring-white/10">
+            <x-heroicon-o-magnifying-glass class="w-3.5 h-3.5 shrink-0 text-zinc-500 dark:text-zinc-400"/>
+            <span class="min-w-0 flex-1 truncate text-xs text-zinc-500 dark:text-zinc-400">Search</span>
+            <kbd class="rounded-md bg-zinc-50 px-1 font-sans text-pico font-medium text-zinc-500 ring-1 ring-zinc-950/[0.06] dark:bg-white/10 dark:text-zinc-400 dark:ring-white/10">&#8984;K</kbd>
+        </div>
+        <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-500 shadow-xs ring-1 ring-zinc-950/10 dark:bg-white/5 dark:text-zinc-400 dark:ring-white/10">
+            <x-ri-inbox-line class="w-3.5 h-3.5"/>
+        </div>
+    </div>
+
+    {{-- Icons match app/Filament/Resources/*Resource.php $navigationIcon. heroChat.setShellActive()
+         moves data-active from Home to the first chat as the demo enters the conversation. --}}
     <nav class="flex-1 overflow-hidden px-2 py-1 space-y-px text-sm">
-        <div id="hero-shell-nav-home" class="flex items-center gap-2 rounded-md bg-gray-100 px-2 py-1.5 font-medium text-gray-900 dark:bg-white/[0.06] dark:text-white">
-            <x-heroicon-o-home class="w-4 h-4 shrink-0 text-primary dark:text-primary-400"/>
+        <div id="hero-shell-nav-home" data-active class="{{ $navRow }}">
+            <x-heroicon-o-home class="{{ $navIcon }}"/>
             <span>Home</span>
         </div>
-        <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-700 dark:text-gray-300">
-            <x-heroicon-o-user class="w-4 h-4 shrink-0"/>
+        <div class="{{ $navRow }}">
+            <x-heroicon-o-user class="{{ $navIcon }}"/>
             <span>People</span>
         </div>
-        <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-700 dark:text-gray-300">
-            <x-heroicon-o-home-modern class="w-4 h-4 shrink-0"/>
+        <div class="{{ $navRow }}">
+            <x-heroicon-o-building-office class="{{ $navIcon }}"/>
             <span>Companies</span>
         </div>
-        <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-700 dark:text-gray-300">
-            <x-heroicon-o-trophy class="w-4 h-4 shrink-0"/>
+        <div class="{{ $navRow }}">
+            <x-heroicon-o-currency-dollar class="{{ $navIcon }}"/>
             <span>Opportunities</span>
         </div>
-        <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-700 dark:text-gray-300">
-            <x-heroicon-o-check-circle class="w-4 h-4 shrink-0"/>
+        <div class="{{ $navRow }}">
+            <x-heroicon-o-clipboard-document-check class="{{ $navIcon }}"/>
             <span>Tasks</span>
         </div>
-        <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-700 dark:text-gray-300">
-            <x-heroicon-o-document-text class="w-4 h-4 shrink-0"/>
+        <div class="{{ $navRow }}">
+            <x-heroicon-o-document-text class="{{ $navIcon }}"/>
             <span>Notes</span>
         </div>
 
-        {{-- Chats group — recent conversations, mirroring chat-sidebar-nav.blade.php.
-             None is active here because Home is the current page. --}}
+        {{-- Chats group: recent conversations, mirroring chat-sidebar-nav.blade.php. --}}
         <div class="pt-3">
             <div class="flex items-center justify-between px-2 pb-1">
-                <span class="text-pico font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">Chats</span>
-                <x-heroicon-o-chevron-up class="w-3 h-3 text-gray-400 dark:text-gray-500"/>
+                <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Chats</span>
+                <x-heroicon-o-chevron-up class="w-3 h-3 text-zinc-400 dark:text-zinc-500"/>
+            </div>
+
+            <div id="hero-shell-nav-chat" class="{{ $chatRow }}">
+                <x-heroicon-o-chat-bubble-left class="{{ $chatIcon }}"/>
+                <span class="truncate">Overdue tasks this week</span>
             </div>
 
             @foreach ([
-                'Overdue tasks this week',
                 "This week's pipeline review",
                 'Follow up with Priya Nair',
-                'Renewal prep — Daniel Okafor',
+                'Renewal prep: Daniel Okafor',
             ] as $heroChatTitle)
-                <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-700 dark:text-gray-300">
-                    <x-heroicon-o-chat-bubble-left class="w-4 h-4 shrink-0"/>
+                <div class="{{ $chatRow }}">
+                    <x-heroicon-o-chat-bubble-left class="{{ $chatIcon }}"/>
                     <span class="truncate">{{ $heroChatTitle }}</span>
                 </div>
             @endforeach
 
-            {{-- All chats trigger — mirrors the "All chats" footer item in chat-sidebar-nav.blade.php --}}
-            <div class="flex items-center gap-2 rounded-md px-2 py-1.5 text-gray-500 opacity-60 dark:text-gray-400">
-                <x-heroicon-o-ellipsis-horizontal class="w-4 h-4 shrink-0"/>
+            <div class="{{ $chatRow }}">
+                <x-heroicon-o-ellipsis-horizontal class="{{ $chatIcon }}"/>
                 <span>All chats</span>
             </div>
         </div>

@@ -3,21 +3,24 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\ForceJsonResponse;
-use App\Http\Middleware\SetApiTeamContext;
+use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\TransientToken;
+use Relaticle\SystemAdmin\Enums\SystemAdministratorRole;
+use Relaticle\SystemAdmin\Models\SystemAdministrator;
 
 mutates(
     ForceJsonResponse::class,
-    SetApiTeamContext::class,
+    SetApiWorkspaceContext::class,
 );
 
 beforeEach(function () {
-    $this->user = User::factory()->withPersonalTeam()->create();
-    $this->team = $this->user->personalTeam();
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->workspace = $this->user->personalWorkspace();
 });
 
 describe('ForceJsonResponse', function (): void {
@@ -62,7 +65,7 @@ describe('rate limiting', function (): void {
     it('enforces separate write rate limit', function (): void {
         RateLimiter::for('api', function () {
             return [
-                Limit::perMinute(100)->by('team:test'),
+                Limit::perMinute(100)->by('workspace:test'),
                 Limit::perMinute(2)->by('token:test:write'),
             ];
         });
@@ -83,16 +86,55 @@ describe('rate limiting', function (): void {
     });
 });
 
+describe('rate limit headers', function (): void {
+    it('reports the limit and remaining budget on every authenticated response', function (): void {
+        $token = $this->user->createToken('test', ['*'])->plainTextToken;
+
+        $response = $this->withToken($token)
+            ->getJson('/api/v1/companies')
+            ->assertOk();
+
+        expect((int) $response->headers->get('X-RateLimit-Limit'))->toBeGreaterThan(0)
+            ->and((int) $response->headers->get('X-RateLimit-Remaining'))->toBeLessThan((int) $response->headers->get('X-RateLimit-Limit'));
+    });
+
+    it('tells a throttled client how long to wait', function (): void {
+        RateLimiter::for('api', fn () => Limit::perMinute(1)->by($this->user->id));
+
+        $token = $this->user->createToken('test', ['*'])->plainTextToken;
+
+        $this->withToken($token)->getJson('/api/v1/companies')->assertOk();
+
+        $response = $this->withToken($token)
+            ->getJson('/api/v1/companies')
+            ->assertTooManyRequests()
+            ->assertJsonStructure(['message']);
+
+        expect((int) $response->headers->get('Retry-After'))->toBeGreaterThan(0)
+            ->and($response->headers->get('X-RateLimit-Remaining'))->toBe('0');
+    });
+});
+
+describe('session credentials', function (): void {
+    it('rate limits a tokenless session by IP rather than crashing on a token id', function (): void {
+        $this->user->withAccessToken(new TransientToken);
+        auth()->guard('sanctum')->setUser($this->user);
+        auth()->shouldUse('sanctum');
+
+        $this->getJson('/api/v1/companies')->assertOk();
+    });
+});
+
 describe('real-token middleware chain', function (): void {
     it('authenticates and scopes via real bearer token through full middleware stack', function (): void {
-        $companies = Company::factory()->recycle([$this->user, $this->team])->count(2)->create();
+        $companies = Company::factory()->recycle([$this->user, $this->workspace])->count(2)->create();
 
         $raw = Str::random(40);
         $token = $this->user->tokens()->create([
             'name' => 'full-stack-test',
             'token' => hash('sha256', $raw),
             'abilities' => ['*'],
-            'team_id' => $this->team->id,
+            'workspace_id' => $this->workspace->id,
         ]);
 
         $plainToken = "{$token->id}|{$raw}";
@@ -109,6 +151,15 @@ describe('real-token middleware chain', function (): void {
 
     it('rejects request with invalid bearer token', function (): void {
         $this->withToken('invalid-token')
+            ->getJson('/api/v1/companies')
+            ->assertUnauthorized();
+    });
+
+    it('rejects a personal access token minted for a tokenable outside the users provider', function (): void {
+        $admin = SystemAdministrator::factory()->create(['role' => SystemAdministratorRole::SuperAdministrator]);
+        $token = $admin->createToken('blog-token', ['posts:read'])->plainTextToken;
+
+        $this->withToken($token)
             ->getJson('/api/v1/companies')
             ->assertUnauthorized();
     });

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\CompanyResource\RelationManagers;
 
+use App\Filament\Actions\CreateTaskAction;
+use App\Filament\Components\Tables\RelatedRecordColumns;
+use App\Filament\Concerns\CountsRelatedRecords;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\AttachAction;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\DetachAction;
@@ -16,14 +18,15 @@ use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 final class TasksRelationManager extends RelationManager
 {
+    use CountsRelatedRecords;
+
     protected static string $relationship = 'tasks';
 
-    protected static string|\BackedEnum|null $icon = 'heroicon-o-check-circle';
+    protected static string|\BackedEnum|null $icon = 'heroicon-o-clipboard-document-check';
 
     public function form(Schema $schema): Schema
     {
@@ -34,29 +37,9 @@ final class TasksRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('title')
-            ->columns([
-                TextColumn::make('title'),
-                TextColumn::make('assignees.name')
-                    ->label(__('filament/resources/company.relation_managers.tasks.fields.assignees.label'))
-                    ->badge()
-                    ->color('primary')
-                    ->searchable(),
-                TextColumn::make('people.name')
-                    ->label(__('filament/resources/company.relation_managers.tasks.fields.people.label'))
-                    ->badge()
-                    ->color('primary')
-                    ->searchable(),
-                TextColumn::make('created_at')
-                    ->label(__('filament/resources/company.relation_managers.tasks.fields.created_at.label'))
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(),
-            ])
-            ->filters([
-                //
-            ])
+            ->columns(RelatedRecordColumns::tasks())
             ->headerActions([
-                CreateAction::make()->icon('heroicon-o-plus')->size(Size::Small),
+                CreateTaskAction::make()->icon('heroicon-o-plus')->size(Size::Small),
                 AttachAction::make(),
             ])
             ->recordActions([

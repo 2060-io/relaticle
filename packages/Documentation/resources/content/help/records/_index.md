@@ -1,0 +1,9 @@
+---
+title: Records
+description: Everything about company, people, and opportunity records, from pages and links between them to exports and recovery.
+order: 6
+---
+
+Companies, people, and opportunities are the records your pipeline is built
+from. These articles cover what lives on each record, how records connect,
+and how to export or recover them.

@@ -1,7 +1,17 @@
 const SUGGESTION_DEBOUNCE_MS = 150;
 const MIN_QUERY_LENGTH = 2;
 
-export function createMentionSuggestion() {
+// `texts` carries translated UI copy injected from Blade (same pattern as
+// voice.js); defaults keep the module standalone.
+export function createMentionSuggestion({ texts = {} } = {}) {
+    const t = {
+        listLabel: 'Mention suggestions',
+        searching: 'Searching…',
+        loadFailed: "Couldn't load suggestions.",
+        noMatches: 'No matches for ":query".',
+        typeLabels: { company: 'Company', people: 'Person', opportunity: 'Opportunity', task: 'Task', note: 'Note' },
+        ...texts,
+    };
     // Token-based supersede: each fetchResults call increments fetchToken; only
     // the call whose token still matches at await-time renders. Avoids
     // AbortController pattern where aborted promises occasionally surface as
@@ -21,26 +31,28 @@ export function createMentionSuggestion() {
             .replace(/"/g, '&quot;');
     }
 
-    function typeLabel(t) {
-        return ({ company: 'Company', people: 'Person', opportunity: 'Deal', task: 'Task', note: 'Note' })[t] || t;
+    function typeLabel(type) {
+        return t.typeLabels[type] || type;
     }
 
     function renderPopup({ query, fetching, error, results, activeIdx, onPick }) {
         if (!popupEl) {
             popupEl = document.createElement('div');
             popupEl.setAttribute('role', 'listbox');
-            popupEl.setAttribute('aria-label', 'Mention suggestions');
-            popupEl.className = 'absolute z-50 mb-2 max-h-64 overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800';
+            popupEl.setAttribute('aria-label', t.listLabel);
+            // z-[70]: must sit above the side panel (z-50), whose composer also
+            // hosts this picker.
+            popupEl.className = 'absolute z-[70] mb-2 max-h-64 overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900';
             popupEl.style.minWidth = '14rem';
         }
 
         let html = '';
         if (fetching && results.length === 0) {
-            html = `<div class="px-3 py-3 text-center text-xs text-gray-500 dark:text-gray-400"><span class="inline-flex items-center gap-2"><span class="h-2 w-2 animate-pulse rounded-full bg-primary-500"></span>Searching…</span></div>`;
+            html = `<div class="px-3 py-3 text-center text-xs text-gray-500 dark:text-gray-400"><span class="inline-flex items-center gap-2"><span class="h-2 w-2 motion-safe:animate-pulse rounded-full bg-primary-500"></span>${escapeHtml(t.searching)}</span></div>`;
         } else if (error) {
-            html = `<div class="px-3 py-3 text-center text-xs text-red-600 dark:text-red-400" role="alert">Couldn't load suggestions.</div>`;
+            html = `<div class="px-3 py-3 text-center text-xs text-red-600 dark:text-red-400" role="alert">${escapeHtml(t.loadFailed)}</div>`;
         } else if (results.length === 0) {
-            html = `<div class="px-3 py-3 text-center text-xs text-gray-500 dark:text-gray-400">No matches for "${escapeHtml(query)}".</div>`;
+            html = `<div class="px-3 py-3 text-center text-xs text-gray-500 dark:text-gray-400">${escapeHtml(t.noMatches).replace(':query', escapeHtml(query))}</div>`;
         } else {
             html = results.map((item, idx) => {
                 const active = idx === activeIdx ? 'bg-primary-50 dark:bg-primary-900/30' : '';
@@ -78,7 +90,7 @@ export function createMentionSuggestion() {
             const body = await res.json();
             if (myToken !== fetchToken) return null;
             return {
-                results: (body.data || []).map((item) => ({ type: item.type, id: item.id, label: item.name })),
+                results: (body.data || []).map((item) => ({ type: item.type, id: item.id, label: item.name, url: item.url ?? null })),
                 error: false,
             };
         } catch (_e) {
@@ -152,7 +164,7 @@ export function createMentionSuggestion() {
 
                     activeIndex = 0;
                     items = [];
-                    onSelect = (item) => props.command({ id: item.id, type: item.type, label: item.label });
+                    onSelect = (item) => props.command({ id: item.id, type: item.type, label: item.label, url: item.url ?? null });
 
                     document.body.appendChild(renderPopup({
                         query: props.query, fetching: true, error: false,
@@ -169,7 +181,7 @@ export function createMentionSuggestion() {
 
                 onUpdate: (props) => {
                     clientRect = props.clientRect;
-                    onSelect = (item) => props.command({ id: item.id, type: item.type, label: item.label });
+                    onSelect = (item) => props.command({ id: item.id, type: item.type, label: item.label, url: item.url ?? null });
 
                     if (!props.query || props.query.length < MIN_QUERY_LENGTH) {
                         if (popupEl?.parentNode) popupEl.parentNode.removeChild(popupEl);

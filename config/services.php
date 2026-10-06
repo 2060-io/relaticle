@@ -43,18 +43,14 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
-    'github' => [
-        'client_id' => env('GITHUB_CLIENT_ID'),
-        'client_secret' => env('GITHUB_CLIENT_SECRET'),
-        'redirect' => '/auth/callback/github',
+    'microsoft' => [
+        'client_id' => env('MICROSOFT_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
+        'redirect' => '/auth/callback/microsoft',
     ],
 
     'fathom' => [
         'site_id' => env('FATHOM_ANALYTICS_SITE_ID'),
-    ],
-
-    'discord' => [
-        'invite_url' => env('DISCORD_INVITE_URL'),
     ],
 
     'turnstile' => [
@@ -62,7 +58,38 @@ return [
         'secret' => env('TURNSTILE_SECRET_KEY'),
     ],
 
-    'anthropic' => [
-        'summary_model' => env('ANTHROPIC_SUMMARY_MODEL', 'claude-haiku-4-5'),
+    'discord' => [
+        'invite_url' => env('DISCORD_INVITE_URL'),
+    ],
+
+    'email_summary' => [
+        'provider' => env('EMAIL_SUMMARY_PROVIDER', 'openai'),
+        'model' => env('EMAIL_SUMMARY_MODEL', 'gpt-4o-mini'),
+    ],
+
+    'gmail' => [
+        'client_id' => env('GMAIL_CLIENT_ID'),
+        'client_secret' => env('GMAIL_CLIENT_SECRET'),
+        'redirect' => env('GMAIL_REDIRECT_URI'),
+    ],
+
+    'azure' => [
+        'client_id' => env('AZURE_CLIENT_ID'),
+        'client_secret' => env('AZURE_CLIENT_SECRET'),
+        'redirect' => env('AZURE_REDIRECT_URI'),
+        'tenant' => env('AZURE_TENANT_ID'),
+        'proxy' => env('PROXY'),
+    ],
+
+    'stripe' => [
+        'managed_payments' => (bool) env('STRIPE_MANAGED_PAYMENTS', true),
+        'prices' => [
+            'pro_monthly' => env('STRIPE_PRICE_PRO_MONTHLY'),
+            'pro_yearly' => env('STRIPE_PRICE_PRO_YEARLY'),
+        ],
+        'credit_packs' => [
+            'small' => ['price' => env('STRIPE_PRICE_CREDITS_1K'), 'credits' => 1_000],
+            'large' => ['price' => env('STRIPE_PRICE_CREDITS_5K'), 'credits' => 5_000],
+        ],
     ],
 ];

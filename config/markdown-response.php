@@ -2,10 +2,15 @@
 
 declare(strict_types=1);
 
-use Spatie\MarkdownResponse\Actions\DetectsMarkdownRequest;
+use App\Support\DetectsPublicMarkdownRequest;
+use App\Support\Markdown\DecodeHtmlEntitiesPostprocessor;
+use App\Support\Markdown\UnwrapEmailAutolinksPostprocessor;
 use Spatie\MarkdownResponse\Actions\GeneratesCacheKey;
 use Spatie\MarkdownResponse\Postprocessors\CollapseBlankLinesPostprocessor;
 use Spatie\MarkdownResponse\Postprocessors\RemoveHtmlTagsPostprocessor;
+use Spatie\MarkdownResponse\Preprocessors\RemoveFooterPreprocessor;
+use Spatie\MarkdownResponse\Preprocessors\RemoveHeaderPreprocessor;
+use Spatie\MarkdownResponse\Preprocessors\RemoveNavigationPreprocessor;
 use Spatie\MarkdownResponse\Preprocessors\RemoveScriptsAndStylesPreprocessor;
 
 return [
@@ -25,10 +30,10 @@ return [
 
         /*
          * The class responsible for detecting whether a request wants
-         * a markdown response. You can extend the default class to
-         * customize the detection logic.
+         * a markdown response. Ours declines on access-gated routes, whose
+         * responses the middleware must not cache or replay.
          */
-        'detector' => DetectsMarkdownRequest::class,
+        'detector' => DetectsPublicMarkdownRequest::class,
 
         /*
          * When enabled, requests with an `Accept: text/markdown` header
@@ -66,6 +71,9 @@ return [
      */
     'preprocessors' => [
         RemoveScriptsAndStylesPreprocessor::class,
+        RemoveNavigationPreprocessor::class,
+        RemoveHeaderPreprocessor::class,
+        RemoveFooterPreprocessor::class,
     ],
 
     /*
@@ -73,7 +81,9 @@ return [
      * Each class must implement the Postprocessor interface.
      */
     'postprocessors' => [
+        UnwrapEmailAutolinksPostprocessor::class,
         RemoveHtmlTagsPostprocessor::class,
+        DecodeHtmlEntitiesPostprocessor::class,
         CollapseBlankLinesPostprocessor::class,
     ],
 

@@ -4,26 +4,27 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\TaskResource\Pages;
 
-use App\Actions\Task\NotifyTaskAssignees;
+use App\Filament\Actions\CreateTaskAction;
+use App\Filament\Concerns\HasCustomFieldColumns;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Exports\TaskExporter;
 use App\Filament\Resources\TaskResource;
 use App\Models\Task;
 use Asmit\ResizedColumn\HasResizableColumn;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Actions\CreateAction;
 use Filament\Actions\ExportAction;
 use Filament\Resources\Pages\ManageRecords;
 use Filament\Support\Enums\Size;
 use Livewire\Attributes\On;
 use Override;
-use Relaticle\CustomFields\Concerns\InteractsWithCustomFields;
 use Relaticle\ImportWizard\Filament\Pages\ImportTasks;
 
 final class ManageTasks extends ManageRecords
 {
+    use HasCustomFieldColumns;
     use HasResizableColumn;
-    use InteractsWithCustomFields;
+    use HasViewSwitcher;
 
     protected static string $resource = TaskResource::class;
 
@@ -35,21 +36,16 @@ final class ManageTasks extends ManageRecords
                 Action::make('import')
                     ->label(__('filament/resources/task.pages.list.actions.import.label'))
                     ->icon('heroicon-o-arrow-up-tray')
-                    ->url(ImportTasks::getUrl()),
-                ExportAction::make()->exporter(TaskExporter::class),
+                    ->url(ImportTasks::getUrl())
+                    ->visible(ImportTasks::canAccess(...)),
+                ExportAction::make()->exporter(TaskExporter::class)->authorize('exportAny', Task::class),
             ])
                 ->icon('heroicon-o-arrows-up-down')
                 ->color('gray')
                 ->button()
                 ->label(__('filament/resources/task.pages.list.actions.import_export.label'))
                 ->size(Size::Small),
-            CreateAction::make()
-                ->icon('heroicon-o-plus')
-                ->size(Size::Small)
-                ->slideOver()
-                ->after(function (Task $record): void {
-                    resolve(NotifyTaskAssignees::class)->execute($record);
-                }),
+            CreateTaskAction::make()->icon('heroicon-o-plus')->size(Size::Small)->slideOver(),
         ];
     }
 

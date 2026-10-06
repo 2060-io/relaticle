@@ -37,8 +37,14 @@ trait NormalizesToolInput
 
         $clean = [];
         foreach ($candidates as $id) {
-            if (is_string($id) && $id !== '') {
-                $clean[] = $id;
+            if (! is_scalar($id)) {
+                continue;
+            }
+
+            $trimmed = trim((string) $id);
+
+            if ($trimmed !== '') {
+                $clean[] = $trimmed;
             }
         }
 
@@ -58,5 +64,20 @@ trait NormalizesToolInput
         }
 
         return $this->coerceIdList($request[$key]);
+    }
+
+    /**
+     * Coerce a record field into a list of ids, or null when it carries nothing
+     * usable. Unlike idListOrNull() an empty list collapses to null: the create
+     * path treats "no ids" as "omit the field" rather than "clear the relation".
+     *
+     * @param  array<string, mixed>  $record
+     * @return list<string>|null
+     */
+    protected function idListFromArray(array $record, string $key): ?array
+    {
+        $ids = $this->coerceIdList($record[$key] ?? null);
+
+        return $ids === [] ? null : $ids;
     }
 }

@@ -6,8 +6,13 @@ namespace App\Filament\Resources;
 
 use App\Actions\Task\UpdateTask;
 use App\Enums\CreationSource;
+use App\Enums\CrmEntity;
+use App\Filament\Components\Forms\WorkspaceMemberSelect;
+use App\Filament\Components\Tables\Filters\RecordSelectFilter;
+use App\Filament\Components\Tables\RecordChipColumn;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
+use App\Filament\Resources\TaskResource\Pages\TasksBoard;
 use App\Models\CustomField;
 use App\Models\Task;
 use App\Models\User;
@@ -39,7 +44,7 @@ final class TaskResource extends Resource
 
     protected static ?string $navigationLabel = null;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-check-circle';
+    protected static string|\BackedEnum|null $navigationIcon = null;
 
     protected static ?string $recordTitleAttribute = 'title';
 
@@ -60,6 +65,11 @@ final class TaskResource extends Resource
         return __('filament/resources/task.navigation_label');
     }
 
+    public static function getNavigationIcon(): string
+    {
+        return CrmEntity::Task->icon();
+    }
+
     public static function form(Schema $schema): Schema
     {
         return TaskForm::get($schema);
@@ -78,10 +88,8 @@ final class TaskResource extends Resource
                     ->searchable()
                     ->limit(50)
                     ->weight('medium'),
-                TextColumn::make('assignees.name')
+                RecordChipColumn::make('assignees.name')
                     ->label(__('filament/resources/task.fields.assignees.label'))
-                    ->badge()
-                    ->color('primary')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('creator.name')
@@ -106,7 +114,6 @@ final class TaskResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->searchable()
-            ->paginated([10, 25, 50])
             ->filters([
                 Filter::make('assigned_to_me')
                     ->label(__('filament/resources/task.filters.assigned_to_me.label'))
@@ -114,9 +121,9 @@ final class TaskResource extends Resource
                         $query->where('users.id', auth()->id());
                     }))
                     ->toggle(),
-                SelectFilter::make('assignees')
+                RecordSelectFilter::make('assignees')
                     ->multiple()
-                    ->relationship('assignees', 'name')
+                    ->relationship('assignees', 'name', WorkspaceMemberSelect::currentWorkspaceMembers())
                     ->searchable()
                     ->preload(),
                 SelectFilter::make('creation_source')
@@ -156,6 +163,7 @@ final class TaskResource extends Resource
     {
         return [
             'index' => ManageTasks::route('/'),
+            'board' => TasksBoard::route('/board'),
         ];
     }
 
@@ -205,7 +213,7 @@ final class TaskResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['team', 'customFieldValues.customField.options'])
+            ->with(['assignees', 'customFieldValues.customField.options'])
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);

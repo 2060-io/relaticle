@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Relaticle\ImportWizard\Store;
 
+use App\Support\LikePattern;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Attributes\WithoutIncrementing;
 use Illuminate\Database\Eloquent\Attributes\WithoutTimestamps;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,27 +50,22 @@ use Spatie\LaravelData\DataCollection;
  */
 #[WithoutIncrementing]
 #[WithoutTimestamps]
+#[Fillable([
+    'row_number',
+    'raw_data',
+    'validation',
+    'corrections',
+    'skipped',
+    'match_action',
+    'matched_id',
+    'relationships',
+    'processed',
+])]
+#[Table(name: 'import_rows', key: 'row_number')]
 final class ImportRow extends Model
 {
     /** @use HasFactory<Factory<ImportRow>> */
     use HasFactory;
-
-    protected $table = 'import_rows';
-
-    protected $primaryKey = 'row_number';
-
-    /** @var list<string> */
-    protected $fillable = [
-        'row_number',
-        'raw_data',
-        'validation',
-        'corrections',
-        'skipped',
-        'match_action',
-        'matched_id',
-        'relationships',
-        'processed',
-    ];
 
     /**
      * @return array<string, string>
@@ -176,7 +174,7 @@ final class ImportRow extends Model
     #[Scope]
     protected function searchValue(Builder $query, string $column, string $search): void
     {
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+        $escaped = LikePattern::escape($search);
         $query->whereRaw('json_extract(raw_data, ?) LIKE ? ESCAPE ?', ['$.'.$column, "%{$escaped}%", '\\']);
     }
 
@@ -277,11 +275,7 @@ final class ImportRow extends Model
 
     public function getFinalValue(string $column): mixed
     {
-        if ($this->isValueSkipped($column)) {
-            return null;
-        }
-
-        if ($this->hasValidationError($column)) {
+        if ($this->isValueWithheld($column)) {
             return null;
         }
 
@@ -290,6 +284,21 @@ final class ImportRow extends Model
         }
 
         return $this->raw_data->get($column);
+    }
+
+    /**
+     * Whether the reviewer withheld this cell, either by skipping it or by
+     * leaving it in error. getFinalValue() returns null for a withheld cell
+     * exactly as it does for a genuinely empty one, so callers that need to
+     * tell "no value carried" from "carried an empty value" must ask here.
+     */
+    public function isValueWithheld(string $column): bool
+    {
+        if ($this->isValueSkipped($column)) {
+            return true;
+        }
+
+        return $this->hasValidationError($column);
     }
 
     public function isValueSkipped(string $column): bool

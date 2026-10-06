@@ -14,13 +14,13 @@ use Tests\Helpers\ChatDocument;
 mutates(ChatController::class);
 
 beforeEach(function () {
-    $this->user = User::factory()->withPersonalTeam()->create();
-    $this->team = $this->user->currentTeam;
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->workspace = $this->user->currentWorkspace;
     $this->actingAs($this->user);
-    Filament::setTenant($this->team);
+    Filament::setTenant($this->workspace);
 
-    AiCreditBalance::query()->updateOrCreate(['team_id' => $this->team->getKey()], [
-        'team_id' => $this->team->getKey(),
+    AiCreditBalance::query()->updateOrCreate(['workspace_id' => $this->workspace->getKey()], [
+        'workspace_id' => $this->workspace->getKey(),
         'credits_remaining' => 100,
         'credits_used' => 0,
         'period_starts_at' => now()->startOfMonth(),
@@ -45,7 +45,7 @@ it('returns 402 when credits are exhausted on send', function (): void {
     $conversationId = $createRes->json('conversation_id');
 
     AiCreditBalance::query()
-        ->where('team_id', $this->team->getKey())
+        ->where('workspace_id', $this->workspace->getKey())
         ->update(['credits_remaining' => 0]);
 
     $this->postJson(route('chat.send', ['conversation' => $conversationId]), [
@@ -104,8 +104,9 @@ it('continues an existing conversation', function (): void {
 
     DB::table('agent_conversations')->insert([
         'id' => 'conv-existing',
-        'user_id' => $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => 'Existing conversation',
         'created_at' => now(),
         'updated_at' => now(),
@@ -123,8 +124,9 @@ it('continues an existing conversation', function (): void {
 it('lists conversations for current user', function (): void {
     DB::table('agent_conversations')->insert([
         'id' => 'conv-1',
-        'user_id' => $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => 'Test conversation',
         'created_at' => now(),
         'updated_at' => now(),
@@ -137,12 +139,13 @@ it('lists conversations for current user', function (): void {
 });
 
 it('does not list conversations of other users', function (): void {
-    $otherUser = User::factory()->withPersonalTeam()->create();
+    $otherUser = User::factory()->withPersonalWorkspace()->create();
 
     DB::table('agent_conversations')->insert([
         'id' => 'conv-other',
-        'user_id' => $otherUser->getKey(),
-        'team_id' => $otherUser->currentTeam->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $otherUser->getKey(),
+        'workspace_id' => $otherUser->currentWorkspace->getKey(),
         'title' => 'Not mine',
         'created_at' => now(),
         'updated_at' => now(),
@@ -156,8 +159,9 @@ it('does not list conversations of other users', function (): void {
 it('deletes own conversation', function (): void {
     DB::table('agent_conversations')->insert([
         'id' => 'conv-to-delete',
-        'user_id' => $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => 'Delete me',
         'created_at' => now(),
         'updated_at' => now(),
@@ -170,12 +174,13 @@ it('deletes own conversation', function (): void {
 });
 
 it('cannot delete another user conversation', function (): void {
-    $otherUser = User::factory()->withPersonalTeam()->create();
+    $otherUser = User::factory()->withPersonalWorkspace()->create();
 
     DB::table('agent_conversations')->insert([
         'id' => 'conv-other',
-        'user_id' => $otherUser->getKey(),
-        'team_id' => $otherUser->currentTeam->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $otherUser->getKey(),
+        'workspace_id' => $otherUser->currentWorkspace->getKey(),
         'title' => 'Not yours',
         'created_at' => now(),
         'updated_at' => now(),
@@ -203,7 +208,7 @@ it('accepts known model override values on chat.send', function (): void {
 
     $createRes = $this->postJson(route('chat.conversations.create'), [
         'document' => ChatDocument::fromText('hello'),
-        'model' => 'claude-sonnet',
+        'model' => 'claude-sonnet-5',
     ])->assertOk();
     $conversationId = $createRes->json('conversation_id');
 
@@ -211,7 +216,7 @@ it('accepts known model override values on chat.send', function (): void {
 
     $this->postJson(route('chat.send', ['conversation' => $conversationId]), [
         'document' => ChatDocument::fromText('hello'),
-        'model' => 'claude-sonnet',
+        'model' => 'claude-sonnet-5',
     ])->assertOk();
 
     Queue::assertPushed(ProcessChatMessage::class);
@@ -232,7 +237,7 @@ it('returns the conversation id so the client can subscribe', function (): void 
 
 it('atomically reserves a credit on send so concurrent sends cannot overspend', function (): void {
     AiCreditBalance::query()
-        ->where('team_id', $this->team->getKey())
+        ->where('workspace_id', $this->workspace->getKey())
         ->update(['credits_remaining' => 1, 'credits_used' => 99]);
 
     Queue::fake();
@@ -255,7 +260,7 @@ it('atomically reserves a credit on send so concurrent sends cannot overspend', 
     $first->assertOk();
     $second->assertStatus(402);
 
-    expect(AiCreditBalance::query()->where('team_id', $this->team->getKey())->value('credits_remaining'))->toBe(0);
+    expect(AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining'))->toBe(0);
 });
 
 it('does not reserve a credit on send when the request fails validation', function (): void {
@@ -270,7 +275,7 @@ it('does not reserve a credit on send when the request fails validation', functi
         'document' => ['type' => 'doc', 'content' => []],
     ])->assertUnprocessable();
 
-    expect(AiCreditBalance::query()->where('team_id', $this->team->getKey())->value('credits_remaining'))->toBe(100);
+    expect(AiCreditBalance::query()->where('workspace_id', $this->workspace->getKey())->value('credits_remaining'))->toBe(100);
 });
 
 it('returns reset_at and upgrade_url on 402 from send', function (): void {
@@ -282,7 +287,7 @@ it('returns reset_at and upgrade_url on 402 from send', function (): void {
     $conversationId = $createRes->json('conversation_id');
 
     AiCreditBalance::query()
-        ->where('team_id', $this->team->getKey())
+        ->where('workspace_id', $this->workspace->getKey())
         ->update(['credits_remaining' => 0, 'period_ends_at' => now()->endOfMonth()]);
 
     $this->postJson(route('chat.send', ['conversation' => $conversationId]), [
@@ -313,8 +318,9 @@ it('dispatches a chat job on the chat queue when chat.send is called', function 
 it('cleans up messages when deleting a conversation', function (): void {
     DB::table('agent_conversations')->insert([
         'id' => 'conv-cleanup',
-        'user_id' => $this->user->getKey(),
-        'team_id' => $this->team->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
         'title' => 'Cleanup test',
         'created_at' => now(),
         'updated_at' => now(),
@@ -323,14 +329,14 @@ it('cleans up messages when deleting a conversation', function (): void {
     DB::table('agent_conversation_messages')->insert([
         'id' => 'msg-1',
         'conversation_id' => 'conv-cleanup',
-        'user_id' => $this->user->getKey(),
+        'participant_type' => 'user',
+        'participant_id' => $this->user->getKey(),
         'agent' => CrmAssistant::class,
         'role' => 'user',
         'content' => 'Hello',
         'document' => ChatDocument::emptyJson(),
         'attachments' => '[]',
-        'tool_calls' => '[]',
-        'tool_results' => '[]',
+        'steps' => '[]',
         'usage' => '{}',
         'meta' => '{}',
         'created_at' => now(),

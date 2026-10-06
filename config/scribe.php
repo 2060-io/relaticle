@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Scribe\OpenApi\ErrorResponsesGenerator;
 use App\Scribe\Strategies\GetFromSpatieQueryBuilder;
 use Knuckles\Scribe\Config\AuthIn;
 use Knuckles\Scribe\Config\Defaults;
@@ -17,17 +18,24 @@ if (! class_exists(AuthIn::class)) {
 // Only the most common configs are shown. See the https://scribe.knuckles.wtf/laravel/reference/config for all.
 
 return [
-    // The HTML <title> for the generated documentation.
+    // Also the OpenAPI `info.title` and the Postman collection name, so SDK
+    // generators name their clients from it. Keep it the API's identity, not copy.
     'title' => 'Relaticle API',
 
     // A short description of your API. Will be included in the docs webpage, Postman collection and OpenAPI spec.
-    'description' => 'REST API for managing CRM entities including companies, people, opportunities, tasks, and notes.',
+    'description' => 'REST API reference for Relaticle records and custom fields, with personal access token setup, filtering, sorting and request limits.',
 
     // Text to place in the "Introduction" section, right after the `description`. Markdown and HTML are supported.
     'intro_text' => <<<'INTRO'
     Welcome to the Relaticle API documentation. This API follows the [JSON:API](https://jsonapi.org/) specification.
 
-    All endpoints require authentication via Bearer token. Generate an access token from **Settings > Access Tokens** in the Relaticle app.
+    All endpoints require authentication via Bearer token. Generate an access token from **Settings > Access Tokens** in the Relaticle app. Tokens carry scoped abilities (`read`, `create`, `update`, `delete`) that map to the HTTP method of each request.
+
+    The API is versioned in the URL path (`/v1/`). Breaking changes ship under a new path version; the previous version keeps working for at least six months after the new one is announced.
+
+    Limits are 600 requests per minute per workspace, and per token 300 reads and 60 writes per minute. Every authenticated response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`. When a limit is exceeded the API returns `429` with a `Retry-After` header giving the seconds to wait.
+
+    Errors use a consistent JSON envelope: `{"message": "..."}`, and validation failures (`422`) add an `errors` object keyed by field name.
     INTRO
     ,
     // The base URL displayed in the docs.
@@ -78,7 +86,7 @@ return [
 
         // URL path to use for the docs endpoint (if `add_routes` is true).
         // By default, `/docs` opens the HTML page, `/docs.postman` opens the Postman collection, and `/docs.openapi` the OpenAPI spec.
-        'docs_url' => '/docs/api',
+        'docs_url' => '/developers/api',
 
         // Directory within `public` in which to store CSS and JS assets.
         // By default, assets are stored in `public/vendor/scribe`.
@@ -171,7 +179,9 @@ return [
 
         // Additional generators to use when generating the OpenAPI spec.
         // Should extend `Knuckles\Scribe\Writing\OpenApiSpecGenerators\OpenApiGenerator`.
-        'generators' => [],
+        'generators' => [
+            ErrorResponsesGenerator::class,
+        ],
     ],
 
     'groups' => [

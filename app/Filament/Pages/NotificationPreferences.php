@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Filament\Pages;
+
+use App\Filament\Clusters\Settings;
+use Filament\Clusters\Cluster;
+use Filament\Pages\Page;
+
+final class NotificationPreferences extends Page
+{
+    protected string $view = 'filament.pages.notification-preferences';
+
+    protected static string $layout = 'filament.layouts.settings';
+
+    protected static ?string $slug = 'notifications';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-bell';
+
+    /** @var class-string<Cluster>|null */
+    protected static ?string $cluster = Settings::class;
+
+    public static function getNavigationLabel(): string
+    {
+        return __('notifications.title');
+    }
+
+    public function getHeading(): string
+    {
+        return __('notifications.title');
+    }
+
+    public static function getLabel(): string
+    {
+        return __('notifications.title');
+    }
+}

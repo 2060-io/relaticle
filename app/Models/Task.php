@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\CreationSource;
-use App\Models\Concerns\BelongsToTeamCreator;
+use App\Enums\MediaCollection;
+use App\Models\Concerns\BelongsToWorkspaceCreator;
 use App\Models\Concerns\HasCreator;
-use App\Models\Concerns\HasTeam;
-use App\Models\Concerns\InvalidatesRelatedAiSummaries;
-use App\Observers\TaskObserver;
+use App\Models\Concerns\HasWorkspace;
+use App\Models\Pivots\Taskable;
+use App\Models\Pivots\TaskAssignee;
+use App\Models\Scopes\WorkspaceScope;
+use App\Support\Media\UploadAllowlist;
+use Carbon\CarbonImmutable;
 use Database\Factories\TaskFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,46 +25,45 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Carbon;
+use Relaticle\ActivityLog\Concerns\InteractsWithTimeline;
+use Relaticle\ActivityLog\Contracts\HasTimeline;
+use Relaticle\ActivityLog\Timeline\TimelineBuilder;
 use Relaticle\CustomFields\Models\Concerns\UsesCustomFields;
 use Relaticle\CustomFields\Models\Contracts\HasCustomFields;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 use Spatie\EloquentSortable\SortableTrait;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
 /**
  * @property int $id
- * @property Carbon|null $deleted_at
+ * @property CarbonImmutable|null $deleted_at
  * @property CreationSource $creation_source
  * @property string $createdBy
- *
- * @method void saveCustomFieldValue(CustomField $field, mixed $value)
  */
-#[ObservedBy(TaskObserver::class)]
+#[ScopedBy(WorkspaceScope::class)]
 #[Fillable([
     'user_id',
     'title',
     'creation_source',
 ])]
-final class Task extends Model implements HasCustomFields
+final class Task extends Model implements HasCustomFields, HasMedia, HasTimeline
 {
-    use BelongsToTeamCreator;
+    use BelongsToWorkspaceCreator;
     use HasCreator;
 
     /** @use HasFactory<TaskFactory> */
     use HasFactory;
 
-    use HasTeam;
     use HasUlids;
-    use InvalidatesRelatedAiSummaries;
+    use HasWorkspace;
+    use InteractsWithMedia;
+    use InteractsWithTimeline;
+    use LogsActivity;
     use SoftDeletes;
     use SortableTrait;
     use UsesCustomFields;
-
-    /**
-     * @var array<string, mixed>
-     */
-    protected $attributes = [
-        'creation_source' => CreationSource::WEB,
-    ];
 
     /**
      * The attributes that should be cast.
@@ -83,35 +86,35 @@ final class Task extends Model implements HasCustomFields
     ];
 
     /**
-     * @return BelongsToMany<User, $this>
+     * @return BelongsToMany<User, $this, TaskAssignee>
      */
     public function assignees(): BelongsToMany
     {
-        return $this->belongsToMany(User::class);
+        return $this->belongsToMany(User::class)->using(TaskAssignee::class);
     }
 
     /**
-     * @return MorphToMany<Company, $this>
+     * @return MorphToMany<Company, $this, Taskable>
      */
     public function companies(): MorphToMany
     {
-        return $this->morphedByMany(Company::class, 'taskable');
+        return $this->morphedByMany(Company::class, 'taskable')->using(Taskable::class);
     }
 
     /**
-     * @return MorphToMany<Opportunity, $this>
+     * @return MorphToMany<Opportunity, $this, Taskable>
      */
     public function opportunities(): MorphToMany
     {
-        return $this->morphedByMany(Opportunity::class, 'taskable');
+        return $this->morphedByMany(Opportunity::class, 'taskable')->using(Taskable::class);
     }
 
     /**
-     * @return MorphToMany<People, $this>
+     * @return MorphToMany<People, $this, Taskable>
      */
     public function people(): MorphToMany
     {
-        return $this->morphedByMany(People::class, 'taskable');
+        return $this->morphedByMany(People::class, 'taskable')->using(Taskable::class);
     }
 
     /** @param Builder<self> $query */
@@ -133,5 +136,30 @@ final class Task extends Model implements HasCustomFields
     protected function forOpportunity(Builder $query, string $opportunityId): void
     {
         $query->whereHas('opportunities', fn (Builder $q) => $q->where('opportunities.id', $opportunityId));
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection(MediaCollection::Attachments->value)
+            ->acceptsMimeTypes(UploadAllowlist::mimeTypes());
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logAll()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->logExcept([
+                'id', 'workspace_id', 'creator_id', 'creation_source', 'custom_fields',
+                'created_at', 'updated_at', 'deleted_at', 'order_column',
+            ])
+            ->useLogName('crm')
+            ->setDescriptionForEvent(fn (string $eventName): string => $eventName);
+    }
+
+    public function timeline(): TimelineBuilder
+    {
+        return TimelineBuilder::make($this)->fromActivityLog(mergedRenderer: 'merged-activity');
     }
 }

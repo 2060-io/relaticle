@@ -6,15 +6,30 @@ namespace App\Observers;
 
 use App\Actions\CustomFields\EnsureTagOptionsExist;
 use App\Models\CustomFieldValue;
+use App\Support\ActivityLog\CustomFieldChangeLog;
+use App\Support\Media\UploadClaims;
+use Illuminate\Database\Eloquent\Model;
+use Relaticle\CustomFields\Models\CustomField;
 
 final readonly class CustomFieldValueObserver
 {
     public function __construct(
         private EnsureTagOptionsExist $ensureTagOptionsExist,
+        private UploadClaims $uploadClaims,
+        private CustomFieldChangeLog $changeLog,
     ) {}
+
+    public function saving(CustomFieldValue $value): void
+    {
+        $this->uploadClaims->assertClaimable($value);
+    }
 
     public function saved(CustomFieldValue $value): void
     {
+        if ($value->wasRecentlyCreated || $value->wasChanged(['string_value', 'text_value'])) {
+            $this->uploadClaims->sync($value);
+        }
+
         // Only multi-value fields (tags-input et al.) store an array in json_value;
         // scalar-typed fields leave it blank. Short-circuit before loading the
         // customField relation so ordinary custom-field saves incur no extra query.
@@ -29,6 +44,33 @@ final readonly class CustomFieldValueObserver
             return;
         }
 
-        $this->ensureTagOptionsExist->handle($field, $value->json_value);
+        $this->ensureTagOptionsExist->execute($field, $value->json_value);
+    }
+
+    public function created(CustomFieldValue $value): void
+    {
+        $this->log($value, null);
+    }
+
+    public function updated(CustomFieldValue $value): void
+    {
+        $column = CustomFieldValue::getValueColumn($value->customField->type);
+
+        if (! $value->wasChanged($column)) {
+            return;
+        }
+
+        $this->log($value, $value->getOriginal($column));
+    }
+
+    private function log(CustomFieldValue $value, mixed $old): void
+    {
+        $entity = $value->getRelationValue('entity');
+
+        if (! $entity instanceof Model) {
+            return;
+        }
+
+        $this->changeLog->record($entity, $value->customField, $old, $value->getValue());
     }
 }

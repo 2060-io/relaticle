@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools\People;
 
 use App\Actions\People\CreatePeople;
+use App\Concerns\OperatesOnCrmEntity;
+use App\Enums\CrmEntity;
 use App\Models\Company;
-use App\Models\Team;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Database\Eloquent\Model;
-use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Tools\BaseWriteCreateTool;
 
 final class CreatePersonTool extends BaseWriteCreateTool
 {
+    use OperatesOnCrmEntity;
+
     public function description(): string
     {
         return 'Propose creating a new person/contact. Returns a proposal for user approval.';
@@ -25,9 +26,16 @@ final class CreatePersonTool extends BaseWriteCreateTool
         return CreatePeople::class;
     }
 
-    protected function entityType(): string
+    protected function entity(): CrmEntity
     {
-        return 'people';
+        return CrmEntity::People;
+    }
+
+    protected function ownedForeignKeys(): array
+    {
+        return [
+            'company_id' => Company::class,
+        ];
     }
 
     protected function entitySchema(JsonSchema $schema): array
@@ -38,24 +46,26 @@ final class CreatePersonTool extends BaseWriteCreateTool
         ];
     }
 
-    protected function extractActionData(Request $request): array
+    protected function extractRecordData(array $record): array
     {
         return array_filter([
-            'name' => (string) $request->string('name'),
-            'company_id' => $request['company_id'] ?? null,
+            'name' => (string) ($record['name'] ?? ''),
+            'company_id' => $record['company_id'] ?? null,
         ], fn (mixed $v): bool => $v !== null && $v !== '');
     }
 
-    protected function buildDisplayData(Request $request): array
+    protected function buildRecordDisplay(array $record): array
     {
         /** @var User $user */
         $user = auth()->user();
-        $team = $user->currentTeam;
+        $workspace = $user->currentWorkspace;
 
-        $name = (string) $request->string('name');
+        $name = (string) ($record['name'] ?? '');
         $fields = [['label' => 'Name', 'value' => $name]];
 
-        $companyName = $this->nameForId($this->stringOrNull($request, 'company_id'), Company::class, 'name', $team);
+        $companyId = $record['company_id'] ?? null;
+        $companyId = is_string($companyId) && $companyId !== '' ? $companyId : null;
+        $companyName = $this->recordNames()->name($companyId, Company::class, $workspace);
         if ($companyName !== '') {
             $fields[] = ['label' => 'Company', 'value' => $companyName];
         }
@@ -65,29 +75,5 @@ final class CreatePersonTool extends BaseWriteCreateTool
             'summary' => "Create person \"{$name}\"",
             'fields' => $fields,
         ];
-    }
-
-    private function stringOrNull(Request $request, string $key): ?string
-    {
-        $value = $request[$key] ?? null;
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
-    /**
-     * @param  class-string<Model>  $modelClass
-     */
-    private function nameForId(?string $id, string $modelClass, string $nameAttribute, ?Team $team): string
-    {
-        if ($id === null) {
-            return '';
-        }
-
-        $query = $modelClass::query()->whereKey($id);
-        if ($team instanceof Team) {
-            $query->where('team_id', $team->getKey());
-        }
-
-        return (string) ($query->value($nameAttribute) ?? '');
     }
 }

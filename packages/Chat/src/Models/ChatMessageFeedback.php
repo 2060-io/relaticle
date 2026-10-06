@@ -1,0 +1,81 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Relaticle\Chat\Models;
+
+use App\Models\User;
+use App\Models\Workspace;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * One user's rating of one assistant message, feeding the quality signal pipeline.
+ *
+ * @property string $id
+ * @property string $workspace_id
+ * @property string $user_id
+ * @property string $conversation_id
+ * @property string $message_id
+ * @property string $rating
+ * @property ?string $category
+ * @property ?string $comment
+ * @property ?string $model
+ */
+#[Fillable([
+    'workspace_id',
+    'user_id',
+    'conversation_id',
+    'message_id',
+    'rating',
+    'category',
+    'comment',
+    'model',
+])]
+#[Table(name: 'chat_message_feedback')]
+final class ChatMessageFeedback extends Model
+{
+    /** @use HasFactory<Factory<static>> */
+    use HasFactory;
+
+    use HasUlids;
+
+    public const string RATING_UP = 'up';
+
+    public const string RATING_DOWN = 'down';
+
+    public const array CATEGORIES = ['inaccurate', 'did_not_follow', 'too_slow', 'other'];
+
+    /** @param Builder<self> $query */
+    #[Scope]
+    protected function createdThisWeek(Builder $query): void
+    {
+        $query->where($this->qualifyColumn('created_at'), '>=', now()->startOfWeek(CarbonInterface::MONDAY));
+    }
+
+    /** @return BelongsTo<Workspace, $this> */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** @return BelongsTo<AgentConversation, $this> */
+    public function conversation(): BelongsTo
+    {
+        return $this->belongsTo(AgentConversation::class, 'conversation_id');
+    }
+}

@@ -8,26 +8,64 @@ return [
         'email' => env('CONTACT_EMAIL', 'hello@relaticle.com'),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Feature Flags
-    |--------------------------------------------------------------------------
-    |
-    | Toggle Relaticle features on or off. Useful for forks and custom
-    | deployments that want to disable specific functionality without
-    | modifying upstream code. All features are enabled by default.
-    |
-    */
+    'enterprise' => [
+        'starting_price_yearly' => 20_000,
+    ],
+
+    'company' => [
+        'name' => env('RELATICLE_COMPANY_NAME', 'Relaticle'),
+        'address' => env('RELATICLE_COMPANY_ADDRESS', ''),
+    ],
 
     'deletion' => [
         'grace_period_days' => 30,
         'reminder_days_before' => 5,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Workspaces
+    |--------------------------------------------------------------------------
+    |
+    | How many workspaces one user may own. Workspaces they were invited into
+    | belong to someone else and never count. A workspace scheduled for
+    | deletion still occupies a slot until the grace period above elapses.
+    |
+    */
+
+    'workspaces' => [
+        'max_owned_per_user' => (int) env('RELATICLE_MAX_OWNED_WORKSPACES', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Horizon Access
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated list of email addresses allowed to open the Horizon
+    | dashboard outside the local environment. Empty denies everyone, so a
+    | deployment that never sets this exposes nothing.
+    |
+    */
+
+    'horizon' => [
+        'admin_emails' => array_values(array_filter(array_map(
+            trim(...),
+            explode(',', (string) env('HORIZON_ADMIN_EMAILS', '')),
+        ))),
+    ],
+
     'features' => [
+        'account_deletion' => (bool) env('RELATICLE_FEATURE_ACCOUNT_DELETION', false),
         'onboard_seed' => (bool) env('RELATICLE_FEATURE_ONBOARD_SEED', true),
         'social_auth' => (bool) env('RELATICLE_FEATURE_SOCIAL_AUTH', true),
         'documentation' => (bool) env('RELATICLE_FEATURE_DOCUMENTATION', true),
+        'email_integration' => (bool) env('RELATICLE_FEATURE_EMAIL_INTEGRATION', false),
+        'billing' => (bool) env('RELATICLE_FEATURE_BILLING', false),
+        'signup_challenge' => (bool) env('RELATICLE_FEATURE_SIGNUP_CHALLENGE', false),
+        'support_menu' => (bool) env('RELATICLE_FEATURE_SUPPORT_MENU', false),
+        'blog' => (bool) env('RELATICLE_FEATURE_BLOG', false),
+        'setup_conversation' => (bool) env('RELATICLE_FEATURE_SETUP_CONVERSATION', true),
     ],
 
     /*

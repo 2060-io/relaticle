@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Enums\CreationSource;
+use App\Enums\CrmEntity;
 use App\Filament\Exports\OpportunityExporter;
 use App\Filament\Resources\OpportunityResource\Forms\OpportunityForm;
 use App\Filament\Resources\OpportunityResource\Pages\ListOpportunities;
+use App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
+use App\Filament\Resources\OpportunityResource\RelationManagers\EmailsRelationManager;
+use App\Filament\Resources\OpportunityResource\RelationManagers\MeetingsRelationManager;
 use App\Filament\Resources\OpportunityResource\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\OpportunityResource\RelationManagers\TasksRelationManager;
 use App\Models\Opportunity;
@@ -32,6 +36,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Override;
+use Relaticle\ActivityLog\Filament\RelationManagers\ActivityLogRelationManager;
 
 final class OpportunityResource extends Resource
 {
@@ -41,7 +46,7 @@ final class OpportunityResource extends Resource
 
     protected static ?string $modelLabel = null;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-trophy';
+    protected static string|\BackedEnum|null $navigationIcon = null;
 
     protected static ?int $navigationSort = 3;
 
@@ -95,6 +100,7 @@ final class OpportunityResource extends Resource
             ->toolbarActions([
                 BulkActionGroup::make([
                     ExportBulkAction::make()
+                        ->authorize('exportAny', Opportunity::class)
                         ->exporter(OpportunityExporter::class),
                     RestoreBulkAction::make(),
                     DeleteBulkAction::make(),
@@ -108,6 +114,9 @@ final class OpportunityResource extends Resource
         return [
             TasksRelationManager::class,
             NotesRelationManager::class,
+            EmailsRelationManager::class,
+            MeetingsRelationManager::class,
+            ActivityLogRelationManager::class,
         ];
     }
 
@@ -116,6 +125,7 @@ final class OpportunityResource extends Resource
     {
         return [
             'index' => ListOpportunities::route('/'),
+            'board' => OpportunitiesBoard::route('/board'),
             'view' => ViewOpportunity::route('/{record}'),
         ];
     }
@@ -135,10 +145,15 @@ final class OpportunityResource extends Resource
         return __('filament/resources/opportunity.navigation_label');
     }
 
+    public static function getNavigationIcon(): string
+    {
+        return CrmEntity::Opportunity->icon();
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['team', 'customFieldValues.customField.options'])
+            ->with(['customFieldValues.customField.options'])
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);

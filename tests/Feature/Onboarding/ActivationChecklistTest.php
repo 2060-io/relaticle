@@ -1,0 +1,658 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Actions\Onboarding\DismissActivationChecklist;
+use App\Actions\Onboarding\RemoveSampleData;
+use App\Enums\ActivationStep;
+use App\Enums\CreationSource;
+use App\Enums\WorkspaceRole;
+use App\Filament\Pages\ChatConversation;
+use App\Filament\Pages\Dashboard;
+use App\Filament\Resources\PeopleResource;
+use App\Livewire\App\Onboarding\ActivationChecklist;
+use App\Models\Company;
+use App\Models\Note;
+use App\Models\Opportunity;
+use App\Models\People;
+use App\Models\Task;
+use App\Models\User;
+use App\Models\Workspace;
+use App\Models\WorkspaceInvitation;
+use App\Services\WorkspaceActivationFacts;
+use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Laravel\Pennant\Feature;
+use Relaticle\Chat\Enums\MessageOrigin;
+use Relaticle\EmailIntegration\Actions\AutoCreatePersonAction;
+use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
+use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+
+mutates(ActivationChecklist::class, DismissActivationChecklist::class, RemoveSampleData::class, WorkspaceActivationFacts::class);
+
+beforeEach(function (): void {
+    $this->owner = User::factory()->withPersonalWorkspace()->create();
+    $this->workspace = $this->owner->currentWorkspace;
+
+    $this->actingAs($this->owner);
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+    Filament::setTenant($this->workspace);
+});
+
+/**
+ * The click handler the ask_rela row carries: it seeds the dashboard composer
+ * instead of navigating, because an id-less chat URL is not a destination.
+ */
+function composePromptUrl(string $key = 'prompt_empty'): string
+{
+    return ChatConversation::getUrl([
+        'prompt' => __("filament/pages/dashboard.activation.steps.ask_rela.{$key}"),
+    ]);
+}
+
+function stepState(string $key, bool $complete): string
+{
+    return sprintf('data-step="%s" data-complete="%s"', $key, $complete ? 'true' : 'false');
+}
+
+function seedSampleRecords(Workspace $workspace, User $owner): void
+{
+    foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
+        $model::factory()->create([
+            'workspace_id' => $workspace->getKey(),
+            'creator_id' => $owner->getKey(),
+            'creation_source' => CreationSource::SYSTEM,
+        ]);
+    }
+}
+
+function expectSampleRecordsIntact(Workspace $workspace): void
+{
+    foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
+        expect($model::query()->where('workspace_id', $workspace->getKey())->where('creation_source', CreationSource::SYSTEM)->exists())->toBeTrue();
+    }
+}
+
+it('starts every step incomplete in a fresh workspace', function (): void {
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', false))
+        ->assertSeeHtml(stepState('sync_email', false))
+        ->assertSeeHtml(stepState('import', false))
+        ->assertSeeHtml(stepState('invite', false))
+        ->assertSeeHtml(stepState('ask_rela', false))
+        ->assertSee('0/5 steps completed');
+});
+
+it('completes the first-record step once the workspace holds a record the workspace made', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', true))
+        ->assertSee('1/5 steps completed');
+});
+
+it('leaves the first-record step incomplete while only seeded demo records exist', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::SYSTEM,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', false))
+        ->assertSee('0/5 steps completed');
+});
+
+it('leaves the first-record step incomplete while only mailbox-synced records exist', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::MAILBOX,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', false))
+        ->assertSee('0/5 steps completed');
+});
+
+it('completes the import step for an imported record', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::IMPORT,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('import', true))
+        ->assertSeeHtml(stepState('first_record', true));
+});
+
+it('hides the sync email step when email integration is disabled', function (): void {
+    config()->set('relaticle.features.email_integration', false);
+    Feature::flushCache();
+
+    livewire(ActivationChecklist::class)
+        ->assertDontSeeHtml('data-step="'.ActivationStep::SyncEmail->value.'"')
+        ->assertDontSee(__('filament/pages/dashboard.activation.steps.sync_email.label'))
+        ->assertSee('0/4 steps completed');
+});
+
+it('links the sync email step to the email accounts settings page', function (): void {
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml('href="'.EmailAccountsPage::getUrl().'"')
+        ->assertSee(__('filament/pages/dashboard.activation.steps.sync_email.label'));
+});
+
+it('shows an inline syncing row without a percent while the mailbox is still being listed', function (): void {
+    ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->owner->getKey(),
+        'sync_cursor' => null,
+        'initial_sync_imported' => 12,
+        'initial_sync_estimated' => 100,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('sync_email', true))
+        ->assertSeeHtml('data-testid="activation-email-sync-progress"')
+        ->assertSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing'))
+        ->assertDontSee('12%')
+        ->assertDontSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing_percent', ['percent' => 0]));
+});
+
+it('shows the highest import percent when another mailbox is still at zero', function (): void {
+    foreach (['starting@acme.example' => 10, 'halfway@acme.example' => 11] as $address => $pendingJobs) {
+        $account = ConnectedAccount::factory()->create([
+            'workspace_id' => $this->workspace->getKey(),
+            'user_id' => $this->owner->getKey(),
+            'email_address' => $address,
+            'sync_cursor' => 'history-done',
+        ]);
+        setHistoryImportBatchProgress(attachHistoryImportBatch($account), $address === 'starting@acme.example' ? 10 : 20, $pendingJobs);
+    }
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml('data-testid="activation-email-sync-progress"')
+        ->assertSee('45%');
+});
+
+it('does not show import issue on the checklist when store jobs failed', function (): void {
+    $account = ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->owner->getKey(),
+        'sync_cursor' => 'history-done',
+    ]);
+
+    $batchId = resolve(MailboxHistoryImportService::class)->startBatch($account)->id;
+    $account->update(['history_import_batch_id' => $batchId]);
+
+    DB::table('job_batches')->where('id', $batchId)->update([
+        'total_jobs' => 100,
+        'pending_jobs' => 0,
+        'failed_jobs' => 1,
+        'failed_job_ids' => json_encode(['failed-1']),
+        'finished_at' => now()->getTimestamp(),
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertDontSee(__('filament/pages/dashboard.activation.steps.sync_email.import_issue'))
+        ->assertDontSeeHtml('data-testid="activation-email-sync-progress"')
+        ->assertSeeHtml('href="'.EmailAccountsPage::getUrl().'"');
+});
+
+it('keeps mailbox sync percent on the checklist while store jobs run after listing finishes', function (): void {
+    $account = ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->owner->getKey(),
+        'sync_cursor' => 'history-done',
+        'initial_sync_imported' => 220,
+        'initial_sync_estimated' => 224,
+    ]);
+
+    $batchId = resolve(MailboxHistoryImportService::class)->startBatch($account)->id;
+    $account->update(['history_import_batch_id' => $batchId]);
+
+    DB::table('job_batches')->where('id', $batchId)->update([
+        'total_jobs' => 224,
+        'pending_jobs' => 3,
+        'failed_jobs' => 0,
+        'finished_at' => null,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('sync_email', true))
+        ->assertSeeHtml('data-testid="activation-email-sync-progress"')
+        ->assertSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing'))
+        ->assertSee('99%');
+});
+
+it('does not treat background incremental sync as an in-flight mailbox import', function (): void {
+    $account = ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->owner->getKey(),
+        'sync_cursor' => 'done',
+        'last_synced_at' => now(),
+    ]);
+
+    MailboxSyncTracker::markEmailStarted($account);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('sync_email', true))
+        ->assertDontSeeHtml('data-testid="activation-email-sync-progress"')
+        ->assertDontSee(__('filament/pages/dashboard.activation.steps.sync_email.syncing'));
+});
+
+it('completes the invite step while an invitation is pending', function (): void {
+    WorkspaceInvitation::query()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'email' => 'teammate@example.com',
+        'role' => WorkspaceRole::Member->value,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('invite', true));
+});
+
+it('completes the assistant step once the user has sent a chat message', function (): void {
+    $conversationId = (string) Str::ulid();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'workspace_id' => $this->workspace->getKey(),
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => $this->owner->getKey(),
+        'title' => 'Pipeline check',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('agent_conversation_messages')->insert([
+        'id' => (string) Str::uuid7(),
+        'conversation_id' => $conversationId,
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => (string) $this->owner->getKey(),
+        'role' => 'user',
+        'content' => 'hi',
+        'agent' => 'crm',
+        'attachments' => '[]',
+        'steps' => '[]',
+        'usage' => '{}',
+        'meta' => '{}',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('ask_rela', true));
+});
+
+it('leaves the assistant step open for a prompt the user never typed', function (): void {
+    $conversationId = (string) Str::ulid();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'workspace_id' => $this->workspace->getKey(),
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => $this->owner->getKey(),
+        'title' => 'Set up your workspace',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('agent_conversation_messages')->insert([
+        'id' => (string) Str::uuid7(),
+        'conversation_id' => $conversationId,
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => (string) $this->owner->getKey(),
+        'role' => 'user',
+        'content' => MessageOrigin::Greeting->opener(),
+        'agent' => 'crm',
+        'attachments' => '[]',
+        'steps' => '[]',
+        'usage' => '{}',
+        'meta' => '[]',
+        'origin' => MessageOrigin::Greeting->value,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('ask_rela', false));
+});
+
+it('ignores records and conversations belonging to another workspace', function (): void {
+    $otherWorkspace = Workspace::factory()->create();
+
+    People::factory()->create([
+        'workspace_id' => $otherWorkspace->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    DB::table('agent_conversations')->insert([
+        'id' => (string) Str::ulid(),
+        'workspace_id' => $otherWorkspace->getKey(),
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => $this->owner->getKey(),
+        'title' => 'Elsewhere',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(stepState('first_record', false))
+        ->assertSeeHtml(stepState('ask_rela', false));
+});
+
+it('disappears once every step is done', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::IMPORT,
+    ]);
+
+    WorkspaceInvitation::query()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'email' => 'teammate@example.com',
+        'role' => WorkspaceRole::Member->value,
+    ]);
+
+    $conversationId = (string) Str::ulid();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'workspace_id' => $this->workspace->getKey(),
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => $this->owner->getKey(),
+        'title' => 'Pipeline check',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('agent_conversation_messages')->insert([
+        'id' => (string) Str::uuid7(),
+        'conversation_id' => $conversationId,
+        'participant_type' => $this->owner->getMorphClass(),
+        'participant_id' => (string) $this->owner->getKey(),
+        'role' => 'user',
+        'content' => 'hi',
+        'agent' => 'crm',
+        'attachments' => '[]',
+        'steps' => '[]',
+        'usage' => '{}',
+        'meta' => '{}',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'user_id' => $this->owner->getKey(),
+        'sync_cursor' => 'history-complete',
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->assertDontSeeHtml('data-testid="activation-step"');
+});
+
+it('stays hidden after the owner dismisses it', function (): void {
+    livewire(ActivationChecklist::class)
+        ->call('dismiss')
+        ->assertDontSeeHtml('data-testid="activation-step"');
+
+    expect($this->workspace->refresh()->activation_checklist_dismissed_at)->not->toBeNull();
+
+    livewire(ActivationChecklist::class)
+        ->assertDontSeeHtml('data-testid="activation-step"');
+});
+
+it('stays hidden for a member who cannot manage the workspace', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+
+    $this->actingAs($member);
+    Filament::setTenant($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->assertDontSeeHtml('data-testid="activation-step"');
+});
+
+it('mentions sample data only while seeded records remain', function (): void {
+    livewire(ActivationChecklist::class)
+        ->assertDontSee(__('filament/pages/dashboard.activation.sample_data'));
+
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::SYSTEM,
+    ]);
+
+    resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->assertSee(__('filament/pages/dashboard.activation.sample_data'));
+});
+
+it('answers all five steps without repeating a query', function (): void {
+    DB::enableQueryLog();
+
+    livewire(ActivationChecklist::class);
+
+    $log = collect(DB::getQueryLog())->map(fn (array $entry): string => (string) $entry['query']);
+
+    // One `agent_conversations`-joining query is expected, answering the
+    // ask_rela fact (hasUserChatMessage), and it does not repeat.
+    expect($log->filter(fn (string $sql): bool => str_contains($sql, 'creation_source')))->toHaveCount(1)
+        ->and($log->filter(fn (string $sql): bool => str_contains($sql, 'agent_conversations')))->toHaveCount(1)
+        ->and($log->filter(fn (string $sql): bool => str_contains($sql, 'workspace_invitations')))->toHaveCount(1);
+});
+
+/**
+ * The checklist moved off the dashboard body into the panel sidebar, so it
+ * follows the user into every page rather than only existing on Home. Asserted
+ * through a real page request because a render hook is not part of the
+ * Livewire component under test.
+ */
+it('renders in the sidebar on every panel page, not just the dashboard', function (): void {
+    $this->get(Dashboard::getUrl())
+        ->assertOk()
+        ->assertSee('data-testid="activation-step"', escape: false);
+
+    $this->get(PeopleResource::getUrl('index'))
+        ->assertOk()
+        ->assertSee('data-testid="activation-step"', escape: false);
+});
+
+/**
+ * `?prompt=` seeds the composer and stops. The chat page used to feed that
+ * parameter into initialMessage, which sends on arrival: a checklist click
+ * would have spent a workspace credit before its owner read what was typed.
+ */
+it('seeds the composer with the ask_rela question rather than sending it', function (): void {
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(composePromptUrl())
+        ->assertDontSeeHtml('href="'.ChatConversation::getUrl().'"');
+});
+
+/**
+ * A workspace with no records cannot answer a pipeline question, and the
+ * assistant spends a tool round-trip discovering that. Only the personal
+ * workspace is seeded, so this is the normal state of a second one.
+ */
+it('asks what the assistant can do while the workspace holds no records', function (): void {
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(composePromptUrl('prompt_empty'))
+        ->assertDontSeeHtml(composePromptUrl('prompt'))
+        ->assertSee(__('filament/pages/dashboard.activation.steps.ask_rela.label_empty'));
+});
+
+/**
+ * Seeded demo records are not the workspace's own, but they are a pipeline the
+ * assistant can report on -- so the empty-workspace branch must not key off
+ * `hasOwnRecord()`, which is false here too.
+ */
+it('asks about the pipeline once the workspace holds records, seeded ones included', function (): void {
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creation_source' => CreationSource::SYSTEM,
+    ]);
+
+    resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->assertSeeHtml(composePromptUrl('prompt'))
+        ->assertDontSeeHtml(composePromptUrl('prompt_empty'))
+        ->assertSee(__('filament/pages/dashboard.activation.steps.ask_rela.label'));
+});
+
+it('shows the invite row to the owner and hides it from a member', function (): void {
+    $this->get(Dashboard::getUrl())
+        ->assertOk()
+        ->assertSee(__('filament/pages/dashboard.activation.invite_members'));
+
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+
+    $this->actingAs($member);
+    Filament::setTenant($this->workspace);
+
+    $this->get(Dashboard::getUrl())
+        ->assertOk()
+        ->assertDontSee(__('filament/pages/dashboard.activation.invite_members'));
+});
+
+it('offers to remove sample data only once the workspace has an own record', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+
+    livewire(ActivationChecklist::class)
+        ->assertSet('canRemoveSampleData', false)
+        ->assertDontSee(__('filament/pages/dashboard.activation.remove_sample_data'));
+
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->assertSet('canRemoveSampleData', true)
+        ->assertSee(__('filament/pages/dashboard.activation.remove_sample_data'));
+});
+
+it('removes every system record and keeps the workspace\'s own', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    $own = People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    livewire(ActivationChecklist::class)
+        ->call('removeSampleData')
+        ->assertSet('canRemoveSampleData', false)
+        ->assertRedirect(Dashboard::getUrl());
+
+    foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
+        expect($model::query()->where('workspace_id', $this->workspace->getKey())->where('creation_source', CreationSource::SYSTEM)->exists())->toBeFalse();
+    }
+
+    expect(People::query()->whereKey($own->getKey())->exists())->toBeTrue()
+        ->and(resolve(WorkspaceActivationFacts::class)->hasSampleData($this->workspace->fresh()))->toBeFalse();
+});
+
+it('keeps the contacts a mailbox sync created when removing sample data', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+    $synced = resolve(AutoCreatePersonAction::class)->execute('Dana Reyes', 'dana@northwind.io', $this->workspace->getKey(), $this->workspace);
+    resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
+
+    expect(resolve(WorkspaceActivationFacts::class)->sampleRecordCount($this->workspace))->toBe(5);
+
+    livewire(ActivationChecklist::class)->call('removeSampleData');
+
+    expect(People::query()->whereKey($synced->getKey())->exists())->toBeTrue();
+});
+
+it('refuses removal while the workspace has no own record', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+
+    livewire(ActivationChecklist::class)
+        ->call('removeSampleData')
+        ->assertStatus(422);
+
+    expectSampleRecordsIntact($this->workspace);
+});
+
+it('hides the checklist from a non-owner admin and refuses the call', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    $admin = User::factory()->create();
+    $this->workspace->users()->attach($admin, ['role' => WorkspaceRole::Admin->value]);
+
+    $this->actingAs($admin);
+    Filament::setTenant($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->assertSet('visible', false)
+        ->assertSet('canRemoveSampleData', false)
+        ->assertDontSee(__('filament/pages/dashboard.activation.remove_sample_data'));
+
+    try {
+        resolve(RemoveSampleData::class)->execute($admin, $this->workspace);
+
+        $this->fail('Expected an HttpException.');
+    } catch (HttpException $exception) {
+        expect($exception->getStatusCode())->toBe(403);
+    }
+
+    expectSampleRecordsIntact($this->workspace);
+});
+
+it('refuses removal from the owner of a different workspace', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    $intruder = User::factory()->withPersonalWorkspace()->create();
+
+    try {
+        resolve(RemoveSampleData::class)->execute($intruder, $this->workspace);
+
+        $this->fail('Expected an HttpException.');
+    } catch (HttpException $exception) {
+        expect($exception->getStatusCode())->toBe(403);
+    }
+
+    expectSampleRecordsIntact($this->workspace);
+});
+
+it('refuses the removeSampleData call from a member through the component', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+
+    $this->actingAs($member);
+    Filament::setTenant($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->call('removeSampleData')
+        ->assertStatus(403);
+
+    expectSampleRecordsIntact($this->workspace);
+});

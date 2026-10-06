@@ -2,23 +2,48 @@
 
 declare(strict_types=1);
 
-use App\Http\Middleware\SetApiTeamContext;
+use App\Features\EmailIntegration;
+use App\Http\Controllers\Billing\StripeWebhookController;
+use App\Http\Middleware\DenyIndexingOnSecondaryHosts;
+use App\Http\Middleware\EnsureAuthenticationComplete;
+use App\Http\Middleware\NoReferrer;
+use App\Http\Middleware\RedirectToPrimaryHost;
+use App\Http\Middleware\RequireIdentityConfirmation;
+use App\Http\Middleware\RequireOperationGrant;
+use App\Http\Middleware\SetApiWorkspaceContext;
+use App\Http\Middleware\StopImpersonationOnLogout;
 use App\Http\Middleware\SubdomainRootResponse;
+use App\Http\Middleware\ThrottleBeforeAuthentication;
 use App\Http\Middleware\ValidateSignature;
-use App\Models\TeamInvitation;
-use App\Models\User;
 use Filament\Facades\Filament;
+use Filament\Http\Middleware\SetUpPanel;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Laravel\Cashier\Http\Middleware\VerifyWebhookSignature;
+use Laravel\Pennant\Feature;
+use League\OAuth2\Server\Exception\OAuthServerException;
+use Livewire\Exceptions\PayloadTooLargeException;
+use Livewire\Mechanisms\HandleComponents\CorruptComponentPayloadException;
+use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
+use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
 use Sentry\Laravel\Integration;
 use Spatie\Health\Commands\DispatchQueueCheckJobsCommand;
 use Spatie\Health\Commands\RunHealthChecksCommand;
 use Spatie\Health\Commands\ScheduleCheckHeartbeatCommand;
+use Spatie\MarkdownResponse\Actions\DetectsMarkdownRequest;
+use Spatie\MarkdownResponse\Enums\DetectionMethod;
+use Spatie\MarkdownResponse\Support\Config;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -26,6 +51,14 @@ return Application::configure(basePath: dirname(__DIR__))
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function (): void {
+            // Registered here rather than by Cashier (see AppServiceProvider):
+            // signature verification must apply whether or not the webhook
+            // secret is configured, otherwise an unset secret silently turns
+            // this into an unauthenticated, plan-mutating endpoint.
+            Route::post('stripe/webhook', [StripeWebhookController::class, 'handleWebhook'])
+                ->middleware(VerifyWebhookSignature::class)
+                ->name('cashier.webhook');
+
             $apiDomain = config('app.api_domain');
 
             $routes = Route::middleware('api');
@@ -48,39 +81,128 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request): bool => $request->is('chat') || $request->is('chat/*'),
         ]);
 
-        $middleware->trustProxies(at: [
-            '127.0.0.0/8',
-            '10.0.0.0/8',
-            '172.16.0.0/12',
-            '192.168.0.0/16',
-            '169.254.0.0/16',
-            '::1/128',
-            'fc00::/7',
-            'fe80::/10',
-        ]);
+        // On Laravel Cloud the framework trusts its TLS edge itself, which reaches the app from a
+        // public IPv6 address this list would reject, turning every generated URL into http://.
+        if (! laravel_cloud()) {
+            $middleware->trustProxies(at: [
+                '127.0.0.0/8',
+                '10.0.0.0/8',
+                '172.16.0.0/12',
+                '192.168.0.0/16',
+                '169.254.0.0/16',
+                '::1/128',
+                'fc00::/7',
+                'fe80::/10',
+            ]);
+        }
 
         $middleware->prepend(SubdomainRootResponse::class);
 
+        // Outermost (last prepend wins the front slot) so the noindex header
+        // also lands on responses SubdomainRootResponse short-circuits. The
+        // api/mcp root banners are exactly the crawlable secondary-host URLs.
+        $middleware->prepend(DenyIndexingOnSecondaryHosts::class);
+
+        // Controller constructors can resolve sessions before route middleware runs.
+        $middleware->append(IsolateAuthenticationSession::class);
+
+        $middleware->web(
+            append: [
+                'auth.context',
+                RedirectToPrimaryHost::class,
+                EnsureAuthenticationComplete::class,
+                StopImpersonationOnLogout::class,
+            ],
+        );
+
+        // Only enforced on multi-host deployments (any *_DOMAIN configured);
+        // the framework already skips TrustHosts in local and test runs.
+        // Anchored patterns, because Symfony matches them as unanchored regex.
+        $middleware->trustHosts(at: function (): array {
+            $dedicatedDomains = array_filter(
+                [
+                    config('app.api_domain'),
+                    config('app.mcp_domain'),
+                    config('app.sysadmin_domain'),
+                    config('app.app_panel_domain'),
+                ],
+                fn (mixed $domain): bool => is_string($domain) && $domain !== '',
+            );
+
+            if ($dedicatedDomains === []) {
+                return [];
+            }
+
+            $primaryHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+
+            $hosts = array_filter([
+                $primaryHost,
+                is_string($primaryHost) ? "www.{$primaryHost}" : null,
+                ...array_values($dedicatedDomains),
+            ], is_string(...));
+
+            return array_map(
+                fn (string $host): string => '^'.preg_quote($host).'$',
+                array_values($hosts),
+            );
+        }, subdomains: false);
+
         $middleware->prependToPriorityList(
             before: SubstituteBindings::class,
-            prepend: SetApiTeamContext::class,
+            prepend: SetApiWorkspaceContext::class,
+        );
+
+        // Textual order in a route's middleware array does not decide execution
+        // order: SortedMiddleware resorts by this priority list. Critically,
+        // an unmapped middleware sitting between two mapped ones (e.g. between
+        // the 'web' group's SubstituteBindings and 'auth') gets dragged along
+        // when the higher-priority one jumps forward. Only registering our own
+        // class here keeps ThrottleBeforeAuthentication running before auth,
+        // without moving the framework's own ThrottleRequests (used by 'throttle'
+        // elsewhere, e.g. routes/api.php, routes/ai.php) relative to auth.
+        $middleware->prependToPriorityList(
+            before: AuthenticatesRequests::class,
+            prepend: ThrottleBeforeAuthentication::class,
+        );
+
+        $middleware->prependToPriorityList(
+            before: EncryptCookies::class,
+            prepend: SetUpPanel::class,
+        );
+
+        $middleware->appendToPriorityList(
+            after: StartSession::class,
+            append: EnsureAuthenticationContext::class,
+        );
+
+        $middleware->prependToPriorityList(
+            before: SetUpPanel::class,
+            prepend: RedirectToPrimaryHost::class,
         );
 
         $middleware->alias([
+            'auth.context' => EnsureAuthenticationContext::class,
             'signed' => ValidateSignature::class,
+            'no-referrer' => NoReferrer::class,
+            // Fortify and Passkeys both reference this alias by name in their own
+            // route definitions; overriding it here (rather than swapping every
+            // route's middleware array) is the only way to reach both packages'
+            // routes with the same scoped confirmation policy as the UI.
+            'password.confirm' => RequireIdentityConfirmation::class,
+            'require-operation' => RequireOperationGrant::class,
+        ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/*',
+            'mail/unsubscribe/*',
         ]);
 
         $middleware->redirectGuestsTo(function (Request $request): string {
-            if ($request->routeIs('team-invitations.accept')) {
-                $invitation = TeamInvitation::query()
-                    ->whereKey($request->route('invitation'))
-                    ->first();
-
-                if ($invitation && User::query()->where('email', $invitation->email)->exists()) {
-                    return Filament::getLoginUrl();
-                }
-
-                return Filament::getRegistrationUrl();
+            // The login page's signup branch handles both an invited email that
+            // already has an account and one that does not, from the same URL,
+            // and a shared join link carries no email to tell them apart with.
+            if ($request->routeIs('workspace-invitations.token.accept', 'workspaces.join')) {
+                return Filament::getLoginUrl();
             }
 
             return route('login');
@@ -88,24 +210,112 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         Integration::handles($exceptions);
-        $exceptions->shouldRenderJsonWhen(fn (Request $request): bool => $request->is('api/*') || $request->getHost() === config('app.api_domain') || $request->expectsJson());
+        $rendersJson = fn (Request $request): bool => $request->is('api/*') || $request->getHost() === config('app.api_domain') || $request->expectsJson();
+
+        $exceptions->shouldRenderJsonWhen($rendersJson);
+
+        // Detected like every markdown page: wire:navigate fetches send Accept */*,
+        // so reading the header alone would swap the panel for this body.
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) use ($rendersJson): ?Response {
+            if ($rendersJson($request)) {
+                return null;
+            }
+
+            if (! Config::getAction('detection.detector', DetectsMarkdownRequest::class)($request) instanceof DetectionMethod) {
+                return null;
+            }
+
+            $indexes = array_filter([
+                __('Site index') => 'llms-txt',
+                __('Help centre') => 'help.index',
+                __('Developer docs') => 'documentation.index',
+                __('REST API spec') => 'openapi.json',
+            ], Route::has(...));
+
+            $lines = ['# '.__('Not found'), '', __('Nothing lives at :url.', ['url' => '`'.str_replace('`', '%60', $request->url()).'`']), ''];
+
+            foreach ($indexes as $label => $routeName) {
+                $lines[] = "- {$label}: ".route($routeName);
+            }
+
+            $lines[] = '- '.__('Home: :url', ['url' => config('app.url')]);
+            $lines[] = '';
+
+            return response(implode("\n", $lines), 404, ['Content-Type' => 'text/markdown; charset=UTF-8']);
+        });
+
+        // Stale tabs and deploy boundaries produce checksum failures that
+        // Livewire already renders as 419 (page expired -> client refreshes).
+        // They are user-state noise, not actionable errors, so keep them out of
+        // Sentry (issue #125406836).
+        $exceptions->dontReport(CorruptComponentPayloadException::class);
+
+        // Passport reports every rejected bearer token; keep league's 5xx server errors visible.
+        $exceptions->dontReportWhen(
+            fn (Throwable $e): bool => $e instanceof OAuthServerException && $e->getHttpStatusCode() < 500,
+        );
+
+        // Livewire rejects an oversized body before the component hydrates, so the panel
+        // cannot notify from the server; payload-guard.js turns this into a notification
+        // instead of the full-screen error overlay.
+        $exceptions->render(function (PayloadTooLargeException $e, Request $request): ?JsonResponse {
+            if (! $request->hasHeader('X-Livewire')) {
+                return null;
+            }
+
+            return response()->json(['message' => __('filament/panel.payload_too_large')], 413);
+        });
     })
     ->withSchedule(function (Schedule $schedule): void {
-        $schedule->command('app:generate-sitemap')->daily();
-        $schedule->command('import:cleanup')->hourly();
-        $schedule->command('queue:prune-batches --hours=24')->daily();
-        $schedule->command('invitations:cleanup')->daily();
-        $schedule->command('chat:expire-pending-actions')->everyFiveMinutes();
-        $schedule->command('chat:reset-credits')->dailyAt('00:05')->withoutOverlapping()->onOneServer();
-        $schedule->command('subscribers:sync-recency-tags')->dailyAt('02:00')
+        $schedule->command('app:generate-sitemap')->daily()->onOneServer();
+        $schedule->command('import:cleanup')->hourly()->onOneServer();
+        $schedule->command('app:purge-pending-uploads')->hourly()->withoutOverlapping()->onOneServer();
+        $schedule->command('queue:prune-batches --hours=24')->daily()->onOneServer();
+        $schedule->command('invitations:cleanup')->daily()->onOneServer();
+        $schedule->command('activitylog:clean --force')->daily()->onOneServer();
+        $schedule->command('chat:expire-pending-actions')->everyFiveMinutes()->onOneServer();
+        $schedule->command('chat:release-orphaned-reservations')->everyTenMinutes()->withoutOverlapping()->onOneServer();
+        $schedule->command('chat:purge-unsent-attachments')->hourly()->withoutOverlapping()->onOneServer();
+        $schedule->command('chat:reset-credits')->hourly()->withoutOverlapping()->onOneServer();
+        $schedule->command('billing:process-trials')->dailyAt('00:15')->withoutOverlapping()->onOneServer();
+        $schedule->command('disposable:update')->weekly()->withoutOverlapping()->onOneServer();
+        $schedule->command('subscribers:reconcile --limit=500')->dailyAt('02:00')
             ->withoutOverlapping()
             ->onOneServer();
         $schedule->command('app:purge-scheduled-deletions')->daily()->withoutOverlapping()->onOneServer();
+        $schedule->command('notifications:send-task-digest')->hourly()->withoutOverlapping()->onOneServer();
+        $schedule->command('notifications:send-setup-nudge')->hourly()->withoutOverlapping()->onOneServer();
+
+        if (Feature::for(null)->active(EmailIntegration::class)) {
+            $schedule->command('email:incremental-sync')
+                ->everyFiveMinutes()
+                ->name('email:incremental-sync')
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            $schedule->command('calendar:incremental-sync')
+                ->everyFiveMinutes()
+                ->name('calendar:incremental-sync')
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            $schedule->command('calendar:renew-push-channels')
+                ->daily()
+                ->name('calendar:renew-push-channels')
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            $schedule->command('email:dispatch-outbox')
+                ->everyMinute()
+                ->name('email:dispatch-outbox')
+                ->withoutOverlapping()
+                ->onOneServer();
+        }
 
         if (config('app.health_checks_enabled')) {
-            $schedule->command(RunHealthChecksCommand::class)->everyMinute();
-            $schedule->command(DispatchQueueCheckJobsCommand::class)->everyMinute();
-            $schedule->command(ScheduleCheckHeartbeatCommand::class)->everyMinute();
+            $schedule->command(RunHealthChecksCommand::class)->everyMinute()->onOneServer();
+            $schedule->command(DispatchQueueCheckJobsCommand::class)->everyMinute()->onOneServer();
+            $schedule->command(ScheduleCheckHeartbeatCommand::class)->everyMinute()->onOneServer();
         }
     })
     ->booting(function (): void {

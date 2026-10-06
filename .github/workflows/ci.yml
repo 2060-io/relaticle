@@ -1,0 +1,298 @@
+name: CI
+
+# The single definition of how this project is verified. Called by tests.yml on
+# pull requests and pushes to main, and by deploy.yml before a release deploys.
+# Both paths run the same jobs, so a hardening fix can no longer land on one and
+# miss the other.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-static-analysis:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache Dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.composer/cache
+            vendor
+          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.5-composer-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.5
+          extensions: json, dom, curl, libxml, mbstring, zip, intl
+          tools: composer:v2
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --ansi --prefer-dist --optimize-autoloader
+
+      # PHPStan and Rector both do a full cold analysis without their result cache
+      # (~22s each). The key is deliberately stable, one entry per dependency and
+      # config set reused by every PR, because the PHPStan cache is ~150MB and a
+      # per-commit key would churn through the repo's 10GB cache budget. Both tools
+      # revalidate changed files against a restored cache, so staleness is safe.
+      - name: Cache Static Analysis Results
+        uses: actions/cache@v6
+        with:
+          path: .cache
+          key: ${{ runner.os }}-static-analysis-${{ hashFiles('composer.lock', 'phpstan.neon', 'rector.php') }}
+          restore-keys: |
+            ${{ runner.os }}-static-analysis-
+
+      - name: Prepare Laravel Application
+        run: |
+          cp .env.ci .env
+          php artisan key:generate
+          php artisan passport:keys --force --no-interaction
+
+      - name: Run Lint
+        run: composer test:lint
+
+      - name: Run Refactor Check
+        run: composer test:refactor
+
+      - name: Run Static Analysis
+        run: composer test:types
+
+      # Architecture tests are not run here: tests/Arch is a testsuite in
+      # phpunit.ci.xml, so the sharded `tests` job already executes all of them.
+
+  type-coverage:
+    runs-on: ubuntu-latest
+    name: Type Coverage
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache Dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.composer/cache
+            vendor
+          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.5-composer-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.5
+          extensions: json, dom, curl, libxml, mbstring, zip, intl
+          tools: composer:v2
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --ansi --prefer-dist --optimize-autoloader
+
+      # The plugin keys each result on the file's content hash, so a cache saved on
+      # main is valid on every branch. A new composer.lock starts it empty again.
+      - name: Cache Type Coverage Results
+        uses: actions/cache@v6
+        with:
+          path: vendor/pestphp/pest-plugin-type-coverage/.temp
+          key: ${{ runner.os }}-type-coverage-${{ hashFiles('composer.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-type-coverage-${{ hashFiles('composer.lock') }}-
+
+      - name: Prepare Laravel Application
+        run: |
+          cp .env.ci .env
+          php artisan key:generate
+          php artisan passport:keys --force --no-interaction
+
+      - name: Run Type Coverage
+        run: composer test:type-coverage
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [8.5]
+        shard: [1, 2, 3, 4, 5]
+
+    name: Tests (Shard ${{ matrix.shard }}/5)
+
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_DB: relaticle_testing
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache Dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.composer/cache
+            vendor
+          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.5-composer-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, dom, curl, libxml, mbstring, zip, intl
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Problem Matches
+        run: |
+          echo "::add-matcher::${{ runner.tool_cache }}/php.json"
+          echo "::add-matcher::${{ runner.tool_cache }}/phpunit.json"
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --ansi --prefer-dist --optimize-autoloader
+
+      # No Node here on purpose: TestCase calls withoutVite() for every non-Browser
+      # test, so these shards never read the Vite manifest. Only browser-tests builds.
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.ci .env
+          php artisan key:generate
+          php artisan passport:keys --force --no-interaction
+
+      - name: Tests
+        run: composer test:pest:ci
+        env:
+          SHARD: ${{ matrix.shard }}/5
+
+  browser-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+
+    name: Browser Tests (Shard ${{ matrix.shard }}/6)
+
+    # A browser test that waits on an element which never appears hangs rather
+    # than fails, and without a ceiling the job runs until GitHub cancels it at
+    # six hours. A shard finishes in about two minutes.
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_DB: relaticle_testing
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache Dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.composer/cache
+            vendor
+          key: ${{ runner.os }}-php-8.5-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.5-composer-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.5
+          extensions: json, dom, curl, libxml, mbstring, zip, intl
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.x'
+          cache: pnpm
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --ansi --prefer-dist --optimize-autoloader
+
+      # Playwright re-downloads Chromium (~150MB) on every run without this.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.ci .env
+          php artisan key:generate
+          php artisan passport:keys --force --no-interaction
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build assets
+        run: pnpm run build
+
+      - name: Install Playwright
+        run: pnpm exec playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      - name: Install Playwright system dependencies
+        run: pnpm exec playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+
+      # tests/.pest/shards.json times the Default suite only, so Pest splits these
+      # classes round-robin and warns that the file is out of date.
+      - name: Browser Tests
+        run: vendor/bin/pest tests/Browser/ --configuration phpunit.ci.xml --shard=${{ matrix.shard }}/6
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-failure-${{ matrix.shard }}
+          path: |
+            tests/Browser/Screenshots
+            storage/logs
+          if-no-files-found: ignore

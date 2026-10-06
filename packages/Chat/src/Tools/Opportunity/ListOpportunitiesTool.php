@@ -5,13 +5,20 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools\Opportunity;
 
 use App\Actions\Opportunity\ListOpportunities;
+use App\Concerns\OperatesOnCrmEntity;
+use App\Enums\CrmEntity;
+use App\Http\Resources\V1\NoteResource;
 use App\Http\Resources\V1\OpportunityResource;
+use App\Http\Resources\V1\TaskResource;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Tools\BaseReadListTool;
 
 final class ListOpportunitiesTool extends BaseReadListTool
 {
+    use OperatesOnCrmEntity;
+
     public function description(): string
     {
         return 'List opportunities/deals with optional search and filters.';
@@ -38,6 +45,7 @@ final class ListOpportunitiesTool extends BaseReadListTool
         return [
             'company_id' => $schema->string()->description('Filter by company ID.'),
             'contact_id' => $schema->string()->description('Filter by contact/person ID.'),
+            'stale_days' => $schema->integer()->description('Return only opportunities with no activity in the last N days (default 30). Use this to find deals that have gone quiet.'),
         ];
     }
 
@@ -47,6 +55,21 @@ final class ListOpportunitiesTool extends BaseReadListTool
         return array_filter([
             'company_id' => $request['company_id'] ?? null,
             'contact_id' => $request['contact_id'] ?? null,
+            'stale_days' => isset($request['stale_days']) ? (string) $request['stale_days'] : null,
         ]);
+    }
+
+    protected function entity(): CrmEntity
+    {
+        return CrmEntity::Opportunity;
+    }
+
+    /** @return array<string, class-string<JsonResource>> */
+    protected function availableIncludes(): array
+    {
+        return [
+            'notes' => NoteResource::class,
+            'tasks' => TaskResource::class,
+        ];
     }
 }

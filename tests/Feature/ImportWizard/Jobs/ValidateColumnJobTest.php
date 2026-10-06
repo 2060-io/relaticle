@@ -2,40 +2,46 @@
 
 declare(strict_types=1);
 
+use App\Events\WorkspaceCreated;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
-use Laravel\Jetstream\Events\TeamCreated;
+use Illuminate\Support\Facades\Storage;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Enums\FieldDataType;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Data\ImportField;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
+use Relaticle\ImportWizard\Exceptions\ImportStoreException;
 use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\EntityLinkValidator;
 use Relaticle\ImportWizard\Support\Validation\ColumnValidator;
+use Tests\Helpers\ImportExecutionFixture;
 
 mutates(ValidateColumnJob::class, ColumnValidator::class, EntityLinkValidator::class);
 
 beforeEach(function (): void {
-    Event::fake()->except([TeamCreated::class]);
+    Event::fake()->except([WorkspaceCreated::class]);
 
-    $this->user = User::factory()->withTeam()->create();
+    $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
-    $this->team = $this->user->currentTeam;
+    $this->workspace = $this->user->currentWorkspace;
 
-    Filament::setTenant($this->team);
+    Filament::setTenant($this->workspace);
 });
 
 afterEach(function (): void {
     if (isset($this->import)) {
-        ImportStore::load($this->import->id)?->destroy();
+        ImportStore::delete($this->import->id);
         $this->import->delete();
     }
 });
@@ -47,8 +53,8 @@ function createValidationStore(
     array $mappings,
     ImportEntityType $entityType = ImportEntityType::People,
 ): array {
-    $import = Import::create([
-        'team_id' => (string) $context->team->id,
+    $import = Import::factory()->create([
+        'workspace_id' => (string) $context->workspace->id,
         'user_id' => (string) $context->user->id,
         'entity_type' => $entityType,
         'file_name' => 'test.csv',
@@ -60,6 +66,8 @@ function createValidationStore(
 
     $store = ImportStore::create($import->id);
     $store->query()->insert($rows);
+
+    $store = ImportExecutionFixture::publish($store);
 
     $context->import = $import;
     $context->store = $store;
@@ -104,7 +112,7 @@ it('writes RelationshipMatch create for Create entity links', function (): void 
 it('writes RelationshipMatch existing when resolved to existing record', function (): void {
     $company = Company::factory()->create([
         'name' => 'Acme Corp',
-        'team_id' => $this->team->id,
+        'workspace_id' => $this->workspace->id,
     ]);
 
     $column = ColumnData::toEntityLink(source: 'Company ID', matcherKey: 'id', entityLinkKey: 'company');
@@ -140,6 +148,44 @@ it('skips relationship for MatchOnly when no match found', function (): void {
 
     $row = $this->store->query()->where('row_number', 2)->first();
     expect($row->relationships)->toBeNull();
+});
+
+it('validates a corrected company link by its corrected value', function (): void {
+    $company = Company::factory()->create(['workspace_id' => $this->workspace->id]);
+    $column = ColumnData::toEntityLink(source: 'Company ID', matcherKey: 'id', entityLinkKey: 'company');
+
+    createValidationStore($this, ['Name', 'Company ID'], [
+        makeValidationRow(2, ['Name' => 'John', 'Company ID' => 'missing-company'], [
+            'corrections' => json_encode(['Company ID' => (string) $company->id]),
+            'validation' => json_encode(['Company ID' => 'No company found']),
+        ]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        $column,
+    ]);
+
+    (new ValidateColumnJob($this->import->id, $column))->handle();
+
+    $row = $this->store->query()->where('row_number', 2)->first();
+    expect($row->hasValidationError('Company ID'))->toBeFalse()
+        ->and($row->relationships->sole()->id)->toBe((string) $company->id);
+});
+
+it('writes no company link for an empty company cell', function (): void {
+    $column = ColumnData::toEntityLink(source: 'Company', matcherKey: 'name', entityLinkKey: 'company');
+
+    createValidationStore($this, ['Name', 'Company'], [
+        makeValidationRow(2, ['Name' => 'John', 'Company' => '']),
+        makeValidationRow(3, ['Name' => 'Jane', 'Company' => 'Acme Corp']),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        $column,
+    ]);
+
+    (new ValidateColumnJob($this->import->id, $column))->handle();
+
+    expect($this->store->query()->where('row_number', 2)->first()->relationships)->toBeNull()
+        ->and($this->store->query()->where('row_number', 3)->first()->relationships->sole()->name)->toBe('Acme Corp');
 });
 
 it('writes validation errors for unresolvable account owner entity link', function (): void {
@@ -295,7 +341,7 @@ function ensureCustomFieldExists(object $context, string $code, string $type, st
 {
     $existing = CustomField::query()
         ->withoutGlobalScopes()
-        ->where('tenant_id', $context->team->id)
+        ->where('tenant_id', $context->workspace->id)
         ->where('entity_type', $entityType)
         ->where('code', $code)
         ->first();
@@ -305,7 +351,7 @@ function ensureCustomFieldExists(object $context, string $code, string $type, st
     }
 
     return CustomField::forceCreate([
-        'tenant_id' => $context->team->id,
+        'tenant_id' => $context->workspace->id,
         'code' => $code,
         'name' => ucfirst(str_replace('_', ' ', $code)),
         'type' => $type,
@@ -419,4 +465,213 @@ it('skips format validation for name matcher on entity link', function (): void 
     expect($row->hasValidationError('Company'))->toBeFalse()
         ->and($row->relationships)->not->toBeNull()
         ->and($row->relationships)->toHaveCount(1);
+});
+
+function makeBrandColorColumn(): ColumnData
+{
+    $column = ColumnData::toField(source: 'Color', target: 'custom_fields_brand_color');
+    $column->importField = new ImportField(
+        key: 'custom_fields_brand_color',
+        label: 'Brand Color',
+        rules: ['regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
+        isCustomField: true,
+        type: FieldDataType::STRING,
+    );
+
+    return $column;
+}
+
+describe('on a remote store disk', function (): void {
+    beforeEach(function (): void {
+        useRemoteImportStore();
+    });
+
+    it('writes validation errors into the remote store', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+            makeValidationRow(2, ['Name' => 'Jane', 'Color' => '#ff5733']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+
+        expect($rows[0]->hasValidationError('Color'))->toBeTrue()
+            ->and($rows[1]->hasValidationError('Color'))->toBeFalse();
+    });
+
+    it('leaves validation off a row whose value was corrected', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color'], [
+                'corrections' => json_encode(['Color' => '#ff5733']),
+            ]),
+            makeValidationRow(2, ['Name' => 'Jane', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        $rows = ImportStore::forRead($this->import->id)->query()->orderBy('row_number')->get();
+
+        expect($rows[0]->validation)->toBeNull()
+            ->and($rows[1]->hasValidationError('Color'))->toBeTrue();
+    });
+
+    it('writes entity link relationships into the remote store', function (): void {
+        $column = ColumnData::toEntityLink(source: 'Company', matcherKey: 'name', entityLinkKey: 'company');
+
+        createValidationStore($this, ['Name', 'Company'], [
+            makeValidationRow(2, ['Name' => 'John', 'Company' => 'Acme Corp']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        $row = ImportStore::forRead($this->import->id)->query()->where('row_number', 2)->first();
+
+        expect($row->relationships->sole()->name)->toBe('Acme Corp');
+    });
+
+    it('fails with a lock timeout instead of writing when another writer holds the store', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        $held = Cache::lock(importStoreLockName($this->import->id), 150);
+        $held->get();
+        config()->set('import-wizard.store.lock.wait.job', 0);
+
+        expect(fn () => (new ValidateColumnJob($this->import->id, $column))->handle())
+            ->toThrow(ImportStoreException::class);
+
+        $held->release();
+
+        expect(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
+    });
+
+    it('does not upload the store when its batch is cancelled before it writes', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        $remoteFile = Storage::disk('s3')->getConfig()['root']."/imports/{$this->import->id}.sqlite";
+        touch($remoteFile, time() - 3600);
+        clearstatcache();
+        $modifiedAt = Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite");
+
+        [$job] = (new ValidateColumnJob($this->import->id, $column))->withFakeBatch();
+
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+        DB::listen(function (QueryExecuted $query) use ($job): void {
+            if (str_contains($query->sql, 'DISTINCT')) {
+                $job->batch()->cancel();
+            }
+        });
+
+        $job->handle();
+
+        clearstatcache();
+        expect(Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite"))->toBe($modifiedAt);
+    });
+
+    it('does not upload the store when a correction landed before its write and matches no row', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        $remoteFile = Storage::disk('s3')->getConfig()['root']."/imports/{$this->import->id}.sqlite";
+        $corrected = false;
+        $modifiedAt = 0;
+
+        Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+        DB::listen(function (QueryExecuted $query) use (&$corrected, &$modifiedAt, $remoteFile): void {
+            if ($corrected || ! str_contains($query->sql, 'DISTINCT')) {
+                return;
+            }
+
+            $corrected = true;
+            ImportStore::withWriteLock($this->import->id, fn (ImportStore $store): int => $store->query()->update(['corrections' => json_encode(['Color' => '#ff5733'])]));
+            touch($remoteFile, time() - 3600);
+            clearstatcache();
+            $modifiedAt = Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite");
+        });
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        clearstatcache();
+        expect($corrected)->toBeTrue()
+            ->and(Storage::disk('s3')->lastModified("imports/{$this->import->id}.sqlite"))->toBe($modifiedAt)
+            ->and(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
+    });
+
+    it('returns quietly when the store was deleted', function (): void {
+        $column = makeBrandColorColumn();
+
+        createValidationStore($this, ['Name', 'Color'], [
+            makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+        ], [
+            ColumnData::toField(source: 'Name', target: 'name'),
+            $column,
+        ]);
+
+        ImportStore::delete($this->import->id);
+
+        (new ValidateColumnJob($this->import->id, $column))->handle();
+
+        expect(ImportStore::exists($this->import->id))->toBeFalse();
+    });
+});
+
+it('writes nothing when its batch is cancelled while it validates', function (): void {
+    $column = makeBrandColorColumn();
+
+    createValidationStore($this, ['Name', 'Color'], [
+        makeValidationRow(1, ['Name' => 'John', 'Color' => 'not-a-color']),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+        $column,
+    ]);
+
+    [$job] = (new ValidateColumnJob($this->import->id, $column))->withFakeBatch();
+
+    Event::fake()->except([WorkspaceCreated::class, QueryExecuted::class]);
+
+    DB::listen(function (QueryExecuted $query) use ($job): void {
+        if (str_contains($query->sql, 'DISTINCT')) {
+            $job->batch()->cancel();
+        }
+    });
+
+    $job->handle();
+
+    expect($job->batch()->cancelled())->toBeTrue()
+        ->and(ImportStore::forRead($this->import->id)->query()->first()->validation)->toBeNull();
 });

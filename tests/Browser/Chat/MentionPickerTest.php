@@ -16,8 +16,15 @@ use App\Models\User;
  * internals, because the suggestion only fires from genuine ProseMirror input.
  */
 
-/** Selector for the visible conversation composer's contenteditable surface. */
-const EDITOR = '[data-chat-context="conversation"] [contenteditable="true"]';
+/**
+ * Selector for the visible composer's contenteditable surface.
+ *
+ * The chat drawer rework made the dashboard composer the one that is on screen
+ * when you land on a workspace; the side-panel interfaces are mounted collapsed.
+ * Targeting a context that is not rendered makes Playwright wait for an element
+ * that never becomes actionable, which hangs the run rather than failing it.
+ */
+const EDITOR = '[data-chat-context="dashboard"] [contenteditable="true"]';
 
 /** Poll until the mention popup renders at least one option, returning its labels. */
 const WAIT_FOR_OPTIONS = <<<'JS'
@@ -36,16 +43,13 @@ const WAIT_FOR_OPTIONS = <<<'JS'
 JS;
 
 it('opens a picker when @ is typed and inserts a chip on selection', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
-    Company::factory()->for($team)->create(['name' => 'AcmeQA']);
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    Company::factory()->for($workspace)->create(['name' => 'AcmeQA']);
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->click(EDITOR)->keys(EDITOR, ['@', 'A', 'c']);
@@ -71,7 +75,7 @@ it('opens a picker when @ is typed and inserts a chip on selection', function ()
 
     $chip = $page->script(<<<'JS'
         (() => {
-            const node = document.querySelector('[data-chat-context="conversation"] [contenteditable="true"] span[data-mention-id]');
+            const node = document.querySelector('[data-chat-context="dashboard"] [contenteditable="true"] span[data-mention-id]');
             return node ? node.textContent.trim() : null;
         })();
     JS);
@@ -80,16 +84,13 @@ it('opens a picker when @ is typed and inserts a chip on selection', function ()
 });
 
 it('does not open the picker for queries shorter than 2 chars', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
-    Company::factory()->for($team)->create(['name' => 'AcmeQA']);
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    Company::factory()->for($workspace)->create(['name' => 'AcmeQA']);
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->click(EDITOR)->keys(EDITOR, ['@', 'a']);
@@ -105,16 +106,13 @@ it('does not open the picker for queries shorter than 2 chars', function (): voi
 });
 
 it('closes the picker when Escape is pressed', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
-    Company::factory()->for($team)->create(['name' => 'EscapeCo']);
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    Company::factory()->for($workspace)->create(['name' => 'EscapeCo']);
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->click(EDITOR)->keys(EDITOR, ['@', 'E', 's']);
@@ -135,16 +133,13 @@ it('closes the picker when Escape is pressed', function (): void {
 });
 
 it('closes the picker when the query drops below the 2-char minimum', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
-    Company::factory()->for($team)->create(['name' => 'AcmeQA']);
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    Company::factory()->for($workspace)->create(['name' => 'AcmeQA']);
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->click(EDITOR)->keys(EDITOR, ['@', 'A', 'c']);
@@ -152,7 +147,7 @@ it('closes the picker when the query drops below the 2-char minimum', function (
     $opened = $page->script(WAIT_FOR_OPTIONS);
     expect($opened)->not->toBeEmpty();
 
-    // Backspace back down to "@A" (one char) — the suggestion must close.
+    // Backspace back down to "@A" (one char). The suggestion must close.
     $page->keys(EDITOR, ['Backspace']);
 
     $stillOpen = $page->script(<<<'JS'
@@ -166,17 +161,14 @@ it('closes the picker when the query drops below the 2-char minimum', function (
 });
 
 it('searches across a multi-word company name', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
-    Company::factory()->for($team)->create(['name' => 'Acme Corp']);
-    Company::factory()->for($team)->create(['name' => 'Globex']);
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    Company::factory()->for($workspace)->create(['name' => 'Acme Corp']);
+    Company::factory()->for($workspace)->create(['name' => 'Globex']);
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     // allowSpaces is enabled, so "@Acme C" stays a single mention query.
@@ -189,16 +181,13 @@ it('searches across a multi-word company name', function (): void {
 });
 
 it('removes a selected mention chip with backspace', function (): void {
-    $user = User::factory()->withTeam()->create();
-    $team = $user->ownedTeams()->first();
-    Company::factory()->for($team)->create(['name' => 'AcmeQA']);
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    Company::factory()->for($workspace)->create(['name' => 'AcmeQA']);
 
-    $page = $this->visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->type('[id="form.password"]', 'password')
-        ->click('button.fi-btn')
-        ->assertPathIs("/app/{$team->slug}")
-        ->navigate("/app/{$team->slug}/chats")
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->click(EDITOR)->keys(EDITOR, ['@', 'A', 'c']);
@@ -216,7 +205,7 @@ it('removes a selected mention chip with backspace', function (): void {
             if (! option) return -1;
             option.click();
             await new Promise((r) => setTimeout(r, 100));
-            return document.querySelectorAll('[data-chat-context="conversation"] [contenteditable="true"] span[data-mention-id]').length;
+            return document.querySelectorAll('[data-chat-context="dashboard"] [contenteditable="true"] span[data-mention-id]').length;
         })();
     JS);
 
@@ -228,7 +217,7 @@ it('removes a selected mention chip with backspace', function (): void {
 
     $after = $page->script(<<<'JS'
         (() => {
-            const editor = document.querySelector('[data-chat-context="conversation"] [contenteditable="true"]');
+            const editor = document.querySelector('[data-chat-context="dashboard"] [contenteditable="true"]');
             return {
                 chips: editor.querySelectorAll('span[data-mention-id]').length,
                 text: editor.textContent,

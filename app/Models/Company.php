@@ -5,16 +5,24 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\CreationSource;
-use App\Models\Concerns\BelongsToTeamCreator;
-use App\Models\Concerns\HasAiSummary;
+use App\Enums\MediaCollection;
+use App\Models\Concerns\BelongsToWorkspaceCreator;
+use App\Models\Concerns\HasActivityTimeline;
 use App\Models\Concerns\HasCreator;
 use App\Models\Concerns\HasNotes;
-use App\Models\Concerns\HasTeam;
+use App\Models\Concerns\HasWorkspace;
+use App\Models\Concerns\LogsRelationChanges;
+use App\Models\Pivots\Taskable;
+use App\Models\Scopes\WorkspaceScope;
 use App\Observers\CompanyObserver;
-use App\Services\AvatarService;
+use App\Support\Media\UploadAllowlist;
+use Carbon\CarbonImmutable;
 use Database\Factories\CompanyFactory;
+use Filament\Models\Contracts\HasAvatar;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,46 +30,65 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Carbon;
+use Relaticle\ActivityLog\Contracts\HasTimeline;
 use Relaticle\CustomFields\Models\Concerns\UsesCustomFields;
 use Relaticle\CustomFields\Models\Contracts\HasCustomFields;
+use Relaticle\EmailIntegration\Models\Concerns\HasEmails;
+use Relaticle\EmailIntegration\Models\Concerns\HasMeetings;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
 /**
  * @property string $name
- * @property Carbon|null $deleted_at
+ * @property CarbonImmutable|null $deleted_at
  * @property CreationSource $creation_source
+ * @property CarbonImmutable|null $last_email_at
+ * @property CarbonImmutable|null $last_interaction_at
+ * @property CarbonImmutable|null $last_meeting_at
+ * @property int $email_count
+ * @property int $inbound_email_count
+ * @property int $outbound_email_count
+ * @property int $meeting_count
  * @property-read string $created_by
  */
 #[ObservedBy(CompanyObserver::class)]
+#[ScopedBy(WorkspaceScope::class)]
 #[Fillable([
     'name',
     'creation_source',
 ])]
-final class Company extends Model implements HasCustomFields, HasMedia
+final class Company extends Model implements HasAvatar, HasCustomFields, HasMedia, HasTimeline
 {
-    use BelongsToTeamCreator;
-    use HasAiSummary;
+    use BelongsToWorkspaceCreator;
+    use HasActivityTimeline;
     use HasCreator;
+    use HasEmails;
 
     /** @use HasFactory<CompanyFactory> */
     use HasFactory;
 
+    use HasMeetings;
     use HasNotes;
-    use HasTeam;
     use HasUlids;
+    use HasWorkspace;
     use InteractsWithMedia;
+    use LogsActivity;
+    use LogsRelationChanges;
     use SoftDeletes;
     use UsesCustomFields;
 
-    public const string LOGO_MEDIA_COLLECTION = 'logo';
+    public const string LOGO_MEDIA_COLLECTION = MediaCollection::Logo->value;
 
-    /**
-     * @var array<string, mixed>
-     */
-    protected $attributes = [
-        'creation_source' => CreationSource::WEB,
+    /** @var array<string, string> */
+    public const array LOGO_MIME_TYPES = [
+        'image/png' => 'png',
+        'image/jpeg' => 'jpg',
+        'image/gif' => 'gif',
+        'image/webp' => 'webp',
+        'image/vnd.microsoft.icon' => 'ico',
+        'image/x-icon' => 'ico',
     ];
 
     /**
@@ -73,18 +100,46 @@ final class Company extends Model implements HasCustomFields, HasMedia
     {
         return [
             'creation_source' => CreationSource::class,
+            'last_email_at' => 'datetime',
+            'last_interaction_at' => 'datetime',
+            'last_meeting_at' => 'datetime',
         ];
     }
 
-    protected function getLogoAttribute(): string
+    /**
+     * Null when no logo has been uploaded. A company with no mark falls back to
+     * the shared entity icon (App\Enums\CrmEntity), not a generated initials
+     * tile: 57% of companies carry a real logo, so colour in a company column
+     * should only ever mean "this is the brand's own mark".
+     *
+     * @return Attribute<non-falsy-string|null, never>
+     */
+    protected function logo(): Attribute
     {
-        $logo = $this->getFirstMediaUrl(self::LOGO_MEDIA_COLLECTION);
+        return Attribute::get(function (): ?string {
+            $logo = $this->getFirstMediaUrl(self::LOGO_MEDIA_COLLECTION);
 
-        return $logo === '' || $logo === '0' ? resolve(AvatarService::class)->generateAuto(name: $this->name) : $logo;
+            return $logo === '' || $logo === '0' ? null : $logo;
+        });
+    }
+
+    public function getFilamentAvatarUrl(): ?string
+    {
+        return $this->logo;
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection(self::LOGO_MEDIA_COLLECTION)
+            ->acceptsMimeTypes(array_keys(self::LOGO_MIME_TYPES))
+            ->useDisk('public');
+
+        $this->addMediaCollection(MediaCollection::Attachments->value)
+            ->acceptsMimeTypes(UploadAllowlist::mimeTypes());
     }
 
     /**
-     * Team member responsible for managing the company account
+     * Workspace member responsible for managing the company account
      *
      * @return BelongsTo<User, $this>
      */
@@ -110,10 +165,36 @@ final class Company extends Model implements HasCustomFields, HasMedia
     }
 
     /**
-     * @return MorphToMany<Task, $this>
+     * @return MorphToMany<Task, $this, Taskable>
      */
     public function tasks(): MorphToMany
     {
-        return $this->morphToMany(Task::class, 'taskable');
+        return $this->morphToMany(Task::class, 'taskable')->using(Taskable::class);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function relationChangeLabels(): array
+    {
+        return [
+            'account_owner_id' => __('filament/resources/company.fields.account_owner_id.label'),
+        ];
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logAll()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->logExcept([
+                'id', 'workspace_id', 'creator_id', 'creation_source', 'custom_fields',
+                'created_at', 'updated_at', 'deleted_at',
+                'last_email_at', 'last_interaction_at', 'email_count', 'inbound_email_count',
+                'outbound_email_count', 'meeting_count', 'last_meeting_at', 'account_owner_id',
+            ])
+            ->useLogName('crm')
+            ->setDescriptionForEvent(fn (string $eventName): string => $eventName);
     }
 }
