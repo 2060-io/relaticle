@@ -905,8 +905,8 @@ Expected: FAIL in `normalizes phones and domains with force...` and both shared-
         $isDomain = $field->type === CustomFieldType::DOMAIN->value;
 ```
 
-`CustomFieldInput::normalizeValue()`: add `CustomFieldType::DOMAIN,` after
-`CustomFieldType::LINK,` in the pass-through arm.
+`CustomFieldInput::normalizeValue()` already has its `DOMAIN` arm. It moved to Task B2, because
+the writable-types test there writes through it.
 
 `ProposalFieldSchemaDescriber::kindFor()` and `CustomFieldsDisplayFormatter::displayType()`
 and `storedValues()`, each `if`:
