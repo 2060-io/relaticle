@@ -18,7 +18,7 @@ use App\Support\EmailAddress;
  * through (its token sits in the intended URL for the session). Existing users
  * are never affected: this is consulted only before creating a user.
  */
-final class InvitationOnlySignup
+final readonly class InvitationOnlySignup
 {
     use DetectsWorkspaceInvitation;
 
