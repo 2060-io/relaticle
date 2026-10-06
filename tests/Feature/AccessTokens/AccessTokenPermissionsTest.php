@@ -102,9 +102,13 @@ function tokenAbilitiesAfterEdit(User $user, string $workspaceId, array $permiss
 }
 
 test('a member can give a pinned token every email ability', function () {
-    $this->actingAs($user = User::factory()->withWorkspace()->create());
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($workspace);
+    $this->actingAs($member = $member->fresh());
 
-    expect(tokenAbilitiesAfterEdit($user, $user->currentWorkspace->id, ['read', 'email:read', 'email:draft', 'email:send']))
+    expect(tokenAbilitiesAfterEdit($member, $workspace->id, ['read', 'email:read', 'email:draft', 'email:send']))
         ->toBe(['read', 'email:read', 'email:draft', 'email:send']);
 })->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
 

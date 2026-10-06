@@ -182,19 +182,23 @@ test('a viewer is offered read and email read and draft, and cannot create a tok
 })->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
 
 test('a member creates a pinned token holding every email ability', function () {
-    $this->actingAs($user = User::factory()->withWorkspace()->create());
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($workspace);
+    $this->actingAs($member = $member->fresh());
 
     livewire(CreateAccessToken::class)
         ->fillForm([
             'name' => 'Mail Token',
-            'workspace_id' => $user->currentWorkspace->id,
+            'workspace_id' => $workspace->id,
             'expiration' => '30',
-            'permissions' => ['read', 'email:read', 'email:send'],
+            'permissions' => ['read', 'email:read', 'email:draft', 'email:send'],
         ])
         ->call('createToken')
         ->assertHasNoFormErrors();
 
-    expect($user->fresh()->tokens->first()->abilities)->toBe(['read', 'email:read', 'email:send']);
+    expect($member->fresh()->tokens->first()->abilities)->toBe(['read', 'email:read', 'email:draft', 'email:send']);
 })->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
 
 test('a token not pinned to a workspace is offered no email ability', function () {
