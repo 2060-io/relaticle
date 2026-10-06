@@ -38,7 +38,7 @@
     @else
         <a
             @if (filled($first['url'])) href="{{ $first['url'] }}" @endif
-            title="{{ $first['name'] }}"
+            title="{{ $first['chip']->name }}"
             class="fi-linked-records-cell-link"
         >
             {{ $first['chip'] }}

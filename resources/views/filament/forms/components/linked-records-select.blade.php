@@ -76,7 +76,6 @@
 
         <button
             x-ref="trigger"
-            x-on:click.stop="open ? closePanel(true) : openPanel()"
             x-on:keydown.down.prevent="openPanel()"
             x-bind:aria-expanded="open"
             id="{{ $id }}"

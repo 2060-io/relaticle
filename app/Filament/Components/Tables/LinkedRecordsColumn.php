@@ -27,7 +27,7 @@ final class LinkedRecordsColumn extends Column
     }
 
     /**
-     * @return list<array{chip: RecordChip, name: string, url: ?string}>
+     * @return list<array{chip: RecordChip, url: ?string}>
      */
     public function getLinkedRecords(): array
     {
@@ -44,11 +44,8 @@ final class LinkedRecordsColumn extends Column
             }
 
             foreach ($records as $record) {
-                $chip = RecordChip::forRecord($record);
-
                 $linked[] = [
-                    'chip' => $chip,
-                    'name' => $chip->name,
+                    'chip' => RecordChip::forRecord($record),
                     'url' => $workspace instanceof Workspace ? $urls->build($entity, (string) $record->getKey(), $workspace) : null,
                 ];
             }

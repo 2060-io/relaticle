@@ -23,7 +23,6 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\Renderless;
 use Override;
-use Spatie\MediaLibrary\HasMedia;
 
 /**
  * @phpstan-type RecordOption array{value: string, name: string, html: string, hint: ?string, url: ?string}
@@ -141,9 +140,10 @@ final class LinkedRecordsSelect extends Select
     private function optionsByKey(array $keys): array
     {
         $found = [];
+        $idsByEntity = $this->idsByEntity($keys);
 
         foreach ($this->entities as $entity) {
-            $ids = $this->idsByEntity($keys)["{$entity->value}_ids"];
+            $ids = $idsByEntity["{$entity->value}_ids"];
 
             if ($ids === []) {
                 continue;
@@ -173,7 +173,13 @@ final class LinkedRecordsSelect extends Select
         $keys = [];
 
         foreach ($this->entities as $entity) {
-            foreach ($record->{$entity->relationName()}()->pluck("{$entity->table()}.id") as $id) {
+            $relation = $entity->relationName();
+
+            $ids = $record->relationLoaded($relation)
+                ? $record->getRelation($relation)->modelKeys()
+                : $record->{$relation}()->pluck("{$entity->table()}.id")->all();
+
+            foreach ($ids as $id) {
                 $keys[] = "{$entity->value}:{$id}";
             }
         }
@@ -220,11 +226,7 @@ final class LinkedRecordsSelect extends Select
             $query->whereBelongsTo($workspace);
         }
 
-        if ($query->getModel() instanceof HasMedia) {
-            $query->with('media');
-        }
-
-        return $entity === CrmEntity::Company ? $query : $query->with('company');
+        return $entity === CrmEntity::Company ? $query->with('media') : $query->with('company');
     }
 
     /**
