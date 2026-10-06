@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Mcp;
 
+use App\Enums\EmailGrant;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Billing\HostedWorkspaceAccess;
 use Illuminate\Http\Request;
+use Laravel\Passport\Bridge\Scope;
 use Laravel\Passport\Http\Controllers\ApproveAuthorizationController as BaseApproveAuthorizationController;
 use League\OAuth2\Server\AuthorizationServer;
+use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * MCP-aware approve handler. Validates that the user has selected exactly one
  * workspace they belong to, stashes the workspace_id in the session so the AuthCode
- * model's creating hook can persist it, then delegates to Passport's standard
- * approve flow.
+ * model's creating hook can persist it, then completes the request with the email
+ * scopes the user ticked and none the client asked for on its own.
  */
 final class ApproveAuthorizationController extends BaseApproveAuthorizationController
 {
@@ -32,6 +35,8 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
     {
         $validated = $request->validate([
             'workspace_id' => ['required', 'string', 'size:26'],
+            'email_grants' => ['sometimes', 'array', 'list'],
+            'email_grants.*' => ['string'],
         ]);
 
         /** @var User $user */
@@ -50,9 +55,32 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
         $request->session()->put('mcp.oauth.workspace_id', $workspace->getKey());
 
         try {
-            return parent::approve($request, $psrResponse);
+            $authRequest = $this->getAuthRequestFromSession($request);
+            $authRequest->setScopes($this->consentedScopes($authRequest->getScopes(), $validated['email_grants'] ?? []));
+            $authRequest->setAuthorizationApproved(true);
+
+            return $this->withErrorHandling(fn (): Response => $this->convertResponse(
+                $this->server->completeAuthorizationRequest($authRequest, $psrResponse),
+            ));
         } finally {
             $request->session()->forget('mcp.oauth.workspace_id');
         }
+    }
+
+    /**
+     * @param  array<int, ScopeEntityInterface>  $requested
+     * @return list<ScopeEntityInterface>
+     */
+    private function consentedScopes(array $requested, mixed $ticked): array
+    {
+        $withoutEmail = array_filter(
+            $requested,
+            fn (ScopeEntityInterface $scope): bool => EmailGrant::tryFrom($scope->getIdentifier()) === null,
+        );
+
+        return [
+            ...array_values($withoutEmail),
+            ...array_map(fn (EmailGrant $grant): Scope => new Scope($grant->value), EmailGrant::fromValues($ticked)),
+        ];
     }
 }

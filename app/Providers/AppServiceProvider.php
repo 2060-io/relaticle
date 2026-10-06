@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Console\Commands\MakeFilamentUserCommand;
 use App\Enums\CrmEntity;
+use App\Enums\EmailGrant;
 use App\Enums\Plan;
 use App\Events\WorkspaceCreated;
 use App\Filament\CustomFields\DateFieldType;
@@ -246,13 +247,7 @@ final class AppServiceProvider extends ServiceProvider
         Event::listen(AccessTokenCreated::class, CopyWorkspaceIdToAccessToken::class);
         Passport::useAuthorizationServerResponseType(new WorkspaceBearerTokenResponse);
 
-        // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
-        Passport::tokensCan([
-            'read' => 'Read your CRM records',
-            'create' => 'Create new CRM records',
-            'update' => 'Update existing CRM records',
-            'delete' => 'Delete CRM records',
-        ]);
+        $this->configureTokenScopes();
 
         // Connectors are long-lived but must not be immortal: a user who revokes one from
         // the Access Tokens page should not be outlived by a year-long bearer token.
@@ -312,6 +307,18 @@ final class AppServiceProvider extends ServiceProvider
      * signed-in system administrator gets an edit link on a draft preview. Which
      * panel and guard own the admin is ours to decide, not the package's.
      */
+    private function configureTokenScopes(): void
+    {
+        // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
+        Passport::tokensCan([
+            'read' => 'Read your CRM records',
+            'create' => 'Create new CRM records',
+            'update' => 'Update existing CRM records',
+            'delete' => 'Delete CRM records',
+            ...EmailGrant::passportScopes(),
+        ]);
+    }
+
     private function configureBlog(): void
     {
         Ink::resolvePreviewEditUrlUsing(fn (Post $post): ?string => auth('sysadmin')->check()

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools\Concerns;
 
+use App\Enums\EmailGrant;
+use App\Enums\WorkspaceCapability;
 use App\Models\PersonalAccessToken;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Registrar;
@@ -43,5 +45,63 @@ trait ChecksTokenAbility
         }
 
         return null;
+    }
+
+    protected function denyIfTokenLacks(EmailGrant $grant): ?Response
+    {
+        if (in_array($grant, $this->heldEmailGrants(), true)) {
+            return null;
+        }
+
+        return Response::error('This connection has no email access. Reconnect and allow it on the consent screen, or add the permission to the access token.');
+    }
+
+    /** @return list<string> */
+    protected function heldAbilities(): array
+    {
+        /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
+        $token = auth()->user()?->currentAccessToken();
+
+        $emailAbilities = array_column($this->heldEmailGrants(), 'value');
+
+        if ($token instanceof PassportAccessToken) {
+            return $token->can(Registrar::OAUTH_SCOPE)
+                ? [...WorkspaceCapability::tokenPermissions(WorkspaceCapability::forOwner()), ...$emailAbilities]
+                : [];
+        }
+
+        if ($token instanceof PersonalAccessToken && $token->getKey()) {
+            $otherAbilities = array_filter(
+                $token->abilities ?? [],
+                fn (string $ability): bool => EmailGrant::tryFrom($ability) === null,
+            );
+
+            return [...array_values($otherAbilities), ...$emailAbilities];
+        }
+
+        return ['*'];
+    }
+
+    /** @return list<EmailGrant> */
+    protected function heldEmailGrants(): array
+    {
+        /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
+        $token = auth()->user()?->currentAccessToken();
+
+        if ($token instanceof PassportAccessToken && ! $token->can(Registrar::OAUTH_SCOPE)) {
+            return [];
+        }
+
+        $carriesAbilities = $token instanceof PassportAccessToken
+            || ($token instanceof PersonalAccessToken && $token->getKey());
+
+        if (! $carriesAbilities) {
+            return EmailGrant::offered();
+        }
+
+        return array_values(array_filter(
+            EmailGrant::offered(),
+            fn (EmailGrant $grant): bool => $token->can($grant->value),
+        ));
     }
 }
