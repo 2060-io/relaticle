@@ -821,6 +821,40 @@ it('finds a domain stored in a legacy spelling by its url operand', function ():
         ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_none' => ['https://www.acme.com']]]]))->toBe(['Bob']);
 });
 
+it('matches a domain stored in mixed case by an operand in any case', function (): void {
+    $site = filterTestField($this->workspace, 'people', 'site', 'domain', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
+    $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Bob']);
+    DB::table('custom_field_values')->insert([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'people',
+        'entity_id' => $ana->getKey(),
+        'custom_field_id' => $site->getKey(),
+        'json_value' => json_encode(['www.Acme.com']),
+    ]);
+
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['WWW.ACME.COM']]]]))->toBe(['Ana'])
+        ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_none' => ['WWW.ACME.COM']]]]))->toBe(['Bob']);
+});
+
+it('finds a domain field value that is not a host by the way it was typed', function (): void {
+    $site = filterTestField($this->workspace, 'people', 'site', 'domain', new CustomFieldSettingsData(allow_multiple: true, max_values: 5));
+    $ana = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ana']);
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Bob']);
+    DB::table('custom_field_values')->insert([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'people',
+        'entity_id' => $ana->getKey(),
+        'custom_field_id' => $site->getKey(),
+        'json_value' => json_encode(['N / A']),
+    ]);
+
+    expect(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_any' => ['N / A']]]]))->toBe(['Ana'])
+        ->and(peopleNamesMatching($this->user, ['custom_fields' => ['site' => ['$has_none' => ['N / A']]]]))->toBe(['Bob']);
+});
+
 it('publishes only $ operators and the domain sub-field', function (): void {
     $keys = collect(CustomFieldType::cases())
         ->flatMap(fn (CustomFieldType $type): array => array_keys(CustomFieldFilterSchema::operatorsForType($type->value)))

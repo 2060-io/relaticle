@@ -28,9 +28,6 @@ final readonly class CustomFieldFilter implements Filter
     // The link field type validates each item with max:2048, so a longer operand can never equal a stored value.
     private const int MAX_OPERAND_LENGTH = 2048;
 
-    // The class DomainFieldType::setValue() strips. Removing it first lets stacked schemes unwrap in one pass.
-    private const string LINK_WHITESPACE = '#[\s\x{00A0}\x{200B}\x{FEFF}\x{3000}]+#u';
-
     private const string LIST_ELEMENTS = "jsonb_array_elements_text(case when jsonb_typeof(json_value::jsonb) = 'array' then json_value::jsonb else '[]'::jsonb end)";
 
     private const string LOWERED_OPERANDS = 'array(select lower(operand) from unnest(?::text[]) as operand)';
@@ -357,10 +354,6 @@ final readonly class CustomFieldFilter implements Filter
         foreach ($operand as $index => $value) {
             if ($field->type === CustomFieldType::PHONE->value) {
                 $this->assertPhone($field, "{$field->code}.{$operator}.{$index}", $value);
-            }
-
-            if ($field->type === CustomFieldType::DOMAIN->value) {
-                $value = (string) preg_replace(self::LINK_WHITESPACE, '', $value);
             }
 
             array_push($spellings, ...CanonicalValue::spellings($field, $value));

@@ -317,6 +317,7 @@ Record, text area, rich text and color fields take no filter. Neither does an en
 
 - Choice values take the option label or its ID. An unknown label returns an error listing the valid labels. An ambiguous label asks for the option ID.
 - Email and link values match in any letter case. A link also matches with or without its scheme, so `acme.com/team` finds `https://acme.com/team`.
+- Domain values match as a bare host or a full URL, with or without `www.`, so `https://www.acme.com/about` finds `acme.com`.
 - Phone values match in any format. A phone operand needs a country code, such as `+1 415 555 0100`. An operand without one returns the error `phone_number needs a country code, for example +1 415 555 0100.`
 - Tags match the exact stored value.
 - `$not_in` and `$has_none` also match records where the field is empty.
