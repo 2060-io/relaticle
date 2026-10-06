@@ -227,19 +227,17 @@ final class DataTypeInferencer
             return [];
         }
 
-        $lossyTypes = array_filter($fieldTypeKeys, fn (string $key): bool => $this->cutsMostValuesShort($key, $values));
+        $fittingTypes = array_filter($fieldTypeKeys, fn (string $key): bool => ! $this->cutsMostValuesShort($key, $values));
 
         return CustomField::query()
             ->withoutGlobalScopes()
             ->where('entity_type', $this->entityName)
             ->where('tenant_id', $this->workspaceId)
-            ->whereIn('type', $fieldTypeKeys)
+            ->whereIn('type', $fittingTypes)
             ->active()
             ->orderBy('id')
-            ->get(['code', 'type'])
-            ->reject(fn (CustomField $field): bool => in_array($field->type, $lossyTypes, true))
-            ->map(fn (CustomField $field): string => "custom_fields_{$field->code}")
-            ->values()
+            ->pluck('code')
+            ->map(fn (string $code): string => "custom_fields_{$code}")
             ->all();
     }
 
