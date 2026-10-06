@@ -17,7 +17,7 @@ return new class extends Migration
                 'type' => 'domain',
                 'settings' => DB::raw(<<<'SQL'
                     case
-                        when jsonb_typeof(settings::jsonb) = 'object'
+                        when jsonb_typeof(settings::jsonb -> 'additional') = 'object'
                             then (settings::jsonb #- '{additional,link_variant}')::json
                         else settings
                     end

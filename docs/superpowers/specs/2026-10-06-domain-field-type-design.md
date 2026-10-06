@@ -72,15 +72,19 @@ already registered from that folder.
   unique-capable, arbitrary values, no user options, `systemOnly()`. It uses the package's
   `LinkComponent`, `LinkColumn` and `LinkEntry`. `LinkComponent` already calls the type's
   `normalize()` on dehydrate.
-- `defaultItemValidationRules()` carries the same two rules the link type has. The import
-  wizard infers a column's data type from those rules (`DataTypeInferencer::extractValidationKey()`),
-  so a `domains` column keeps mapping the way it does today.
+- `defaultItemValidationRules()` carries the same two rules the link type has.
+- The import wizard infers a column's type from those rules, one type per rule
+  (`DataTypeInferencer`). Two types now share the URL rule, so the inferencer keeps `link` as
+  the inferred type and suggests the fields of every type that shares the rule. A URL column
+  on a company still offers `domains` and `linkedin`, as it does today.
 - `setValue()` holds the host logic that `LinkFieldType::normalize()` has at tag `v3.13.1`,
   moved as it is. The base `normalize()` calls it, so the type needs no field setting.
-- `equivalentValues()` returns the host plus the link type's spellings (`www.acme.com`,
-  `https://acme.com`, `http://acme.com`), by delegating to `LinkFieldType::equivalentValues()`.
-  A domain stored before normalization keeps matching in filters, upsert and the unique rule.
-  `LegacyCompanyDomains` and four existing tests pin that.
+- `equivalentValues()` returns the host plus the link type's spellings of the typed value
+  (`https://acme.com`, `http://acme.com`, and `www.acme.com` when the input carries `www.`),
+  by delegating to `LinkFieldType::equivalentValues()`. A domain stored before normalization
+  keeps matching in filters, upsert and the unique rule when the same spelling is typed.
+  `LegacyCompanyDomains` and four existing tests pin that. A bare `acme.com` does not match a
+  legacy `www.acme.com`, as in 3.13. The `custom-fields:normalize-values` pass removes those.
 - Registered in `AppServiceProvider` with `'domain' => DomainFieldType::class`.
 - `tests/Arch/ArchTest.php`: `App\Filament` is already exempt from `avoid inheritance`. The
   class joins the ignore list of the custom-fields package models check, because the inherited
