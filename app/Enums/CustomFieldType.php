@@ -137,6 +137,12 @@ enum CustomFieldType: string
         };
     }
 
+    /** Whether the value is a list of URL-like strings that read as links. */
+    public function isLinkList(): bool
+    {
+        return in_array($this, [self::LINK, self::DOMAIN], true);
+    }
+
     /** Whether values are picked from the field's own options rather than typed freely. */
     public function isChoice(): bool
     {
