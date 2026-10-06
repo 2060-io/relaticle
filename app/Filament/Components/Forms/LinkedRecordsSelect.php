@@ -38,7 +38,7 @@ final class LinkedRecordsSelect extends Select
     private const int SEARCH_LIMIT = 10;
 
     /** @var array<int, CrmEntity> */
-    private array $entities = [CrmEntity::Company, CrmEntity::People, CrmEntity::Opportunity];
+    private array $entities = [];
 
     /**
      * @param  array<int, string>  $relations
@@ -108,6 +108,8 @@ final class LinkedRecordsSelect extends Select
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->entities = CrmEntity::linkable();
 
         $this
             ->label(__('filament/components/linked-records.label'))

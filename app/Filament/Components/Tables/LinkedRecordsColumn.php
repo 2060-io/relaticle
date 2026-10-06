@@ -36,7 +36,7 @@ final class LinkedRecordsColumn extends Column
         $workspace = Filament::getTenant();
         $linked = [];
 
-        foreach ([CrmEntity::Company, CrmEntity::People, CrmEntity::Opportunity] as $entity) {
+        foreach (CrmEntity::linkable() as $entity) {
             $records = $owner instanceof Model ? $owner->getRelationValue($entity->relationName()) : null;
 
             if (! $records instanceof Collection) {
