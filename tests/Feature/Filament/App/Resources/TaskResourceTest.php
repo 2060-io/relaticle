@@ -13,6 +13,7 @@ use App\Models\Task;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\RichEditor;
 use Filament\Schemas\Components\Component;
 use Filament\Tables\Columns\Column;
@@ -394,6 +395,17 @@ it('renders a custom-field datetime in the same format as the table default', fu
     livewire(ManageTasks::class)
         ->assertOk()
         ->assertSee(Date::parse('2026-08-19 08:30:00', 'Asia/Tokyo')->translatedFormat($format));
+});
+
+it('shows a due date in the task form the way tables and record pages write it', function (): void {
+    $page = livewire(ManageTasks::class)
+        ->mountAction('create')
+        ->instance();
+
+    $picker = collect($page->getSchema($page->getMountedActionSchemaName())->getFlatComponents(withHidden: true))
+        ->first(fn (Component $component): bool => $component instanceof DateTimePicker);
+
+    expect(Date::parse('2026-10-09 19:56:31')->format($picker->getDisplayFormat()))->toBe('Oct 9, 2026 19:56');
 });
 
 it('gives the task description the borderless document canvas', function (): void {
