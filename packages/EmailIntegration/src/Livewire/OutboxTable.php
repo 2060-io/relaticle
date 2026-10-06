@@ -224,11 +224,8 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
         };
     }
 
-    /**
-     * Interactive sends stamp scheduled_for a few seconds ahead so the user can
-     * undo, and an assistant's send is held for minutes. Neither delay is a scheduled
-     * send; the queued tab shows both immediately, matching the outbox badge.
-     */
+    // An undo window and an assistant's hold are not scheduled sends, so the queued tab
+    // shows both at once, matching the outbox badge.
     private function queuedDueCutoff(): CarbonInterface
     {
         return now()->addSeconds(Config::integer('email-integration.outbox.undo_send_window_seconds'));

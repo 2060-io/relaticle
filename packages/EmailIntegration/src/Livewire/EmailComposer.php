@@ -566,12 +566,8 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         }
     }
 
-    /**
-     * `bodyHtml`'s raw state is never truly "empty" (an untouched RichEditor still
-     * holds a structural `<p></p>` doc), so `required` can never catch a blank
-     * message. Check the dehydrated text instead. A signature-only email (no
-     * free text, just the signature block) is legitimate and must still send.
-     */
+    // An untouched RichEditor still holds `<p></p>`, so `required` never catches a blank
+    // message. A body with only a signature block or an image is a real email.
     private function isBlankBody(string $bodyHtml): bool
     {
         return trim(strip_tags($bodyHtml)) === ''

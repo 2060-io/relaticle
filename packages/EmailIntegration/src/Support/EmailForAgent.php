@@ -20,6 +20,42 @@ final readonly class EmailForAgent
 
     public function __construct(private PrivacyService $privacy) {}
 
+    /** @return array<string, mixed>|null */
+    public function summary(Email $email, User $viewer): ?array
+    {
+        $tier = $this->privacy->effectiveTier($email, $viewer);
+
+        return $tier instanceof EmailPrivacyTier ? $this->summaryAt($tier, $email, $viewer) : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function detail(Email $email, User $viewer): ?array
+    {
+        $tier = $this->privacy->effectiveTier($email, $viewer);
+
+        if (! $tier instanceof EmailPrivacyTier) {
+            return null;
+        }
+
+        $body = $tier->showsBody() ? $this->bodyText($email) : null;
+
+        return [
+            ...$this->summaryAt($tier, $email, $viewer),
+            'body_text' => $body === null ? null : mb_substr($body, 0, self::BODY_LIMIT),
+            'body_truncated' => $body !== null && mb_strlen($body) > self::BODY_LIMIT,
+            'attachments' => $tier->showsBody()
+                ? $email->downloadAttachments()
+                    ->map(fn (EmailAttachment $attachment): array => [
+                        'filename' => $attachment->filename,
+                        'mime_type' => $attachment->mime_type,
+                        'size' => $attachment->size,
+                    ])
+                    ->values()
+                    ->all()
+                : [],
+        ];
+    }
+
     /**
      * @return array{
      *     id: string,
@@ -31,16 +67,10 @@ final readonly class EmailForAgent
      *     snippet: ?string,
      *     has_attachments: bool,
      *     participants: list<array{role: string, name: ?string, email: string}>
-     * }|null
+     * }
      */
-    public function summary(Email $email, User $viewer): ?array
+    private function summaryAt(EmailPrivacyTier $tier, Email $email, User $viewer): array
     {
-        $tier = $this->privacy->effectiveTier($email, $viewer);
-
-        if (! $tier instanceof EmailPrivacyTier) {
-            return null;
-        }
-
         $ownsMailbox = $email->user_id === $viewer->getKey();
 
         return [
@@ -60,35 +90,6 @@ final readonly class EmailForAgent
                     'email' => $participant->email_address,
                 ])
                 ->all()),
-        ];
-    }
-
-    /** @return array<string, mixed>|null */
-    public function detail(Email $email, User $viewer): ?array
-    {
-        $summary = $this->summary($email, $viewer);
-
-        if ($summary === null) {
-            return null;
-        }
-
-        $showsBody = EmailPrivacyTier::from($summary['access'])->showsBody();
-        $body = $showsBody ? $this->bodyText($email) : null;
-
-        return [
-            ...$summary,
-            'body_text' => $body === null ? null : mb_substr($body, 0, self::BODY_LIMIT),
-            'body_truncated' => $body !== null && mb_strlen($body) > self::BODY_LIMIT,
-            'attachments' => $showsBody
-                ? $email->downloadAttachments()
-                    ->map(fn (EmailAttachment $attachment): array => [
-                        'filename' => $attachment->filename,
-                        'mime_type' => $attachment->mime_type,
-                        'size' => $attachment->size,
-                    ])
-                    ->values()
-                    ->all()
-                : [],
         ];
     }
 
