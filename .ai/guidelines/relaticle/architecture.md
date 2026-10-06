@@ -79,8 +79,11 @@ final readonly class CreateOpportunity
   canonical `abort_unless` plus `assertOwned` shape does not apply. Give a command an
   action when a second caller shares the write, otherwise the logic lives in `handle()`
 - When reviewing or refactoring code, extract inline business logic into action classes
-- Use `App\Data` (spatie/laravel-data) objects for structured payloads where they
-  already exist; don't introduce new patterns
+- A structured payload is a class in a `Data` folder. Use spatie/laravel-data when untyped
+  data becomes an object: a request, a stored JSON value, Livewire state
+  (`Relaticle\ImportWizard\Data\ColumnData`). Use a plain `final readonly` class when code
+  builds the object with `new` (`App\Data\ListQuery`). No test tells the two apart, so a
+  reviewer reads for a data object that only ever meets `new`
 - Name domain concepts plainly (`Plan`, not `AiPlan`). Context comes from the
   namespace
 
