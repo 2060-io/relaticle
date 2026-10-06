@@ -5,8 +5,11 @@ declare(strict_types=1);
 use App\Features\Billing;
 use App\Features\EmailIntegration;
 use App\Http\Controllers\Mcp\ApproveAuthorizationController;
+use App\Http\Middleware\RequireConsentForOptInScopes;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
+use App\Mcp\Servers\RelaticleServer;
+use App\Mcp\Tools\WhoAmiTool;
 use App\Models\Passport\AuthCode;
 use App\Models\User;
 use App\Models\Workspace;
@@ -22,6 +25,7 @@ use Relaticle\SystemAdmin\Models\SystemAdministrator;
 
 mutates(
     ApproveAuthorizationController::class,
+    RequireConsentForOptInScopes::class,
     AuthCode::class,
     CopyWorkspaceIdToAccessToken::class,
     SetApiWorkspaceContext::class,
@@ -784,9 +788,11 @@ it('issues no email scope on a silent re-authorization that skips consent', func
 
     parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);
 
+    $firstTokenId = Passport::token()->newQuery()->sole()->getKey();
+
     redeemAuthorizationCode($this->client, ['code' => (string) $query['code'], 'verifier' => $verifier]);
 
-    expect(Passport::token()->newQuery()->latest('created_at')->firstOrFail()->scopes)->toBe(['mcp:use']);
+    expect(Passport::token()->newQuery()->whereKeyNot($firstTokenId)->sole()->scopes)->toBe(['mcp:use']);
 });
 
 function reportedAbilities(string $accessToken): array
@@ -804,4 +810,51 @@ it('reports only the record abilities to a connector that was given no email acc
     $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
 
     expect(reportedAbilities($tokens['access_token']))->toBe(['read', 'create', 'update', 'delete']);
+});
+
+it('shows consent again when a client asks for an email scope the user granted on another connection', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use email:read']))
+        ->assertOk()
+        ->assertSee('name="workspace_id"', false);
+});
+
+it('grants no email scope when a client asks for one and the user approves without ticking it', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+
+    $firstTokenId = Passport::token()->newQuery()->sole()->getKey();
+
+    completeOauthFlow($this->user, $this->client, $this->otherWorkspace, scope: 'mcp:use email:read');
+
+    $second = Passport::token()->newQuery()->whereKeyNot($firstTokenId)->sole();
+
+    expect($second->scopes)->toBe(['mcp:use'])
+        ->and($second->workspace_id)->toBe($this->otherWorkspace->getKey());
+});
+
+it('shows consent when a connector without email access asks for an email scope', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use email:send']))->assertOk();
+});
+
+it('still skips consent on a re-authorization that names no email scope', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))->assertRedirect();
+});
+
+it('refuses an oauth token that holds an email scope without the mcp scope', function (): void {
+    Passport::actingAs($this->user, ['email:read']);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(WhoAmiTool::class)
+        ->assertHasErrors(['Invalid ability provided.']);
 });

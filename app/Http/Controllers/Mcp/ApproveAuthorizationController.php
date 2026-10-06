@@ -61,7 +61,7 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
 
             return $this->withErrorHandling(fn (): Response => $this->convertResponse(
                 $this->server->completeAuthorizationRequest($authRequest, $psrResponse),
-            ));
+            ), $authRequest->getGrantTypeId() === 'implicit');
         } finally {
             $request->session()->forget('mcp.oauth.workspace_id');
         }
