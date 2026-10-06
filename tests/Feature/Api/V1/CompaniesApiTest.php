@@ -740,6 +740,13 @@ describe('custom fields', function (): void {
         expect(collect(Company::query()->with('customFieldValues.customField')->findOrFail($id)->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
     });
 
+    it('creates the domains field as a domain type with no variant setting', function (): void {
+        $domains = WorkspaceCustomField::byCode($this->workspace->id, 'company', 'domains');
+
+        expect($domains->type)->toBe('domain')
+            ->and($domains->settings->additional)->toBe([]);
+    });
+
     it('rejects a domain another company already uses in another format', function (): void {
         Sanctum::actingAs($this->user);
 

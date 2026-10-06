@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d801c8af21db6ba181960a3d2282dcc3",
+    "content-hash": "a8ba32cb438b3f23852ed675d9397733",
     "packages": [
         {
             "name": "andreiio/blade-remix-icon",
@@ -10530,16 +10530,16 @@
         },
         {
             "name": "relaticle/custom-fields",
-            "version": "v3.13.1",
+            "version": "v3.14.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/relaticle/custom-fields.git",
-                "reference": "8c044d71c0ba603f1af3f230c4b4adeef53c86c3"
+                "reference": "be272337917751889462a567481fac0232628b4a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/8c044d71c0ba603f1af3f230c4b4adeef53c86c3",
-                "reference": "8c044d71c0ba603f1af3f230c4b4adeef53c86c3",
+                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/be272337917751889462a567481fac0232628b4a",
+                "reference": "be272337917751889462a567481fac0232628b4a",
                 "shasum": ""
             },
             "require": {
@@ -10556,10 +10556,10 @@
                 "laravel/pint": "^1.0",
                 "nunomaduro/collision": "^8.1",
                 "orchestra/testbench": "^10.0|^11.0",
-                "pestphp/pest": "^4.0",
-                "pestphp/pest-plugin-arch": "^4.0",
-                "pestphp/pest-plugin-laravel": "^4.0",
-                "pestphp/pest-plugin-type-coverage": "^4.0",
+                "pestphp/pest": "^4.0|^5.0",
+                "pestphp/pest-plugin-arch": "^4.0|^5.0",
+                "pestphp/pest-plugin-laravel": "^4.0|^5.0",
+                "pestphp/pest-plugin-type-coverage": "^4.0|^5.0",
                 "phpstan/phpstan-deprecation-rules": "^2.0",
                 "phpstan/phpstan-phpunit": "^2.0",
                 "rector/rector": "^2.6",
@@ -10625,7 +10625,7 @@
                 "issues": "https://github.com/relaticle/custom-fields/issues",
                 "source": "https://github.com/relaticle/custom-fields"
             },
-            "time": "2026-10-05T16:20:34+00:00"
+            "time": "2026-10-06T15:16:36+00:00"
         },
         {
             "name": "relaticle/flowforge",
