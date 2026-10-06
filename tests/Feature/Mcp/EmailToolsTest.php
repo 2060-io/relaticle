@@ -5,7 +5,9 @@ declare(strict_types=1);
 use App\Enums\CustomFields\PeopleField;
 use App\Features\EmailIntegration;
 use App\Mcp\Servers\RelaticleServer;
+use App\Mcp\Tools\Email\CreateEmailDraftTool;
 use App\Mcp\Tools\Email\GetEmailTool;
+use App\Mcp\Tools\Email\ListEmailAccountsTool;
 use App\Mcp\Tools\Email\ListEmailsTool;
 use App\Models\CustomField;
 use App\Models\People;
@@ -15,9 +17,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Pennant\Feature;
+use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Filament\RichContent\SignatureBlock;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAttachment;
@@ -25,12 +29,14 @@ use Relaticle\EmailIntegration\Models\EmailBlocklist;
 use Relaticle\EmailIntegration\Models\EmailBody;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
+use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
 use Relaticle\EmailIntegration\Policies\EmailPolicy;
 use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
+use Relaticle\EmailIntegration\Support\AgentEmailBody;
 use Relaticle\EmailIntegration\Support\EmailForAgent;
 
-mutates(ListEmailsTool::class, GetEmailTool::class, VisibleEmailsQuery::class, EmailForAgent::class, EmailPolicy::class);
+mutates(ListEmailsTool::class, GetEmailTool::class, ListEmailAccountsTool::class, CreateEmailDraftTool::class, AgentEmailBody::class, SignatureBlock::class, VisibleEmailsQuery::class, EmailForAgent::class, EmailPolicy::class);
 
 beforeEach(function (): void {
     $this->viewer = User::factory()->withWorkspace()->create();
@@ -633,4 +639,174 @@ it('shows bcc recipients of one email to the mailbox owner only', function (): v
 
     expect(collect(fetchedEmail($this->viewer, $own->id)['participants'])->pluck('role'))->toContain('bcc')
         ->and(collect(fetchedEmail($this->viewer, $teammates->id)['participants'])->pluck('role'))->not->toContain('bcc');
+});
+
+function emailToolData(User $user, string $tool, array $arguments = []): array
+{
+    $data = [];
+
+    RelaticleServer::actingAs($user)
+        ->tool($tool, $arguments)
+        ->assertOk()
+        ->assertStructuredContent(function (AssertableJson $json) use (&$data): AssertableJson {
+            $data = $json->toArray();
+
+            return $json->etc();
+        });
+
+    return $data;
+}
+
+function draftArguments(ConnectedAccount $account, array $overrides = []): array
+{
+    return [
+        'connected_account_id' => $account->getKey(),
+        'to' => ['client@acme.test'],
+        'subject' => 'Next steps',
+        'body' => "Hi Dana,\n\nHere is the **plan**.",
+        ...$overrides,
+    ];
+}
+
+it('lists only the caller own mailboxes, with whether each can send', function (): void {
+    $receiveOnly = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->withoutSend()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->viewer->id,
+    ]));
+
+    $items = collect(emailToolData($this->viewer, ListEmailAccountsTool::class)['items'])->keyBy('id');
+
+    expect($items->keys()->all())->toEqualCanonicalizing([$this->viewerAccount->id, $receiveOnly->id])
+        ->and($items[$this->viewerAccount->id]['email'])->toBe($this->viewerAccount->email_address)
+        ->and($items[$this->viewerAccount->id]['can_send'])->toBeTrue()
+        ->and($items[$receiveOnly->id]['can_send'])->toBeFalse();
+});
+
+it('saves a private draft and sends nothing', function (): void {
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['cc' => ['boss@acme.test']]));
+
+    $draft = Email::query()->with(['body', 'participants'])->findOrFail($data['id']);
+
+    expect($data['status'])->toBe('draft')
+        ->and($draft->status)->toBe(EmailStatus::DRAFT)
+        ->and($draft->privacy_tier)->toBe(EmailPrivacyTier::PRIVATE)
+        ->and($draft->creation_source)->toBe(EmailCreationSource::MCP)
+        ->and($draft->user_id)->toBe($this->viewer->id)
+        ->and($draft->subject)->toBe('Next steps')
+        ->and($draft->body->body_html)->toContain('<strong>plan</strong>')
+        ->and($draft->participants->pluck('email_address', 'role.value')->sortKeys()->all())->toBe(['cc' => 'boss@acme.test', 'to' => 'client@acme.test'])
+        ->and(Email::query()->where('status', EmailStatus::QUEUED)->count())->toBe(0);
+});
+
+it('escapes raw html in a draft body', function (): void {
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, [
+        'body' => 'Hi <script>alert(1)</script> <img src=x onerror=alert(1)> **safe**',
+    ]));
+
+    $html = Email::query()->with('body')->findOrFail($data['id'])->body->body_html;
+
+    expect($html)->not->toContain('<script')
+        ->not->toContain('<img')
+        ->toContain('<strong>safe</strong>');
+});
+
+it('drops an unsafe link and keeps a single line break in a draft body', function (): void {
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, [
+        'body' => "Thanks,\nDana [click](javascript:alert(1)) [site](https://acme.test)",
+    ]));
+
+    $html = Email::query()->with('body')->findOrFail($data['id'])->body->body_html;
+
+    expect($html)->not->toContain('javascript:')
+        ->toContain('href="https://acme.test"')
+        ->toContain("Thanks,<br />\nDana");
+});
+
+it('adds the mailbox default signature to a draft as a signature block', function (): void {
+    $signature = EmailSignature::factory()->default()->create([
+        'connected_account_id' => $this->viewerAccount->id,
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->viewer->id,
+        'content_html' => '<p>Dana, Acme</p>',
+    ]);
+
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount));
+
+    $html = Email::query()->with('body')->findOrFail($data['id'])->body->body_html;
+
+    expect($html)->toContain('data-id="'.SignatureBlock::ID.'"')
+        ->toContain((string) $signature->getKey())
+        ->toContain(base64_encode('<p>Dana, Acme</p>'));
+});
+
+it('leaves the signature out when asked to, or when the mailbox has no default', function (): void {
+    $without = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount));
+
+    EmailSignature::factory()->default()->create([
+        'connected_account_id' => $this->viewerAccount->id,
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->viewer->id,
+    ]);
+
+    $optedOut = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['include_signature' => false]));
+
+    foreach ([$without['id'], $optedOut['id']] as $id) {
+        expect(Email::query()->with('body')->findOrFail($id)->body->body_html)
+            ->not->toContain('data-id="'.SignatureBlock::ID.'"');
+    }
+});
+
+it('refuses a draft from a mailbox the caller does not own', function (): void {
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($this->coworkerAccount))
+        ->assertHasErrors(["Mailbox with ID [{$this->coworkerAccount->id}] not found."]);
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+});
+
+it('refuses a draft in a mailbox that is no longer connected', function (): void {
+    $stale = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->error()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->viewer->id,
+    ]));
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($stale))
+        ->assertHasErrors(["Mailbox with ID [{$stale->id}] not found."]);
+});
+
+it('threads a reply draft onto an email the caller may view', function (): void {
+    $original = ($this->emailFrom)($this->viewer, ['rfc_message_id' => '<orig@acme.test>']);
+
+    $data = emailToolData($this->viewer, CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['in_reply_to_email_id' => $original->id]));
+
+    $draft = Email::query()->findOrFail($data['id']);
+
+    expect($draft->in_reply_to)->toBe('<orig@acme.test>')
+        ->and($draft->creation_source)->toBe(EmailCreationSource::REPLY);
+});
+
+it('refuses a reply draft aimed at an email the caller may not view', function (): void {
+    $private = ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::PRIVATE]);
+
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, draftArguments($this->viewerAccount, ['in_reply_to_email_id' => $private->id]))
+        ->assertHasErrors(["Email with ID [{$private->id}] not found."]);
+
+    expect(Email::query()->where('status', EmailStatus::DRAFT)->count())->toBe(0);
+});
+
+it('refuses an empty draft', function (): void {
+    RelaticleServer::actingAs($this->viewer)
+        ->tool(CreateEmailDraftTool::class, ['connected_account_id' => $this->viewerAccount->id])
+        ->assertHasErrors(['Cannot save an empty draft.']);
+});
+
+it('lists the mailbox and draft tools only for a token that holds the draft grant', function (): void {
+    expect(listedToolNames($this->viewer, ['read', 'email:read']))
+        ->not->toContain('create-email-draft-tool')
+        ->not->toContain('list-email-accounts-tool')
+        ->and(listedToolNames($this->viewer, ['read', 'email:draft']))
+        ->toContain('create-email-draft-tool', 'list-email-accounts-tool')
+        ->not->toContain('list-emails-tool');
 });

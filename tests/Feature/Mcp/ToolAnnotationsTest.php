@@ -18,7 +18,9 @@ use App\Mcp\Tools\Company\GetCompanyTool;
 use App\Mcp\Tools\Company\ListCompaniesTool;
 use App\Mcp\Tools\Company\UpdateCompanyTool;
 use App\Mcp\Tools\CreateUploadUrlTool;
+use App\Mcp\Tools\Email\CreateEmailDraftTool;
 use App\Mcp\Tools\Email\GetEmailTool;
+use App\Mcp\Tools\Email\ListEmailAccountsTool;
 use App\Mcp\Tools\Email\ListEmailsTool;
 use App\Mcp\Tools\FetchTool;
 use App\Mcp\Tools\GetCrmSchemaTool;
@@ -125,6 +127,8 @@ $toolContracts = [
     DetachNoteFromEntitiesTool::class => ['title' => 'Detach Note Relationships', 'name' => 'detach-note-from-entities-tool', 'annotations' => $detachAnnotations],
     ListEmailsTool::class => ['title' => 'List Emails', 'name' => 'list-emails-tool', 'annotations' => $readAnnotations],
     GetEmailTool::class => ['title' => 'Get Email', 'name' => 'get-email-tool', 'annotations' => $readAnnotations],
+    ListEmailAccountsTool::class => ['title' => 'List Email Accounts', 'name' => 'list-email-accounts-tool', 'annotations' => $readAnnotations],
+    CreateEmailDraftTool::class => ['title' => 'Create Email Draft', 'name' => 'create-email-draft-tool', 'annotations' => $createAnnotations],
 ];
 
 mutates(...array_merge(
@@ -148,7 +152,7 @@ it('publishes the exact explicit title and stable technical name for every regis
     $registeredTools = new ReflectionClass(RelaticleServer::class)
         ->getDefaultProperties()['tools'];
 
-    expect($registeredTools)->toBeArray()->toHaveCount(41);
+    expect($registeredTools)->toBeArray()->toHaveCount(43);
     expect($registeredTools)->toEqualCanonicalizing(array_keys($toolContracts));
 
     foreach ($registeredTools as $toolClass) {
@@ -167,7 +171,7 @@ it('declares an output schema on every registered tool', function (): void {
     $tools = new ReflectionClass(RelaticleServer::class)
         ->getDefaultProperties()['tools'];
 
-    expect($tools)->toBeArray()->toHaveCount(41);
+    expect($tools)->toBeArray()->toHaveCount(43);
 
     foreach ($tools as $toolClass) {
         $definition = resolve($toolClass)->toArray();

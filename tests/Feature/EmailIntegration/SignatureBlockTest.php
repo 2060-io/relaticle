@@ -114,3 +114,17 @@ it('does not expand a signature block from another workspace', function (): void
     expect($sent)->toContain('Hello')
         ->not->toContain('Other workspace signature');
 });
+
+it('resolves the signature of the signed-in user outside a panel', function (): void {
+    $this->signature->forceFill(['user_id' => $this->user->id, 'workspace_id' => $this->workspace->id])->save();
+    Filament::setTenant(null);
+
+    expect(SignatureBlock::toPreviewHtml(['signature_id' => $this->signature->getKey()]))->toBe('<p>Best, Jane</p>');
+});
+
+it('does not resolve a signature of another user outside a panel', function (): void {
+    $this->signature->forceFill(['user_id' => User::factory()->create()->id, 'workspace_id' => $this->workspace->id])->save();
+    Filament::setTenant(null);
+
+    expect(SignatureBlock::toPreviewHtml(['signature_id' => $this->signature->getKey()]))->toBeNull();
+});

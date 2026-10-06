@@ -56,6 +56,13 @@ trait ChecksTokenAbility
         return Response::error('This connection has no email access. Reconnect and allow it on the consent screen, or add the permission to the access token.');
     }
 
+    protected function holdsAnyEmailGrant(EmailGrant ...$grants): bool
+    {
+        $held = $this->heldEmailGrants();
+
+        return array_any($grants, fn (EmailGrant $grant): bool => in_array($grant, $held, true));
+    }
+
     /** @return list<string> */
     protected function heldAbilities(): array
     {

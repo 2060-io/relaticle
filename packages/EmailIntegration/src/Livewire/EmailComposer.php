@@ -2227,10 +2227,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return null;
         }
 
-        return EmailSignature::query()
-            ->where('connected_account_id', $accountId)
-            ->where('is_default', true)
-            ->first();
+        return EmailSignature::query()->defaultFor($accountId)->first();
     }
 
     /**

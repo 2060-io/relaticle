@@ -155,7 +155,7 @@ Add this to your VS Code settings (`.vscode/mcp.json`):
 
 ## Available Tools
 
-The server provides 41 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, file uploads, and reading synced email. A connection without email access sees 39 tools.
+The server provides 43 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, file uploads, reading synced email, and saving email drafts. A connection without email access sees 39 tools.
 
 ### Cross-entity discovery
 
@@ -238,10 +238,14 @@ The server provides 41 tools. They cover account context, cross-entity discovery
 
 These tools appear only for a connection that was given email access. They show the synced email its user may see, at the sharing level the mailbox owner chose.
 
+The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft.
+
 | Tool | Description |
 |------|-------------|
 | `list-emails-tool` | List synced emails newest first, with optional search, linked record, direction, thread and date filters. Subject and snippet appear only where the sharing level allows. |
 | `get-email-tool` | Get one synced email by ID. The body and attachment names appear only at full access, and a long body is cut. |
+| `list-email-accounts-tool` | List the mailboxes the user has connected in this workspace, with the ID to use when drafting and whether each can send. |
+| `create-email-draft-tool` | Save a draft in one of the user's mailboxes, as plain text or markdown, with the default signature unless you turn it off. Nothing is sent: the user reviews the draft in Relaticle. |
 
 ### Files
 
