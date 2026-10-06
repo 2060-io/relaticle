@@ -28,7 +28,7 @@ final readonly class CustomFieldFilter implements Filter
     // The link field type validates each item with max:2048, so a longer operand can never equal a stored value.
     private const int MAX_OPERAND_LENGTH = 2048;
 
-    // The class LinkFieldType::normalize() strips. Removing it first lets stacked schemes unwrap in one pass.
+    // The class DomainFieldType::setValue() strips. Removing it first lets stacked schemes unwrap in one pass.
     private const string LINK_WHITESPACE = '#[\s\x{00A0}\x{200B}\x{FEFF}\x{3000}]+#u';
 
     private const string LIST_ELEMENTS = "jsonb_array_elements_text(case when jsonb_typeof(json_value::jsonb) = 'array' then json_value::jsonb else '[]'::jsonb end)";
@@ -270,7 +270,7 @@ final readonly class CustomFieldFilter implements Filter
      */
     private function containsAny(Builder $query, CustomField $field, array $values): void
     {
-        $matches = in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value], true)
+        $matches = in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value, CustomFieldType::DOMAIN->value], true)
             ? 'lower(element) = any('.self::LOWERED_OPERANDS.')'
             : 'element = any(?::text[])';
 
@@ -346,7 +346,7 @@ final readonly class CustomFieldFilter implements Filter
 
     private function spellings(CustomField $field, string $operator, mixed $operand): mixed
     {
-        if (! is_array($operand) || ! in_array($operator, ['$has_any', '$has_none'], true) || ! in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value, CustomFieldType::PHONE->value], true)) {
+        if (! is_array($operand) || ! in_array($operator, ['$has_any', '$has_none'], true) || ! in_array($field->type, [CustomFieldType::EMAIL->value, CustomFieldType::LINK->value, CustomFieldType::DOMAIN->value, CustomFieldType::PHONE->value], true)) {
             return $operand;
         }
 
@@ -359,7 +359,7 @@ final readonly class CustomFieldFilter implements Filter
                 $this->assertPhone($field, "{$field->code}.{$operator}.{$index}", $value);
             }
 
-            if ($field->type === CustomFieldType::LINK->value && $field->setting('link_variant') === 'domain') {
+            if ($field->type === CustomFieldType::DOMAIN->value) {
                 $value = (string) preg_replace(self::LINK_WHITESPACE, '', $value);
             }
 

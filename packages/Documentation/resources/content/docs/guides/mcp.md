@@ -247,7 +247,7 @@ Entity list tools take `filter`, `sort`, `include`, `per_page` (default 15, maxi
 
 `sort` takes a native field or a custom field that holds one value. A field that holds a list, such as email, phone, link or tags, cannot be sorted.
 
-List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs. A write stores a phone in E.164 form, a domain link as a bare host, and a date-time as its UTC instant.
+List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs. A write stores a phone in E.164 form, a domain as a bare host, and a date-time as its UTC instant.
 
 ### Filter records
 
@@ -304,7 +304,7 @@ Native fields take the operators of the field type they match. `$is_empty` takes
 | Field type | Operators |
 |---|---|
 | Single choice (select, radio, toggle buttons), `creation_source` | `$eq`, `$in`, `$not_in`, `$is_empty` |
-| Multi choice (multi select, checkbox list), tags, email, phone, link | `$has_any`, `$has_none`, `$is_empty` |
+| Multi choice (multi select, checkbox list), tags, email, phone, link, domain | `$has_any`, `$has_none`, `$is_empty` |
 | Text | `$eq`, `$contains`, `$is_empty` |
 | Number, currency, date, date and time | `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$is_empty` |
 | Checkbox, toggle | `$eq`, `$is_empty` |

@@ -79,6 +79,7 @@ const FILTER_OPERATORS_BY_TYPE = [
     'email' => LIST_OPERATORS,
     'phone' => LIST_OPERATORS,
     'link' => LIST_OPERATORS,
+    'domain' => LIST_OPERATORS,
 ];
 
 const EVERY_FILTER_OPERATOR = ['$eq', '$contains', '$gt', '$gte', '$lt', '$lte', '$in', '$not_in', '$has_any', '$has_none', '$is_empty'];
