@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\CustomFields\PeopleField;
 use App\Features\EmailIntegration;
 use App\Mcp\Servers\RelaticleServer;
+use App\Mcp\Tools\Email\GetEmailTool;
 use App\Mcp\Tools\Email\ListEmailsTool;
 use App\Models\CustomField;
 use App\Models\People;
@@ -19,6 +20,8 @@ use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAttachment;
+use Relaticle\EmailIntegration\Models\EmailBody;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
 use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
@@ -26,7 +29,7 @@ use Relaticle\EmailIntegration\Policies\EmailPolicy;
 use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
 use Relaticle\EmailIntegration\Support\EmailForAgent;
 
-mutates(ListEmailsTool::class, VisibleEmailsQuery::class, EmailForAgent::class, EmailPolicy::class);
+mutates(ListEmailsTool::class, GetEmailTool::class, VisibleEmailsQuery::class, EmailForAgent::class, EmailPolicy::class);
 
 beforeEach(function (): void {
     $this->viewer = User::factory()->withWorkspace()->create();
@@ -322,4 +325,79 @@ it('does not list the email tool while the email feature is off', function (): v
     Feature::define(EmailIntegration::class, false);
 
     expect(listedToolNames($this->viewer, ['read', 'email:read']))->not->toContain('list-emails-tool');
+});
+
+function fetchedEmail(User $user, string $id): array
+{
+    $data = [];
+
+    RelaticleServer::actingAs($user)
+        ->tool(GetEmailTool::class, ['id' => $id])
+        ->assertOk()
+        ->assertStructuredContent(function (AssertableJson $json) use (&$data): AssertableJson {
+            $data = $json->toArray()['data'];
+
+            return $json->etc();
+        });
+
+    return $data;
+}
+
+it('returns the body of an email the caller may read in full', function (): void {
+    $email = ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::FULL, 'subject' => 'Kickoff']);
+
+    EmailBody::query()->create(['email_id' => $email->id, 'body_html' => '<p>See you Monday</p>', 'body_text' => 'See you Monday']);
+    EmailAttachment::factory()->create(['email_id' => $email->id, 'filename' => 'agenda.pdf', 'mime_type' => 'application/pdf', 'size' => 2048]);
+
+    $data = fetchedEmail($this->viewer, $email->id);
+
+    expect($data['access'])->toBe('full')
+        ->and($data['subject'])->toBe('Kickoff')
+        ->and($data['body_text'])->toBe('See you Monday')
+        ->and($data['body_truncated'])->toBeFalse()
+        ->and($data['attachments'])->toBe([['filename' => 'agenda.pdf', 'mime_type' => 'application/pdf', 'size' => 2048]]);
+});
+
+it('withholds the body and attachment names below full access', function (EmailPrivacyTier $tier): void {
+    $email = ($this->emailFrom)($this->coworker, ['privacy_tier' => $tier]);
+
+    EmailBody::query()->create(['email_id' => $email->id, 'body_html' => '<p>Secret</p>', 'body_text' => 'Secret']);
+    EmailAttachment::factory()->create(['email_id' => $email->id, 'filename' => 'secret.pdf']);
+
+    $data = fetchedEmail($this->viewer, $email->id);
+
+    expect($data['access'])->toBe($tier->value)
+        ->and($data['body_text'])->toBeNull()
+        ->and($data['attachments'])->toBe([]);
+})->with([
+    'metadata only' => EmailPrivacyTier::METADATA_ONLY,
+    'subject' => EmailPrivacyTier::SUBJECT,
+]);
+
+it('cuts a very large body and says so', function (): void {
+    $email = ($this->emailFrom)($this->viewer);
+
+    EmailBody::query()->create(['email_id' => $email->id, 'body_html' => '', 'body_text' => str_repeat('a', 50_000)]);
+
+    $data = fetchedEmail($this->viewer, $email->id);
+
+    expect(mb_strlen($data['body_text']))->toBe(20_000)
+        ->and($data['body_truncated'])->toBeTrue();
+});
+
+it('answers not found for an email the caller may not see', function (): void {
+    $private = ($this->emailFrom)($this->coworker, ['privacy_tier' => EmailPrivacyTier::PRIVATE]);
+    $foreign = Email::factory()->full()->create(['workspace_id' => Workspace::factory()->create()->id]);
+    $draft = ($this->emailFrom)($this->viewer, ['status' => EmailStatus::DRAFT]);
+
+    foreach ([$private->id, $foreign->id, $draft->id, 'does-not-exist'] as $id) {
+        RelaticleServer::actingAs($this->viewer)
+            ->tool(GetEmailTool::class, ['id' => $id])
+            ->assertHasErrors(["Email with ID [{$id}] not found."]);
+    }
+});
+
+it('lists the get email tool only for a token that holds the grant', function (): void {
+    expect(listedToolNames($this->viewer, ['read']))->not->toContain('get-email-tool')
+        ->and(listedToolNames($this->viewer, ['read', 'email:read']))->toContain('get-email-tool');
 });

@@ -8,11 +8,14 @@ use App\Models\User;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAttachment;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Services\PrivacyService;
 
 final readonly class EmailForAgent
 {
+    private const int BODY_LIMIT = 20_000;
+
     public function __construct(private PrivacyService $privacy) {}
 
     /**
@@ -55,6 +58,35 @@ final readonly class EmailForAgent
                     'email' => $participant->email_address,
                 ])
                 ->all()),
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function detail(Email $email, User $viewer): ?array
+    {
+        $summary = $this->summary($email, $viewer);
+
+        if ($summary === null) {
+            return null;
+        }
+
+        $showsBody = EmailPrivacyTier::from($summary['access'])->showsBody();
+        $body = $showsBody ? (string) $email->body?->body_text : null;
+
+        return [
+            ...$summary,
+            'body_text' => $body === null ? null : mb_substr($body, 0, self::BODY_LIMIT),
+            'body_truncated' => $body !== null && mb_strlen($body) > self::BODY_LIMIT,
+            'attachments' => $showsBody
+                ? $email->downloadAttachments()
+                    ->map(fn (EmailAttachment $attachment): array => [
+                        'filename' => $attachment->filename,
+                        'mime_type' => $attachment->mime_type,
+                        'size' => $attachment->size,
+                    ])
+                    ->values()
+                    ->all()
+                : [],
         ];
     }
 }

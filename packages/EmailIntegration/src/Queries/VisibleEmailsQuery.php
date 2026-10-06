@@ -71,6 +71,15 @@ final readonly class VisibleEmailsQuery
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
+    public function find(User $viewer, string $id): ?Email
+    {
+        return $this->delivered()
+            ->withGlobalScope('visible', new VisibleEmailScope($viewer))
+            ->with(['participants', 'shares', 'body', 'attachments'])
+            ->whereKey($id)
+            ->first();
+    }
+
     /** @return Builder<Email> */
     private function delivered(): Builder
     {

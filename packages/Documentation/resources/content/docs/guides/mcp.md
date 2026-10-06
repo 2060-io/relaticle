@@ -155,7 +155,7 @@ Add this to your VS Code settings (`.vscode/mcp.json`):
 
 ## Available Tools
 
-The server provides 40 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, and file uploads.
+The server provides 41 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, and file uploads.
 
 ### Cross-entity discovery
 
@@ -241,6 +241,7 @@ These tools appear only for a connection that was given email access. They show 
 | Tool | Description |
 |------|-------------|
 | `list-emails-tool` | List synced emails newest first, with optional search, linked record, direction, thread and date filters. Subject and snippet appear only where the sharing level allows. |
+| `get-email-tool` | Get one synced email by ID. The body and attachment names appear only at full access, and a long body is cut. |
 
 ### Files
 

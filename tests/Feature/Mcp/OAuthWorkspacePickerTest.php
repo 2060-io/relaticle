@@ -899,3 +899,26 @@ it('leaves a malformed scope parameter to the authorization server', function ()
 
     expect($response->getStatusCode())->toBeLessThan(500);
 });
+
+function listedTools(string $accessToken): array
+{
+    auth()->forgetGuards();
+
+    return test()->withHeaders(['Authorization' => 'Bearer '.$accessToken])
+        ->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'])
+        ->assertOk()
+        ->json('result.tools.*.name');
+}
+
+it('gives the email tools only to a connector that was granted email access', function (): void {
+    $with = completeOauthFlow($this->user, $this->client, $this->personalWorkspace, ['email:read']);
+
+    expect(listedTools($with['access_token']))->toContain('list-emails-tool', 'get-email-tool');
+});
+
+it('keeps the email tools away from a connector authorized without email access', function (): void {
+    $without = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+
+    expect(listedTools($without['access_token']))->not->toContain('list-emails-tool')
+        ->not->toContain('get-email-tool');
+});
