@@ -23,9 +23,18 @@ final readonly class RequireConsentForEmailGrants
         $wouldGainEmail = in_array(Registrar::OAUTH_SCOPE, $requested, true) && EmailGrant::offered() !== [];
 
         if ($namesEmailScope || $wouldGainEmail) {
-            $request->merge(['prompt' => 'consent']);
+            $request->merge(['prompt' => $this->withConsent($request->query('prompt'))]);
         }
 
         return $next($request);
+    }
+
+    // `none` makes Passport ignore every other value and approve without the screen.
+    private function withConsent(mixed $prompt): string
+    {
+        return collect(is_string($prompt) ? explode(' ', $prompt) : [])
+            ->reject(fn (string $value): bool => in_array($value, ['', 'none', 'consent'], true))
+            ->push('consent')
+            ->implode(' ');
     }
 }

@@ -853,6 +853,25 @@ it('shows consent again on a re-authorization, so the token always holds what th
         ->assertSee('name="workspace_id"', false);
 });
 
+it('asks the user to sign in again when a client sends prompt=login', function (): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'prompt' => 'login']))
+        ->assertRedirect(route('login'));
+
+    $this->assertGuest();
+});
+
+it('shows consent on a re-authorization that sends prompt=none', function (): void {
+    completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'prompt' => 'none']))
+        ->assertOk()
+        ->assertSee('name="workspace_id"', false);
+});
+
 it('shows consent when a client names an email scope while the email feature is off', function (): void {
     Feature::define(EmailIntegration::class, false);
 
