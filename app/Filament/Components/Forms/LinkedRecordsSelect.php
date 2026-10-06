@@ -208,17 +208,14 @@ final class LinkedRecordsSelect extends Select
         return $ids;
     }
 
-    /**
-     * WorkspaceScope only applies inside a panel request, so the picker names its workspace.
-     *
-     * @return Builder<Model>
-     */
+    /** @return Builder<Model> */
     private function recordQuery(CrmEntity $entity): Builder
     {
         $model = $entity->model();
         $query = $model::query();
         $workspace = Filament::getTenant();
 
+        // WorkspaceScope only applies inside a panel request, so the picker names its workspace.
         if ($workspace instanceof Workspace) {
             $query->whereBelongsTo($workspace);
         }

@@ -171,7 +171,6 @@ final class TaskResource extends Resource
                 ->sortable()
                 ->toggleable()
                 ->toggledHiddenByDefault(),
-
         ];
     }
 
