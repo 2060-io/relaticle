@@ -236,6 +236,8 @@ final class DataTypeInferencer
             ->where('tenant_id', $this->workspaceId)
             ->whereIn('type', $fieldTypeKeys)
             ->active()
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->pluck('code')
             ->map(fn (string $code): string => "custom_fields_{$code}")
             ->all();

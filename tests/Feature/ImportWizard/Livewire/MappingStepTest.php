@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Events\WorkspaceCreated;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -156,6 +157,38 @@ it('auto-maps a column of linkedin urls to the linkedin field', function (): voi
 
 it('auto-maps a single url column of a company import to the domains field', function (): void {
     $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Site'], [
+        ['Name' => 'Acme', 'Site' => 'https://acme.com'],
+        ['Name' => 'Globex', 'Site' => 'https://globex.com'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Site']['target'])->toBe('custom_fields_domains');
+});
+
+it('suggests the domains field for a url column after its row moved in the heap', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    DB::table('custom_fields')
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', 'domains')
+        ->update(['name' => DB::raw('name')]);
+
+    $physicalOrder = DB::table('custom_fields')
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->whereIn('code', ['domains', 'linkedin'])
+        ->orderByRaw('ctid')
+        ->pluck('code')
+        ->all();
+
+    expect($physicalOrder)->toBe(['linkedin', 'domains']);
 
     createStoreWithHeaders($this, ['Name', 'Site'], [
         ['Name' => 'Acme', 'Site' => 'https://acme.com'],
