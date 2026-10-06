@@ -25,7 +25,6 @@ return [
                 'App\Filament\Resources\PeopleResource::table' => 62,
                 'App\Filament\Resources\TaskResource::table' => 83,
                 'App\Filament\Resources\TaskResource\Pages\TasksBoard::board' => 134,
-                'App\Jobs\FetchFaviconForCompany::handle' => 70,
                 'App\Livewire\App\AccessTokens\ManageAccessTokens::table' => 87,
                 'App\Livewire\App\AccessTokens\ManageOAuthConnectors::table' => 65,
                 'App\Livewire\App\Workspaces\InviteWorkspaceMembers::manageInviteLinkAction' => 84,
