@@ -98,7 +98,7 @@ final readonly class QueueAgentEmailAction
         try {
             $this->notifier->sendHeld($email, $user, $workspace, $via, $holdSeconds);
         } catch (Throwable $exception) {
-            $this->cancelEmail->execute($email);
+            rescue(fn (): Email => $this->cancelEmail->execute($email));
 
             throw $exception;
         }

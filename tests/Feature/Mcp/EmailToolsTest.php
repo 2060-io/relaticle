@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Illuminate\Testing\TestResponse;
@@ -1192,6 +1193,14 @@ it('tells the user an email is held, with a way to cancel it', function (): void
     expect($notification->data['body'])->toContain('Next steps')->toContain('client@acme.test')->toContain('5 minutes')
         ->and(collect($notification->data['actions'])->pluck('name')->all())->toContain('cancelSend')
         ->and(json_encode($notification->data['actions']))->toContain($data['id']);
+});
+
+it('stores the held notice at once, without waiting for the queue', function (): void {
+    Queue::fake();
+
+    emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
+
+    expect($this->viewer->notifications()->count())->toBe(1);
 });
 
 it('names the connection in the notice from the token name', function (): void {

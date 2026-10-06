@@ -44,7 +44,7 @@ final readonly class QueuedSendNotifier
 
     public function sendHeld(Email $email, User $user, Workspace $workspace, string $via, int $holdSeconds): void
     {
-        Notification::make()
+        $notice = Notification::make()
             ->title(__('filament/concerns/email-compose.notifications.held.title', ['via' => e($via)]))
             ->body(__('filament/concerns/email-compose.notifications.held.body', [
                 'subject' => e((string) $email->subject),
@@ -64,7 +64,10 @@ final readonly class QueuedSendNotifier
                     )
                     ->eventData(['emailId' => (string) $email->getKey()]),
             ])
-            ->sendToDatabase($user);
+            ->toDatabase();
+
+        // The queued channel could deliver this after the hold has passed.
+        $user->notifyNow($notice);
     }
 
     private function recipients(Email $email): string
