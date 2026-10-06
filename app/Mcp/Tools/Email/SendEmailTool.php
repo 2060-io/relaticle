@@ -40,7 +40,7 @@ final class SendEmailTool extends Tool
     {
         return [
             'connected_account_id' => $schema->string()->description('The mailbox to send from, from the list email accounts tool. It must have can_send true.')->required(),
-            'to' => $schema->array()->items($schema->string())->description('Recipient email addresses. At most 20 recipients in total across to, cc and bcc.')->required(),
+            'to' => $schema->array()->items($schema->string())->description('Recipient email addresses. At most '.self::MAX_RECIPIENTS.' recipients in total across to, cc and bcc.')->required(),
             'cc' => $schema->array()->items($schema->string())->description('CC email addresses.'),
             'bcc' => $schema->array()->items($schema->string())->description('BCC email addresses.'),
             'subject' => $schema->string()->description('Subject line, up to 255 characters.')->required(),
@@ -102,11 +102,11 @@ final class SendEmailTool extends Tool
     {
         return [
             'connected_account_id' => ['required', 'string', 'max:64'],
-            'to' => ['required', 'array', 'list', 'min:1', 'max:20', $this->withinRecipientLimit($request)],
+            'to' => ['required', 'array', 'list', 'min:1', 'max:'.self::MAX_RECIPIENTS, $this->withinRecipientLimit($request)],
             'to.*' => ['required', 'string', 'email', 'max:255'],
-            'cc' => ['sometimes', 'array', 'list', 'max:20'],
+            'cc' => ['sometimes', 'array', 'list', 'max:'.self::MAX_RECIPIENTS],
             'cc.*' => ['required', 'string', 'email', 'max:255'],
-            'bcc' => ['sometimes', 'array', 'list', 'max:20'],
+            'bcc' => ['sometimes', 'array', 'list', 'max:'.self::MAX_RECIPIENTS],
             'bcc.*' => ['required', 'string', 'email', 'max:255'],
             'subject' => ['required', 'string', 'max:255'],
             'body' => ['required', 'string', 'max:50000'],

@@ -28,7 +28,7 @@ final class GetEmailTool extends Tool
 
     public function shouldRegister(): bool
     {
-        return in_array(EmailGrant::Read, $this->heldEmailGrants(), true);
+        return $this->holdsAnyEmailGrant(EmailGrant::Read);
     }
 
     public function schema(JsonSchema $schema): array

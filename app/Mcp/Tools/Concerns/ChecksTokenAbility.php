@@ -66,8 +66,7 @@ trait ChecksTokenAbility
 
     protected function connectionName(): string
     {
-        /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
-        $token = auth()->user()?->currentAccessToken();
+        $token = $this->currentToken();
 
         $name = match (true) {
             $token instanceof PassportAccessToken => Passport::client()->newQuery()->whereKey($token->oauth_client_id)->value('name'),
@@ -81,8 +80,7 @@ trait ChecksTokenAbility
     /** @return list<string> */
     protected function heldAbilities(): array
     {
-        /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
-        $token = auth()->user()?->currentAccessToken();
+        $token = $this->currentToken();
 
         $emailAbilities = array_column($this->heldEmailGrants(), 'value');
 
@@ -107,8 +105,7 @@ trait ChecksTokenAbility
     /** @return list<EmailGrant> */
     protected function heldEmailGrants(): array
     {
-        /** @var PersonalAccessToken|PassportAccessToken|object|null $token */
-        $token = auth()->user()?->currentAccessToken();
+        $token = $this->currentToken();
 
         if ($token instanceof PassportAccessToken && ! $token->can(Registrar::OAUTH_SCOPE)) {
             return [];
@@ -125,9 +122,12 @@ trait ChecksTokenAbility
             ? (array) $token->oauth_scopes
             : (array) $token->abilities;
 
-        return array_values(array_filter(
-            EmailGrant::offered(),
-            fn (EmailGrant $grant): bool => in_array($grant->value, $literalScopes, true),
-        ));
+        return EmailGrant::fromValues($literalScopes);
+    }
+
+    /** @return PersonalAccessToken|PassportAccessToken|object|null */
+    private function currentToken(): ?object
+    {
+        return auth()->user()?->currentAccessToken();
     }
 }

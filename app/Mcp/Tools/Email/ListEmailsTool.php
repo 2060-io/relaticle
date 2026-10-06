@@ -30,11 +30,13 @@ final class ListEmailsTool extends Tool
     use ChecksTokenAbility;
     use HasReadOnlyToolAnnotations;
 
+    private const int DEFAULT_PER_PAGE = 15;
+
     private const int MAX_PER_PAGE = 25;
 
     public function shouldRegister(): bool
     {
-        return in_array(EmailGrant::Read, $this->heldEmailGrants(), true);
+        return $this->holdsAnyEmailGrant(EmailGrant::Read);
     }
 
     public function schema(JsonSchema $schema): array
@@ -47,7 +49,7 @@ final class ListEmailsTool extends Tool
             'thread_id' => $schema->string()->description('Only emails in this thread, as returned in thread_id.'),
             'sent_after' => $schema->string()->description('ISO 8601 datetime. Only emails sent after it.'),
             'sent_before' => $schema->string()->description('ISO 8601 datetime. Only emails sent before it.'),
-            'per_page' => $schema->integer()->description('Results per page (default 15, max 25).')->default(15),
+            'per_page' => $schema->integer()->description('Results per page (default '.self::DEFAULT_PER_PAGE.', max '.self::MAX_PER_PAGE.').')->default(self::DEFAULT_PER_PAGE),
             'page' => $schema->integer()->description('Page number.')->default(1),
         ];
     }
@@ -88,7 +90,7 @@ final class ListEmailsTool extends Tool
         $page = $emails->paginate(
             $user,
             array_filter(Arr::except($validated, ['per_page', 'page']), filled(...)),
-            (int) ($validated['per_page'] ?? 15),
+            (int) ($validated['per_page'] ?? self::DEFAULT_PER_PAGE),
             (int) ($validated['page'] ?? 1),
         );
 

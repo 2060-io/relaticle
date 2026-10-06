@@ -314,11 +314,6 @@ final class AppServiceProvider extends ServiceProvider
         });
     }
 
-    /**
-     * The blog admin lives in the sysadmin panel, which has no tenancy, so only a
-     * signed-in system administrator gets an edit link on a draft preview. Which
-     * panel and guard own the admin is ours to decide, not the package's.
-     */
     private function configureTokenScopes(): void
     {
         // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
@@ -331,6 +326,11 @@ final class AppServiceProvider extends ServiceProvider
         ]);
     }
 
+    /**
+     * The blog admin lives in the sysadmin panel, which has no tenancy, so only a
+     * signed-in system administrator gets an edit link on a draft preview. Which
+     * panel and guard own the admin is ours to decide, not the package's.
+     */
     private function configureBlog(): void
     {
         Ink::resolvePreviewEditUrlUsing(fn (Post $post): ?string => auth('sysadmin')->check()
