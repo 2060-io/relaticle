@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\App\AccessTokens;
 
+use App\Enums\EmailGrant;
 use App\Livewire\BaseLivewireComponent;
 use App\Models\PersonalAccessToken;
 use Filament\Actions\Action;
@@ -52,7 +53,7 @@ final class ManageAccessTokens extends BaseLivewireComponent implements HasTable
                     ->formatStateUsing(
                         fn (string $state): string => $state === '*'
                             ? __('access-tokens.permissions.all')
-                            : ucfirst($state),
+                            : (EmailGrant::tryFrom($state)?->label() ?? ucfirst($state)),
                     ),
                 TextColumn::make('expires_at')
                     ->label(__('access-tokens.table.columns.expires_at'))
@@ -69,40 +70,7 @@ final class ManageAccessTokens extends BaseLivewireComponent implements HasTable
                     ->dateTimeTooltip(),
             ])
             ->actions([
-                Action::make('permissions')
-                    ->label(__('access-tokens.modals.permissions.action_label'))
-                    ->icon('heroicon-o-lock-closed')
-                    ->iconButton()
-                    ->tooltip('Edit Permissions')
-                    ->modalHeading(fn (PersonalAccessToken $record): string => "Permissions: {$record->name}")
-                    ->modalWidth(Width::Large)
-                    ->fillForm(
-                        fn (PersonalAccessToken $record): array => [
-                            'workspace_id' => $record->workspace_id,
-                            'permissions' => $record->abilities,
-                        ],
-                    )
-                    ->schema([
-                        Hidden::make('workspace_id'),
-                        CreateAccessToken::permissionsCheckboxList(),
-                    ])
-                    ->action(function (
-                        PersonalAccessToken $record,
-                        array $data,
-                    ): void {
-                        $record
-                            ->forceFill([
-                                'abilities' => array_values(array_intersect(
-                                    $data['permissions'] ?? [],
-                                    CreateAccessToken::grantablePermissions($record->workspace_id),
-                                )),
-                            ])
-                            ->save();
-
-                        $this->sendNotification(
-                            title: __('access-tokens.notifications.permissions_updated'),
-                        );
-                    }),
+                $this->permissionsAction(),
                 DeleteAction::make()
                     ->iconButton()
                     ->after(
@@ -114,6 +82,47 @@ final class ManageAccessTokens extends BaseLivewireComponent implements HasTable
             ->emptyStateHeading(__('access-tokens.empty_state.heading'))
             ->emptyStateDescription(__('access-tokens.empty_state.description'))
             ->paginated(false);
+    }
+
+    private function permissionsAction(): Action
+    {
+        return Action::make('permissions')
+            ->label(__('access-tokens.modals.permissions.action_label'))
+            ->icon('heroicon-o-lock-closed')
+            ->iconButton()
+            ->tooltip('Edit Permissions')
+            ->modalHeading(fn (PersonalAccessToken $record): string => "Permissions: {$record->name}")
+            ->modalWidth(Width::Large)
+            ->fillForm(
+                fn (PersonalAccessToken $record): array => [
+                    'workspace_id' => $record->workspace_id,
+                    'permissions' => array_values(array_intersect(
+                        $record->abilities ?? [],
+                        CreateAccessToken::grantablePermissions($record->workspace_id),
+                    )),
+                ],
+            )
+            ->schema([
+                Hidden::make('workspace_id'),
+                CreateAccessToken::permissionsCheckboxList(),
+            ])
+            ->action(function (
+                PersonalAccessToken $record,
+                array $data,
+            ): void {
+                $record
+                    ->forceFill([
+                        'abilities' => array_values(array_intersect(
+                            $data['permissions'] ?? [],
+                            CreateAccessToken::grantablePermissions($record->workspace_id),
+                        )),
+                    ])
+                    ->save();
+
+                $this->sendNotification(
+                    title: __('access-tokens.notifications.permissions_updated'),
+                );
+            });
     }
 
     public function render(): View

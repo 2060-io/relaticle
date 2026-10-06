@@ -179,12 +179,12 @@
 
                     @if($emailGrants !== [])
                         <div>
-                            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ __('mcp.consent.email.heading') }}</h2>
+                            <h2 id="email-access-heading" class="text-sm font-semibold text-gray-900 dark:text-white">{{ __('mcp.consent.email.heading') }}</h2>
                             <p class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                                 {{ __('mcp.consent.email.description') }}
                             </p>
 
-                            <div class="mt-3 space-y-2">
+                            <div class="mt-3 space-y-2" role="group" aria-labelledby="email-access-heading">
                                 @foreach($emailGrants as $grant)
                                     <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition-colors hover:border-gray-300 hover:bg-gray-50 has-[:checked]:border-primary has-[:checked]:bg-primary-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:bg-gray-800/50 dark:has-[:checked]:border-primary-400 dark:has-[:checked]:bg-primary-950/50">
                                         <input type="checkbox" name="scopes[]" value="{{ $grant->value }}" form="authorizeForm" class="mt-0.5 size-4 shrink-0 accent-primary">

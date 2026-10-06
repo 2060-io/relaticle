@@ -23,7 +23,6 @@ return [
                 'App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard::board' => 136,
                 'App\Filament\Resources\PeopleResource::table' => 62,
                 'App\Filament\Resources\TaskResource\Pages\TasksBoard::board' => 134,
-                'App\Livewire\App\AccessTokens\ManageAccessTokens::table' => 87,
                 'App\Livewire\App\AccessTokens\ManageOAuthConnectors::table' => 65,
                 'App\Livewire\App\Workspaces\InviteWorkspaceMembers::manageInviteLinkAction' => 84,
                 'App\Mcp\Tools\BaseListTool::handle' => 89,

@@ -180,3 +180,28 @@ test('a viewer is offered read and email read and draft, and cannot create a tok
 
     expect($viewer->fresh()->tokens)->toBeEmpty();
 })->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
+
+test('a member creates a pinned token holding every email ability', function () {
+    $this->actingAs($user = User::factory()->withWorkspace()->create());
+
+    livewire(CreateAccessToken::class)
+        ->fillForm([
+            'name' => 'Mail Token',
+            'workspace_id' => $user->currentWorkspace->id,
+            'expiration' => '30',
+            'permissions' => ['read', 'email:read', 'email:send'],
+        ])
+        ->call('createToken')
+        ->assertHasNoFormErrors();
+
+    expect($user->fresh()->tokens->first()->abilities)->toBe(['read', 'email:read', 'email:send']);
+})->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
+
+test('a token not pinned to a workspace is offered no email ability', function () {
+    $this->actingAs(User::factory()->withWorkspace()->create());
+
+    livewire(CreateAccessToken::class)
+        ->fillForm(['workspace_id' => null])
+        ->assertFormFieldExists('permissions', fn (CheckboxList $field): bool => $field->getOptions() !== []
+            && array_filter(array_keys($field->getOptions()), fn (int|string $key): bool => str_starts_with((string) $key, 'email:')) === []);
+})->skip(fn () => ! Features::hasApiFeatures(), 'API support is not enabled.');
