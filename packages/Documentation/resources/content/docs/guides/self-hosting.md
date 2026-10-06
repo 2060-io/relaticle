@@ -194,14 +194,14 @@ Toggle features on or off. All are enabled by default unless noted. Useful for f
 
 ### Access Control
 
-Restrict who can sign up and who can create teams. Both default to `false` so the very first account and team can be created on a fresh instance; enable them once your initial team and administrators exist.
+Restrict who can sign up and who can create workspaces on a private instance. Both default to `false` so the very first account and workspace can be created on a fresh install; enable them once your workspace and its administrators exist.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RELATICLE_REGISTRATION_INVITATION_ONLY` | `false` | When `true`, a new account can only be created for an email address that has an **unexpired pending team invitation**. Applies to both password registration and social login (Google/GitHub) — an uninvited email cannot create an account. Existing users are unaffected. |
-| `RELATICLE_TEAM_CREATION_ADMINS_ONLY` | `false` | When `true`, only a user who owns or is an Administrator of at least one existing team may create new teams. |
+| `RELATICLE_REGISTRATION_INVITATION_ONLY` | `false` | When `true`, a new account can only be opened for an email address that has an **unexpired workspace invitation**, or by a visitor who arrived through an **active invite link**. Applies to password and social sign-up alike. Existing users are unaffected. |
+| `RELATICLE_WORKSPACE_CREATION_ADMINS_ONLY` | `false` | When `true`, only a user who owns or is an Administrator of at least one existing workspace may create new workspaces. Invited members and viewers cannot. |
 
-> **Bootstrap note:** keep both flags at `false` until your first team and administrators exist, then enable them and restart. Turning them on against an empty instance would prevent anyone from creating the first account or team.
+> **Bootstrap note:** keep both flags at `false` until your first workspace and administrators exist, then enable them and restart. Turning them on against an empty instance would prevent anyone from creating the first account or workspace.
 
 ---
 

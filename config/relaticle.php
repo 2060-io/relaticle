@@ -31,10 +31,32 @@ return [
     | belong to someone else and never count. A workspace scheduled for
     | deletion still occupies a slot until the grace period above elapses.
     |
+    | creation_admins_only limits new workspaces to users who already own, or
+    | administer, one. Off by default so the first workspace of a fresh
+    | instance can be created by whoever signs up first.
+    |
     */
 
     'workspaces' => [
         'max_owned_per_user' => (int) env('RELATICLE_MAX_OWNED_WORKSPACES', 10),
+        'creation_admins_only' => (bool) env('RELATICLE_WORKSPACE_CREATION_ADMINS_ONLY', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Registration
+    |--------------------------------------------------------------------------
+    |
+    | When invitation_only is true, a new account can only be opened for an
+    | email that holds an unexpired workspace invitation, or by a visitor who
+    | arrived through an active workspace invite link. Password and social
+    | sign-up are both covered; existing users are unaffected. Off by default
+    | so the first account of a fresh instance can be created.
+    |
+    */
+
+    'registration' => [
+        'invitation_only' => (bool) env('RELATICLE_REGISTRATION_INVITATION_ONLY', false),
     ],
 
     /*
@@ -66,39 +88,6 @@ return [
         'support_menu' => (bool) env('RELATICLE_FEATURE_SUPPORT_MENU', false),
         'blog' => (bool) env('RELATICLE_FEATURE_BLOG', false),
         'setup_conversation' => (bool) env('RELATICLE_FEATURE_SETUP_CONVERSATION', true),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Registration access control
-    |--------------------------------------------------------------------------
-    |
-    | When invitation_only is true, a new account can only be created for an
-    | email address that has at least one unexpired pending team invitation.
-    | This applies to both password registration and social login
-    | (Google/GitHub) — an uninvited email cannot bootstrap an account.
-    | Existing users are unaffected. Defaults to false so the very first
-    | account/team can be created.
-    |
-    */
-
-    'registration' => [
-        'invitation_only' => (bool) env('RELATICLE_REGISTRATION_INVITATION_ONLY', false),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Team creation access control
-    |--------------------------------------------------------------------------
-    |
-    | When creation_admins_only is true, only a user who owns or is an
-    | Administrator of at least one existing team may create new teams.
-    | Defaults to false so the first team can be created by anyone.
-    |
-    */
-
-    'teams' => [
-        'creation_admins_only' => (bool) env('RELATICLE_TEAM_CREATION_ADMINS_ONLY', false),
     ],
 
 ];
