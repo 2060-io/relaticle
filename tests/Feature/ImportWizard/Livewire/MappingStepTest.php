@@ -142,6 +142,51 @@ it('offers the opportunity contact link as point of contact', function (): void 
     ])->assertSee('Point of Contact');
 });
 
+it('auto-maps a column of linkedin urls to the linkedin field', function (): void {
+    createStoreWithHeaders($this, ['Name', 'Profile'], [
+        ['Name' => 'Ada', 'Profile' => 'https://linkedin.com/in/ada'],
+        ['Name' => 'Grace', 'Profile' => 'https://linkedin.com/in/grace'],
+    ]);
+
+    $columns = mountMappingStep($this)->get('columns');
+
+    expect($columns)->toHaveKey('Profile')
+        ->and($columns['Profile']['target'])->toBe('custom_fields_linkedin');
+});
+
+it('auto-maps a single url column of a company import to the domains field', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Site'], [
+        ['Name' => 'Acme', 'Site' => 'https://acme.com'],
+        ['Name' => 'Globex', 'Site' => 'https://globex.com'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Site']['target'])->toBe('custom_fields_domains');
+});
+
+it('maps a second url column of a company import to the other link field', function (): void {
+    $this->import->update(['entity_type' => ImportEntityType::Company]);
+
+    createStoreWithHeaders($this, ['Name', 'Site', 'Profile'], [
+        ['Name' => 'Acme', 'Site' => 'https://acme.com', 'Profile' => 'https://linkedin.com/company/acme'],
+        ['Name' => 'Globex', 'Site' => 'https://globex.com', 'Profile' => 'https://linkedin.com/company/globex'],
+    ]);
+
+    $columns = Livewire::test(MappingStep::class, [
+        'storeId' => $this->store->id(),
+        'entityType' => ImportEntityType::Company,
+    ])->get('columns');
+
+    expect($columns['Site']['target'])->toBe('custom_fields_domains')
+        ->and($columns['Profile']['target'])->toBe('custom_fields_linkedin');
+});
+
 it('mapToField updates column mapping', function (): void {
     createStoreWithHeaders($this, ['Full Name', 'Notes']);
 

@@ -22,6 +22,9 @@ final class DataTypeInferencer
     /** @var array<string, string> Validation rule key => field type key */
     private array $validationToFieldType = [];
 
+    /** @var array<string, list<string>> Validation rule key => every field type key that shares it */
+    private array $validationToSharingFieldTypes = [];
+
     /** @var array<string, string> FieldDataType value => field type key */
     private array $dataTypeToFieldType = [];
 
@@ -79,7 +82,7 @@ final class DataTypeInferencer
         return new InferenceResult(
             type: $topType,
             confidence: $confidence,
-            suggestedFields: $this->getSuggestedFieldsForType($topType),
+            suggestedFields: $this->getSuggestedFieldsForType($this->fieldTypesSharingKeyOf($topType)),
         );
     }
 
@@ -107,7 +110,8 @@ final class DataTypeInferencer
                 foreach ($itemRules as $rule) {
                     $validationKey = $this->extractValidationKey($rule);
                     if ($validationKey !== null) {
-                        $this->validationToFieldType[$validationKey] = $data->key;
+                        $this->validationToFieldType[$validationKey] ??= $data->key;
+                        $this->validationToSharingFieldTypes[$validationKey][] = $data->key;
                         break;
                     }
                 }
@@ -198,13 +202,28 @@ final class DataTypeInferencer
     }
 
     /**
-     * Get suggested field keys for a detected field type.
+     * @return list<string>
+     */
+    private function fieldTypesSharingKeyOf(string $fieldTypeKey): array
+    {
+        foreach ($this->validationToSharingFieldTypes as $fieldTypeKeys) {
+            if (in_array($fieldTypeKey, $fieldTypeKeys, true)) {
+                return $fieldTypeKeys;
+            }
+        }
+
+        return [$fieldTypeKey];
+    }
+
+    /**
+     * Get suggested field keys for the detected field types.
      *
      * Queries actual custom fields configured for the entity.
      *
+     * @param  list<string>  $fieldTypeKeys
      * @return array<string>
      */
-    private function getSuggestedFieldsForType(string $fieldTypeKey): array
+    private function getSuggestedFieldsForType(array $fieldTypeKeys): array
     {
         if ($this->entityName === null || $this->workspaceId === null) {
             return [];
@@ -215,7 +234,7 @@ final class DataTypeInferencer
             ->withoutGlobalScopes()
             ->where('entity_type', $this->entityName)
             ->where('tenant_id', $this->workspaceId)
-            ->where('type', $fieldTypeKey)
+            ->whereIn('type', $fieldTypeKeys)
             ->active()
             ->pluck('code')
             ->map(fn (string $code): string => "custom_fields_{$code}")
