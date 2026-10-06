@@ -155,7 +155,7 @@ Add this to your VS Code settings (`.vscode/mcp.json`):
 
 ## Available Tools
 
-The server provides 39 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, and file uploads.
+The server provides 40 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, and file uploads.
 
 ### Cross-entity discovery
 
@@ -233,6 +233,14 @@ The server provides 39 tools. They cover account context, cross-entity discovery
 | `delete-note-tool` | Soft-delete a note by ID |
 | `attach-note-to-entities-tool` | Link a note to companies, people, or opportunities. Adds without removing existing links. |
 | `detach-note-from-entities-tool` | Unlink a note from companies, people, or opportunities |
+
+### Email
+
+These tools appear only for a connection that was given email access. They show the synced email its user may see, at the sharing level the mailbox owner chose.
+
+| Tool | Description |
+|------|-------------|
+| `list-emails-tool` | List synced emails newest first, with optional search, linked record, direction, thread and date filters. Subject and snippet appear only where the sharing level allows. |
 
 ### Files
 

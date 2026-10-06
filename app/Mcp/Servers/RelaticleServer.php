@@ -19,6 +19,7 @@ use App\Mcp\Tools\Company\GetCompanyTool;
 use App\Mcp\Tools\Company\ListCompaniesTool;
 use App\Mcp\Tools\Company\UpdateCompanyTool;
 use App\Mcp\Tools\CreateUploadUrlTool;
+use App\Mcp\Tools\Email\ListEmailsTool;
 use App\Mcp\Tools\FetchTool;
 use App\Mcp\Tools\GetCrmSchemaTool;
 use App\Mcp\Tools\GetCrmSummaryTool;
@@ -114,6 +115,7 @@ final class RelaticleServer extends Server
         DeleteNoteTool::class,
         AttachNoteToEntitiesTool::class,
         DetachNoteFromEntitiesTool::class,
+        ListEmailsTool::class,
     ];
 
     /** @var array<int, class-string<Server\Resource>> */
