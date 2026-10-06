@@ -59,11 +59,8 @@ final readonly class SendEmailAction
      * }  $data
      * @param  class-string|null  $linkToType
      */
-    public function execute(array $data, ?string $linkToType = null, ?string $linkToId = null): Email
+    public function execute(User $user, array $data, ?string $linkToType = null, ?string $linkToId = null): Email
     {
-        /** @var User $user */
-        $user = auth()->user();
-
         /** @var ConnectedAccount $account */
         $account = ConnectedAccount::query()
             ->ownedBy($user, $user->currentWorkspace)

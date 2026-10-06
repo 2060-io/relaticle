@@ -467,15 +467,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         $bodyHtml = $this->bodyHtmlForPersistence();
 
-        // `bodyHtml`'s raw state is never truly "empty" (an untouched RichEditor still
-        // holds a structural `<p></p>` doc), so `required` can never catch a blank
-        // message. Check the dehydrated text instead. A signature-only email (no
-        // free text, just the signature block) is legitimate and must still send.
-        if (
-            trim(strip_tags($bodyHtml)) === ''
-            && ! str_contains($bodyHtml, 'data-id="'.SignatureBlock::ID.'"')
-            && ! str_contains($bodyHtml, '<img')
-        ) {
+        if ($this->isBlankBody($bodyHtml)) {
             $this->addError('bodyHtml', __('filament/emails/composer.validation.body_required'));
 
             return;
@@ -506,6 +498,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         $linkRecord = $this->linkRecord();
 
         $email = resolve(SendEmailAction::class)->execute(
+            user: $this->authUser(),
             data: [
                 'connected_account_id' => (string) $this->accountId,
                 'subject' => $renderer->renderPlainText((string) $this->subject, $mergeTagRecord),
@@ -544,6 +537,19 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         // A send both removes the draft (if any) and adds an outbox row.
         $this->dispatch('drafts:changed');
         $this->dispatch('outbox:changed');
+    }
+
+    /**
+     * `bodyHtml`'s raw state is never truly "empty" (an untouched RichEditor still
+     * holds a structural `<p></p>` doc), so `required` can never catch a blank
+     * message. Check the dehydrated text instead. A signature-only email (no
+     * free text, just the signature block) is legitimate and must still send.
+     */
+    private function isBlankBody(string $bodyHtml): bool
+    {
+        return trim(strip_tags($bodyHtml)) === ''
+            && ! str_contains($bodyHtml, 'data-id="'.SignatureBlock::ID.'"')
+            && ! str_contains($bodyHtml, '<img');
     }
 
     private function sendMass(): void
