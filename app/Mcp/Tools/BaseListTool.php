@@ -38,8 +38,6 @@ abstract class BaseListTool extends Tool
 
     private const int MAX_PER_PAGE = 25;
 
-    private const int MAX_PAGE = 1_000_000;
-
     /** @var list<string> */
     private const array ARGUMENTS = ['filter', 'sort', 'include', 'per_page', 'page'];
 
@@ -55,7 +53,7 @@ abstract class BaseListTool extends Tool
             'sort' => $schema->object()->description('Sort by field. Properties: field (string), direction (asc|desc).'),
             'include' => $schema->array()->description('Singular relationships or relationship counts to expand. Use a show tool for to-many records.'),
             'per_page' => $schema->integer()->description('Results per page (default 15, max 25).')->default(15),
-            'page' => $schema->integer()->description('Page number (max 1,000,000).')->default(1),
+            'page' => $schema->integer()->description('Page number (max '.number_format(ListQuery::MAX_PAGE).').')->default(1),
         ];
     }
 
@@ -86,7 +84,7 @@ abstract class BaseListTool extends Tool
             'sort.field' => ['string'],
             'sort.direction' => ['sometimes', 'string', Rule::in(['asc', 'desc'])],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:'.self::MAX_PER_PAGE],
-            'page' => ['sometimes', 'integer', 'min:1', 'max:'.self::MAX_PAGE],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:'.ListQuery::MAX_PAGE],
             'include' => ['sometimes', 'array', 'list', 'max:20'],
             'include.*' => ['string', 'distinct'],
         ]);

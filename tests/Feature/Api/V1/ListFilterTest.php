@@ -998,6 +998,25 @@ it('treats a null or empty cursor, page and per_page as not sent', function (arr
     'all null' => [['cursor' => null, 'page' => null, 'per_page' => null]],
 ]);
 
+it('rejects a page number past the last one a list serves', function (int $page): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $this->getJson("/api/v1/companies?page={$page}")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['page']);
+})->with([
+    'one past the cap' => [1_000_001],
+    'the largest integer' => [PHP_INT_MAX],
+]);
+
+it('serves the last page number a list accepts', function (): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $this->getJson('/api/v1/companies?page=1000000')
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+});
+
 it('rejects a query body that is not a json object', function (string $content, string $contentType): void {
     Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme']);
 

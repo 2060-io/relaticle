@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Scribe\Strategies;
 
+use App\Data\ListQuery;
 use App\Queries\Contracts\EntityQuery;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use ReflectionNamedType;
@@ -106,7 +107,7 @@ trait DescribesListEndpoint
             'page' => [
                 'type' => 'integer',
                 'required' => false,
-                'description' => 'Page number for offset pagination (when cursor is not used). Default: 1.',
+                'description' => 'Page number for offset pagination (1-'.number_format(ListQuery::MAX_PAGE).', when cursor is not used). Default: 1.',
                 'example' => 1,
             ],
         ];

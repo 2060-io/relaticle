@@ -9,6 +9,8 @@ use Illuminate\Support\Arr;
 
 final readonly class ListQuery
 {
+    public const int MAX_PAGE = 1_000_000;
+
     /**
      * @param  array<int|string, mixed>|string|null  $include
      * @param  array<int|string, mixed>|string|null  $fields

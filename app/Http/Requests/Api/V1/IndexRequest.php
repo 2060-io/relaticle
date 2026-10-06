@@ -29,7 +29,7 @@ final class IndexRequest extends FormRequest
         return [
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'cursor' => ['sometimes'],
-            'page' => ['sometimes', 'integer', 'min:1'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:'.ListQuery::MAX_PAGE],
             'include' => ['sometimes', 'string'],
             'sort' => ['sometimes', 'string'],
             'fields' => ['sometimes', $this->fieldNames(...)],
