@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d801c8af21db6ba181960a3d2282dcc3",
+    "content-hash": "c4b2bd0bffdcc5003622cf71a86d5ea5",
     "packages": [
         {
             "name": "andreiio/blade-remix-icon",
@@ -10529,16 +10529,16 @@
         },
         {
             "name": "relaticle/custom-fields",
-            "version": "v3.13.1",
+            "version": "dev-feat/system-only-field-types",
             "source": {
                 "type": "git",
                 "url": "https://github.com/relaticle/custom-fields.git",
-                "reference": "8c044d71c0ba603f1af3f230c4b4adeef53c86c3"
+                "reference": "5e787f938f89702379410ab92931c85fdb64cd79"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/8c044d71c0ba603f1af3f230c4b4adeef53c86c3",
-                "reference": "8c044d71c0ba603f1af3f230c4b4adeef53c86c3",
+                "url": "https://api.github.com/repos/relaticle/custom-fields/zipball/5e787f938f89702379410ab92931c85fdb64cd79",
+                "reference": "5e787f938f89702379410ab92931c85fdb64cd79",
                 "shasum": ""
             },
             "require": {
@@ -10555,10 +10555,10 @@
                 "laravel/pint": "^1.0",
                 "nunomaduro/collision": "^8.1",
                 "orchestra/testbench": "^10.0|^11.0",
-                "pestphp/pest": "^4.0",
-                "pestphp/pest-plugin-arch": "^4.0",
-                "pestphp/pest-plugin-laravel": "^4.0",
-                "pestphp/pest-plugin-type-coverage": "^4.0",
+                "pestphp/pest": "^4.0|^5.0",
+                "pestphp/pest-plugin-arch": "^4.0|^5.0",
+                "pestphp/pest-plugin-laravel": "^4.0|^5.0",
+                "pestphp/pest-plugin-type-coverage": "^4.0|^5.0",
                 "phpstan/phpstan-deprecation-rules": "^2.0",
                 "phpstan/phpstan-phpunit": "^2.0",
                 "rector/rector": "^2.6",
@@ -10624,7 +10624,7 @@
                 "issues": "https://github.com/relaticle/custom-fields/issues",
                 "source": "https://github.com/relaticle/custom-fields"
             },
-            "time": "2026-10-05T16:20:34+00:00"
+            "time": "2026-10-06T12:42:49+00:00"
         },
         {
             "name": "relaticle/flowforge",
@@ -25187,9 +25187,17 @@
             "time": "2026-10-03T05:13:37+00:00"
         }
     ],
-    "aliases": [],
+    "aliases": [
+        {
+            "package": "relaticle/custom-fields",
+            "version": "dev-feat/system-only-field-types",
+            "alias": "3.14.0",
+            "alias_normalized": "3.14.0.0"
+        }
+    ],
     "minimum-stability": "beta",
     "stability-flags": {
+        "relaticle/custom-fields": 20,
         "spatie/guidelines-skills": 20
     },
     "prefer-stable": true,
