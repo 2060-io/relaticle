@@ -109,6 +109,12 @@ enum CrmEntity: string
         return IconPath::for($this->icon());
     }
 
+    /** @return list<self> */
+    public static function linkable(): array
+    {
+        return [self::Company, self::People, self::Opportunity];
+    }
+
     public static function tryFromModel(Model $record): ?self
     {
         foreach (self::cases() as $case) {
