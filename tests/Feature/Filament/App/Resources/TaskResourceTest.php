@@ -16,6 +16,8 @@ use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\RichEditor;
 use Filament\Schemas\Components\Component;
+use Filament\Support\Enums\IconSize;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\Column;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +25,8 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+
+use function Filament\Support\generate_icon_html;
 
 mutates(ManageTasks::class, NotifyTaskAssignees::class, TaskResource::class);
 
@@ -49,6 +53,13 @@ it('heads every column but the task title with an icon', function (): void {
         ->assertTableColumnExists('relations', $hasIcon)
         ->assertTableColumnExists('assignees.name', $hasIcon)
         ->assertTableColumnExists('created_at', $hasIcon);
+});
+
+it('heads the relations column with the link icon', function (): void {
+    $linkIcon = generate_icon_html(Heroicon::OutlinedLink, size: IconSize::Small)->toHtml();
+
+    livewire(ManageTasks::class)
+        ->assertTableColumnExists('relations', fn (Column $column): bool => str_contains((string) $column->getLabel(), $linkIcon));
 });
 
 it('exposes the expected table columns', function (): void {

@@ -225,6 +225,14 @@ it('falls back to the list when the remembered view no longer exists', function 
     expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('index'));
 });
 
+it('falls back to the list when the board the user opened last is no longer available', function (): void {
+    TaskResource::rememberViewMode('board');
+
+    $this->statusField->update(['active' => false]);
+
+    expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('index'));
+});
+
 it('links the sidebar to the board on the next page after the user opens it', function (): void {
     $this->get(TaskResource::getUrl('board'))->assertOk();
 
