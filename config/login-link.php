@@ -12,18 +12,23 @@ return [
     'allowed_environments' => ['local'],
 
     /*
-     * Login links will only work in these hosts. In all
-     * other hosts, an exception will be thrown.
+     * Login links will only work in these hosts. Only development hosts
+     * survive the filter: .env.example ships APP_ENV=local, so a public
+     * hostname must fail here even when the environment check passes.
      */
-    'allowed_hosts' => array_filter([
-        'localhost',
-        '127.0.0.1',
-        'relaticle.test',
-        'app.relaticle.test',
-        parse_url((string) config('app.url'), PHP_URL_HOST),
-        config('app.app_panel_domain'),
-        config('app.sysadmin_domain'),
-    ]),
+    'allowed_hosts' => array_values(array_unique(array_filter(
+        [
+            'localhost',
+            '127.0.0.1',
+            'relaticle.test',
+            'app.relaticle.test',
+            parse_url((string) config('app.url'), PHP_URL_HOST),
+            config('app.app_panel_domain'),
+            config('app.sysadmin_domain'),
+        ],
+        fn (mixed $host): bool => is_string($host)
+            && (in_array($host, ['localhost', '127.0.0.1'], true) || str_ends_with($host, '.test')),
+    ))),
 
     /*
      * The package will automatically create a user model when trying

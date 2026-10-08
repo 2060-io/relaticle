@@ -33,6 +33,7 @@ use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Spatie\LoginLink\Exceptions\DidNotFindUserToLogIn;
+use Spatie\LoginLink\Exceptions\NotAllowedInCurrentHost;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Helpers\PasskeyAssertionFixture;
 
@@ -444,6 +445,40 @@ it('limits the staff development login link to the local environment', function 
         expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
     }
 })->with(['local', 'production']);
+
+it('allows the local login link only on development hosts', function (string $host, bool $allowed): void {
+    $cookies = [];
+    $administrator = SystemAdministrator::factory()->create();
+    config()->set('app.url', "https://{$host}");
+    config()->set('app.app_panel_domain', null);
+    config()->set('app.sysadmin_domain', $host);
+    config()->set('login-link.allowed_hosts', (require config_path('login-link.php'))['allowed_hosts']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+    $this->withoutMiddleware(PreventRequestForgery::class);
+    Exceptions::dontReport(NotAllowedInCurrentHost::class);
+
+    $response = isolatedAuthRequest($cookies, 'POST', "https://{$host}/laravel-login-link-login", [
+        'email' => $administrator->email,
+        'guard' => 'sysadmin',
+        'user_model' => SystemAdministrator::class,
+        'redirect_url' => "https://{$host}/",
+    ]);
+
+    if ($allowed) {
+        $response->assertRedirect("https://{$host}/");
+
+        return;
+    }
+
+    $response->assertServerError();
+    expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
+})->with([
+    'public host' => ['crm.example.com', false],
+    'development host' => ['staff.example.test', true],
+]);
 
 it('does not create a user for an unknown address through the local login link', function (): void {
     $cookies = [];
