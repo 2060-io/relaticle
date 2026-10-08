@@ -56,6 +56,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'trusted_hosts' => array_filter(explode(',', (string) env('TRUSTED_HOSTS', ''))),
+
     /*
     |--------------------------------------------------------------------------
     | System Administrator Panel Configuration

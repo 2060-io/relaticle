@@ -81,6 +81,7 @@ These must be set or the containers will refuse to start.
 | `APP_DEBUG` | `false` | Set to `true` only for debugging. Never in production. |
 | `APP_TIMEZONE` | `UTC` | Application timezone. |
 | `APP_URL` | `http://localhost` | Full URL where Relaticle is accessible. Include the scheme. |
+| `TRUSTED_HOSTS` | `localhost` | Extra hostnames the app accepts, comma separated. The `APP_URL` host and any `*_DOMAIN` hosts are always accepted. Keep `localhost` in the list, because the container health check calls it. |
 | `APP_PORT` | `80` | Host port the app container binds to. |
 | `APP_PANEL_DOMAIN` | (empty) | Set for subdomain routing (e.g., `app.example.com`). Leave empty for path mode (`/app`). |
 | `PASSKEYS_USER_HANDLE_SECRET` | `APP_KEY` | Derives the opaque WebAuthn user handle stored on each authenticator. Set it to its own random value (`openssl rand -base64 32`) before anyone registers a passkey, so rotating `APP_KEY` later does not change every user's handle. |
@@ -298,6 +299,8 @@ labels:
 ```
 
 **Note**: When using a reverse proxy, set `APP_URL` to your public HTTPS URL (e.g., `https://crm.example.com`). The app trusts `X-Forwarded-*` headers from RFC1918 private networks, loopback, and IPv6 ULA/link-local, which covers Coolify/Dokploy/Traefik on a Docker network and reverse proxies on the host. Headers from public IPs are rejected, preventing spoofing.
+
+The app only accepts requests whose `Host` header matches `APP_URL`, `www.` plus that host, a configured `*_DOMAIN`, or an entry in `TRUSTED_HOSTS`. Any other host gets a 400. Your proxy must forward the real `Host` header (Nginx `proxy_set_header Host $host;`) and must not pass a client-supplied `X-Forwarded-Host` through. The app ignores `X-Forwarded-Host` and `X-Forwarded-Prefix`. Probes that call the container by IP or an internal name need that name in `TRUSTED_HOSTS`, or they should send the configured domain as the `Host` header.
 
 ---
 

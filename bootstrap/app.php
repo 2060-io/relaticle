@@ -93,7 +93,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 '::1/128',
                 'fc00::/7',
                 'fe80::/10',
-            ]);
+            ], headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PORT);
         }
 
         $middleware->prepend(SubdomainRootResponse::class);
@@ -115,10 +117,10 @@ return Application::configure(basePath: dirname(__DIR__))
             ],
         );
 
-        // Only enforced on multi-host deployments (any *_DOMAIN configured);
-        // the framework already skips TrustHosts in local and test runs.
         // Anchored patterns, because Symfony matches them as unanchored regex.
         $middleware->trustHosts(at: function (): array {
+            $primaryHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+
             $dedicatedDomains = array_filter(
                 [
                     config('app.api_domain'),
@@ -129,21 +131,16 @@ return Application::configure(basePath: dirname(__DIR__))
                 fn (mixed $domain): bool => is_string($domain) && $domain !== '',
             );
 
-            if ($dedicatedDomains === []) {
-                return [];
-            }
-
-            $primaryHost = parse_url((string) config('app.url'), PHP_URL_HOST);
-
             $hosts = array_filter([
                 $primaryHost,
                 is_string($primaryHost) ? "www.{$primaryHost}" : null,
                 ...array_values($dedicatedDomains),
+                ...config('app.trusted_hosts'),
             ], is_string(...));
 
             return array_map(
                 fn (string $host): string => '^'.preg_quote($host).'$',
-                array_values($hosts),
+                array_values(array_unique($hosts)),
             );
         }, subdomains: false);
 
