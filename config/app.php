@@ -56,7 +56,7 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
-    'trusted_hosts' => array_filter(explode(',', (string) env('TRUSTED_HOSTS', ''))),
+    'trusted_hosts' => array_filter(array_map('trim', explode(',', (string) env('TRUSTED_HOSTS', '')))),
 
     /*
     |--------------------------------------------------------------------------

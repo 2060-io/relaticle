@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Enums\Notifications\NotificationType;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 function withProdHostTrust(): void
 {
@@ -20,7 +23,9 @@ it('ignores a forged X-Forwarded-Host when building URLs', function () {
     $response = $this->withHeaders(['X-Forwarded-Host' => 'evil.test'])
         ->get('https://crm.example.com/app/login');
 
-    expect($response->getContent())->not->toContain('evil.test');
+    $response->assertOk()
+        ->assertSee('https://crm.example.com/livewire-', false)
+        ->assertDontSee('evil.test', false);
 });
 
 it('admits the configured application host', function () {
@@ -40,4 +45,22 @@ it('admits a host listed in TRUSTED_HOSTS', function () {
     config()->set('app.trusted_hosts', ['health.internal']);
 
     $this->get('https://health.internal/up')->assertSuccessful();
+});
+
+it('does not validate a signed URL replayed under a different host', function () {
+    withProdHostTrust();
+    config()->set('app.trusted_hosts', ['health.internal']);
+
+    URL::forceRootUrl('https://crm.example.com');
+    URL::forceScheme('https');
+
+    $signedUrl = URL::signedRoute('mail.unsubscribe', [
+        'user' => User::factory()->create(),
+        'type' => NotificationType::TaskDigest->value,
+    ]);
+
+    expect($signedUrl)->toStartWith('https://crm.example.com/');
+
+    $this->get($signedUrl)->assertOk();
+    $this->get(str_replace('crm.example.com', 'health.internal', $signedUrl))->assertForbidden();
 });
