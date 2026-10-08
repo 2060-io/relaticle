@@ -11,6 +11,7 @@ use App\Models\Workspace;
 use App\Models\WorkspaceInvitation as WorkspaceInvitationModel;
 use App\Rules\RegistrableEmail;
 use App\Support\EmailAddress;
+use App\Support\Workspaces\InvitationCeiling;
 use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -29,6 +30,8 @@ use Laravel\Jetstream\Rules\Role;
 
 final readonly class InviteWorkspaceMember implements InvitesTeamMembers
 {
+    public function __construct(private InvitationCeiling $ceiling) {}
+
     /**
      * Invite a new workspace member to the given workspace.
      *
@@ -47,6 +50,8 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
         $email = EmailAddress::canonicalize($email);
 
         $this->validate($workspace, $email, $role);
+
+        $this->ceiling->consume($workspace);
 
         event(new InvitingTeamMember($workspace, $email, $role));
 

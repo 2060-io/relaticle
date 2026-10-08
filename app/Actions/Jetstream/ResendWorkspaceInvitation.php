@@ -6,12 +6,17 @@ namespace App\Actions\Jetstream;
 
 use App\Mail\WorkspaceInvitationMail;
 use App\Models\WorkspaceInvitation as WorkspaceInvitationModel;
+use App\Support\Workspaces\InvitationCeiling;
 use Illuminate\Support\Facades\Mail;
 
 final readonly class ResendWorkspaceInvitation
 {
+    public function __construct(private InvitationCeiling $ceiling) {}
+
     public function resend(WorkspaceInvitationModel $invitation): void
     {
+        $this->ceiling->consume($invitation->workspace);
+
         $rawToken = $invitation->issueToken();
         $invitation->save();
 

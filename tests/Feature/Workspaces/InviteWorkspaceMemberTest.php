@@ -6,6 +6,7 @@ use App\Actions\Jetstream\InviteWorkspaceMember;
 use App\Actions\Workspace\CreateWorkspaceInvitation;
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
+use App\Exceptions\WorkspaceInvitationRateLimitedException;
 use App\Livewire\App\Workspaces\InviteWorkspaceMembers;
 use App\Livewire\App\Workspaces\InviteWorkspaceMembersModal;
 use App\Livewire\App\Workspaces\WorkspaceMembers;
@@ -509,4 +510,85 @@ test('the compare-roles modal marks every cell exactly as WorkspaceRole::capabil
                 ->not->toContain($otherText);
         }
     }
+});
+
+function inviteAsEachAdmin(User $owner, int $count, string $prefix): void
+{
+    $admins = User::factory()->count(3)->create();
+
+    foreach ($admins as $admin) {
+        $owner->currentWorkspace->users()->attach($admin, ['role' => WorkspaceRole::Admin->value]);
+    }
+
+    foreach (range(1, $count) as $i) {
+        resolve(InviteWorkspaceMember::class)->invite(
+            $admins[$i % 3],
+            $owner->currentWorkspace,
+            "{$prefix}{$i}@example.com",
+            WorkspaceRole::Member->value,
+        );
+    }
+}
+
+test('invitations are capped per workspace across different inviting users', function (): void {
+    inviteAsEachAdmin($this->user, 50, 'relay');
+
+    expect(fn () => resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'one-too-many@example.com', WorkspaceRole::Member->value))
+        ->toThrow(WorkspaceInvitationRateLimitedException::class);
+
+    expect($this->workspace->workspaceInvitations()->count())->toBe(50);
+    Mail::assertQueuedCount(50);
+});
+
+test('the workspace ceiling reaches the invite form as the rate limit notification', function (): void {
+    inviteAsEachAdmin($this->user, 50, 'relay');
+
+    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->callAction('invitePeople', ['emails' => 'blocked@example.com', 'role' => 'member'])
+        ->assertNotified(__('workspaces.notifications.invite_rate_limited.title'));
+
+    expect($this->workspace->workspaceInvitations()->where('email', 'blocked@example.com')->exists())->toBeFalse();
+});
+
+test('the hourly ceiling resets after an hour', function (): void {
+    inviteAsEachAdmin($this->user, 50, 'hour');
+
+    $this->travelTo(now()->addMinutes(61));
+
+    resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'after-hour@example.com', WorkspaceRole::Member->value);
+
+    expect($this->workspace->workspaceInvitations()->where('email', 'after-hour@example.com')->exists())->toBeTrue();
+});
+
+test('the daily ceiling holds across hourly resets', function (): void {
+    foreach (range(0, 3) as $hour) {
+        inviteAsEachAdmin($this->user, 50, "day{$hour}x");
+
+        $this->travelTo(now()->addMinutes(61));
+    }
+
+    expect(fn () => resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'over-day@example.com', WorkspaceRole::Member->value))
+        ->toThrow(WorkspaceInvitationRateLimitedException::class);
+});
+
+test('one workspace reaching its ceiling does not block another workspace', function (): void {
+    inviteAsEachAdmin($this->user, 50, 'relay');
+
+    $other = User::factory()->withWorkspace()->create();
+
+    $invitation = resolve(InviteWorkspaceMember::class)->invite($other, $other->currentWorkspace, 'fresh@example.com', WorkspaceRole::Member->value);
+
+    expect($invitation->email)->toBe('fresh@example.com');
+});
+
+test('resending an invitation counts against the workspace ceiling', function (): void {
+    inviteAsEachAdmin($this->user, 50, 'relay');
+
+    $invitation = $this->workspace->workspaceInvitations()->firstOrFail();
+
+    livewire(WorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->callAction(TestAction::make('resendWorkspaceInvitation')->table($invitation->id))
+        ->assertNotified(__('workspaces.notifications.invite_rate_limited.title'));
+
+    Mail::assertQueuedCount(50);
 });

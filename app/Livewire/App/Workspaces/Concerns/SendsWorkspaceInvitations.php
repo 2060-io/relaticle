@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\App\Workspaces\Concerns;
 
 use App\Actions\Jetstream\InviteWorkspaceMember;
+use App\Exceptions\WorkspaceInvitationRateLimitedException;
 use App\Support\EmailAddress;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\RateLimiter;
@@ -60,6 +61,15 @@ trait SendsWorkspaceInvitations
         return RateLimiter::availableIn($rateLimitKey);
     }
 
+    private function notifyInviteRateLimited(int $seconds): void
+    {
+        Notification::make()
+            ->title(__('workspaces.notifications.invite_rate_limited.title'))
+            ->body(__('workspaces.notifications.invite_rate_limited.body', ['seconds' => $seconds]))
+            ->danger()
+            ->send();
+    }
+
     /**
      * @param  list<string>  $emails
      */
@@ -74,11 +84,7 @@ trait SendsWorkspaceInvitations
         $retryAfter = $this->inviteRetryAfterSeconds();
 
         if ($retryAfter !== null) {
-            Notification::make()
-                ->title(__('workspaces.notifications.invite_rate_limited.title'))
-                ->body(__('workspaces.notifications.invite_rate_limited.body', ['seconds' => $retryAfter]))
-                ->danger()
-                ->send();
+            $this->notifyInviteRateLimited($retryAfter);
 
             return;
         }
@@ -93,6 +99,10 @@ trait SendsWorkspaceInvitations
                 resolve(InviteWorkspaceMember::class)->invite($this->authUser(), $this->workspace, $email, $role);
 
                 $sent++;
+            } catch (WorkspaceInvitationRateLimitedException $exception) {
+                $this->notifyInviteRateLimited($exception->retryAfterSeconds);
+
+                break;
             } catch (ValidationException $exception) {
                 $failures[] = "{$email}: {$exception->validator->errors()->first()}";
             }
