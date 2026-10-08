@@ -10,6 +10,7 @@ use App\Http\Middleware\NoReferrer;
 use App\Http\Middleware\RedirectToPrimaryHost;
 use App\Http\Middleware\RequireIdentityConfirmation;
 use App\Http\Middleware\RequireOperationGrant;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Http\Middleware\StopImpersonationOnLogout;
 use App\Http\Middleware\SubdomainRootResponse;
@@ -108,6 +109,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Controller constructors can resolve sessions before route middleware runs.
         $middleware->append(IsolateAuthenticationSession::class);
+
+        // Global rather than the web group: Filament panel routes do not run the web group.
+        $middleware->append(SecurityHeaders::class);
 
         $middleware->web(
             append: [
