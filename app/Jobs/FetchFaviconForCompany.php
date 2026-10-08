@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\CustomFields\CompanyField;
+use App\Exceptions\SsrfGuardException;
 use App\Models\Company;
 use App\Support\Http\SsrfGuard;
+use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
 use finfo;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -91,8 +93,17 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
 
             $this->company->clearMediaCollectionExcept(Company::LOGO_MEDIA_COLLECTION, $logo);
         } catch (Throwable $exception) {
-            report($exception);
+            report_unless($this->isUnreachableSite($exception), $exception);
         }
+    }
+
+    private function isUnreachableSite(Throwable $exception): bool
+    {
+        if ($exception instanceof ConnectionException) {
+            return true;
+        }
+
+        return $exception instanceof SsrfGuardException && $exception->hostUnresolved;
     }
 
     public static function sourceUrl(Company $company): ?string
