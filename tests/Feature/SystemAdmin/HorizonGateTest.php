@@ -44,3 +44,21 @@ it('matches configured emails case-insensitively', function (): void {
 
     expect(Gate::forUser($user)->allows('viewHorizon'))->toBeTrue();
 });
+
+it('denies a configured user whose email is not verified', function (): void {
+    config()->set('relaticle.horizon.admin_emails', ['ops@self-hosted.test']);
+    config()->set('app.require_email_verification', true);
+
+    $user = User::factory()->unverified()->create(['email' => 'ops@self-hosted.test']);
+
+    expect(Gate::forUser($user)->allows('viewHorizon'))->toBeFalse();
+});
+
+it('allows a configured user whose email is verified', function (): void {
+    config()->set('relaticle.horizon.admin_emails', ['ops@self-hosted.test']);
+    config()->set('app.require_email_verification', true);
+
+    $user = User::factory()->create(['email' => 'ops@self-hosted.test', 'email_verified_at' => now()]);
+
+    expect(Gate::forUser($user)->allows('viewHorizon'))->toBeTrue();
+});
