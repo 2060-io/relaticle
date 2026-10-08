@@ -275,6 +275,52 @@ it('uses the endpoint origin itself for a path-style s3 disk', function (): void
         ->toContain("connect-src 'self' https://cdn.usefathom.com http://minio.internal:9000;");
 });
 
+it('allows both the legacy global host and the regional host for an aws us-east-1 bucket', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('filesystems.disks.s3', ['driver' => 's3', 'bucket' => 'crm-bucket', 'region' => 'us-east-1']);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain('https://crm-bucket.s3.amazonaws.com')
+        ->toContain('https://crm-bucket.s3.us-east-1.amazonaws.com');
+});
+
+it('allows the regional host only for an aws bucket outside us-east-1', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('filesystems.disks.s3', ['driver' => 's3', 'bucket' => 'crm-bucket', 'region' => 'eu-west-1']);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain('https://crm-bucket.s3.eu-west-1.amazonaws.com')
+        ->not->toContain('https://crm-bucket.s3.amazonaws.com');
+});
+
+it('allows the temporary url host an s3 disk rewrites presigned urls to', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('filesystems.disks.s3', [
+        'driver' => 's3',
+        'bucket' => 'crm-bucket',
+        'endpoint' => 'http://minio:9000',
+        'use_path_style_endpoint' => true,
+        'temporary_url' => 'https://uploads.example.com',
+    ]);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain('https://uploads.example.com');
+});
+
+it('allows a bucket on the app host when its port differs', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('app.url', 'https://crm.example.com');
+    config()->set('filesystems.disks.s3', [
+        'driver' => 's3',
+        'bucket' => 'crm-bucket',
+        'endpoint' => 'https://crm.example.com:9000',
+        'use_path_style_endpoint' => true,
+    ]);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain('https://crm.example.com:9000');
+});
+
 it('ignores an s3 disk without a bucket', function (): void {
     config()->set('app.csp.mode', 'enforce');
     config()->set('filesystems.disks.s3', ['driver' => 's3', 'endpoint' => 'https://objects.example.com']);

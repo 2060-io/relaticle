@@ -100,7 +100,8 @@ final readonly class ContentSecurityPolicy
         foreach (config()->array('filesystems.disks') as $disk) {
             if (is_array($disk) && ($disk['driver'] ?? null) === 's3' && filled($disk['bucket'] ?? null)) {
                 $urls[] = $disk['url'] ?? null;
-                $urls[] = self::presignedUrl($disk);
+                $urls[] = $disk['temporary_url'] ?? null;
+                array_push($urls, ...self::presignedUrls($disk));
             }
         }
 
@@ -109,21 +110,31 @@ final readonly class ContentSecurityPolicy
 
     /**
      * @param  array<string, mixed>  $disk
+     * @return array<int, string>
      */
-    private static function presignedUrl(array $disk): ?string
+    private static function presignedUrls(array $disk): array
     {
         $bucket = (string) $disk['bucket'];
-        $endpoint = $disk['endpoint'] ?? null;
+        $endpoint = (string) ($disk['endpoint'] ?? '');
+        $pathStyle = (bool) ($disk['use_path_style_endpoint'] ?? false);
 
-        if (blank($endpoint)) {
-            return filled($disk['region'] ?? null) ? "https://{$bucket}.s3.{$disk['region']}.amazonaws.com" : null;
+        if ($endpoint !== '') {
+            return [$pathStyle ? $endpoint : (string) preg_replace('#^(https?://)#', "$1{$bucket}.", $endpoint)];
         }
 
-        if ($disk['use_path_style_endpoint'] ?? false) {
-            return (string) $endpoint;
+        $region = (string) ($disk['region'] ?? '');
+
+        if ($region === '') {
+            return [];
         }
 
-        return preg_replace('#^(https?://)#', "$1{$bucket}.", (string) $endpoint);
+        // The AWS SDK signs us-east-1 on the legacy global host unless regional endpoints are configured.
+        $hosts = $region === 'us-east-1' ? ['s3.amazonaws.com', 's3.us-east-1.amazonaws.com'] : ["s3.{$region}.amazonaws.com"];
+
+        return array_map(
+            fn (string $host): string => $pathStyle ? "https://{$host}" : "https://{$bucket}.{$host}",
+            $hosts,
+        );
     }
 
     /**
@@ -132,20 +143,29 @@ final readonly class ContentSecurityPolicy
      */
     private static function foreignOrigins(array $urls): array
     {
-        $appHost = parse_url(config()->string('app.url'), PHP_URL_HOST);
+        $appOrigin = self::origin(config()->string('app.url'));
         $origins = [];
 
         foreach ($urls as $url) {
-            $parts = is_string($url) && $url !== '' ? parse_url($url) : false;
+            $origin = is_string($url) ? self::origin($url) : null;
 
-            if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || $parts['host'] === $appHost) {
-                continue;
+            if ($origin !== null && $origin !== $appOrigin) {
+                $origins[] = $origin;
             }
-
-            $origins[] = "{$parts['scheme']}://{$parts['host']}".(isset($parts['port']) ? ":{$parts['port']}" : '');
         }
 
         return array_values(array_unique($origins));
+    }
+
+    private static function origin(string $url): ?string
+    {
+        $parts = $url === '' ? false : parse_url($url);
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+
+        return "{$parts['scheme']}://{$parts['host']}".(isset($parts['port']) ? ":{$parts['port']}" : '');
     }
 
     /**
