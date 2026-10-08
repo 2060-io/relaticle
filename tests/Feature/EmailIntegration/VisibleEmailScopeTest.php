@@ -131,6 +131,37 @@ it('hides a coworker email from a subdomain when domain block has include subdom
     expect(visibleTo($this->viewer)->modelKeys())->not->toContain($subdomainSender->id);
 });
 
+it('treats like wildcards in a blocked domain as literal characters', function (string $blockedDomain, bool $includeSubdomains, string $lookalike): void {
+    $factory = WorkspaceEmailBlocklist::factory()->blocked()->domain($blockedDomain);
+
+    ($includeSubdomains ? $factory->includeSubdomains() : $factory)->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => $this->viewer->id,
+    ]);
+
+    $lookalikeEmail = ($this->makeCoworkerEmail)([$lookalike]);
+
+    expect(visibleTo($this->viewer)->modelKeys())->toContain($lookalikeEmail->id);
+})->with([
+    'underscore' => ['exa_ple.com', false, 'user@exaxple.com'],
+    'underscore with subdomains' => ['exa_ple.com', true, 'user@mail.exaxple.com'],
+    'percent' => ['%', true, 'user@partner.test'],
+]);
+
+it('still hides a coworker email that matches a blocked domain containing an underscore literally', function (): void {
+    WorkspaceEmailBlocklist::factory()->blocked()->domain('exa_ple.com')->includeSubdomains()->create([
+        'workspace_id' => $this->workspace->id,
+        'created_by' => $this->viewer->id,
+    ]);
+
+    $exact = ($this->makeCoworkerEmail)(['user@exa_ple.com']);
+    $subdomain = ($this->makeCoworkerEmail)(['user@mail.exa_ple.com']);
+
+    expect(visibleTo($this->viewer)->modelKeys())
+        ->not->toContain($exact->id)
+        ->not->toContain($subdomain->id);
+});
+
 it('hides a coworker email whose participant matches an inferred workspace domain', function (): void {
     $this->coworker->update(['email' => 'coworker@thefireflytech.com']);
 
