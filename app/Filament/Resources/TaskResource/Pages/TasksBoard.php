@@ -130,23 +130,7 @@ final class TasksBoard extends BoardResourcePage
                     ->slideOver(false)
                     ->model(Task::class)
                     ->schema(fn (Schema $schema): Schema => TaskForm::get($schema, ['status']))
-                    ->using(function (array $data, CreateTaskAction $action): Task {
-                        /** @var Workspace $currentWorkspace */
-                        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
-
-                        /** @var Task $task */
-                        $task = $currentWorkspace->tasks()->create($data);
-
-                        $columnId = $action->getArguments()['column'] ?? null;
-
-                        if (filled($columnId)) {
-                            $task->saveCustomFieldValue(self::statusCustomField(), $columnId);
-                            $task->order_column = (float) $this->getBoardPositionInColumn($columnId);
-                            $task->saveQuietly();
-                        }
-
-                        return $task;
-                    }),
+                    ->using($this->createCard(...)),
             ])
             ->cardAction('edit')
             ->cardActions([
@@ -209,7 +193,7 @@ final class TasksBoard extends BoardResourcePage
         throw_unless($card, InvalidArgumentException::class, "Card not found: {$cardId}");
 
         abort_unless(Gate::allows('update', $card), 403);
-        abort_unless($this->statuses()->contains(fn (array $status): bool => (string) $status['id'] === $targetColumnId), 422);
+        abort_unless($this->ownsColumn($targetColumnId), 422);
 
         // Calculate new position using DecimalPosition (via the v3 helper)
         $newPosition = $this->calculatePositionBetweenCards($afterCardId, $beforeCardId, $targetColumnId);
@@ -274,6 +258,35 @@ final class TasksBoard extends BoardResourcePage
             $date->isTomorrow() => 'Due Tomorrow',
             default => $date->format('M j, Y'),
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function createCard(array $data, CreateTaskAction $action): Task
+    {
+        $columnId = $action->getArguments()['column'] ?? null;
+
+        abort_unless(blank($columnId) || $this->ownsColumn((string) $columnId), 422);
+
+        /** @var Workspace $currentWorkspace */
+        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
+
+        /** @var Task $task */
+        $task = $currentWorkspace->tasks()->create($data);
+
+        if (filled($columnId)) {
+            $task->saveCustomFieldValue(self::statusCustomField(), $columnId);
+            $task->order_column = (float) $this->getBoardPositionInColumn($columnId);
+            $task->saveQuietly();
+        }
+
+        return $task;
+    }
+
+    private function ownsColumn(string $id): bool
+    {
+        return $this->statuses()->contains(fn (array $status): bool => (string) $status['id'] === $id);
     }
 
     private static function statusCustomField(): ?CustomField
