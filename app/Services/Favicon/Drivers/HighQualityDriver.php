@@ -203,10 +203,14 @@ final class HighQualityDriver implements Fetcher
 
     private function tryGoogleHighRes(string $url): ?Favicon
     {
-        try {
-            $urlWithoutProtocol = str_replace(['https://', 'http://'], '', $url);
+        $host = $this->bareHost($url);
 
-            $faviconUrl = 'https://www.google.com/s2/favicons?sz=256&domain='.$urlWithoutProtocol;
+        if ($host === null) {
+            return null;
+        }
+
+        try {
+            $faviconUrl = 'https://www.google.com/s2/favicons?sz=256&domain='.rawurlencode($host);
 
             if (! SsrfGuard::isAllowed($faviconUrl)) {
                 return null;
@@ -233,8 +237,13 @@ final class HighQualityDriver implements Fetcher
 
     private function tryDuckDuckGo(string $url): ?Favicon
     {
-        $urlWithoutProtocol = str_replace(['https://', 'http://'], '', $url);
-        $faviconUrl = 'https://icons.duckduckgo.com/ip3/'.$urlWithoutProtocol.'.ico';
+        $host = $this->bareHost($url);
+
+        if ($host === null) {
+            return $this->notFound($url);
+        }
+
+        $faviconUrl = 'https://icons.duckduckgo.com/ip3/'.$host.'.ico';
 
         if (! SsrfGuard::isAllowed($faviconUrl)) {
             return null;
@@ -258,6 +267,15 @@ final class HighQualityDriver implements Fetcher
         }
 
         return $this->notFound($url);
+    }
+
+    private function bareHost(string $url): ?string
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        $isHostname = preg_match('/^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/', $host) === 1;
+
+        return $isHostname ? $host : null;
     }
 
     private function faviconIsAccessible(Favicon $favicon): bool
