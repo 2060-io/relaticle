@@ -28,7 +28,7 @@ it('honours forwarded headers from a private network proxy so HTTPS is detected 
     )->assertOk()->assertJson([
         'isSecure' => true,
         'scheme' => 'https',
-        'host' => 'crm.example.com',
+        'host' => 'relaticle.test',
         'clientIp' => '203.0.113.5',
     ]);
 });

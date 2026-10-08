@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Features\EmailIntegration;
 use App\Http\Controllers\Billing\StripeWebhookController;
+use App\Http\Middleware\ConfigureTrustedProxies;
 use App\Http\Middleware\DenyIndexingOnSecondaryHosts;
 use App\Http\Middleware\EnsureAuthenticationComplete;
 use App\Http\Middleware\NoReferrer;
@@ -84,18 +85,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         // On Laravel Cloud the framework trusts its TLS edge itself, which reaches the app from a
-        // public IPv6 address this list would reject, turning every generated URL into http://.
+        // public IPv6 address the private ranges would reject, turning every generated URL into http://.
         if (! laravel_cloud()) {
-            $middleware->trustProxies(at: [
-                '127.0.0.0/8',
-                '10.0.0.0/8',
-                '172.16.0.0/12',
-                '192.168.0.0/16',
-                '169.254.0.0/16',
-                '::1/128',
-                'fc00::/7',
-                'fe80::/10',
-            ], headers: Request::HEADER_X_FORWARDED_FOR
+            $middleware->prepend(ConfigureTrustedProxies::class);
+            $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR
                 | Request::HEADER_X_FORWARDED_PROTO
                 | Request::HEADER_X_FORWARDED_PORT);
         }
