@@ -595,7 +595,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Edit `.env` with your database credentials, mail settings, and `APP_URL`.
+Edit `.env` with your database credentials, mail settings, and `APP_URL`. Set `APP_ENV=production` and `APP_DEBUG=false`. The example file ships `local` and `true`, and debug pages in production expose your configuration.
 
 4. Set up the database:
 
