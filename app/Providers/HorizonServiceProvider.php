@@ -30,7 +30,8 @@ final class HorizonServiceProvider extends HorizonApplicationServiceProvider
      * This gate determines who can access Horizon in non-local environments.
      * The allowlist comes from HORIZON_ADMIN_EMAILS and defaults to empty, so
      * a deployment that has not opted anyone in denies everyone. The listed
-     * user must also have a verified email, so registering the address is not enough.
+     * user must also have a verified email and a second factor (confirmed
+     * two-factor or a passkey), so registering the address is not enough.
      */
     protected function gate(): void
     {
@@ -39,6 +40,10 @@ final class HorizonServiceProvider extends HorizonApplicationServiceProvider
             $adminEmails = config('relaticle.horizon.admin_emails', []);
 
             if ($adminEmails === [] || ! $user->hasVerifiedEmail()) {
+                return false;
+            }
+
+            if (! $user->hasEnabledTwoFactorAuthentication() && ! $user->hasPasskey()) {
                 return false;
             }
 
