@@ -514,11 +514,11 @@ final class WorkspaceMembers extends BaseLivewireComponent implements Tables\Con
                 RateLimiter::hit($key, 60);
 
                 try {
-                    resolve(ResendWorkspaceInvitation::class)->resend($invitation);
+                    resolve(ResendWorkspaceInvitation::class)->resend($this->authUser(), $invitation);
                 } catch (WorkspaceInvitationRateLimitedException $exception) {
                     $this->sendNotification(
                         __('workspaces.notifications.invite_rate_limited.title'),
-                        __('workspaces.notifications.invite_rate_limited.body', ['seconds' => $exception->retryAfterSeconds]),
+                        WorkspaceInvitationRateLimitedException::retryMessage($exception->retryAfterSeconds),
                         type: 'danger',
                     );
 

@@ -51,7 +51,7 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
 
         $this->validate($workspace, $email, $role);
 
-        $this->ceiling->consume($workspace);
+        $this->ceiling->ensureAvailable($user, $workspace);
 
         event(new InvitingTeamMember($workspace, $email, $role));
 
@@ -84,6 +84,8 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
         // itself out of the transaction too: a rolled back approval must not
         // leave a real invitation email on its way.
         Mail::to($invitation->email)->queue(new WorkspaceInvitationMail($invitation, $rawToken)->afterCommit());
+
+        $this->ceiling->recordSent($user, $workspace);
 
         return $invitation;
     }

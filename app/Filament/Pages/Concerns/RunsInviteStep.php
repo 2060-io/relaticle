@@ -9,6 +9,7 @@ use App\Actions\Jetstream\UpdateInviteLinkSettings;
 use App\Actions\Onboarding\MoveWorkspaceSetup;
 use App\Enums\WorkspaceRole;
 use App\Enums\WorkspaceSetupStep;
+use App\Exceptions\WorkspaceInvitationRateLimitedException;
 use App\Livewire\App\Workspaces\Concerns\SendsWorkspaceInvitations;
 use App\Support\EmailAddress;
 use App\Support\Workspaces\RoleOptions;
@@ -150,7 +151,7 @@ trait RunsInviteStep
         $retryAfter = $this->inviteRetryAfterSeconds();
 
         if ($retryAfter !== null) {
-            $fail(__('workspaces.notifications.invite_rate_limited.body', ['seconds' => $retryAfter]));
+            $fail(WorkspaceInvitationRateLimitedException::retryMessage($retryAfter));
         }
     }
 

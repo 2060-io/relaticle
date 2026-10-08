@@ -65,7 +65,7 @@ trait SendsWorkspaceInvitations
     {
         Notification::make()
             ->title(__('workspaces.notifications.invite_rate_limited.title'))
-            ->body(__('workspaces.notifications.invite_rate_limited.body', ['seconds' => $seconds]))
+            ->body(WorkspaceInvitationRateLimitedException::retryMessage($seconds))
             ->danger()
             ->send();
     }
@@ -94,12 +94,18 @@ trait SendsWorkspaceInvitations
         $failures = [];
         $sent = 0;
 
-        foreach ($emails as $email) {
+        foreach ($emails as $index => $email) {
             try {
                 resolve(InviteWorkspaceMember::class)->invite($this->authUser(), $this->workspace, $email, $role);
 
                 $sent++;
             } catch (WorkspaceInvitationRateLimitedException $exception) {
+                $unsent = array_slice($emails, $index);
+
+                foreach ($unsent as $unsentEmail) {
+                    $failures[] = "{$unsentEmail}: ".__('workspaces.notifications.some_invites_failed.not_sent_limit');
+                }
+
                 $this->notifyInviteRateLimited($exception->retryAfterSeconds);
 
                 break;
