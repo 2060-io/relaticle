@@ -29,7 +29,7 @@ final readonly class ConfigureTrustedProxies
 
         TrustProxies::at(match (true) {
             $configured === [] => self::PRIVATE_NETWORKS,
-            $configured === ['*'] => '*',
+            in_array('*', $configured, true) => '*',
             default => $configured,
         });
 

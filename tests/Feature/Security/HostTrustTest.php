@@ -77,7 +77,7 @@ function clientIpBehindProxy(string $remoteAddr, string $forwardedFor = '203.0.1
 }
 
 it('trusts the private ranges when TRUSTED_PROXIES is unset', function () {
-    expect(config('app.trusted_proxies'))->toBe([]);
+    config()->set('app.trusted_proxies', []);
 
     expect(clientIpBehindProxy('10.0.0.5'))->toBe('203.0.113.5');
 });
@@ -90,15 +90,31 @@ it('trusts only the proxies listed in TRUSTED_PROXIES', function () {
 });
 
 it('trims and drops empty TRUSTED_PROXIES entries', function () {
-    $parsed = (function (): array {
-        putenv('TRUSTED_PROXIES= 192.168.50.2 , ,10.9.0.0/16,');
+    $previous = [$_SERVER['TRUSTED_PROXIES'] ?? null, $_ENV['TRUSTED_PROXIES'] ?? null, getenv('TRUSTED_PROXIES')];
+    $value = ' 192.168.50.2 , ,10.9.0.0/16,';
 
-        try {
-            return (require config_path('app.php'))['trusted_proxies'];
-        } finally {
-            putenv('TRUSTED_PROXIES');
+    $_SERVER['TRUSTED_PROXIES'] = $_ENV['TRUSTED_PROXIES'] = $value;
+    putenv("TRUSTED_PROXIES={$value}");
+
+    try {
+        $parsed = (require config_path('app.php'))['trusted_proxies'];
+    } finally {
+        foreach (['_SERVER' => $previous[0], '_ENV' => $previous[1]] as $bag => $old) {
+            if ($old === null) {
+                unset($GLOBALS[$bag]['TRUSTED_PROXIES']);
+            } else {
+                $GLOBALS[$bag]['TRUSTED_PROXIES'] = $old;
+            }
         }
-    })();
+
+        putenv($previous[2] === false ? 'TRUSTED_PROXIES' : "TRUSTED_PROXIES={$previous[2]}");
+    }
 
     expect($parsed)->toBe(['192.168.50.2', '10.9.0.0/16']);
+});
+
+it('trusts every sender when TRUSTED_PROXIES lists a wildcard among other entries', function () {
+    config()->set('app.trusted_proxies', ['*', '10.0.0.1']);
+
+    expect(clientIpBehindProxy('203.0.113.99', '198.51.100.7'))->toBe('198.51.100.7');
 });
