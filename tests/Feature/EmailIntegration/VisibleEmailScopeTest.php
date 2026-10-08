@@ -170,6 +170,17 @@ it('hides a coworker email whose participant matches an inferred workspace domai
     expect(visibleTo($this->viewer)->modelKeys())->not->toContain($protected->id);
 });
 
+it('treats like wildcards in an inferred workspace domain as literal characters', function (): void {
+    $this->coworker->update(['email' => 'coworker@exa_ple.com']);
+
+    $lookalike = ($this->makeCoworkerEmail)(['client@exaxple.com']);
+    $member = ($this->makeCoworkerEmail)(['client@exa_ple.com']);
+
+    expect(visibleTo($this->viewer)->modelKeys())
+        ->toContain($lookalike->id)
+        ->not->toContain($member->id);
+});
+
 it('still shows a protected email to its owner', function (): void {
     WorkspaceEmailBlocklist::factory()->protected()->email('vip@contact.com')->create([
         'workspace_id' => $this->workspace->id,
