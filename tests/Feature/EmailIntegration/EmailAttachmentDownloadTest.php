@@ -201,6 +201,29 @@ it('serves inline image attachments for email body cid references', function ():
     expect($response->content())->toBe('png-bytes');
 });
 
+it('serves declared raster aliases inline under their canonical type', function (string $declared, string $served): void {
+    Storage::fake(EmailAttachment::DISK);
+    Storage::disk(EmailAttachment::DISK)->put('attachments/pic.bin', 'image-bytes');
+
+    $attachment = makeAttachmentForUser($this->user, $this->workspace, $this->account, attachmentOverrides: [
+        'provider_attachment_id' => null,
+        'storage_path' => 'attachments/pic.bin',
+        'filename' => 'pic.bin',
+        'mime_type' => $declared,
+        'is_inline' => true,
+        'content_id' => 'pic@example.test',
+    ]);
+
+    $this->get(route('email-attachments.inline', ['attachment' => $attachment->id]))
+        ->assertOk()
+        ->assertHeader('Content-Type', $served);
+})->with([
+    'jpg' => ['image/jpg', 'image/jpeg'],
+    'pjpeg' => ['image/pjpeg', 'image/jpeg'],
+    'x-png' => ['image/x-png', 'image/png'],
+    'uppercase' => ['IMAGE/PNG', 'image/png'],
+]);
+
 it('serves a non-raster inline image as a download instead of inline', function (string $mimeType): void {
     Storage::fake(EmailAttachment::DISK);
     Storage::disk(EmailAttachment::DISK)->put('attachments/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
