@@ -98,7 +98,28 @@ final class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('passkeys', fn (Request $request): Limit => Limit::perMinute(30)
             ->by($request->user()?->getAuthIdentifier() ?? (string) $request->ip()));
 
+        /**
+         * The raw route answers 422 for a registered address and 423 for a free one, so it is
+         * an existence oracle. The caps mirror the login discovery caps, keyed per user.
+         */
+        RateLimiter::for('profile-information', fn (Request $request): array => [
+            Limit::perMinute(20)->by("profile-information-minute:{$request->user()?->getAuthIdentifier()}"),
+            Limit::perDay(300)->by("profile-information-day:{$request->user()?->getAuthIdentifier()}"),
+        ]);
+
         $this->requireOperationGrantsOnVendorRoutes();
+        $this->throttleProfileInformationRoute();
+    }
+
+    private function throttleProfileInformationRoute(): void
+    {
+        $this->app->booted(function (): void {
+            foreach ($this->app->make(Router::class)->getRoutes()->getRoutes() as $route) {
+                if ($route->getName() === 'user-profile-information.update') {
+                    $route->middleware('throttle:profile-information');
+                }
+            }
+        });
     }
 
     /**
