@@ -32,6 +32,7 @@ use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ViewUser;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
+use Spatie\LoginLink\Exceptions\DidNotFindUserToLogIn;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Helpers\PasskeyAssertionFixture;
 
@@ -443,6 +444,27 @@ it('limits the staff development login link to the local environment', function 
         expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
     }
 })->with(['local', 'production']);
+
+it('does not create a user for an unknown address through the local login link', function (): void {
+    $cookies = [];
+    config()->set('login-link.allowed_hosts', ['staff.example.test']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
+    Exceptions::dontReport(DidNotFindUserToLogIn::class);
+
+    isolatedAuthRequest($cookies, 'POST', 'https://staff.example.test/laravel-login-link-login', [
+        'email' => 'minted@example.test',
+        'guard' => 'sysadmin',
+        'user_model' => SystemAdministrator::class,
+        'redirect_url' => 'https://staff.example.test/',
+    ]);
+
+    expect(SystemAdministrator::query()->where('email', 'minted@example.test')->exists())->toBeFalse();
+});
 
 it('rejects a customer login snapshot on the staff host before authenticating', function (): void {
     $cookies = [];

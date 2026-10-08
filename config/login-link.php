@@ -27,9 +27,10 @@ return [
 
     /*
      * The package will automatically create a user model when trying
-     * to log in a user that doesn't exist.
+     * to log in a user that doesn't exist. Off: the request names the
+     * guard and user model, so creating users would let it mint accounts.
      */
-    'automatically_create_missing_users' => true,
+    'automatically_create_missing_users' => false,
 
     /*
      * The user model that should be logged in. If this is set to `null`
