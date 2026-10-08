@@ -232,3 +232,15 @@ test('skips the third party lookups when the host is not a bare hostname', funct
 
     Http::assertNotSent(fn (HttpClientRequest $request): bool => str_contains($request->url(), 'google.com') || str_contains($request->url(), 'duckduckgo.com'));
 });
+
+test('keeps the third party lookups for a fully qualified host with a trailing dot', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://icons.duckduckgo.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    expect((new HighQualityDriver)->fetch('https://example.com.')?->getFaviconUrl())
+        ->toBe('https://icons.duckduckgo.com/ip3/example.com.ico');
+});

@@ -271,7 +271,7 @@ final class HighQualityDriver implements Fetcher
 
     private function bareHost(string $url): ?string
     {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $host = strtolower(preg_replace('/\\.$/', '', (string) parse_url($url, PHP_URL_HOST)));
 
         $isHostname = preg_match('/^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/', $host) === 1;
 
