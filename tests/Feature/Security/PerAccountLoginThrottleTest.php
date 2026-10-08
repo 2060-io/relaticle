@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 use App\Enums\SocialiteProvider;
 use App\Filament\Pages\Auth\Login;
+use App\Filament\Pages\Auth\ResetPassword;
 use App\Listeners\Auth\PasswordGuessLimitListener;
 use App\Models\User;
 use App\Models\UserSocialAccount;
 use Filament\Auth\Pages\Login as SysadminLogin;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Testing\TestResponse;
 use Laravel\Passkeys\Passkey;
 use Laravel\Socialite\Facades\Socialite;
@@ -137,20 +139,26 @@ test('a successful login clears the account counter', function (): void {
     $this->assertAuthenticatedAs($user);
 });
 
-test('the daily cap holds after the short window resets', function (): void {
+test('a locked account that resets its password signs in immediately', function (): void {
     $user = User::factory()->withWorkspace()->create();
+    guessesAcrossIps($this, $user->email, 10);
+    passwordAttemptFromIp($this, $user->email, 'password', 11)->assertJsonValidationErrors('email');
 
-    foreach (range(1, 5) as $batch) {
-        $this->travelTo(now()->addMinutes(16 * $batch));
+    $token = Password::broker('users')->createToken($user);
 
-        guessesAcrossIps($this, $user->email, 10);
-    }
+    livewire(ResetPassword::class, ['email' => $user->email, 'token' => $token])
+        ->fillForm([
+            'password' => 'new-secure-password',
+            'passwordConfirmation' => 'new-secure-password',
+        ])
+        ->call('resetPassword')
+        ->assertRedirect();
 
-    $this->travelTo(now()->addMinutes(16));
+    Auth::guard('web')->logout();
+    $this->flushSession();
 
-    passwordAttemptFromIp($this, $user->email, 'password', 11)
-        ->assertUnprocessable()
-        ->assertJsonPath('errors.email.0', __('auth.throttle_long'));
+    passwordAttemptFromIp($this, $user->email, 'new-secure-password', 12)->assertOk();
+    $this->assertAuthenticatedAs($user);
 });
 
 test('the short window expires so a locked owner can retry within minutes', function (): void {
