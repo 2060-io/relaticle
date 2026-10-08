@@ -33,6 +33,7 @@ use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Spatie\LoginLink\Exceptions\DidNotFindUserToLogIn;
+use Spatie\LoginLink\Exceptions\NotAllowedInCurrentEnvironment;
 use Spatie\LoginLink\Exceptions\NotAllowedInCurrentHost;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Helpers\PasskeyAssertionFixture;
@@ -479,6 +480,31 @@ it('allows the local login link only on development hosts', function (string $ho
     'public host' => ['crm.example.com', false],
     'development host' => ['staff.example.test', true],
 ]);
+
+it('refuses the local login link on a spoofed development host when the app url is public', function (): void {
+    $cookies = [];
+    SystemAdministrator::factory()->create();
+    config()->set('app.url', 'https://crm.example.com');
+    config()->set('app.app_panel_domain', null);
+    config()->set('app.sysadmin_domain', null);
+    $loginLink = require config_path('login-link.php');
+    config()->set('login-link.allowed_environments', $loginLink['allowed_environments']);
+    config()->set('login-link.allowed_hosts', $loginLink['allowed_hosts']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+    $this->withoutMiddleware(PreventRequestForgery::class);
+    Exceptions::dontReport(NotAllowedInCurrentEnvironment::class);
+
+    isolatedAuthRequest($cookies, 'POST', 'https://localhost/laravel-login-link-login', [
+        'guard' => 'sysadmin',
+        'user_model' => SystemAdministrator::class,
+        'redirect_url' => 'https://localhost/',
+    ])->assertServerError();
+
+    expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
+});
 
 it('does not create a user for an unknown address through the local login link', function (): void {
     $cookies = [];

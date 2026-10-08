@@ -4,31 +4,28 @@ declare(strict_types=1);
 
 use Spatie\LoginLink\Http\Controllers\LoginLinkController;
 
+$isDevelopmentHost = static fn (mixed $host): bool => is_string($host)
+    && (in_array($host, ['localhost', '127.0.0.1'], true) || str_ends_with($host, '.test'));
+
 return [
     /*
-     * Login links will only work in these environments. In all
-     * other environments, an exception will be thrown.
+     * .env.example ships APP_ENV=local and TrustHosts is off there, so the request host is
+     * attacker-chosen: only an APP_URL on a development host enables login links.
      */
-    'allowed_environments' => ['local'],
+    'allowed_environments' => $isDevelopmentHost(parse_url((string) config('app.url'), PHP_URL_HOST)) ? ['local'] : [],
 
     /*
-     * Login links will only work in these hosts. Only development hosts
-     * survive the filter: .env.example ships APP_ENV=local, so a public
-     * hostname must fail here even when the environment check passes.
+     * Login links will only work in these hosts.
      */
-    'allowed_hosts' => array_values(array_unique(array_filter(
-        [
-            'localhost',
-            '127.0.0.1',
-            'relaticle.test',
-            'app.relaticle.test',
-            parse_url((string) config('app.url'), PHP_URL_HOST),
-            config('app.app_panel_domain'),
-            config('app.sysadmin_domain'),
-        ],
-        fn (mixed $host): bool => is_string($host)
-            && (in_array($host, ['localhost', '127.0.0.1'], true) || str_ends_with($host, '.test')),
-    ))),
+    'allowed_hosts' => array_values(array_unique(array_filter([
+        'localhost',
+        '127.0.0.1',
+        'relaticle.test',
+        'app.relaticle.test',
+        parse_url((string) config('app.url'), PHP_URL_HOST),
+        config('app.app_panel_domain'),
+        config('app.sysadmin_domain'),
+    ], $isDevelopmentHost))),
 
     /*
      * The package will automatically create a user model when trying
