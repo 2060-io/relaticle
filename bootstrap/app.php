@@ -27,6 +27,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Middleware\VerifyWebhookSignature;
@@ -48,7 +49,6 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function (): void {
             // Registered here rather than by Cashier (see AppServiceProvider):
@@ -72,6 +72,7 @@ return Application::configure(basePath: dirname(__DIR__))
             $routes->group(base_path('routes/api.php'));
         },
     )
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', AuthenticateSession::class]])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trimStrings(except: [
             'document.*',
