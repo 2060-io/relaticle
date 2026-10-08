@@ -16,6 +16,17 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final readonly class EmailAttachmentController
 {
+    private const array INLINE_RASTER_TYPES = [
+        'image/png',
+        'image/jpeg',
+        'image/gif',
+        'image/webp',
+        'image/avif',
+        'image/bmp',
+        'image/x-icon',
+        'image/vnd.microsoft.icon',
+    ];
+
     public function __construct(
         private MailServiceFactoryInterface $mailServiceFactory,
     ) {}
@@ -31,13 +42,19 @@ final readonly class EmailAttachmentController
         return $this->stream($this->attachmentBinary($attachment), $this->downloadName($attachment));
     }
 
-    private function inlineResponse(EmailAttachment $attachment): Response
+    private function inlineResponse(EmailAttachment $attachment): Response|StreamedResponse
     {
         abort_unless($attachment->is_inline, 404);
         abort_unless(str_starts_with((string) $attachment->mime_type, 'image/'), 404);
 
+        $mimeType = Str::lower(trim(Str::before((string) $attachment->mime_type, ';')));
+
+        if (! in_array($mimeType, self::INLINE_RASTER_TYPES, true)) {
+            return $this->stream($this->attachmentBinary($attachment), $this->downloadName($attachment));
+        }
+
         return response($this->attachmentBinary($attachment), 200, [
-            'Content-Type' => (string) $attachment->mime_type,
+            'Content-Type' => $mimeType,
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, max-age=3600',
