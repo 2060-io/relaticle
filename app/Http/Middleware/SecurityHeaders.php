@@ -34,10 +34,19 @@ final readonly class SecurityHeaders
             'Referrer-Policy' => 'strict-origin-when-cross-origin',
         ];
 
-        if ($request->isSecure() && ! app()->isLocal()) {
-            $headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
+        if ($request->isSecure() && app()->isProduction()) {
+            $headers['Strict-Transport-Security'] = $this->strictTransportSecurity();
         }
 
         return $headers;
+    }
+
+    private function strictTransportSecurity(): string
+    {
+        $value = 'max-age='.config()->integer('app.hsts.max_age');
+
+        return config()->boolean('app.hsts.include_subdomains')
+            ? "{$value}; includeSubDomains"
+            : $value;
     }
 }

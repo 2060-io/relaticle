@@ -58,6 +58,11 @@ return [
 
     'trusted_hosts' => array_filter(array_map('trim', explode(',', (string) env('TRUSTED_HOSTS', '')))),
 
+    'hsts' => [
+        'max_age' => (int) env('HSTS_MAX_AGE', 15552000),
+        'include_subdomains' => (bool) env('HSTS_INCLUDE_SUBDOMAINS', false),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | System Administrator Panel Configuration
