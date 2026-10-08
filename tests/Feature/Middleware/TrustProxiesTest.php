@@ -15,7 +15,7 @@ beforeEach(function (): void {
     ]);
 });
 
-it('honours forwarded headers from a private network proxy so HTTPS is detected behind Traefik', function (): void {
+it('honours the forwarded proto and client ip from a private network proxy but never its forwarded host', function (): void {
     $this->call(
         method: 'GET',
         uri: '/_trust-proxy-probe',
