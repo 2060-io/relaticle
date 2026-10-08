@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Fortify;
 
+use App\Actions\Auth\RevokeUserTokens;
 use App\Models\User;
 use App\Support\Auth\AuthenticationSession;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,8 @@ use Laravel\Fortify\Contracts\UpdatesUserPasswords;
 final readonly class UpdateUserPassword implements UpdatesUserPasswords
 {
     use PasswordValidationRules;
+
+    public function __construct(private RevokeUserTokens $revokeUserTokens) {}
 
     /**
      * @param  array<string, string>  $input
@@ -32,6 +35,8 @@ final readonly class UpdateUserPassword implements UpdatesUserPasswords
             $lockedUser->forceFill([
                 'password' => Hash::make($input['password']),
             ])->save();
+
+            $this->revokeUserTokens->execute($lockedUser);
         });
 
         $user->refresh();

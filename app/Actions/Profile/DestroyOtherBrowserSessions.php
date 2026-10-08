@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Actions\Profile;
 
+use App\Actions\Auth\RevokeUserTokens;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final readonly class DestroyOtherBrowserSessions
 {
+    public function __construct(private RevokeUserTokens $revokeUserTokens) {}
+
     /**
      * Destroy every database session for the user except the current request's,
      * then rotate the remember token so other devices' "remember me" cookies stop
@@ -29,5 +32,7 @@ final readonly class DestroyOtherBrowserSessions
 
         $user->setRememberToken(Str::random(60));
         $user->save();
+
+        $this->revokeUserTokens->execute($user);
     }
 }
