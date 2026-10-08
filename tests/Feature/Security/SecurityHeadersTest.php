@@ -200,12 +200,117 @@ it('enforces only the safe directives when the policy is off', function (): void
         ->assertHeaderMissing('Content-Security-Policy-Report-Only');
 });
 
-it('allows the reverb websocket origin in connect-src', function (): void {
-    config()->set('app.csp.mode', 'enforce');
-    config()->set('app.csp.reverb', ['host' => 'ws.example.com', 'port' => 8443, 'scheme' => 'https']);
+it('derives the reverb websocket origin from the REVERB variables the browser bundle is built with', function (): void {
+    $_SERVER['REVERB_HOST'] = 'ws.example.com';
+    $_SERVER['REVERB_PORT'] = '8443';
+    $_SERVER['REVERB_SCHEME'] = 'https';
+    $_SERVER['BROADCAST_REVERB_HOST'] = '127.0.0.1';
+    $_SERVER['BROADCAST_REVERB_PORT'] = '8080';
+
+    try {
+        $appConfig = require config_path('app.php');
+    } finally {
+        unset($_SERVER['REVERB_HOST'], $_SERVER['REVERB_PORT'], $_SERVER['REVERB_SCHEME'], $_SERVER['BROADCAST_REVERB_HOST'], $_SERVER['BROADCAST_REVERB_PORT']);
+    }
+
+    config()->set('app.csp', [...$appConfig['csp'], 'mode' => 'enforce']);
 
     expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
-        ->toContain("connect-src 'self' https://cdn.usefathom.com wss://ws.example.com:8443");
+        ->toContain("connect-src 'self' https://cdn.usefathom.com wss://ws.example.com:8443")
+        ->not->toContain('127.0.0.1');
+});
+
+it('fails closed to the full policy for an empty or unknown mode', function (string $mode): void {
+    config()->set('app.csp.mode', $mode);
+
+    $response = $this->get('/app/login');
+
+    expect($response->headers->get('Content-Security-Policy'))->toContain("default-src 'self'");
+})->with(['', 'report_only', 'ENFORCE ', 'nonsense']);
+
+it('adds no storage origin while every disk is local', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain("img-src 'self' data: blob: https://cdn.usefathom.com;")
+        ->toContain("connect-src 'self' https://cdn.usefathom.com;")
+        ->toContain("media-src 'self' blob:;");
+});
+
+it('allows the public disk url and the presigned bucket origin for a virtual-hosted s3 disk', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('filesystems.disks.public.url', 'https://files.example-cdn.com/assets');
+    config()->set('filesystems.disks.s3', [
+        'driver' => 's3',
+        'bucket' => 'crm-bucket',
+        'url' => 'https://crm-bucket.cdn.example.com',
+        'endpoint' => 'https://objects.example.com',
+        'region' => 'auto',
+        'use_path_style_endpoint' => false,
+    ]);
+
+    $csp = $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    foreach (['img-src', 'connect-src', 'media-src'] as $directive) {
+        preg_match("/{$directive} ([^;]+);/", (string) $csp, $matches);
+
+        expect($matches[1])
+            ->toContain('https://files.example-cdn.com')
+            ->toContain('https://crm-bucket.cdn.example.com')
+            ->toContain('https://crm-bucket.objects.example.com')
+            ->not->toContain('https://objects.example.com');
+    }
+});
+
+it('uses the endpoint origin itself for a path-style s3 disk', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('filesystems.disks.s3', [
+        'driver' => 's3',
+        'bucket' => 'crm-bucket',
+        'endpoint' => 'http://minio.internal:9000',
+        'use_path_style_endpoint' => true,
+    ]);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain("connect-src 'self' https://cdn.usefathom.com http://minio.internal:9000;");
+});
+
+it('ignores an s3 disk without a bucket', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('filesystems.disks.s3', ['driver' => 's3', 'endpoint' => 'https://objects.example.com']);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))->not->toContain('objects.example.com');
+});
+
+it('allows a foreign asset url origin for scripts, styles, fonts and images', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('app.asset_url', 'https://assets.example-cdn.com/build');
+
+    $csp = (string) $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    foreach (['script-src', 'style-src', 'font-src', 'img-src'] as $directive) {
+        preg_match("/{$directive} ([^;]+);/", $csp, $matches);
+
+        expect($matches[1])->toContain('https://assets.example-cdn.com');
+    }
+
+    preg_match('/connect-src ([^;]+);/', $csp, $matches);
+
+    expect($matches[1])->not->toContain('assets.example-cdn.com');
+});
+
+it('allows the bunny font host on the horizon dashboard only', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    Route::middleware('web')->get('/horizon/_test', fn () => '<html></html>');
+
+    $horizon = $this->get('/horizon/_test')->headers->get('Content-Security-Policy');
+    $login = $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    expect($horizon)
+        ->toContain('style-src \'self\' \'unsafe-inline\' https://fonts.bunny.net')
+        ->toContain("font-src 'self' data: https://fonts.bunny.net")
+        ->and($login)
+        ->not->toContain('bunny');
 });
 
 it('adds the configured extra sources to a directive', function (): void {

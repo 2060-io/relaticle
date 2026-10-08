@@ -53,15 +53,18 @@ final readonly class SecurityHeaders
      */
     private function contentSecurityPolicyHeaders(Request $request): array
     {
-        $full = ContentSecurityPolicy::full(apiDocs: $request->routeIs('scribe'));
+        $full = ContentSecurityPolicy::full(
+            apiDocs: $request->routeIs('scribe'),
+            horizon: $request->is(trim(config()->string('horizon.path'), '/').'*'),
+        );
 
-        return match (config()->string('app.csp.mode')) {
-            'enforce' => ['Content-Security-Policy' => $full],
+        return match (strtolower(trim((string) config('app.csp.mode')))) {
+            'off' => ['Content-Security-Policy' => ContentSecurityPolicy::alwaysEnforced()],
             'report-only' => [
                 'Content-Security-Policy' => ContentSecurityPolicy::alwaysEnforced(),
                 'Content-Security-Policy-Report-Only' => $full,
             ],
-            default => ['Content-Security-Policy' => ContentSecurityPolicy::alwaysEnforced()],
+            default => ['Content-Security-Policy' => $full],
         };
     }
 

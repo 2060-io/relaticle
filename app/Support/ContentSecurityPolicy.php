@@ -16,6 +16,8 @@ final readonly class ContentSecurityPolicy
 
     private const string FATHOM = 'https://cdn.usefathom.com';
 
+    private const string BUNNY_FONTS = 'https://fonts.bunny.net';
+
     private const string SCALAR_CDN = 'https://cdn.jsdelivr.net';
 
     private const string SCALAR_FONTS = 'https://fonts.scalar.com';
@@ -27,11 +29,11 @@ final readonly class ContentSecurityPolicy
         return implode('; ', self::ALWAYS_ENFORCED);
     }
 
-    public static function full(bool $apiDocs = false): string
+    public static function full(bool $apiDocs = false, bool $horizon = false): string
     {
         $directives = [];
 
-        foreach (self::sources($apiDocs) as $directive => $sources) {
+        foreach (self::sources($apiDocs, $horizon) as $directive => $sources) {
             $directives[] = $directive.' '.implode(' ', array_unique($sources));
         }
 
@@ -41,16 +43,19 @@ final readonly class ContentSecurityPolicy
     /**
      * @return array<string, array<int, string>>
      */
-    private static function sources(bool $apiDocs): array
+    private static function sources(bool $apiDocs, bool $horizon): array
     {
+        $storage = self::storageOrigins();
+        $assets = self::assetOrigins();
+
         $sources = [
             'default-src' => ["'self'"],
-            'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'", self::FATHOM, self::TURNSTILE],
-            'style-src' => ["'self'", "'unsafe-inline'"],
-            'img-src' => ["'self'", 'data:', 'blob:', self::FATHOM],
-            'font-src' => ["'self'", 'data:'],
-            'connect-src' => ["'self'", self::FATHOM, ...self::reverbOrigins()],
-            'media-src' => ["'self'", 'blob:'],
+            'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'", self::FATHOM, self::TURNSTILE, ...$assets],
+            'style-src' => ["'self'", "'unsafe-inline'", ...$assets],
+            'img-src' => ["'self'", 'data:', 'blob:', self::FATHOM, ...$assets, ...$storage],
+            'font-src' => ["'self'", 'data:', ...$assets],
+            'connect-src' => ["'self'", self::FATHOM, ...self::reverbOrigins(), ...$storage],
+            'media-src' => ["'self'", 'blob:', ...$storage],
             'frame-src' => ["'self'", self::TURNSTILE],
         ];
 
@@ -65,11 +70,82 @@ final readonly class ContentSecurityPolicy
             $sources['font-src'][] = self::SCALAR_FONTS;
         }
 
+        if ($horizon) {
+            $sources['style-src'][] = self::BUNNY_FONTS;
+            $sources['font-src'][] = self::BUNNY_FONTS;
+        }
+
         foreach ((array) config('app.csp.extra') as $directive => $extra) {
             $sources[$directive] = [...$sources[$directive], ...$extra];
         }
 
         return $sources;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function assetOrigins(): array
+    {
+        return self::foreignOrigins([config('app.asset_url')]);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function storageOrigins(): array
+    {
+        $urls = [config('filesystems.disks.public.url')];
+
+        foreach (config()->array('filesystems.disks') as $disk) {
+            if (is_array($disk) && ($disk['driver'] ?? null) === 's3' && filled($disk['bucket'] ?? null)) {
+                $urls[] = $disk['url'] ?? null;
+                $urls[] = self::presignedUrl($disk);
+            }
+        }
+
+        return self::foreignOrigins($urls);
+    }
+
+    /**
+     * @param  array<string, mixed>  $disk
+     */
+    private static function presignedUrl(array $disk): ?string
+    {
+        $bucket = (string) $disk['bucket'];
+        $endpoint = $disk['endpoint'] ?? null;
+
+        if (blank($endpoint)) {
+            return filled($disk['region'] ?? null) ? "https://{$bucket}.s3.{$disk['region']}.amazonaws.com" : null;
+        }
+
+        if ($disk['use_path_style_endpoint'] ?? false) {
+            return (string) $endpoint;
+        }
+
+        return preg_replace('#^(https?://)#', "$1{$bucket}.", (string) $endpoint);
+    }
+
+    /**
+     * @param  array<int, mixed>  $urls
+     * @return array<int, string>
+     */
+    private static function foreignOrigins(array $urls): array
+    {
+        $appHost = parse_url(config()->string('app.url'), PHP_URL_HOST);
+        $origins = [];
+
+        foreach ($urls as $url) {
+            $parts = is_string($url) && $url !== '' ? parse_url($url) : false;
+
+            if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || $parts['host'] === $appHost) {
+                continue;
+            }
+
+            $origins[] = "{$parts['scheme']}://{$parts['host']}".(isset($parts['port']) ? ":{$parts['port']}" : '');
+        }
+
+        return array_values(array_unique($origins));
     }
 
     /**
