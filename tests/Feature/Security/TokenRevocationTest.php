@@ -57,6 +57,16 @@ function issueTokensFor(User $user): void
         'revoked' => false,
         'expires_at' => now()->addMinutes(10),
     ]);
+
+    DB::table('oauth_device_codes')->insert([
+        'id' => Str::random(80),
+        'user_id' => $user->getKey(),
+        'client_id' => $client->getKey(),
+        'user_code' => Str::upper(Str::random(8)),
+        'scopes' => '["mcp:use"]',
+        'revoked' => false,
+        'expires_at' => now()->addMinutes(10),
+    ]);
 }
 
 function expectNoUsableTokens(User $user): void
@@ -64,7 +74,8 @@ function expectNoUsableTokens(User $user): void
     expect($user->tokens()->count())->toBe(0)
         ->and(DB::table('oauth_access_tokens')->where('user_id', $user->getKey())->where('revoked', false)->count())->toBe(0)
         ->and(DB::table('oauth_refresh_tokens')->where('revoked', false)->count())->toBe(0)
-        ->and(DB::table('oauth_auth_codes')->where('user_id', $user->getKey())->where('revoked', false)->count())->toBe(0);
+        ->and(DB::table('oauth_auth_codes')->where('user_id', $user->getKey())->where('revoked', false)->count())->toBe(0)
+        ->and(DB::table('oauth_device_codes')->where('user_id', $user->getKey())->where('revoked', false)->count())->toBe(0);
 }
 
 test('the action removes sanctum tokens and revokes passport tokens', function (): void {
@@ -138,7 +149,7 @@ test('a failed password reset keeps tokens', function (): void {
 });
 
 test('logging out other browsers revokes tokens and keeps the current session', function (): void {
-    config(['session.driver' => 'database']);
+    config(['session.driver' => 'array']);
 
     $this->actingAs($user = User::factory()->withWorkspace()->create());
     session()->put('auth.password_confirmed_at', time());

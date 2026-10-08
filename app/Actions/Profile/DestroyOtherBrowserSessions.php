@@ -20,6 +20,8 @@ final readonly class DestroyOtherBrowserSessions
      */
     public function execute(User $user, string $currentSessionId): void
     {
+        $this->revokeUserTokens->execute($user);
+
         if (config('session.driver') !== 'database') {
             return;
         }
@@ -32,7 +34,5 @@ final readonly class DestroyOtherBrowserSessions
 
         $user->setRememberToken(Str::random(60));
         $user->save();
-
-        $this->revokeUserTokens->execute($user);
     }
 }

@@ -26,6 +26,10 @@ final readonly class RevokeUserTokens
                 ->where('user_id', $user->getKey())
                 ->update(['revoked' => true]);
 
+            DB::table('oauth_device_codes')
+                ->where('user_id', $user->getKey())
+                ->update(['revoked' => true]);
+
             DB::table('oauth_access_tokens')
                 ->whereIn('id', $accessTokenIds)
                 ->update(['revoked' => true]);
