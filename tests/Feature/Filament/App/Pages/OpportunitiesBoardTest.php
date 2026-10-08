@@ -149,6 +149,37 @@ it('moves a card between columns via moveCard', function (): void {
     expect($updatedValue)->toBe($qualification->getKey());
 });
 
+it('rejects a move to a stage option the board does not own', function (string $targetKind): void {
+    $prospecting = $this->stageField->options->firstWhere('name', 'Prospecting');
+    $opportunity = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    $opportunity->saveCustomFieldValue($this->stageField, $prospecting->getKey());
+
+    User::factory()->withWorkspace()->create();
+    $foreignOptionId = CustomField::query()
+        ->withoutGlobalScopes()
+        ->forEntity(Opportunity::class)
+        ->where('code', OpportunityField::STAGE)
+        ->where('tenant_id', '!=', $this->workspace->getKey())
+        ->firstOrFail()
+        ->options()
+        ->withoutGlobalScopes()
+        ->firstOrFail()
+        ->getKey();
+
+    $targetId = $targetKind === 'foreign' ? (string) $foreignOptionId : 'not-an-option';
+
+    livewire(OpportunitiesBoard::class)
+        ->call('moveCard', (string) $opportunity->id, $targetId)
+        ->assertStatus(422)
+        ->assertNotDispatched('kanban-card-moved');
+
+    $storedValue = $opportunity->fresh()->customFieldValues()
+        ->where('custom_field_id', $this->stageField->getKey())
+        ->value($this->stageField->getValueColumn());
+
+    expect($storedValue)->toBe($prospecting->getKey());
+})->with(['foreign workspace option' => 'foreign', 'garbage id' => 'garbage']);
+
 it('opens the edit action when a card is clicked', function (): void {
     $prospecting = $this->stageField->options->firstWhere('name', 'Prospecting');
 

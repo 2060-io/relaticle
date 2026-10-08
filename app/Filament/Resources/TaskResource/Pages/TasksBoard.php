@@ -209,6 +209,7 @@ final class TasksBoard extends BoardResourcePage
         throw_unless($card, InvalidArgumentException::class, "Card not found: {$cardId}");
 
         abort_unless(Gate::allows('update', $card), 403);
+        abort_unless($this->statuses()->contains(fn (array $status): bool => (string) $status['id'] === $targetColumnId), 422);
 
         // Calculate new position using DecimalPosition (via the v3 helper)
         $newPosition = $this->calculatePositionBetweenCards($afterCardId, $beforeCardId, $targetColumnId);

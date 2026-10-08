@@ -143,6 +143,37 @@ it('moves a card between columns via moveCard', function (): void {
     expect($updatedValue)->toBe($inProgress->getKey());
 });
 
+it('rejects a move to a status option the board does not own', function (string $targetKind): void {
+    $todo = $this->statusField->options->firstWhere('name', 'To do');
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $task->saveCustomFieldValue($this->statusField, $todo->getKey());
+
+    User::factory()->withWorkspace()->create();
+    $foreignOptionId = CustomField::query()
+        ->withoutGlobalScopes()
+        ->forEntity(Task::class)
+        ->where('code', TaskField::STATUS)
+        ->where('tenant_id', '!=', $this->workspace->getKey())
+        ->firstOrFail()
+        ->options()
+        ->withoutGlobalScopes()
+        ->firstOrFail()
+        ->getKey();
+
+    $targetId = $targetKind === 'foreign' ? (string) $foreignOptionId : 'not-an-option';
+
+    livewire(TasksBoard::class)
+        ->call('moveCard', (string) $task->id, $targetId)
+        ->assertStatus(422)
+        ->assertNotDispatched('kanban-card-moved');
+
+    $storedValue = $task->fresh()->customFieldValues()
+        ->where('custom_field_id', $this->statusField->getKey())
+        ->value($this->statusField->getValueColumn());
+
+    expect($storedValue)->toBe($todo->getKey());
+})->with(['foreign workspace option' => 'foreign', 'garbage id' => 'garbage']);
+
 it('opens the edit action when a card is clicked', function (): void {
     $todo = $this->statusField->options->firstWhere('name', 'To do');
 

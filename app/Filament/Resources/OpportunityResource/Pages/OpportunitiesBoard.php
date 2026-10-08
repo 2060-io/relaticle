@@ -210,6 +210,7 @@ final class OpportunitiesBoard extends BoardResourcePage
         throw_unless($card, InvalidArgumentException::class, "Card not found: {$cardId}");
 
         abort_unless(Gate::allows('update', $card), 403);
+        abort_unless($this->stages()->contains(fn (array $stage): bool => (string) $stage['id'] === $targetColumnId), 422);
 
         $newPosition = $this->calculatePositionBetweenCards($afterCardId, $beforeCardId, $targetColumnId);
 
