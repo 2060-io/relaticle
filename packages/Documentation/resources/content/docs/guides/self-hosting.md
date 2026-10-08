@@ -82,6 +82,7 @@ These must be set or the containers will refuse to start.
 | `APP_TIMEZONE` | `UTC` | Application timezone. |
 | `APP_URL` | `http://localhost` | Full URL where Relaticle is accessible. Include the scheme. |
 | `TRUSTED_HOSTS` | `localhost` | Extra hostnames the app accepts, comma separated. The `APP_URL` host and any `*_DOMAIN` hosts are always accepted. Keep `localhost` in the list, because the container health check calls it. |
+| `SESSION_SECURE_COOKIE` | `true` | Sends the session cookie over HTTPS only. Production installs must be served over HTTPS. Set `false` only for a plain-HTTP evaluation install, because browsers drop a Secure cookie on plain HTTP and nobody can sign in. `localhost` is the exception in most browsers. |
 | `HSTS_MAX_AGE` | `15552000` | Seconds browsers keep forcing HTTPS for your host. The `Strict-Transport-Security` header is sent only when `APP_ENV=production` and the request is HTTPS. Set `0` to make browsers forget it. |
 | `HSTS_INCLUDE_SUBDOMAINS` | `false` | Set `true` to extend HSTS to every subdomain of the host. Leave it off if any sibling subdomain, such as an intranet host, is served over plain HTTP. |
 | `CSP_MODE` | `enforce` | Content-Security-Policy for HTML pages. `report-only` sends the full policy as a report-only header, and `off` drops it. `frame-ancestors`, `object-src` and `base-uri` stay enforced in every mode. |
