@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Support\ContentSecurityPolicy;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,7 +15,13 @@ final readonly class SecurityHeaders
     {
         $response = $next($request);
 
-        foreach ($this->headersFor($request) as $name => $value) {
+        $headers = $this->headersFor($request);
+
+        if ($this->needsContentSecurityPolicy($response)) {
+            $headers = [...$headers, ...$this->contentSecurityPolicyHeaders($request)];
+        }
+
+        foreach ($headers as $name => $value) {
             if (! $response->headers->has($name)) {
                 $response->headers->set($name, $value);
             }
@@ -39,6 +46,29 @@ final readonly class SecurityHeaders
         }
 
         return $headers;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function contentSecurityPolicyHeaders(Request $request): array
+    {
+        $full = ContentSecurityPolicy::full(apiDocs: $request->routeIs('scribe'));
+
+        return match (config()->string('app.csp.mode')) {
+            'enforce' => ['Content-Security-Policy' => $full],
+            'report-only' => [
+                'Content-Security-Policy' => ContentSecurityPolicy::alwaysEnforced(),
+                'Content-Security-Policy-Report-Only' => $full,
+            ],
+            default => ['Content-Security-Policy' => ContentSecurityPolicy::alwaysEnforced()],
+        };
+    }
+
+    private function needsContentSecurityPolicy(Response $response): bool
+    {
+        return ! $response->headers->has('Content-Security-Policy')
+            && str_contains((string) $response->headers->get('Content-Type'), 'text/html');
     }
 
     private function strictTransportSecurity(): string

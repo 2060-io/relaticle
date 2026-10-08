@@ -84,6 +84,8 @@ These must be set or the containers will refuse to start.
 | `TRUSTED_HOSTS` | `localhost` | Extra hostnames the app accepts, comma separated. The `APP_URL` host and any `*_DOMAIN` hosts are always accepted. Keep `localhost` in the list, because the container health check calls it. |
 | `HSTS_MAX_AGE` | `15552000` | Seconds browsers keep forcing HTTPS for your host. The `Strict-Transport-Security` header is sent only when `APP_ENV=production` and the request is HTTPS. Set `0` to make browsers forget it. |
 | `HSTS_INCLUDE_SUBDOMAINS` | `false` | Set `true` to extend HSTS to every subdomain of the host. Leave it off if any sibling subdomain, such as an intranet host, is served over plain HTTP. |
+| `CSP_MODE` | `enforce` | Content-Security-Policy for HTML pages. `report-only` sends the full policy as a report-only header, and `off` drops it. `frame-ancestors`, `object-src` and `base-uri` stay enforced in every mode. |
+| `CSP_SCRIPT_SRC`, `CSP_STYLE_SRC`, `CSP_IMG_SRC`, `CSP_FONT_SRC`, `CSP_CONNECT_SRC`, `CSP_FRAME_SRC` | (empty) | Extra origins for that directive, comma separated. Set `CSP_IMG_SRC` when media or profile photos load from a bucket URL on another host. The Reverb websocket origin is added from `REVERB_HOST`, `REVERB_PORT` and `REVERB_SCHEME`. |
 | `APP_PORT` | `80` | Host port the app container binds to. |
 | `APP_PANEL_DOMAIN` | (empty) | Set for subdomain routing (e.g., `app.example.com`). Leave empty for path mode (`/app`). |
 | `PASSKEYS_USER_HANDLE_SECRET` | `APP_KEY` | Derives the opaque WebAuthn user handle stored on each authenticator. Set it to its own random value (`openssl rand -base64 32`) before anyone registers a passkey, so rotating `APP_KEY` later does not change every user's handle. |

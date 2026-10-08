@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
 use Laravel\Passport\Client;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -108,6 +109,7 @@ it('keeps the headers a response already carries', function (): void {
 });
 
 it('leaves the media response content security policy intact', function (): void {
+    config()->set('app.csp.mode', 'report-only');
     Storage::fake('local');
     $user = User::factory()->withPersonalWorkspace()->create();
 
@@ -119,6 +121,143 @@ it('leaves the media response content security policy intact', function (): void
     $this->get($media->getUrl())
         ->assertOk()
         ->assertHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+        ->assertHeaderMissing('Content-Security-Policy-Report-Only')
         ->assertHeader('X-Content-Type-Options', 'nosniff')
         ->assertHeader('X-Frame-Options', 'DENY');
+});
+
+function consentScreenUrl(User $user): string
+{
+    $client = Client::query()->forceCreate([
+        'id' => (string) Str::uuid(),
+        'name' => 'Test MCP Client',
+        'redirect_uris' => ['http://localhost:33418/callback'],
+        'grant_types' => ['authorization_code', 'refresh_token'],
+        'revoked' => false,
+        'owner_type' => $user->getMorphClass(),
+        'owner_id' => $user->getKey(),
+    ]);
+
+    return '/oauth/authorize?'.http_build_query([
+        'client_id' => $client->getKey(),
+        'redirect_uri' => 'http://localhost:33418/callback',
+        'response_type' => 'code',
+        'scope' => 'mcp:use',
+        'state' => 'test-state',
+        'code_challenge' => str_repeat('a', 43),
+        'code_challenge_method' => 'S256',
+    ]);
+}
+
+it('enforces the full content security policy in enforce mode', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+
+    $response = $this->get('/app/login')->assertHeaderMissing('Content-Security-Policy-Report-Only');
+
+    expect($response->headers->get('Content-Security-Policy'))
+        ->toContain("default-src 'self'")
+        ->toContain("frame-ancestors 'none'")
+        ->toContain("object-src 'none'")
+        ->toContain("base-uri 'self'");
+});
+
+it('enforces frame-ancestors on the login page and the consent screen in every mode', function (string $mode): void {
+    config()->set('app.csp.mode', $mode);
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $consentUrl = consentScreenUrl($user);
+
+    $responses = [
+        $this->get('/app/login')->assertOk(),
+        $this->actingAs($user)->get($consentUrl)->assertOk(),
+    ];
+
+    foreach ($responses as $response) {
+        expect($response->headers->get('Content-Security-Policy'))
+            ->toContain("frame-ancestors 'none'")
+            ->toContain("object-src 'none'")
+            ->toContain("base-uri 'self'");
+    }
+})->with(['enforce', 'report-only', 'off']);
+
+it('sends the full policy as report-only and enforces only the safe directives in report-only mode', function (): void {
+    config()->set('app.csp.mode', 'report-only');
+
+    $response = $this->get('/app/login');
+
+    expect($response->headers->get('Content-Security-Policy'))
+        ->toBe("frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+        ->and($response->headers->get('Content-Security-Policy-Report-Only'))
+        ->toContain("default-src 'self'")
+        ->toContain("script-src 'self'")
+        ->toContain("frame-ancestors 'none'");
+});
+
+it('enforces only the safe directives when the policy is off', function (): void {
+    config()->set('app.csp.mode', 'off');
+
+    $this->get('/app/login')
+        ->assertHeader('Content-Security-Policy', "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+        ->assertHeaderMissing('Content-Security-Policy-Report-Only');
+});
+
+it('allows the reverb websocket origin in connect-src', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('app.csp.reverb', ['host' => 'ws.example.com', 'port' => 8443, 'scheme' => 'https']);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain("connect-src 'self' https://cdn.usefathom.com wss://ws.example.com:8443");
+});
+
+it('adds the configured extra sources to a directive', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('app.csp.extra.img-src', ['https://cdn.example.com']);
+
+    expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
+        ->toContain("img-src 'self' data: blob: https://cdn.usefathom.com https://cdn.example.com");
+});
+
+it('does not restrict form-action so the oauth consent redirect can reach the client', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    expect($this->actingAs($user)->get(consentScreenUrl($user))->headers->get('Content-Security-Policy'))
+        ->not->toContain('form-action');
+});
+
+it('adds no content security policy to a json response', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+
+    $this->getJson('/up')->assertHeaderMissing('Content-Security-Policy');
+});
+
+it('allows the scalar cdn and fonts on the api reference only', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+
+    $docs = $this->get('/developers/api')->headers->get('Content-Security-Policy');
+    $login = $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    expect($docs)
+        ->toContain('https://cdn.jsdelivr.net')
+        ->toContain('https://fonts.scalar.com')
+        ->and($login)
+        ->not->toContain('cdn.jsdelivr.net')
+        ->not->toContain('fonts.scalar.com');
+});
+
+it('allows the vite dev server only while it runs hot', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    $this->withVite();
+    $hotFile = tempnam(sys_get_temp_dir(), 'hot');
+    file_put_contents($hotFile, 'https://sucre.test:5173');
+    Vite::useHotFile($hotFile);
+
+    $hot = $this->get('/app/login')->headers->get('Content-Security-Policy');
+    unlink($hotFile);
+    $cold = $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    expect($hot)
+        ->toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.usefathom.com https://challenges.cloudflare.com https://sucre.test:5173")
+        ->toContain('wss://sucre.test:5173')
+        ->and($cold)
+        ->not->toContain(':5173');
 });

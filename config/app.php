@@ -56,11 +56,28 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
-    'trusted_hosts' => array_filter(array_map('trim', explode(',', (string) env('TRUSTED_HOSTS', '')))),
+    'trusted_hosts' => array_filter(array_map(trim(...), explode(',', (string) env('TRUSTED_HOSTS', '')))),
 
     'hsts' => [
         'max_age' => (int) env('HSTS_MAX_AGE', 15552000),
         'include_subdomains' => (bool) env('HSTS_INCLUDE_SUBDOMAINS', false),
+    ],
+
+    'csp' => [
+        'mode' => env('CSP_MODE', 'enforce'),
+        'reverb' => [
+            'host' => env('REVERB_HOST'),
+            'port' => (int) env('REVERB_PORT', 443),
+            'scheme' => env('REVERB_SCHEME', 'https'),
+        ],
+        'extra' => [
+            'script-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_SCRIPT_SRC', '')))),
+            'style-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_STYLE_SRC', '')))),
+            'img-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_IMG_SRC', '')))),
+            'font-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_FONT_SRC', '')))),
+            'connect-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_CONNECT_SRC', '')))),
+            'frame-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_FRAME_SRC', '')))),
+        ],
     ],
 
     /*
