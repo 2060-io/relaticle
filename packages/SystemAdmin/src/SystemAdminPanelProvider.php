@@ -26,7 +26,6 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
-use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
@@ -274,7 +273,12 @@ final class SystemAdminPanelProvider extends PanelProvider
             )
             ->renderHook(
                 PanelsRenderHook::AUTH_LOGIN_FORM_BEFORE,
-                fn (): string => Blade::render('@env(\'local\')<x-login-link email="sysadmin@relaticle.com" guard="sysadmin" user-model="'.SystemAdministrator::class.'" redirect-url="'.$this->sysadminHomeUrl().'" />@endenv'),
+                fn (): View|string => app()->isLocal() && Route::has('loginLinkLogin')
+                    ? view('system-admin::auth.login-link', [
+                        'userModel' => SystemAdministrator::class,
+                        'redirectUrl' => $this->sysadminHomeUrl(),
+                    ])
+                    : '',
             )
             ->viteTheme('resources/css/filament/admin/theme.css');
     }

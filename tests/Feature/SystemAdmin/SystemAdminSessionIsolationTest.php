@@ -773,3 +773,20 @@ it('returns to the staff host on stop and credits both records to the administra
         ->and($events->pluck('causer_id')->unique()->all())->toBe([$administrator->getKey()])
         ->and(DB::table('sessions')->where('user_id', $customer->id)->exists())->toBeFalse();
 });
+
+it('offers the staff developer login form only in the local environment', function (string $environment, bool $offered): void {
+    $cookies = [];
+    $this->app->detectEnvironment(fn (): string => $environment);
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+
+    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/login')->assertOk();
+
+    $offered
+        ? $page->assertSee(route('loginLinkLogin'), false)->assertSee('name="guard" value="sysadmin"', false)
+        : $page->assertDontSee('name="guard" value="sysadmin"', false);
+})->with([
+    'local' => ['local', true],
+    'production' => ['production', false],
+]);
