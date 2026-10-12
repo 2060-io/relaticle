@@ -8,6 +8,7 @@ use App\Features\EmailIntegration;
 use App\Filament\Pages\Dashboard;
 use App\Models\CustomFieldValue;
 use App\Models\User;
+use App\Models\Workspace;
 use Filament\Support\Facades\FilamentView;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Database\Eloquent\Model;
@@ -21,6 +22,7 @@ use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\AbstractProvider;
 use Laravel\Socialite\Two\GoogleProvider;
 use Livewire\Livewire;
+use Relaticle\EmailIntegration\Actions\PurgeStoredMailboxData;
 use Relaticle\EmailIntegration\Console\Commands\BackfillEmailThreadsCommand;
 use Relaticle\EmailIntegration\Console\Commands\DisconnectFormerMemberMailboxesCommand;
 use Relaticle\EmailIntegration\Console\Commands\DispatchOutboxCommand;
@@ -188,6 +190,9 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
                 ->where('is_shared', false)
                 ->forceDelete();
         });
+
+        User::deleting(fn (User $user) => resolve(PurgeStoredMailboxData::class)->execute($user));
+        Workspace::deleting(fn (Workspace $workspace) => resolve(PurgeStoredMailboxData::class)->execute($workspace));
 
         Event::listen(TeamMemberRemoved::class, DisconnectRemovedMemberMailboxesListener::class);
 
