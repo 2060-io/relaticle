@@ -54,6 +54,7 @@ use App\Support\CustomFields\RecordNameResolver;
 use App\Support\CustomFields\RestoreConflictMessage;
 use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Http\RequestAbility;
+use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
@@ -92,11 +93,14 @@ use Illuminate\Log\Context\Repository as ContextRepository;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\View;
 use Knuckles\Scribe\Scribe;
@@ -268,6 +272,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->configureConsentScreen();
 
         $this->configurePolicies();
+        $this->configureSessions();
         $this->configureModels();
         $this->configureFilament();
         $this->configureCommunityCounts();
@@ -497,6 +502,16 @@ final class AppServiceProvider extends ServiceProvider
         $existingPolicy = $candidates->reverse()->first(fn (string $class): bool => class_exists($class));
 
         return $existingPolicy ?: $classDirname.'\\Policies\\'.class_basename($modelClass).'Policy';
+    }
+
+    private function configureSessions(): void
+    {
+        Session::extend('database', fn (Application $app): ImpersonationSessionHandler => new ImpersonationSessionHandler(
+            DB::connection(Config::get('session.connection')),
+            Config::string('session.table'),
+            (int) Config::get('session.lifetime'),
+            $app,
+        ));
     }
 
     /**
