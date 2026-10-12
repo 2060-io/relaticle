@@ -650,7 +650,8 @@ it('hands an impersonation from the staff host to the customer host', function (
     isolatedAuthRequest($cookies, 'GET', $link)->assertRedirect('https://app.example.test');
     isolatedAuthRequest($cookies, 'GET', 'https://app.example.test/passkeys/confirm/options')->assertOk();
 
-    expect(DB::table('sessions')->where('user_id', $customer->id)->exists())->toBeTrue()
+    expect(DB::table('sessions')->where('user_id', $customer->id)->exists())->toBeFalse()
+        ->and(DB::table('sessions')->whereNull('user_id')->exists())->toBeTrue()
         ->and(DB::table('system_administrator_sessions')->where('user_id', $administrator->id)->exists())->toBeTrue();
 });
 
@@ -668,7 +669,8 @@ it('refuses the impersonation link on the staff host and a second use on the cus
     $replayed = [];
     isolatedAuthRequest($replayed, 'GET', $link)->assertForbidden();
 
-    expect(DB::table('sessions')->where('user_id', $customer->id)->count())->toBe(1);
+    isolatedAuthRequest($replayed, 'GET', 'https://app.example.test/passkeys/confirm/options')->assertUnauthorized();
+    isolatedAuthRequest($cookies, 'GET', 'https://app.example.test/passkeys/confirm/options')->assertOk();
 });
 
 it('returns to the staff host on stop and credits both records to the administrator', function (): void {

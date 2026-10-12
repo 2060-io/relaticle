@@ -177,6 +177,8 @@ arch('avoid mutation')
         'App\Support\Passport\ClientRepository',
         // Extends league's BearerTokenResponse; PHP forbids a readonly class extending a non-readonly one.
         'App\Support\Passport\WorkspaceBearerTokenResponse',
+        // Extends the framework's DatabaseSessionHandler; PHP forbids a readonly class extending a non-readonly one.
+        'App\Support\Impersonation\ImpersonationSessionHandler',
         'App\View',
         'App\Services\Favicon\Drivers',
         'App\Providers\Filament',
@@ -232,6 +234,8 @@ arch('avoid inheritance')
         'App\Support\Passport\ClientRepository',
         // getExtraParams() is league's hook for extra token response fields.
         'App\Support\Passport\WorkspaceBearerTokenResponse',
+        // userId() is the framework's only hook for the id a database session row carries.
+        'App\Support\Impersonation\ImpersonationSessionHandler',
     ]);
 
 // Packages are kept final by pint (final_class, repo-wide) and strict-typed by

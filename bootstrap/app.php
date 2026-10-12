@@ -14,6 +14,7 @@ use App\Http\Middleware\RequireOperationGrant;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Http\Middleware\StopImpersonationOnLogout;
 use App\Http\Middleware\SubdomainRootResponse;
+use App\Http\Middleware\SuperviseImpersonation;
 use App\Http\Middleware\ThrottleBeforeAuthentication;
 use App\Http\Middleware\ValidateSignature;
 use Filament\Facades\Filament;
@@ -113,6 +114,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 RedirectToPrimaryHost::class,
                 EnsureAuthenticationComplete::class,
                 StopImpersonationOnLogout::class,
+                SuperviseImpersonation::class,
             ],
         );
 

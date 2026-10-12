@@ -35,6 +35,7 @@ use App\Http\Middleware\EnsureAuthenticationComplete;
 use App\Http\Middleware\EnsureHostedWorkspaceAccess;
 use App\Http\Middleware\RedirectToWorkspaceSetup;
 use App\Http\Middleware\StopImpersonationOnLogout;
+use App\Http\Middleware\SuperviseImpersonation;
 use App\Listeners\SwitchWorkspace;
 use App\Livewire\App\AppDatabaseNotifications;
 use App\Livewire\App\AppSidebar;
@@ -268,6 +269,20 @@ final class AppPanelProvider extends PanelProvider
     }
 
     /**
+     * @return list<class-string>
+     */
+    private function authMiddleware(): array
+    {
+        return [
+            Authenticate::class,
+            StopImpersonationOnLogout::class,
+            SuperviseImpersonation::class,
+            EnsureAuthenticationComplete::class,
+            CheckScheduledDeletion::class,
+        ];
+    }
+
+    /**
      * Gates the browser timezone detection script below, which posts to an app-panel
      * route. Panel rendering itself no longer reads this; that resolution is global
      * and lives in AppServiceProvider::configureFilament(), because TimezoneManager
@@ -426,12 +441,7 @@ final class AppPanelProvider extends PanelProvider
             ])
             ->authGuard('web')
             ->authPasswordBroker('users')
-            ->authMiddleware([
-                Authenticate::class,
-                StopImpersonationOnLogout::class,
-                EnsureAuthenticationComplete::class,
-                CheckScheduledDeletion::class,
-            ])
+            ->authMiddleware($this->authMiddleware())
             ->persistentMiddleware([
                 EnsureAuthenticationComplete::class,
             ])

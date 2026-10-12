@@ -7,6 +7,7 @@ namespace App\Models\ActivityLog;
 use App\Enums\CreationSource;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Workspace;
+use App\Support\Impersonation\Impersonator;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -69,7 +70,7 @@ final class Activity extends SpatieActivity
         self::addGlobalScope(new WorkspaceScope);
 
         self::creating(function (self $activity): void {
-            if ($activity->workspace_id !== null) {
+            if ($activity->workspace_id !== null || $activity->log_name === Impersonator::LOG_NAME) {
                 return;
             }
 
