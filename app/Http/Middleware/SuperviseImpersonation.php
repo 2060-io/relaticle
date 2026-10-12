@@ -16,6 +16,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 final readonly class SuperviseImpersonation
 {
+    /**
+     * @var list<string>
+     */
+    private const array CALLS_THAT_ONLY_RENDER = ['__lazyLoad', '$refresh', '$commit'];
+
     public function __construct(
         private Impersonator $impersonator,
         private StopImpersonationController $stopImpersonation,
@@ -107,7 +112,7 @@ final readonly class SuperviseImpersonation
         foreach (Arr::wrap(data_get($component, 'calls')) as $call) {
             $method = data_get($call, 'method');
 
-            if (! is_string($method) || $method === '__lazyLoad') {
+            if (! is_string($method) || in_array($method, self::CALLS_THAT_ONLY_RENDER, true)) {
                 continue;
             }
 

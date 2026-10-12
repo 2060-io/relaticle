@@ -457,6 +457,34 @@ it('records no request that only reads, refreshes a component or joins a channel
     expect(Activity::withoutGlobalScope(WorkspaceScope::class)->where('event', 'impersonation_request')->exists())->toBeFalse();
 });
 
+it('records no request that only polls or commits a component', function (string $method): void {
+    $this->get(impersonationLink($this->customer));
+
+    $this->withHeaders(['X-Livewire' => 'true'])->postJson(Livewire::getUpdateUri(), ['components' => [[
+        'snapshot' => json_encode(['memo' => ['name' => 'app.app-database-notifications']]),
+        'updates' => [],
+        'calls' => [['method' => $method, 'params' => []]],
+    ]]]);
+
+    expect(Activity::withoutGlobalScope(WorkspaceScope::class)->where('event', 'impersonation_request')->exists())->toBeFalse();
+})->with(['$refresh', '$commit']);
+
+it('records the property a live update commits', function (): void {
+    $this->get(impersonationLink($this->customer));
+
+    $this->withHeaders(['X-Livewire' => 'true'])->postJson(Livewire::getUpdateUri(), ['components' => [[
+        'snapshot' => json_encode(['memo' => ['name' => 'app.profile.update-profile']]),
+        'updates' => ['data.name' => 'Priya'],
+        'calls' => [['method' => '$commit', 'params' => []]],
+    ]]]);
+
+    $record = Activity::withoutGlobalScope(WorkspaceScope::class)
+        ->where('event', 'impersonation_request')
+        ->sole();
+
+    expect($record->properties->get('actions'))->toBe(['app.profile.update-profile::$data.name']);
+});
+
 it('records a write that only claims to be a livewire request', function (): void {
     $this->get(impersonationLink($this->customer));
 
