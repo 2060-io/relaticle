@@ -49,6 +49,7 @@ it('admits a host listed in TRUSTED_HOSTS', function () {
 });
 
 it('does not validate a signed URL replayed under a different host', function () {
+    $user = User::factory()->create();
     withProdHostTrust();
     config()->set('app.trusted_hosts', ['health.internal']);
 
@@ -56,7 +57,7 @@ it('does not validate a signed URL replayed under a different host', function ()
     URL::forceScheme('https');
 
     $signedUrl = URL::signedRoute('mail.unsubscribe', [
-        'user' => User::factory()->create(),
+        'user' => $user,
         'type' => NotificationType::TaskDigest->value,
     ]);
 
