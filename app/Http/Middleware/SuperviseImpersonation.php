@@ -80,31 +80,40 @@ final readonly class SuperviseImpersonation
      */
     private function livewireActions(Request $request): array
     {
+        return array_merge(...array_map(
+            $this->componentActions(...),
+            array_values(Arr::wrap($request->input('components'))),
+        ));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function componentActions(mixed $component): array
+    {
+        $snapshot = data_get($component, 'snapshot');
+        $name = is_string($snapshot) ? data_get(json_decode($snapshot, true), 'memo.name') : null;
+
+        if (! is_string($name)) {
+            return [];
+        }
+
         $actions = [];
 
-        foreach (Arr::wrap($request->input('components')) as $component) {
-            $snapshot = data_get($component, 'snapshot');
-            $name = is_string($snapshot) ? data_get(json_decode($snapshot, true), 'memo.name') : null;
+        foreach (array_keys(Arr::wrap(data_get($component, 'updates'))) as $property) {
+            $actions[] = "{$name}::\${$property}";
+        }
 
-            if (! is_string($name)) {
+        foreach (Arr::wrap(data_get($component, 'calls')) as $call) {
+            $method = data_get($call, 'method');
+
+            if (! is_string($method) || $method === '__lazyLoad') {
                 continue;
             }
 
-            foreach (array_keys(Arr::wrap(data_get($component, 'updates'))) as $property) {
-                $actions[] = "{$name}::\${$property}";
-            }
+            $mounted = $method === 'mountAction' ? data_get($call, 'params.0') : null;
 
-            foreach (Arr::wrap(data_get($component, 'calls')) as $call) {
-                $method = data_get($call, 'method');
-
-                if (! is_string($method) || $method === '__lazyLoad') {
-                    continue;
-                }
-
-                $mounted = $method === 'mountAction' ? data_get($call, 'params.0') : null;
-
-                $actions[] = is_string($mounted) ? "{$name}::{$method}({$mounted})" : "{$name}::{$method}";
-            }
+            $actions[] = is_string($mounted) ? "{$name}::{$method}({$mounted})" : "{$name}::{$method}";
         }
 
         return $actions;
