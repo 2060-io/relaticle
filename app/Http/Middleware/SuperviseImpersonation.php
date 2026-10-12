@@ -7,6 +7,8 @@ namespace App\Http\Middleware;
 use App\Http\Controllers\Impersonation\StopImpersonationController;
 use App\Support\Impersonation\Impersonator;
 use Closure;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -25,11 +27,13 @@ final readonly class SuperviseImpersonation
             return $next($request);
         }
 
-        if ($this->impersonator->lapsed($request)) {
+        $administrator = $this->impersonator->administrator($this->impersonator->administratorId($request));
+
+        if ($this->impersonator->lapsed($request, $administrator)) {
             return $this->end($request);
         }
 
-        $this->recordWrite($request);
+        $this->recordWrite($request, $administrator);
 
         return $next($request);
     }
@@ -46,7 +50,7 @@ final readonly class SuperviseImpersonation
         abort(419);
     }
 
-    private function recordWrite(Request $request): void
+    private function recordWrite(Request $request, (Model&Authenticatable)|null $administrator): void
     {
         if ($request->isMethodSafe() || $request->is('broadcasting/auth')) {
             return;
@@ -60,7 +64,7 @@ final readonly class SuperviseImpersonation
 
         $this->impersonator->record(
             'impersonation_request',
-            $this->impersonator->administrator($this->impersonator->administratorId($request)),
+            $administrator,
             $request->user('web'),
             [
                 'method' => $request->method(),

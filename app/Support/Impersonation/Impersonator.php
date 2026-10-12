@@ -85,7 +85,7 @@ final readonly class Impersonator
         return $targetId !== null && Auth::guard('web')->id() === $targetId;
     }
 
-    public function lapsed(Request $request): bool
+    public function lapsed(Request $request, (Model&Authenticatable)|null $administrator): bool
     {
         if (! $this->active($request)) {
             return false;
@@ -96,8 +96,6 @@ final readonly class Impersonator
         if (! is_int($startedAt) || now()->getTimestamp() - $startedAt >= self::MAX_SECONDS) {
             return true;
         }
-
-        $administrator = $this->administrator($this->administratorId($request));
 
         return $administrator === null || Gate::forUser($administrator)->denies('impersonate');
     }
