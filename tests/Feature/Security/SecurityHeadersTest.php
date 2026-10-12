@@ -404,6 +404,19 @@ it('allows the scalar cdn and fonts on the api reference only', function (): voi
         ->not->toContain('fonts.scalar.com');
 });
 
+it('lets the api reference send test requests to a dedicated api host', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+    config()->set('scribe.base_url', 'https://api.example.com');
+
+    $docs = $this->get('/developers/api')->headers->get('Content-Security-Policy');
+    $login = $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    expect($docs)
+        ->toContain("connect-src 'self' https://cdn.usefathom.com https://api.example.com")
+        ->and($login)
+        ->not->toContain('api.example.com');
+});
+
 it('allows the vite dev server only while it runs hot', function (): void {
     config()->set('app.csp.mode', 'enforce');
     $this->withVite();

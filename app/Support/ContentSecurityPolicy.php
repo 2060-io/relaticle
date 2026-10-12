@@ -69,6 +69,10 @@ final readonly class ContentSecurityPolicy
         if ($apiDocs) {
             $sources['script-src'][] = self::SCALAR_CDN;
             $sources['font-src'][] = self::SCALAR_FONTS;
+            array_push($sources['connect-src'], ...self::foreignOrigins([
+                config('scribe.try_it_out.base_url'),
+                config('scribe.base_url'),
+            ]));
         }
 
         if ($horizon) {
