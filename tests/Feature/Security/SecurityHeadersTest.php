@@ -161,6 +161,15 @@ it('enforces the full content security policy in enforce mode', function (): voi
         ->toContain("base-uri 'self'");
 });
 
+it('allows remote https images so an email body can show its own', function (): void {
+    config()->set('app.csp.mode', 'enforce');
+
+    $policy = (string) $this->get('/app/login')->headers->get('Content-Security-Policy');
+
+    expect($policy)->toMatch('/img-src [^;]*\\bhttps:(?= |;)/')
+        ->and($policy)->not->toMatch('/(script|connect|frame)-src [^;]*\\bhttps:(?= |;)/');
+});
+
 it('enforces frame-ancestors on the login page and the consent screen in every mode', function (string $mode): void {
     config()->set('app.csp.mode', $mode);
     $user = User::factory()->withPersonalWorkspace()->create();
@@ -232,7 +241,7 @@ it('adds no storage origin while every disk is local', function (): void {
     config()->set('app.csp.mode', 'enforce');
 
     expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
-        ->toContain("img-src 'self' data: blob: https://cdn.usefathom.com;")
+        ->toContain("img-src 'self' data: blob: https:;")
         ->toContain("connect-src 'self' https://cdn.usefathom.com;")
         ->toContain("media-src 'self' blob:;");
 });
@@ -364,7 +373,7 @@ it('adds the configured extra sources to a directive', function (): void {
     config()->set('app.csp.extra.img-src', ['https://cdn.example.com']);
 
     expect($this->get('/app/login')->headers->get('Content-Security-Policy'))
-        ->toContain("img-src 'self' data: blob: https://cdn.usefathom.com https://cdn.example.com");
+        ->toContain("img-src 'self' data: blob: https: https://cdn.example.com");
 });
 
 it('does not restrict form-action so the oauth consent redirect can reach the client', function (): void {

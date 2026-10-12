@@ -52,7 +52,8 @@ final readonly class ContentSecurityPolicy
             'default-src' => ["'self'"],
             'script-src' => ["'self'", "'unsafe-inline'", "'unsafe-eval'", self::FATHOM, self::TURNSTILE, ...$assets],
             'style-src' => ["'self'", "'unsafe-inline'", ...$assets],
-            'img-src' => ["'self'", 'data:', 'blob:', self::FATHOM, ...$assets, ...$storage],
+            // Email bodies render in a srcdoc frame that inherits this policy, and their images are remote.
+            'img-src' => ["'self'", 'data:', 'blob:', 'https:', ...$assets, ...$storage],
             'font-src' => ["'self'", 'data:', ...$assets],
             'connect-src' => ["'self'", self::FATHOM, ...self::reverbOrigins(), ...$storage],
             'media-src' => ["'self'", 'blob:', ...$storage],
