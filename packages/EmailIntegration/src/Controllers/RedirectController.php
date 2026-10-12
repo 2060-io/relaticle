@@ -38,7 +38,8 @@ final readonly class RedirectController
                 $user,
                 $this->driver('azure')
                     ->setScopes($this->azureScopes())
-                    ->with(['prompt' => 'consent']),
+                    // Entra rejects a forced consent prompt for non-admins once user consent is off, even after admin consent.
+                    ->with(['prompt' => 'select_account']),
             ),
 
             default => back(),
