@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+$commaSeparated = static fn (string $key): array => array_values(array_filter(
+    array_map(trim(...), explode(',', (string) env($key, ''))),
+));
+
 return [
 
     /*
@@ -56,9 +60,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
-    'trusted_hosts' => array_filter(array_map(trim(...), explode(',', (string) env('TRUSTED_HOSTS', '')))),
+    'trusted_hosts' => $commaSeparated('TRUSTED_HOSTS'),
 
-    'trusted_proxies' => array_values(array_filter(array_map(trim(...), explode(',', (string) env('TRUSTED_PROXIES', ''))))),
+    'trusted_proxies' => $commaSeparated('TRUSTED_PROXIES'),
 
     'hsts' => [
         'max_age' => (int) env('HSTS_MAX_AGE', 15552000),
@@ -73,12 +77,12 @@ return [
             'scheme' => env('REVERB_SCHEME', 'https'),
         ],
         'extra' => [
-            'script-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_SCRIPT_SRC', '')))),
-            'style-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_STYLE_SRC', '')))),
-            'img-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_IMG_SRC', '')))),
-            'font-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_FONT_SRC', '')))),
-            'connect-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_CONNECT_SRC', '')))),
-            'frame-src' => array_filter(array_map(trim(...), explode(',', (string) env('CSP_FRAME_SRC', '')))),
+            'script-src' => $commaSeparated('CSP_SCRIPT_SRC'),
+            'style-src' => $commaSeparated('CSP_STYLE_SRC'),
+            'img-src' => $commaSeparated('CSP_IMG_SRC'),
+            'font-src' => $commaSeparated('CSP_FONT_SRC'),
+            'connect-src' => $commaSeparated('CSP_CONNECT_SRC'),
+            'frame-src' => $commaSeparated('CSP_FRAME_SRC'),
         ],
     ],
 
