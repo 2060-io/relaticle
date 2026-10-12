@@ -689,7 +689,7 @@ test('a rolled back invitation does not use up a slot', function (): void {
 test('resending an invitation counts against the workspace ceiling', function (): void {
     fillWorkspaceHourlyCeiling($this->user, 50);
 
-    $invitation = $this->workspace->workspaceInvitations()->firstOrFail();
+    $invitation = $this->workspace->workspaceInvitations()->orderBy('email')->firstOrFail();
 
     livewire(WorkspaceMembers::class, ['workspace' => $this->workspace])
         ->callAction(TestAction::make('resendWorkspaceInvitation')->table($invitation->id))
