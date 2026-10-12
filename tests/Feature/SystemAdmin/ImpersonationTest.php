@@ -318,7 +318,20 @@ it('ends the impersonation thirty minutes after it starts', function (): void {
         ->assertRedirect(route('filament.sysadmin.resources.users.index'));
 
     expect(Auth::guard('web')->check())->toBeFalse()
-        ->and(session('impersonation.target_id'))->toBeNull();
+        ->and(session('impersonation.target_id'))->toBeNull()
+        ->and(session('impersonation.started_at'))->toBeNull();
+});
+
+it('ends an impersonation that carries no start time', function (): void {
+    $this->get(impersonationLink($this->customer));
+
+    session()->forget('impersonation.started_at');
+    session()->save();
+
+    $this->get(url()->getAppUrl($this->customer->currentWorkspace->slug))
+        ->assertRedirect(route('filament.sysadmin.resources.users.index'));
+
+    expect(Auth::guard('web')->check())->toBeFalse();
 });
 
 it('ends the impersonation once the administrator may no longer impersonate', function (): void {
@@ -349,7 +362,7 @@ it('answers a livewire request with page expired once the impersonation has laps
     $this->travel(30)->minutes();
 
     $this->withHeaders(['X-Livewire' => 'true'])
-        ->postJson(Livewire::getUpdateUri(), ['components' => []])
+        ->post(Livewire::getUpdateUri(), ['components' => []])
         ->assertStatus(419);
 
     $this->get(url()->getAppUrl($this->customer->currentWorkspace->slug))
