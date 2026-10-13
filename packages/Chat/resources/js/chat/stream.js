@@ -378,8 +378,8 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
 
     // Ends a turn from persisted state when no stream_end did: the poll saw the
     // turn finish, or the inactivity watchdog ran out. The reply, its proposal
-    // cards and its tables come from the database, so a websocket that never
-    // connected costs the live typing and nothing else.
+    // cards and its tables come from the database. Next steps still need the
+    // broadcast: the suggester saves them after the turn has ended.
     async settleFromServer({ timedOut = false } = {}) {
         const turnEnded = !timedOut || (await this.turnStillRunning()) !== true;
         const authoritative = await this.fetchLatestAssistant();
@@ -554,8 +554,9 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
 
     applyPersisted(assistantMsg, authoritative, { turnEnded = false } = {}) {
         // The latest row is this bubble's own only when no other bubble shows it
-        // (a failed turn persists nothing, so the latest row is the previous
-        // turn's), and a bubble that never saw its stream needs the turn over.
+        // (a turn stopped before the model answered persists nothing, so the latest
+        // row is the previous turn's), and a bubble that never saw its stream needs
+        // the turn over.
         const shownElsewhere = this.isShownOutside(assistantMsg, authoritative);
         const isUnstartedStub = assistantMsg.invocationId == null && !assistantMsg.content && !assistantMsg.rendered;
         const ownsLatest = !shownElsewhere && (!isUnstartedStub || turnEnded);

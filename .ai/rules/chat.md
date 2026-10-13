@@ -362,8 +362,11 @@ Once the server has registered a turn (`TurnPresence`), `watchTurn()` in `stream
 ends the turn from the database when the marker is gone. Every way a turn starts calls `watchTurn()`
 after the server confirmed it: the send response, a reload mid-turn, and `chat:resuming`. Asking
 earlier reads "not running" for a turn that has not begun.
-`applyPersisted()` adopts the latest assistant row only when no other bubble shows it. A failed turn
-persists nothing, so the latest row is then the previous turn's reply.
+`applyPersisted()` adopts the latest assistant row only when no other bubble shows it. A turn that
+ends before the model answers (stopped, paused, could not start) persists nothing, so the latest row
+is then the previous turn's reply. A job that fails persists its own failure note
+(`ProcessChatMessage::persistFailedTurn()`), and the poll shows that note as the reply, with no
+Retry button. Next steps arrive by broadcast only, so without a websocket they show after a reload.
 The marker lives in the cache, so web and workers must share one store. The Docker image defaults
 `CACHE_STORE` to redis for that reason. `tests/Browser/Chat/StreamWithoutWebsocketTest.php` is the gate.
 The Echo client is Filament's own: `config/filament.php` `broadcasting.echo` is rendered per request,

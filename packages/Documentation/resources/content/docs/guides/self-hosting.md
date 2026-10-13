@@ -127,7 +127,7 @@ Rela, the built-in AI assistant, streams its replies into the chat over a websoc
 | `REVERB_APP_SECRET` | `APP_KEY` | Signs messages between the app and the `reverb` container. Set it to rotate it apart from `APP_KEY`. |
 | `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME` | (empty) | Set these only when the websocket has its own public address. Left empty, the browser connects to the `APP_URL` origin under `/reverb`. |
 
-When the websocket is unreachable, the chat still works. Each reply appears a few seconds after it is saved, without typing live.
+When the websocket is unreachable, the chat still works. Each reply appears a few seconds after it is saved, without typing live. The suggested next steps under a reply show after a page reload.
 
 ### Optional
 
