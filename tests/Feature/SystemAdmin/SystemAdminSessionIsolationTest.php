@@ -32,6 +32,9 @@ use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ViewUser;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
+use Spatie\LoginLink\Exceptions\DidNotFindUserToLogIn;
+use Spatie\LoginLink\Exceptions\NotAllowedInCurrentEnvironment;
+use Spatie\LoginLink\Exceptions\NotAllowedInCurrentHost;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Helpers\PasskeyAssertionFixture;
 
@@ -444,6 +447,86 @@ it('limits the staff development login link to the local environment', function 
     }
 })->with(['local', 'production']);
 
+it('allows the local login link only on development hosts', function (string $host, bool $allowed): void {
+    $cookies = [];
+    $administrator = SystemAdministrator::factory()->create();
+    config()->set('app.url', "https://{$host}");
+    config()->set('app.app_panel_domain', null);
+    config()->set('app.sysadmin_domain', $host);
+    config()->set('login-link.allowed_hosts', (require config_path('login-link.php'))['allowed_hosts']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+    $this->withoutMiddleware(PreventRequestForgery::class);
+    Exceptions::dontReport(NotAllowedInCurrentHost::class);
+
+    $response = isolatedAuthRequest($cookies, 'POST', "https://{$host}/laravel-login-link-login", [
+        'email' => $administrator->email,
+        'guard' => 'sysadmin',
+        'user_model' => SystemAdministrator::class,
+        'redirect_url' => "https://{$host}/",
+    ]);
+
+    if ($allowed) {
+        $response->assertRedirect("https://{$host}/");
+
+        return;
+    }
+
+    $response->assertServerError();
+    expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
+})->with([
+    'public host' => ['crm.example.com', false],
+    'development host' => ['staff.example.test', true],
+]);
+
+it('refuses the local login link on a spoofed development host when the app url is public', function (): void {
+    $cookies = [];
+    SystemAdministrator::factory()->create();
+    config()->set('app.url', 'https://crm.example.com');
+    config()->set('app.app_panel_domain', null);
+    config()->set('app.sysadmin_domain', null);
+    $loginLink = require config_path('login-link.php');
+    config()->set('login-link.allowed_environments', $loginLink['allowed_environments']);
+    config()->set('login-link.allowed_hosts', $loginLink['allowed_hosts']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+    $this->withoutMiddleware(PreventRequestForgery::class);
+    Exceptions::dontReport(NotAllowedInCurrentEnvironment::class);
+
+    isolatedAuthRequest($cookies, 'POST', 'https://localhost/laravel-login-link-login', [
+        'guard' => 'sysadmin',
+        'user_model' => SystemAdministrator::class,
+        'redirect_url' => 'https://localhost/',
+    ])->assertServerError();
+
+    expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
+});
+
+it('does not create a user for an unknown address through the local login link', function (): void {
+    $cookies = [];
+    config()->set('login-link.allowed_hosts', ['staff.example.test']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
+    Exceptions::dontReport(DidNotFindUserToLogIn::class);
+
+    isolatedAuthRequest($cookies, 'POST', 'https://staff.example.test/laravel-login-link-login', [
+        'email' => 'minted@example.test',
+        'guard' => 'sysadmin',
+        'user_model' => SystemAdministrator::class,
+        'redirect_url' => 'https://staff.example.test/',
+    ]);
+
+    expect(SystemAdministrator::query()->where('email', 'minted@example.test')->exists())->toBeFalse();
+});
+
 it('rejects a customer login snapshot on the staff host before authenticating', function (): void {
     $cookies = [];
     $customer = User::factory()->withWorkspace()->create();
@@ -692,3 +775,20 @@ it('returns to the staff host on stop and credits both records to the administra
         ->and($events->pluck('causer_id')->unique()->all())->toBe([$administrator->getKey()])
         ->and(DB::table('sessions')->where('user_id', $customer->id)->exists())->toBeFalse();
 });
+
+it('offers the staff developer login form only in the local environment', function (string $environment, bool $offered): void {
+    $cookies = [];
+    $this->app->detectEnvironment(fn (): string => $environment);
+    $this->beforeApplicationDestroyed(function (): void {
+        Request::setTrustedHosts([]);
+    });
+
+    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/login')->assertOk();
+
+    $offered
+        ? $page->assertSee(route('loginLinkLogin'), false)->assertSee('name="guard" value="sysadmin"', false)
+        : $page->assertDontSee('name="guard" value="sysadmin"', false);
+})->with([
+    'local' => ['local', true],
+    'production' => ['production', false],
+]);

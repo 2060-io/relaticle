@@ -211,6 +211,23 @@ test('the custom fields form refuses the domain type and still creates a text fi
     expect($created->all())->toBe(['Plain probe' => 'text']);
 });
 
+test('the custom fields table renders a field name as text, never as markup', function (string $name, string $escaped): void {
+    CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'company',
+        'type' => 'text',
+        'code' => 'markup_probe',
+        'name' => $name,
+    ]);
+
+    livewire(ManageFieldsTable::class, ['entityType' => 'company'])
+        ->assertSeeHtml($escaped)
+        ->assertDontSeeHtml($name);
+})->with([
+    'image onerror' => ['<img src=x onerror=alert(1)>', '&lt;img src=x onerror=alert(1)&gt;'],
+    'script tag' => ['<script>alert(1)</script>', '&lt;script&gt;alert(1)&lt;/script&gt;'],
+]);
+
 test('the tab strip drops billing when the feature is off', function (): void {
     Feature::define(BillingFeature::class, false);
 

@@ -193,3 +193,54 @@ test('finds no favicon when the site answers and no source has an icon', functio
 
     expect((new HighQualityDriver)->fetch('https://1.1.1.1'))->toBeNull();
 });
+
+test('keeps a path and query in the page url out of the google lookup', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://1.1.1.1/*' => Http::response('', 404),
+        'https://www.google.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    $favicon = (new HighQualityDriver)->fetch('https://1.1.1.1/../?&x=1#frag');
+
+    expect($favicon?->getFaviconUrl())->toBe('https://www.google.com/s2/favicons?sz=256&domain=1.1.1.1');
+
+    Http::assertNotSent(fn (HttpClientRequest $request): bool => str_contains($request->url(), 'google.com') && str_contains($request->url(), 'x=1'));
+});
+
+test('keeps a path and query in the page url out of the duckduckgo lookup', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://icons.duckduckgo.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    $favicon = (new HighQualityDriver)->fetch('https://1.1.1.1/../a/b?x=1');
+
+    expect($favicon?->getFaviconUrl())->toBe('https://icons.duckduckgo.com/ip3/1.1.1.1.ico');
+});
+
+test('skips the third party lookups when the host is not a bare hostname', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake(['*' => Http::response('', 404)]);
+
+    expect((new HighQualityDriver)->fetch('https://[2606:4700:4700::1111]/'))->toBeNull();
+
+    Http::assertNotSent(fn (HttpClientRequest $request): bool => str_contains($request->url(), 'google.com') || str_contains($request->url(), 'duckduckgo.com'));
+});
+
+test('keeps the third party lookups for a fully qualified host with a trailing dot', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://icons.duckduckgo.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    expect((new HighQualityDriver)->fetch('https://example.com.')?->getFaviconUrl())
+        ->toBe('https://icons.duckduckgo.com/ip3/example.com.ico');
+});

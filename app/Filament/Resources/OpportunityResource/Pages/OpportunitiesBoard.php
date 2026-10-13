@@ -124,23 +124,7 @@ final class OpportunitiesBoard extends BoardResourcePage
                     ->slideOver(false)
                     ->model(Opportunity::class)
                     ->schema($this->quickCreateForm(...))
-                    ->using(function (array $data, CreateAction $action): Opportunity {
-                        /** @var Workspace $currentWorkspace */
-                        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
-
-                        /** @var Opportunity $opportunity */
-                        $opportunity = $currentWorkspace->opportunities()->create($data);
-
-                        $columnId = $action->getArguments()['column'] ?? null;
-
-                        if (filled($columnId)) {
-                            $opportunity->saveCustomFieldValue(self::stageCustomField(), $columnId);
-                            $opportunity->order_column = (float) $this->getBoardPositionInColumn($columnId);
-                            $opportunity->saveQuietly();
-                        }
-
-                        return $opportunity;
-                    }),
+                    ->using($this->createCard(...)),
             ])
             ->cardAction('edit')
             ->cardActions([
@@ -210,6 +194,7 @@ final class OpportunitiesBoard extends BoardResourcePage
         throw_unless($card, InvalidArgumentException::class, "Card not found: {$cardId}");
 
         abort_unless(Gate::allows('update', $card), 403);
+        abort_unless($this->ownsColumn($targetColumnId), 422);
 
         $newPosition = $this->calculatePositionBetweenCards($afterCardId, $beforeCardId, $targetColumnId);
 
@@ -301,6 +286,35 @@ final class OpportunitiesBoard extends BoardResourcePage
             $closesOn === $tomorrow => 'Closes Tomorrow',
             default => $date->format('M j'),
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function createCard(array $data, CreateAction $action): Opportunity
+    {
+        $columnId = $action->getArguments()['column'] ?? null;
+
+        abort_unless(blank($columnId) || $this->ownsColumn((string) $columnId), 422);
+
+        /** @var Workspace $currentWorkspace */
+        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
+
+        /** @var Opportunity $opportunity */
+        $opportunity = $currentWorkspace->opportunities()->create($data);
+
+        if (filled($columnId)) {
+            $opportunity->saveCustomFieldValue(self::stageCustomField(), $columnId);
+            $opportunity->order_column = (float) $this->getBoardPositionInColumn($columnId);
+            $opportunity->saveQuietly();
+        }
+
+        return $opportunity;
+    }
+
+    private function ownsColumn(string $id): bool
+    {
+        return $this->stages()->contains(fn (array $stage): bool => (string) $stage['id'] === $id);
     }
 
     private static function stageCustomField(): ?CustomField

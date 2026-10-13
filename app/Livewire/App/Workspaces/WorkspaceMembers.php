@@ -9,6 +9,7 @@ use App\Actions\Jetstream\ResendWorkspaceInvitation;
 use App\Actions\Jetstream\RevokeWorkspaceInvitation;
 use App\Actions\Jetstream\UpdateWorkspaceMemberRole;
 use App\Enums\WorkspaceRole;
+use App\Exceptions\WorkspaceInvitationRateLimitedException;
 use App\Features\EmailIntegration;
 use App\Livewire\BaseLivewireComponent;
 use App\Models\User;
@@ -512,7 +513,17 @@ final class WorkspaceMembers extends BaseLivewireComponent implements Tables\Con
 
                 RateLimiter::hit($key, 60);
 
-                resolve(ResendWorkspaceInvitation::class)->resend($invitation);
+                try {
+                    resolve(ResendWorkspaceInvitation::class)->resend($this->authUser(), $invitation);
+                } catch (WorkspaceInvitationRateLimitedException $exception) {
+                    $this->sendNotification(
+                        __('workspaces.notifications.invite_rate_limited.title'),
+                        WorkspaceInvitationRateLimitedException::retryMessage($exception->retryAfterSeconds),
+                        type: 'danger',
+                    );
+
+                    return;
+                }
 
                 $this->sendNotification(__('workspaces.notifications.workspace_invitation_sent.success'));
                 $this->resetTable();

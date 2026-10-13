@@ -121,6 +121,25 @@ it('aggregates opportunity counts and amount by company', function (): void {
             ->etc());
 });
 
+it('does not surface the name of another workspace company in the company aggregate', function (): void {
+    $otherUser = User::factory()->withPersonalWorkspace()->create();
+    $foreignCompany = Company::factory()
+        ->recycle([$otherUser, $otherUser->personalWorkspace()])
+        ->create(['name' => 'Foreign Holdings']);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $foreignCompany->id,
+    ]);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(AggregateOpportunitiesTool::class, ['group_by' => 'company'])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('rows.0.label', 'No Company')
+            ->where('rows.0.count', 1)
+            ->etc())
+        ->assertDontSee('Foreign Holdings');
+});
+
 it('marks aggregates truncated only when more than one hundred groups exist', function (): void {
     $companies = Company::factory()
         ->count(100)

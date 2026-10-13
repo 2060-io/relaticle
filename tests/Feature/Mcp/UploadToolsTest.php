@@ -81,6 +81,20 @@ describe('StoreAgentUpload', function (): void {
         ]))->toThrow(UploadException::class, __('uploads.errors.too_large', ['max' => 10]));
     });
 
+    it('rejects an oversized base64 string before decoding it', function (): void {
+        expect(fn (): Media => resolve(StoreAgentUpload::class)->execute($this->user, $this->workspace, [
+            'base64' => str_repeat('*', 14 * 1024 * 1024),
+            'filename' => 'big.pdf',
+        ]))->toThrow(UploadException::class, __('uploads.errors.too_large', ['max' => 10]));
+    });
+
+    it('accepts base64 wrapped at 76 columns', function (): void {
+        $wrapped = chunk_split(base64_encode(onePixelPng()), 76, "\r\n");
+
+        expect(resolve(StoreAgentUpload::class)->execute($this->user, $this->workspace, ['base64' => $wrapped, 'filename' => 'pixel.png'])->name)
+            ->toBe('pixel.png');
+    });
+
     it('rejects malformed base64', function (): void {
         expect(fn (): Media => resolve(StoreAgentUpload::class)->execute($this->user, $this->workspace, ['base64' => '***', 'filename' => 'x.pdf']))
             ->toThrow(UploadException::class, __('uploads.errors.invalid_base64'));

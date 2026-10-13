@@ -113,10 +113,11 @@ return [
         'resend_throttled' => 'Please wait :seconds seconds before resending.',
         'some_invites_failed' => [
             'title' => 'Some invitations could not be sent',
+            'not_sent_limit' => 'not sent, the invitation limit was reached',
         ],
         'invite_rate_limited' => [
             'title' => 'Too many invitations sent',
-            'body' => 'Please wait :seconds seconds before sending more invitations.',
+            'body' => 'Please wait :time before sending more invitations.',
         ],
     ],
 

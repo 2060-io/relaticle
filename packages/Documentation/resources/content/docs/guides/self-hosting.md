@@ -81,6 +81,13 @@ These must be set or the containers will refuse to start.
 | `APP_DEBUG` | `false` | Set to `true` only for debugging. Never in production. |
 | `APP_TIMEZONE` | `UTC` | Application timezone. |
 | `APP_URL` | `http://localhost` | Full URL where Relaticle is accessible. Include the scheme. |
+| `TRUSTED_HOSTS` | `localhost` | Extra hostnames the app accepts, comma separated. The `APP_URL` host and any `*_DOMAIN` hosts are always accepted. Keep `localhost` in the list, because the container health check calls it. |
+| `TRUSTED_PROXIES` | (empty) | Proxy addresses whose `X-Forwarded-For`, `-Proto` and `-Port` headers the app believes, comma separated, as IPs or CIDR ranges. Empty trusts every private range (10/8, 172.16/12, 192.168/16, loopback), which Traefik, Coolify and Dokploy need. Narrow it to your proxy, for example its Docker network gateway or subnet, so no other container or host peer can forge a client IP. `*` trusts every sender and is unsafe. Never publish the app port directly to an untrusted network. |
+| `SESSION_SECURE_COOKIE` | (empty) | Sends the session cookie over HTTPS only. Empty means secure when `APP_URL` starts with `https://`, and not secure otherwise. Set `true` or `false` to override. Serve production installs over HTTPS. A Secure cookie over plain HTTP is dropped by the browser, so a plain-HTTP install must leave this empty or `false`, or nobody can sign in. An `https://` install that you also open over plain HTTP, such as by LAN IP, needs `false` for that access to work. |
+| `HSTS_MAX_AGE` | `15552000` | Seconds browsers keep forcing HTTPS for your host. The `Strict-Transport-Security` header is sent only when `APP_ENV=production` and the request is HTTPS. Set `0` to make browsers forget it. |
+| `HSTS_INCLUDE_SUBDOMAINS` | `false` | Set `true` to extend HSTS to every subdomain of the host. Leave it off if any sibling subdomain, such as an intranet host, is served over plain HTTP. |
+| `CSP_MODE` | `enforce` | Content-Security-Policy for HTML pages. `report-only` sends the full policy as a report-only header, and `off` drops it. `frame-ancestors`, `object-src` and `base-uri` stay enforced in every mode. |
+| `CSP_SCRIPT_SRC`, `CSP_STYLE_SRC`, `CSP_IMG_SRC`, `CSP_FONT_SRC`, `CSP_CONNECT_SRC`, `CSP_FRAME_SRC` | (empty) | Extra origins for that directive, comma separated. Set `CSP_IMG_SRC` when media or profile photos load from a bucket URL on another host. The Reverb websocket origin is added from `REVERB_HOST`, `REVERB_PORT` and `REVERB_SCHEME`. |
 | `APP_PORT` | `80` | Host port the app container binds to. |
 | `APP_PANEL_DOMAIN` | (empty) | Set for subdomain routing (e.g., `app.example.com`). Leave empty for path mode (`/app`). |
 | `PASSKEYS_USER_HANDLE_SECRET` | `APP_KEY` | Derives the opaque WebAuthn user handle stored on each authenticator. Set it to its own random value (`openssl rand -base64 32`) before anyone registers a passkey, so rotating `APP_KEY` later does not change every user's handle. |
@@ -298,6 +305,8 @@ labels:
 ```
 
 **Note**: When using a reverse proxy, set `APP_URL` to your public HTTPS URL (e.g., `https://crm.example.com`). The app trusts `X-Forwarded-*` headers from RFC1918 private networks, loopback, and IPv6 ULA/link-local, which covers Coolify/Dokploy/Traefik on a Docker network and reverse proxies on the host. Headers from public IPs are rejected, preventing spoofing.
+
+The app only accepts requests whose `Host` header matches `APP_URL`, `www.` plus that host, a configured `*_DOMAIN`, or an entry in `TRUSTED_HOSTS`. Any other host gets a 400. Your proxy must forward the real `Host` header (Nginx `proxy_set_header Host $host;`) and must not pass a client-supplied `X-Forwarded-Host` through. The app ignores `X-Forwarded-Host` and `X-Forwarded-Prefix`. Probes that call the container by IP or an internal name need that name in `TRUSTED_HOSTS`, or they should send the configured domain as the `Host` header.
 
 ---
 
@@ -586,7 +595,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Edit `.env` with your database credentials, mail settings, and `APP_URL`.
+Edit `.env` with your database credentials, mail settings, and `APP_URL`. Set `APP_ENV=production` and `APP_DEBUG=false`. The example file ships `local` and `true`, and debug pages in production expose your configuration.
 
 4. Set up the database:
 

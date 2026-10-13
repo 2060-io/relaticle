@@ -1274,3 +1274,21 @@ test('expired sign-in MFA shows a way to start again', function (): void {
         ->assertSee(__('auth.mfa.restart'))
         ->assertDontSee('autocomplete="one-time-code"', false);
 });
+
+it('lists each seeded local account as a login link form on the local login page', function (): void {
+    User::factory()->create(['email' => 'owner@relaticle.test']);
+    $this->app->detectEnvironment(fn (): string => 'local');
+
+    $this->get(Filament::getPanel('app')->getLoginUrl())
+        ->assertOk()
+        ->assertSee(route('loginLinkLogin'), false)
+        ->assertSee('value="owner@relaticle.test"', false);
+});
+
+it('lists no local accounts on the login page outside the local environment', function (): void {
+    User::factory()->create(['email' => 'owner@relaticle.test']);
+
+    $this->get(Filament::getPanel('app')->getLoginUrl())
+        ->assertOk()
+        ->assertDontSee('value="owner@relaticle.test"', false);
+});

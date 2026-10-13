@@ -11,6 +11,7 @@ use App\Models\Workspace;
 use App\Models\WorkspaceInvitation as WorkspaceInvitationModel;
 use App\Rules\RegistrableEmail;
 use App\Support\EmailAddress;
+use App\Support\Workspaces\InvitationCeiling;
 use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -29,6 +30,8 @@ use Laravel\Jetstream\Rules\Role;
 
 final readonly class InviteWorkspaceMember implements InvitesTeamMembers
 {
+    public function __construct(private InvitationCeiling $ceiling) {}
+
     /**
      * Invite a new workspace member to the given workspace.
      *
@@ -47,6 +50,8 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
         $email = EmailAddress::canonicalize($email);
 
         $this->validate($workspace, $email, $role);
+
+        $this->ceiling->ensureAvailable($user, $workspace);
 
         event(new InvitingTeamMember($workspace, $email, $role));
 
@@ -79,6 +84,8 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
         // itself out of the transaction too: a rolled back approval must not
         // leave a real invitation email on its way.
         Mail::to($invitation->email)->queue(new WorkspaceInvitationMail($invitation, $rawToken)->afterCommit());
+
+        $this->ceiling->recordSent($user, $workspace);
 
         return $invitation;
     }
