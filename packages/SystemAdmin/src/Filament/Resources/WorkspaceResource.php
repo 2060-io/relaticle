@@ -46,6 +46,7 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\SubscriptionsRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\TasksRelationManager;
 use Relaticle\SystemAdmin\Filament\Support\EndTrial;
+use Relaticle\SystemAdmin\Filament\Support\ExtendTrial;
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
 use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
 use Relaticle\SystemAdmin\Metrics\Scopes\AbuseSuspect;
@@ -351,6 +352,7 @@ final class WorkspaceResource extends Resource
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()->action(null),
+                ExtendTrial::action(),
                 EndTrial::action(),
             ])
             ->toolbarActions([
