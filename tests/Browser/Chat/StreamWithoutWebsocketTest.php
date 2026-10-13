@@ -287,3 +287,29 @@ it('shows the reply to a turn resumed by an approval', function (): void {
             'streaming' => false,
         ]));
 });
+
+it('shows the first reply of a new chat', function (): void {
+    Queue::fake();
+
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+
+    $page = ChatBrowser::logIn($user, $workspace->slug)
+        ->navigate("/app/{$workspace->slug}/chats")
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    sendWithoutWebsocket($page, 'the first message of a new chat');
+
+    $conversationId = (string) DB::table('agent_conversations')
+        ->where('participant_id', (string) $user->getKey())
+        ->value('id');
+
+    persistReply($user, $conversationId, 'The first reply.');
+    endTurn($conversationId);
+
+    $page->assertScript(lastAssistantBubble(), json_encode([
+        'content' => 'The first reply.',
+        'error' => null,
+        'streaming' => false,
+    ]));
+});
