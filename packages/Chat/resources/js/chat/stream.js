@@ -407,6 +407,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             }
             bubble.rendered = true;
             bubble.prerendered = false;
+            if (!bubble.streamError) this.clearStreamErrors();
         }
         this.currentToolStatus = null;
         this.isStreaming = false;
@@ -621,21 +622,25 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             assistantMsg.rendered = true;
             assistantMsg.prerendered = false;
         }
-        // A completed turn means the conversation recovered, failure banners on
-        // earlier bubbles describe a state that no longer exists (and reload
-        // would drop them anyway, since failed turns are never persisted).
-        this.messages.forEach((m) => {
-            if (m.role === 'assistant' && m.streamError) {
-                m.streamError = null;
-                m.retryable = false;
-            }
-        });
+        this.clearStreamErrors();
         this.isStreaming = false;
         this.clearStreamTimeout();
         this.scrollToBottom();
         this.restoreInputFocus();
         this.flushQueuedSend();
         this.maybeSyncTitle();
+    },
+
+    // A completed turn means the conversation recovered, failure banners on
+    // earlier bubbles describe a state that no longer exists (and reload
+    // would drop them anyway, since failed turns are never persisted).
+    clearStreamErrors() {
+        this.messages.forEach((m) => {
+            if (m.role === 'assistant' && m.streamError) {
+                m.streamError = null;
+                m.retryable = false;
+            }
+        });
     },
 
     // Pull fallback for the `.conversation.title` push. On a brand-new chat the

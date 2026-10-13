@@ -183,3 +183,40 @@ it('shows the saved reply when the inactivity watchdog runs out', function (): v
         'streaming' => false,
     ]));
 });
+
+it('clears an earlier error once a later turn delivers its reply', function (): void {
+    Queue::fake();
+
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'Recovered');
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    sendWithoutWebsocket($page, 'a question that fails');
+    endTurn($conversationId);
+
+    $page->assertScript(lastAssistantBubble($page), json_encode([
+        'content' => '',
+        'error' => 'The assistant encountered an error. Please try again.',
+        'streaming' => false,
+    ]));
+
+    sendWithoutWebsocket($page, 'the same question again');
+    persistReply($user, $conversationId, 'Answered on the second try.');
+    endTurn($conversationId);
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $page->assertScript(lastAssistantBubble($page), json_encode([
+        'content' => 'Answered on the second try.',
+        'error' => null,
+        'streaming' => false,
+    ]))->assertScript(<<<JS
+        (() => {
+            {$resolveInterface}
+            return data.messages.filter((m) => m.role === 'assistant' && m.streamError).length;
+        })()
+    JS, 0);
+});
