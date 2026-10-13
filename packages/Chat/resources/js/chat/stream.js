@@ -394,8 +394,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         const turnEnded = running !== true;
         let bubble = this.messages.findLast((m) => m.role === 'assistant' && !m.rendered) ?? null;
         // A resumed turn mints its bubble on stream_start, which never arrived.
-        if (!bubble && turnEnded && authoritative && !this.messages.some((m) => m.role === 'assistant'
-            && (m.id ? m.id === authoritative.id : m.content === authoritative.content))) {
+        if (!bubble && turnEnded && authoritative && !this.isShownOutside(null, authoritative)) {
             bubble = this.mintAssistantStub();
         }
         if (bubble) {
@@ -548,12 +547,17 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         if (authoritative) this.applyPersisted(assistantMsg, authoritative, { turnEnded });
     },
 
+    // Matched by id, or by text for a bubble whose persisted id never arrived.
+    isShownOutside(bubble, authoritative) {
+        return this.messages.some((m) => m !== bubble && m.role === 'assistant'
+            && (m.id ? m.id === authoritative.id : m.content === authoritative.content));
+    },
+
     applyPersisted(assistantMsg, authoritative, { turnEnded = false } = {}) {
         // The latest row is this bubble's own only when no other bubble shows it
         // (a failed turn persists nothing, so the latest row is the previous
         // turn's), and a bubble that never saw its stream needs the turn over.
-        const shownElsewhere = this.messages.some((m) => m !== assistantMsg && m.role === 'assistant'
-            && (m.id ? m.id === authoritative.id : m.content === authoritative.content));
+        const shownElsewhere = this.isShownOutside(assistantMsg, authoritative);
         const isUnstartedStub = assistantMsg.invocationId == null && !assistantMsg.content && !assistantMsg.rendered;
         const ownsLatest = !shownElsewhere && (!isUnstartedStub || turnEnded);
 
