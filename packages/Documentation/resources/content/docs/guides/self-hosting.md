@@ -120,7 +120,7 @@ These are pre-configured in `compose.yml` and generally don't need changing.
 
 ### Live updates
 
-Rela's replies stream into the chat over a websocket. The `reverb` container serves it, and the app container proxies it under `/reverb` on the address you already use. No extra port, domain or certificate is needed.
+Rela, the built-in AI assistant, streams its replies into the chat over a websocket. The `reverb` container serves it, and the app container proxies it under `/reverb` on the address you already use. No extra port, domain or certificate is needed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -174,7 +174,7 @@ One setting applies to both providers.
 
 ### AI Assistant
 
-Rela, the built-in AI assistant, works with cloud providers, a self-hosted server, or both. Models appear in the chat model picker only when their provider is configured. With none configured, the assistant cannot answer.
+Rela works with cloud providers, a self-hosted server, or both. Models appear in the chat model picker only when their provider is configured. With none configured, the assistant cannot answer.
 
 There are two ways to run a self-hosted model, and you can use either or both:
 
