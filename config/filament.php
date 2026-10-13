@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$appUrl = parse_url((string) env('APP_URL', 'http://localhost'));
+$appUrl = parse_url((string) config('app.url'));
 $reverbHost = env('REVERB_HOST');
 $reverbIsSecure = $reverbHost ? env('REVERB_SCHEME', 'https') === 'https' : ($appUrl['scheme'] ?? 'http') === 'https';
 $reverbPort = (int) ($reverbHost ? env('REVERB_PORT', 443) : $appUrl['port'] ?? ($reverbIsSecure ? 443 : 80));

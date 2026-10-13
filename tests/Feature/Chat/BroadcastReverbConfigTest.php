@@ -109,11 +109,12 @@ it('keeps explicit Reverb credentials', function (): void {
  * @param  array<string, string>  $env
  * @return array<string, mixed>
  */
-function echoConfigFor(array $env): array
+function echoConfigFor(string $appUrl, array $env): array
 {
     $previous = array_intersect_key($_SERVER, $env);
     $_SERVER = [...$_SERVER, ...$env];
     config()->set('broadcasting.default', 'reverb');
+    config()->set('app.url', $appUrl);
 
     try {
         return (require config_path('filament.php'))['broadcasting']['echo'] ?? [];
@@ -123,7 +124,7 @@ function echoConfigFor(array $env): array
 }
 
 it('serves the websocket from the app origin under /reverb when no Reverb host is set', function (): void {
-    $echo = echoConfigFor(['APP_URL' => 'https://crm.example.com', 'REVERB_HOST' => '']);
+    $echo = echoConfigFor('https://crm.example.com', ['REVERB_HOST' => '']);
 
     expect($echo)->toMatchArray([
         'wsHost' => 'crm.example.com',
@@ -135,7 +136,7 @@ it('serves the websocket from the app origin under /reverb when no Reverb host i
 });
 
 it('keeps the port of a plain http app origin', function (): void {
-    $echo = echoConfigFor(['APP_URL' => 'http://192.168.1.20:8080', 'REVERB_HOST' => '']);
+    $echo = echoConfigFor('http://192.168.1.20:8080', ['REVERB_HOST' => '']);
 
     expect($echo)->toMatchArray([
         'wsHost' => '192.168.1.20',
@@ -146,8 +147,7 @@ it('keeps the port of a plain http app origin', function (): void {
 });
 
 it('points Echo at a public Reverb host when one is set', function (): void {
-    $echo = echoConfigFor([
-        'APP_URL' => 'https://crm.example.com',
+    $echo = echoConfigFor('https://crm.example.com', [
         'REVERB_HOST' => 'ws.example.com',
         'REVERB_PORT' => '8443',
         'REVERB_SCHEME' => 'https',
