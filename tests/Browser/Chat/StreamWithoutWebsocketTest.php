@@ -220,3 +220,71 @@ it('clears an earlier error once a later turn delivers its reply', function (): 
         })()
     JS, 0);
 });
+
+it('shows the saved reply after a reload in the middle of a turn', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'Reloaded');
+    TurnPresence::begin($conversationId, turnId: 'turn-reloaded', message: 'asked before the reload');
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+    $page->script(<<<JS
+        (() => {
+            {$resolveInterface}
+            window.Echo = null;
+            return true;
+        })();
+    JS);
+
+    persistReply($user, $conversationId, 'Saved after the reload.');
+    endTurn($conversationId);
+
+    $page->wait(3)->assertScript(lastAssistantBubble($page), json_encode([
+        'content' => 'Saved after the reload.',
+        'error' => null,
+        'streaming' => false,
+    ]));
+});
+
+it('shows the reply to a turn resumed by an approval', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'Resumed');
+    persistReply($user, $conversationId, 'Here is the proposal.');
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    TurnPresence::begin($conversationId, turnId: 'turn-resumed', message: '');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+    $page->script(<<<JS
+        (() => {
+            {$resolveInterface}
+            window.Echo = null;
+            data.turnPollMs = 200;
+            window.Livewire.dispatch('chat:resuming', { context: data.context });
+            return true;
+        })();
+    JS);
+
+    $page->wait(1);
+    persistReply($user, $conversationId, 'Done. The company is created.');
+    endTurn($conversationId);
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+    $page->assertScript(<<<JS
+        (() => {
+            {$resolveInterface}
+            return data.messages.filter((m) => m.role === 'assistant').length;
+        })()
+    JS, 2)
+        ->assertScript(lastAssistantBubble($page), json_encode([
+            'content' => 'Done. The company is created.',
+            'error' => null,
+            'streaming' => false,
+        ]));
+});
