@@ -353,10 +353,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             const silent = Date.now() - this.lastStreamActivityAt >= this.turnPollMs;
             const ended = silent && (await this.turnStillRunning()) === false;
             if (this.turnPollId !== id) return;
-            if (ended) {
-                await this.settleFromServer();
-                return;
-            }
+            if (ended) return this.settleFromServer();
             this.watchTurn();
         }, this.turnPollMs);
     },
@@ -384,14 +381,13 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     // cards and its tables come from the database, so a websocket that never
     // connected costs the live typing and nothing else.
     async settleFromServer({ timedOut = false } = {}) {
-        const running = timedOut ? await this.turnStillRunning() : false;
+        const turnEnded = !timedOut || (await this.turnStillRunning()) !== true;
         const authoritative = await this.fetchLatestAssistant();
         // Same torn-down-instance hazard as handleStreamEnd (see the `destroyed`
         // comment above), and a stream_end may have finished the turn meanwhile.
         if (this.destroyed || !this.isStreaming) return;
         this.stopWatchingTurn();
 
-        const turnEnded = running !== true;
         let bubble = this.messages.findLast((m) => m.role === 'assistant' && !m.rendered) ?? null;
         // A resumed turn mints its bubble on stream_start, which never arrived.
         if (!bubble && turnEnded && authoritative && !this.isShownOutside(null, authoritative)) {
@@ -408,15 +404,18 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             bubble.prerendered = false;
             if (!bubble.streamError) this.clearStreamErrors();
         }
+        this.finishTurn({ failed: !!bubble?.streamError });
+    },
+
+    finishTurn({ failed = false } = {}) {
         this.currentToolStatus = null;
         this.isStreaming = false;
         this.clearStreamTimeout();
         this.scrollToBottom();
         this.restoreInputFocus();
-        if (!bubble?.streamError) {
-            this.flushQueuedSend();
-            this.maybeSyncTitle();
-        }
+        if (failed) return;
+        this.flushQueuedSend();
+        this.maybeSyncTitle();
     },
 
     clearStreamTimeout() {
@@ -540,11 +539,11 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     // received, and attach the read-tool display blocks. Targets the bubble
     // whose stream just ended when known; falls back to the last assistant
     // bubble.
-    async reconcileLatestAssistant(target = null, { turnEnded = false } = {}) {
+    async reconcileLatestAssistant(target = null) {
         const assistantMsg = target ?? this.lastAssistantBubble();
         if (assistantMsg?.role !== 'assistant') return;
         const authoritative = await this.fetchLatestAssistant();
-        if (authoritative) this.applyPersisted(assistantMsg, authoritative, { turnEnded });
+        if (authoritative) this.applyPersisted(assistantMsg, authoritative, { turnEnded: true });
     },
 
     // Matched by id, or by text for a bubble whose persisted id never arrived.
@@ -615,7 +614,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
                 assistantMsg = this.messages.slice(0, idx).findLast((m) => m.role === 'assistant') ?? assistantMsg;
             }
         }
-        await this.reconcileLatestAssistant(assistantMsg, { turnEnded: true });
+        await this.reconcileLatestAssistant(assistantMsg);
         // This instance was torn down (wire:navigate to another conversation)
         // while the await above was pending. unsubscribe() already stopped new
         // events, but this continuation was already in flight, so bail before
@@ -627,12 +626,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             assistantMsg.prerendered = false;
         }
         this.clearStreamErrors();
-        this.isStreaming = false;
-        this.clearStreamTimeout();
-        this.scrollToBottom();
-        this.restoreInputFocus();
-        this.flushQueuedSend();
-        this.maybeSyncTitle();
+        this.finishTurn();
     },
 
     // A completed turn means the conversation recovered, failure banners on

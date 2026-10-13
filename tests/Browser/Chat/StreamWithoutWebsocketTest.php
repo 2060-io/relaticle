@@ -64,7 +64,7 @@ function endTurn(string $conversationId): void
     TurnPresence::clear($conversationId, TurnPresence::current($conversationId)['turn_id']);
 }
 
-function lastAssistantBubble(AwaitableWebpage $page): string
+function lastAssistantBubble(): string
 {
     $resolveInterface = ChatBrowser::resolveInterface();
 
@@ -96,7 +96,7 @@ it('shows the saved reply when no websocket ever delivers the stream', function 
     persistReply($user, $conversationId, 'Saved while the socket was silent.');
     endTurn($conversationId);
 
-    $page->assertScript(lastAssistantBubble($page), json_encode([
+    $page->assertScript(lastAssistantBubble(), json_encode([
         'content' => 'Saved while the socket was silent.',
         'error' => null,
         'streaming' => false,
@@ -116,7 +116,7 @@ it('keeps waiting while the turn is still running', function (): void {
 
     sendWithoutWebsocket($page, 'a slow question');
 
-    $page->wait(1)->assertScript(lastAssistantBubble($page), json_encode([
+    $page->wait(1)->assertScript(lastAssistantBubble(), json_encode([
         'content' => '',
         'error' => null,
         'streaming' => true,
@@ -138,7 +138,7 @@ it('reports a turn that ended without a reply and never repeats the previous one
 
     endTurn($conversationId);
 
-    $page->assertScript(lastAssistantBubble($page), json_encode([
+    $page->assertScript(lastAssistantBubble(), json_encode([
         'content' => '',
         'error' => 'The assistant encountered an error. Please try again.',
         'streaming' => false,
@@ -177,7 +177,7 @@ it('shows the saved reply when the inactivity watchdog runs out', function (): v
         })();
     JS);
 
-    $page->assertScript(lastAssistantBubble($page), json_encode([
+    $page->assertScript(lastAssistantBubble(), json_encode([
         'content' => 'Saved before the watchdog fired.',
         'error' => null,
         'streaming' => false,
@@ -197,7 +197,7 @@ it('clears an earlier error once a later turn delivers its reply', function (): 
     sendWithoutWebsocket($page, 'a question that fails');
     endTurn($conversationId);
 
-    $page->assertScript(lastAssistantBubble($page), json_encode([
+    $page->assertScript(lastAssistantBubble(), json_encode([
         'content' => '',
         'error' => 'The assistant encountered an error. Please try again.',
         'streaming' => false,
@@ -209,7 +209,7 @@ it('clears an earlier error once a later turn delivers its reply', function (): 
 
     $resolveInterface = ChatBrowser::resolveInterface();
 
-    $page->assertScript(lastAssistantBubble($page), json_encode([
+    $page->assertScript(lastAssistantBubble(), json_encode([
         'content' => 'Answered on the second try.',
         'error' => null,
         'streaming' => false,
@@ -242,7 +242,7 @@ it('shows the saved reply after a reload in the middle of a turn', function (): 
     persistReply($user, $conversationId, 'Saved after the reload.');
     endTurn($conversationId);
 
-    $page->wait(3)->assertScript(lastAssistantBubble($page), json_encode([
+    $page->wait(3)->assertScript(lastAssistantBubble(), json_encode([
         'content' => 'Saved after the reload.',
         'error' => null,
         'streaming' => false,
@@ -275,14 +275,13 @@ it('shows the reply to a turn resumed by an approval', function (): void {
     persistReply($user, $conversationId, 'Done. The company is created.');
     endTurn($conversationId);
 
-    $resolveInterface = ChatBrowser::resolveInterface();
     $page->assertScript(<<<JS
         (() => {
             {$resolveInterface}
             return data.messages.filter((m) => m.role === 'assistant').length;
         })()
     JS, 2)
-        ->assertScript(lastAssistantBubble($page), json_encode([
+        ->assertScript(lastAssistantBubble(), json_encode([
             'content' => 'Done. The company is created.',
             'error' => null,
             'streaming' => false,
