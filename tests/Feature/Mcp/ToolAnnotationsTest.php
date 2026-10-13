@@ -168,7 +168,10 @@ it('publishes the exact explicit title and stable technical name for every regis
         expect($definition['title'])->toBe($toolContracts[$toolClass]['title']);
         expect($definition['title'])->not->toEndWith(' Tool');
         expect($definition['name'])->toBe($toolContracts[$toolClass]['name']);
-        expect($definition['annotations'])->toBe($toolContracts[$toolClass]['annotations']);
+        expect($definition['annotations'])->toBe([
+            'title' => $toolContracts[$toolClass]['title'],
+            ...$toolContracts[$toolClass]['annotations'],
+        ]);
     }
 });
 

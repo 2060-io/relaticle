@@ -1223,6 +1223,7 @@ it('opens the meeting modal when the row is clicked', function (): void {
         ->not->toContain('data-testid="meeting-card-open"')
         ->not->toContain('data-testid="meeting-card-participants"')
         ->not->toContain('cursor-wait')
+        ->and((string) str($html)->after('data-testid="meeting-card"'))
         ->not->toContain('aria-expanded=');
 });
 
