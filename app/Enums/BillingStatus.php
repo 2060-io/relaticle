@@ -127,6 +127,21 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
         return $this->constrain($query);
     }
 
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    public static function grantingAccess(Builder $query): Builder
+    {
+        foreach (self::cases() as $case) {
+            if ($case->grantsAccess()) {
+                $query->orWhere(fn (Builder $status): Builder => $case->applyToQuery($status));
+            }
+        }
+
+        return $query;
+    }
+
     public function grantsAccess(): bool
     {
         return match ($this) {

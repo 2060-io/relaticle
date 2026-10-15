@@ -15,6 +15,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Models\AiCreditBalance;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
 mutates(
     Billing::class,
@@ -93,6 +94,24 @@ it('refuses to start a trial on a paused workspace', function (): void {
         ->assertNoRedirect();
 
     expect($workspace->refresh()->pro_trial_used_at)->toBeNull();
+});
+
+it('tells a paused workspace with a mailbox that its sync is paused too', function (): void {
+    [$user, $workspace] = billingPageOwner();
+    $workspace->forceFill(['hosted_free_grandfathered_at' => null, 'pro_trial_used_at' => now()->subDays(15)])->save();
+
+    $this->get(Billing::getUrl(panel: 'app', tenant: $workspace))
+        ->assertOk()
+        ->assertDontSee(__('billing.paused.mailbox_sync'));
+
+    ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $user->id,
+    ]));
+
+    $this->get(Billing::getUrl(panel: 'app', tenant: $workspace))
+        ->assertOk()
+        ->assertSee(__('billing.paused.mailbox_sync'));
 });
 
 it('replaces the app shell with a standalone paused screen when the trial ends', function (): void {

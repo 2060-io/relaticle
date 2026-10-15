@@ -10,9 +10,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
-use Relaticle\EmailIntegration\Enums\EmailPageTab;
-use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
-use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
+use Relaticle\EmailIntegration\Enums\SendFailureRemedy;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
 final class EmailSendFailedNotification extends Notification
@@ -23,12 +21,12 @@ final class EmailSendFailedNotification extends Notification
         public readonly Workspace $workspace,
         public readonly int $count,
         public readonly ?string $subject,
-        public readonly bool $mailboxNeedsReconnect,
+        public readonly SendFailureRemedy $remedy,
     ) {}
 
     public static function forMailbox(Workspace $workspace, ?ConnectedAccount $account, int $count, ?string $subject): self
     {
-        return new self($workspace, $count, $subject, mailboxNeedsReconnect: $account?->isSendable() !== true);
+        return new self($workspace, $count, $subject, SendFailureRemedy::for($workspace, $account));
     }
 
     /**
@@ -44,17 +42,14 @@ final class EmailSendFailedNotification extends Notification
      */
     public function toDatabase(User $notifiable): array
     {
-        $copy = $this->mailboxNeedsReconnect ? 'reconnect' : 'retry';
+        $copy = $this->remedy->value;
 
         $body = $this->count === 1
             ? __("filament/notifications/email-send-failed.{$copy}.body_one", [
                 'subject' => filled($this->subject) ? $this->subject : __('filament/pages/email-inbox.subject.none'),
+                'workspace' => $this->workspace->name,
             ])
-            : __("filament/notifications/email-send-failed.{$copy}.body_many");
-
-        $url = $this->mailboxNeedsReconnect
-            ? EmailAccountsPage::getUrl(panel: 'app', tenant: $this->workspace)
-            : EmailInboxPage::getUrl(['tab' => EmailPageTab::FAILED->value], panel: 'app', tenant: $this->workspace);
+            : __("filament/notifications/email-send-failed.{$copy}.body_many", ['workspace' => $this->workspace->name]);
 
         return FilamentNotification::make()
             ->danger()
@@ -64,7 +59,7 @@ final class EmailSendFailedNotification extends Notification
             ->actions([
                 Action::make('viewFailed')
                     ->label(__("filament/notifications/email-send-failed.{$copy}.action"))
-                    ->url($url),
+                    ->url($this->remedy->url($this->workspace)),
             ])
             ->getDatabaseMessage();
     }

@@ -394,6 +394,20 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
      * @return Builder<Workspace>
      */
     #[Scope]
+    protected function withHostedAccess(Builder $query): Builder
+    {
+        if (! BillingStatus::billingEnabled()) {
+            return $query;
+        }
+
+        return $query->where(fn (Builder $granted): Builder => BillingStatus::grantingAccess($granted));
+    }
+
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    #[Scope]
     protected function withConnectedMailbox(Builder $query): Builder
     {
         return $query->whereHas('connectedAccounts', fn (Builder $accounts): Builder => $accounts->connected());

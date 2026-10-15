@@ -29,10 +29,12 @@ final class DispatchOutboxCommand extends Command
         $defaultDaily = Config::integer('email-integration.outbox.defaults.daily_send_limit');
 
         $this->reclaimStuckSending();
+        rescue(fn () => $this->failMailInPausedWorkspaces($markFailed));
         rescue(fn () => $this->failMailOnMailboxesThatCannotSend($markFailed));
 
         ConnectedAccount::query()
             ->sendable()
+            ->inWorkspaceWithHostedAccess()
             ->whereHas('outgoingEmails', fn (Builder $emailQuery): Builder => $emailQuery
                 ->where('status', EmailStatus::QUEUED)
                 ->where(fn (Builder $dueQuery): Builder => $dueQuery->whereNull('scheduled_for')->orWhere('scheduled_for', '<=', now()))
@@ -42,6 +44,20 @@ final class DispatchOutboxCommand extends Command
             });
 
         return self::SUCCESS;
+    }
+
+    private function failMailInPausedWorkspaces(MarkEmailsSendFailedAction $markFailed): void
+    {
+        Email::query()
+            ->withoutGlobalScope(ActiveAccountScope::class)
+            ->where('status', EmailStatus::QUEUED)
+            ->where(fn (Builder $dueQuery): Builder => $dueQuery->whereNull('scheduled_for')->orWhere('scheduled_for', '<=', now()))
+            ->whereDoesntHave('workspace', fn (Builder $workspaceQuery): Builder => $workspaceQuery->withHostedAccess())
+            ->with(['user', 'workspace', 'connectedAccount'])
+            ->chunkById(100, fn (Collection $emails) => $markFailed->execute(
+                $emails->toBase(),
+                __('filament/notifications/email-send-failed.reasons.workspace_paused'),
+            ));
     }
 
     private function failMailOnMailboxesThatCannotSend(MarkEmailsSendFailedAction $markFailed): void
