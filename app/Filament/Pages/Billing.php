@@ -189,7 +189,7 @@ final class Billing extends Page
     {
         return [
             'billingStatus' => $workspace->billingStatus(),
-            'mailboxSyncPaused' => $workspace->connectedAccounts()->connected()->exists(),
+            'mailboxSyncPaused' => $workspace->hasConnectedMailbox(),
             'otherWorkspaces' => $this->user()->allWorkspaces()
                 ->reject(fn (Workspace $other): bool => $other->is($workspace))
                 ->values(),

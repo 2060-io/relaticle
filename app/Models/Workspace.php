@@ -357,6 +357,11 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         return $this->scheduled_deletion_at !== null;
     }
 
+    public function hasConnectedMailbox(): bool
+    {
+        return $this->connectedAccounts()->connected()->exists();
+    }
+
     /**
      * Reads the `subscriptions` relation, so eager load it when rendering this
      * for more than one workspace. It deliberately does not `loadMissing()` on your
