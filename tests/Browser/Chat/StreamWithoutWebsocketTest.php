@@ -313,3 +313,40 @@ it('shows the first reply of a new chat', function (): void {
         'streaming' => false,
     ]));
 });
+
+it('keeps waiting past the watchdog while the server still runs the turn', function (): void {
+    Queue::fake();
+
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'Slow model');
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    sendWithoutWebsocket($page, 'a question for a slow model');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+    $page->script(<<<JS
+        (() => {
+            {$resolveInterface}
+            data.startStreamTimeout(50);
+            return true;
+        })();
+    JS);
+
+    $page->wait(1)->assertScript(lastAssistantBubble(), json_encode([
+        'content' => '',
+        'error' => null,
+        'streaming' => true,
+    ]));
+
+    persistReply($user, $conversationId, 'Answered after the watchdog.');
+    endTurn($conversationId);
+
+    $page->assertScript(lastAssistantBubble(), json_encode([
+        'content' => 'Answered after the watchdog.',
+        'error' => null,
+        'streaming' => false,
+    ]));
+});

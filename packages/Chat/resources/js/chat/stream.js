@@ -338,8 +338,16 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     startStreamTimeout(timeoutMs = null) {
         this.clearStreamTimeout();
         this.lastStreamActivityAt = Date.now();
-        this.streamTimeoutId = setTimeout(() => {
+        this.streamTimeoutId = setTimeout(async () => {
             if (!this.isStreaming) return;
+            // Silence alone never ends a turn the server still runs: a retried job
+            // can outlast this deadline. The marker's TTL bounds a worker that died.
+            if ((await this.turnStillRunning()) === true) {
+                if (this.destroyed || !this.isStreaming) return;
+                this.startStreamTimeout();
+                this.watchTurn();
+                return;
+            }
             this.settleFromServer({ timedOut: true });
         }, timeoutMs ?? this.streamTimeoutMs);
     },
@@ -381,7 +389,6 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     // cards and its tables come from the database. Next steps still need the
     // broadcast: the suggester saves them after the turn has ended.
     async settleFromServer({ timedOut = false } = {}) {
-        const turnEnded = !timedOut || (await this.turnStillRunning()) !== true;
         const authoritative = await this.fetchLatestAssistant();
         // Same torn-down-instance hazard as handleStreamEnd (see the `destroyed`
         // comment above), and a stream_end may have finished the turn meanwhile.
@@ -390,11 +397,11 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
 
         let bubble = this.messages.findLast((m) => m.role === 'assistant' && !m.rendered) ?? null;
         // A resumed turn mints its bubble on stream_start, which never arrived.
-        if (!bubble && turnEnded && authoritative && !this.isShownOutside(null, authoritative)) {
+        if (!bubble && authoritative && !this.isShownOutside(null, authoritative)) {
             bubble = this.mintAssistantStub();
         }
         if (bubble) {
-            if (authoritative) this.applyPersisted(bubble, authoritative, { turnEnded });
+            if (authoritative) this.applyPersisted(bubble, authoritative);
             if (!bubble.content && bubble.pending_actions.length === 0) {
                 bubble.streamError = timedOut ? this.streamTexts.timeout : this.streamTexts.streamError;
                 bubble.retryable = true;
@@ -543,7 +550,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         const assistantMsg = target ?? this.lastAssistantBubble();
         if (assistantMsg?.role !== 'assistant') return;
         const authoritative = await this.fetchLatestAssistant();
-        if (authoritative) this.applyPersisted(assistantMsg, authoritative, { turnEnded: true });
+        if (authoritative) this.applyPersisted(assistantMsg, authoritative);
     },
 
     // Matched by id, or by text for a bubble whose persisted id never arrived.
@@ -552,14 +559,11 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             && (m.id ? m.id === authoritative.id : m.content === authoritative.content));
     },
 
-    applyPersisted(assistantMsg, authoritative, { turnEnded = false } = {}) {
-        // The latest row is this bubble's own only when no other bubble shows it
-        // (a turn stopped before the model answered persists nothing, so the latest
-        // row is the previous turn's), and a bubble that never saw its stream needs
-        // the turn over.
-        const shownElsewhere = this.isShownOutside(assistantMsg, authoritative);
-        const isUnstartedStub = assistantMsg.invocationId == null && !assistantMsg.content && !assistantMsg.rendered;
-        const ownsLatest = !shownElsewhere && (!isUnstartedStub || turnEnded);
+    // Runs once the turn is over. The latest row is this bubble's own only when no
+    // other bubble shows it: a turn stopped before the model answered persists
+    // nothing, so the latest row is then the previous turn's.
+    applyPersisted(assistantMsg, authoritative) {
+        const ownsLatest = !this.isShownOutside(assistantMsg, authoritative);
 
         if (!Array.isArray(assistantMsg.pending_actions)) assistantMsg.pending_actions = [];
         // Span ALL bubbles: a card already rendered in an earlier bubble must
