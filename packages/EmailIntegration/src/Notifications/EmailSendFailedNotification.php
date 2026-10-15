@@ -44,12 +44,14 @@ final class EmailSendFailedNotification extends Notification
     {
         $copy = $this->remedy->value;
 
+        $parameters = ['workspace' => $this->workspace->name];
+
         $body = $this->count === 1
             ? __("filament/notifications/email-send-failed.{$copy}.body_one", [
+                ...$parameters,
                 'subject' => filled($this->subject) ? $this->subject : __('filament/pages/email-inbox.subject.none'),
-                'workspace' => $this->workspace->name,
             ])
-            : __("filament/notifications/email-send-failed.{$copy}.body_many", ['workspace' => $this->workspace->name]);
+            : __("filament/notifications/email-send-failed.{$copy}.body_many", $parameters);
 
         return FilamentNotification::make()
             ->danger()
