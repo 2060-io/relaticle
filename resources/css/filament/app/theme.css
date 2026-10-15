@@ -1283,6 +1283,14 @@ html.fi-record-stacked .fi-record-layout {
         @apply gap-x-3 px-4 py-4 lg:px-6;
     }
 
+    .ff-lanes {
+        @apply px-4 pb-4 lg:px-6;
+
+        .grid {
+            @apply gap-x-3;
+        }
+    }
+
 }
 
 /* Page sub-navigation tabs (workspace settings). Filament centres the strip;

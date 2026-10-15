@@ -103,6 +103,11 @@
     }
 }
 
+.ff-dragging {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 .ff-card-dragging {
     background-color: transparent;
     box-shadow: none;
