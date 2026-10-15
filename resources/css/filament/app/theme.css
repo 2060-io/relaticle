@@ -1263,7 +1263,13 @@ html.fi-record-stacked .fi-record-layout {
         }
 
         .fi-ta-search-field {
-            @apply min-w-0 shrink;
+            @apply me-auto min-w-0 shrink;
+        }
+
+        /* The row is reversed, so a lower order sits further right: the filter keeps the edge. */
+        .fi-ta-filters-dropdown,
+        .fi-ta-filters-modal {
+            @apply -order-1;
         }
     }
 
