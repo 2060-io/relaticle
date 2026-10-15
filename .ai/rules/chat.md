@@ -359,7 +359,9 @@ A turn must end on screen with no websocket at all. Self-hosted installs ran for
 Reverb container, and the chat sat on "Thinking..." over a reply that was already saved (#955).
 Once the server has registered a turn (`TurnPresence`), `watchTurn()` in `stream.js` asks
 `GET /chat/conversations/{id}/turn` every `turnPollMs` of stream silence, and `settleFromServer()`
-ends the turn from the database when the marker is gone. Every way a turn starts calls `watchTurn()`
+ends the turn from the database when the marker is gone. The 125 second watchdog asks the same route
+first and keeps waiting while the turn is in flight, so a slow or retried job never shows a false
+timeout. `TurnPresence`'s TTL ends a turn whose worker died. Every way a turn starts calls `watchTurn()`
 after the server confirmed it: the send response, a reload mid-turn, and `chat:resuming`. Asking
 earlier reads "not running" for a turn that has not begun.
 `applyPersisted()` adopts the latest assistant row only when no other bubble shows it. A turn that
