@@ -1283,35 +1283,6 @@ html.fi-record-stacked .fi-record-layout {
         @apply gap-x-3 px-4 py-4 lg:px-6;
     }
 
-    .flowforge-column {
-        @apply border-transparent bg-gray-50 shadow-none dark:border-transparent dark:bg-gray-950/50;
-    }
-
-    .flowforge-column-header {
-        @apply rounded-none border-b-0 bg-transparent py-2.5 dark:bg-transparent;
-
-        h3 {
-            @apply font-semibold text-gray-950 dark:text-white;
-        }
-    }
-
-    /* Positioned, so a card's screen-reader labels scroll with the column instead of stretching the page. */
-    .flowforge-column-content {
-        @apply relative px-2 pt-0 pb-2;
-
-        /* The empty state is a hint, not a drop zone the size of the column. */
-        & > .border-dashed {
-            @apply h-auto min-h-0 border-0 py-10;
-
-            svg {
-                @apply size-6;
-            }
-        }
-    }
-
-    .flowforge-card {
-        @apply mb-2 rounded-xl shadow-xs;
-    }
 }
 
 /* Page sub-navigation tabs (workspace settings). Filament centres the strip;
@@ -1609,9 +1580,13 @@ html.fi:has(body.fi-onboarding-wizard),
     }
 }
 
-/* FlowForge Specific Customizations */
-.flowforge-column-header {
-    @apply bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 rounded-t-xl;
+.ff-board {
+    --ff-card-bg: var(--surface-block-bg);
+    --ff-card-ring: var(--surface-block-border);
+}
+
+.dark .ff-board {
+    --ff-tray-bg: color-mix(in oklab, var(--gray-950) 50%, transparent);
 }
 
 /* Chat Side Panel */
