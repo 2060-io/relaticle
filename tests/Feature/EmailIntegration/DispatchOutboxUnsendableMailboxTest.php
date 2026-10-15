@@ -173,6 +173,18 @@ it('fails due mail in a paused workspace and sends the sender to billing', funct
     });
 });
 
+it('holds due mail in a paused workspace when failing it throws', function (): void {
+    Feature::define(Billing::class, true);
+    $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
+    $email = ($this->queue)();
+    Email::updating(fn (): never => throw new RuntimeException('database unavailable'));
+
+    $this->artisan('email:dispatch-outbox')->assertSuccessful();
+
+    expect($email->fresh()->status)->toBe(EmailStatus::QUEUED);
+    Bus::assertNotDispatched(SendEmailJob::class);
+});
+
 it('sends due mail in a workspace whose trial is running', function (): void {
     Feature::define(Billing::class, true);
     $this->workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(5)])->save();
