@@ -123,6 +123,19 @@ test('expired users and workspaces are queued for purge on the imports lane', fu
     expect($expiredUser->fresh())->not->toBeNull();
 });
 
+test('a workspace whose owner is due is purged with its owner, not queued twice', function () {
+    $owner = User::factory()->withPersonalWorkspace()->scheduledForDeletion(-1)->create();
+    $personalWorkspace = $owner->personalWorkspace();
+    $personalWorkspace->update(['scheduled_deletion_at' => $owner->scheduled_deletion_at]);
+    Queue::fake([PurgeUser::class, PurgeWorkspace::class]);
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    Queue::assertPushed(PurgeUser::class, fn (PurgeUser $job): bool => $job->user->is($owner));
+    Queue::assertNotPushed(PurgeWorkspace::class, fn (PurgeWorkspace $job): bool => $job->workspace->is($personalWorkspace));
+});
+
 test('non-expired users are not deleted', function () {
     $user = User::factory()->withPersonalWorkspace()->scheduledForDeletion(15)->create();
 

@@ -13,6 +13,7 @@ use App\Notifications\WorkspaceDeletionReminderNotification;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 #[Description('Queue the permanent deletion of users and workspaces past their scheduled deletion date, and send reminders ahead of purge')]
@@ -48,6 +49,7 @@ final class PurgeScheduledDeletionsCommand extends Command
 
         Workspace::query()
             ->expiredDeletion()
+            ->whereDoesntHave('owner', fn (Builder $owner): Builder => $owner->expiredDeletion())
             ->eachById(function (Workspace $workspace) use (&$count): void {
                 dispatch(new PurgeWorkspace($workspace));
                 $count++;
