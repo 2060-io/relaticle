@@ -266,6 +266,26 @@ it('removes every workspace upload during permanent deletion and preserves other
     Storage::disk('local')->assertExists($unrelated->getPathRelativeToRoot());
 })->with(['workspace deletion' => false, 'owner deletion' => true]);
 
+it('keeps the members and custom fields of a workspace whose purge fails', function (): void {
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $workspace->update(['scheduled_deletion_at' => now()->subDay()]);
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => 'member']);
+    $customFields = DB::table('custom_fields')->where('tenant_id', $workspace->getKey())->count();
+    Workspace::deleting(function (Workspace $deleting) use ($workspace): void {
+        if ($deleting->is($workspace)) {
+            throw new RuntimeException('Workspace deletion failed');
+        }
+    });
+
+    expect(fn (): int => Artisan::call('app:purge-scheduled-deletions'))
+        ->toThrow(RuntimeException::class, 'Workspace deletion failed');
+
+    expect($workspace->users()->whereKey($member->getKey())->exists())->toBeTrue()
+        ->and(DB::table('custom_fields')->where('tenant_id', $workspace->getKey())->count())->toBe($customFields)
+        ->and($customFields)->toBeGreaterThan(0);
+});
+
 it('keeps attachment bytes when permanent workspace deletion rolls back', function (): void {
     Storage::fake('local');
     $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
