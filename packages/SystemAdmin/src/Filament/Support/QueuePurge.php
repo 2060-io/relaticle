@@ -20,14 +20,8 @@ final class QueuePurge
     {
         return SafeDelete::action(function (User|Workspace $record): void {
             try {
-                $record->queuePurge();
+                self::queue($record);
             } catch (ValidationException $exception) {
-                Notification::make()
-                    ->danger()
-                    ->title('Cannot delete')
-                    ->body($exception->getMessage())
-                    ->send();
-
                 throw new Cancel($exception->getMessage(), $exception->getCode(), $exception);
             }
         })
@@ -37,11 +31,24 @@ final class QueuePurge
 
     public static function bulkAction(): DeleteBulkAction
     {
-        return SafeDelete::bulkAction(function (User|Workspace $record): void {
-            $record->queuePurge();
-        })
+        return SafeDelete::bulkAction(self::queue(...))
             ->modalDescription(self::DESCRIPTION)
             ->successNotificationTitle('Queued for deletion')
             ->failureNotificationTitle(fn (int $successCount, int $totalCount): string => "Queued {$successCount} of {$totalCount} for deletion");
+    }
+
+    private static function queue(User|Workspace $record): void
+    {
+        try {
+            $record->queuePurge();
+        } catch (ValidationException $exception) {
+            Notification::make()
+                ->danger()
+                ->title('Cannot delete')
+                ->body($exception->getMessage())
+                ->send();
+
+            throw $exception;
+        }
     }
 }

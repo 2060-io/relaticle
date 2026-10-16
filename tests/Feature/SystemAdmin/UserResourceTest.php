@@ -405,6 +405,19 @@ it('refuses to delete a user who owns a workspace other members still use', func
     Queue::assertNotPushed(PurgeUser::class);
 })->with(['personal workspace' => 'withPersonalWorkspace', 'team workspace' => 'withWorkspace']);
 
+it('names the reason when a bulk delete refuses an owner of a workspace with members', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+    $owner->ownedWorkspaces()->firstOrFail()->users()->attach(User::factory()->create(), ['role' => 'member']);
+    Queue::fake([PurgeUser::class]);
+
+    livewire(ListUsers::class)
+        ->selectTableRecords([$owner->getKey()])
+        ->callAction([['name' => 'delete', 'context' => ['table' => true, 'bulk' => true]]])
+        ->assertNotified('Cannot delete');
+
+    Queue::assertNotPushed(PurgeUser::class);
+});
+
 it('keeps a user whose deletion is cancelled before the queued purge runs', function (): void {
     Notification::fake();
     $user = User::factory()->withPersonalWorkspace()->create();
