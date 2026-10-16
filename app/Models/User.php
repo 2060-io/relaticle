@@ -11,6 +11,7 @@ use App\Enums\Notifications\NotificationChannel;
 use App\Enums\Notifications\NotificationType;
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
+use App\Jobs\PurgeUser;
 use App\Models\Concerns\HasProfilePhoto;
 use App\Models\Concerns\HasWorkspaces;
 use App\Models\Pivots\TaskAssignee;
@@ -44,6 +45,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -198,6 +200,37 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
     public function isScheduledForDeletion(): bool
     {
         return $this->scheduled_deletion_at !== null;
+    }
+
+    public function isDeletionDue(): bool
+    {
+        return $this->scheduled_deletion_at?->lessThanOrEqualTo(now()) ?? false;
+    }
+
+    public function ensureCanBeDeleted(): void
+    {
+        $sharedWorkspaces = $this->ownedWorkspaces()
+            ->whereHas('users')
+            ->pluck('name');
+
+        if ($sharedWorkspaces->isEmpty()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'workspace' => [__('workspaces.validation.remove_members_before_deleting', [
+                'workspaces' => $sharedWorkspaces->implode(', '),
+            ])],
+        ]);
+    }
+
+    public function queuePurge(): void
+    {
+        $this->ensureCanBeDeleted();
+
+        $this->forceFill(['scheduled_deletion_at' => now()])->save();
+
+        dispatch(new PurgeUser($this));
     }
 
     /**

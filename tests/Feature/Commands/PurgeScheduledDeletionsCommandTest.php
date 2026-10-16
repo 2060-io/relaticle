@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Actions\Jetstream\DeleteWorkspace;
 use App\Enums\MediaCollection;
+use App\Jobs\PurgeUser;
+use App\Jobs\PurgeWorkspace;
 use App\Models\Note;
 use App\Models\User;
 use App\Models\Workspace;
@@ -11,6 +13,7 @@ use App\Notifications\UserDeletionReminderNotification;
 use App\Notifications\WorkspaceDeletionReminderNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -19,7 +22,7 @@ use Relaticle\EmailIntegration\Models\EmailBody;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-mutates(DeleteWorkspace::class);
+mutates(DeleteWorkspace::class, PurgeUser::class, PurgeWorkspace::class);
 
 test('expired users are permanently deleted', function () {
     $user = User::factory()->withPersonalWorkspace()->scheduledForDeletion(-1)->create();
@@ -102,6 +105,22 @@ test('purging a user removes mail and meetings synced from a mailbox they alread
         ->and(DB::table('email_bodies')->where('email_id', $email->id)->exists())->toBeFalse()
         ->and(DB::table('meetings')->where('id', $meeting->id)->exists())->toBeFalse()
         ->and(Workspace::query()->find($workspace->id))->not->toBeNull();
+});
+
+test('expired users and workspaces are queued for purge on the imports lane', function () {
+    $expiredUser = User::factory()->scheduledForDeletion(-1)->create();
+    $futureUser = User::factory()->scheduledForDeletion(15)->create();
+    $expiredWorkspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $expiredWorkspace->update(['scheduled_deletion_at' => now()->subDay()]);
+    Queue::fake([PurgeUser::class, PurgeWorkspace::class]);
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    Queue::assertPushedOn('imports', PurgeUser::class, fn (PurgeUser $job): bool => $job->user->is($expiredUser));
+    Queue::assertNotPushed(PurgeUser::class, fn (PurgeUser $job): bool => $job->user->is($futureUser));
+    Queue::assertPushedOn('imports', PurgeWorkspace::class, fn (PurgeWorkspace $job): bool => $job->workspace->is($expiredWorkspace));
+    expect($expiredUser->fresh())->not->toBeNull();
 });
 
 test('non-expired users are not deleted', function () {

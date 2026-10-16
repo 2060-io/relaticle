@@ -14,6 +14,7 @@ use App\Enums\WorkspaceSetupStep;
 use App\Events\WorkspaceCreated;
 use App\Events\WorkspaceDeleted;
 use App\Events\WorkspaceUpdated;
+use App\Jobs\PurgeWorkspace;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Scopes\WorkspaceScope as CrmWorkspaceScope;
@@ -355,6 +356,18 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     public function isScheduledForDeletion(): bool
     {
         return $this->scheduled_deletion_at !== null;
+    }
+
+    public function isDeletionDue(): bool
+    {
+        return $this->scheduled_deletion_at?->lessThanOrEqualTo(now()) ?? false;
+    }
+
+    public function queuePurge(): void
+    {
+        $this->forceFill(['scheduled_deletion_at' => now()])->save();
+
+        dispatch(new PurgeWorkspace($this));
     }
 
     public function hasConnectedMailbox(): bool
