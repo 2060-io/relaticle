@@ -7,7 +7,6 @@ namespace App\Jobs;
 use App\Models\Workspace;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Timeout;
@@ -23,7 +22,6 @@ use Laravel\Jetstream\Contracts\DeletesTeams;
 #[UniqueFor(900)]
 final class PurgeWorkspace implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable;
     use Queueable;
 
     public function __construct(public readonly Workspace $workspace)
