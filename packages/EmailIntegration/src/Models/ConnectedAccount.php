@@ -151,6 +151,26 @@ final class ConnectedAccount extends Model
      * @return Builder<ConnectedAccount>
      */
     #[Scope]
+    protected function syncable(Builder $query): Builder
+    {
+        return $query->active()->inWorkspaceWithHostedAccess();
+    }
+
+    /**
+     * @param  Builder<ConnectedAccount>  $query
+     * @return Builder<ConnectedAccount>
+     */
+    #[Scope]
+    protected function inWorkspaceWithHostedAccess(Builder $query): Builder
+    {
+        return $query->whereHas('workspace', fn (Builder $workspace): Builder => $workspace->withHostedAccess());
+    }
+
+    /**
+     * @param  Builder<ConnectedAccount>  $query
+     * @return Builder<ConnectedAccount>
+     */
+    #[Scope]
     protected function sendable(Builder $query): Builder
     {
         return $query->active()->where(fn (Builder $sendQuery): Builder => $sendQuery

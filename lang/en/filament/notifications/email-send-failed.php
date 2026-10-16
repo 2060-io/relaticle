@@ -14,7 +14,13 @@ return [
         'body_many' => 'Their mailbox needs reconnecting. Reconnect it, then retry them from the Failed tab.',
         'action' => 'Reconnect account',
     ],
+    'subscribe' => [
+        'body_one' => '":subject" was not sent because :workspace is paused. Once the workspace is reopened, retry the email from the Failed tab.',
+        'body_many' => 'They were not sent because :workspace is paused. Once the workspace is reopened, retry them from the Failed tab.',
+        'action' => 'View billing',
+    ],
     'reasons' => [
         'mailbox_needs_reconnect' => 'The mailbox needs reconnecting before this email can be sent.',
+        'workspace_paused' => 'The workspace was paused when this email was due, so it was not sent.',
     ],
 ];

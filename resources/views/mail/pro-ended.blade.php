@@ -6,6 +6,10 @@
 {{ __('mail.pro_ended.grandfathered', ['workspace' => $workspace->name]) }}
 @else
 {{ __('mail.pro_ended.paused', ['workspace' => $workspace->name]) }}
+@if($mailboxSyncPaused)
+
+{{ __('mail.pro_ended.mailbox_sync_paused') }}
+@endif
 
 {{ __('mail.pro_ended.restore') }}
 @endif

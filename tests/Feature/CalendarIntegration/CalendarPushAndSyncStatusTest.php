@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Features\Billing;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalEmailSyncCommand;
 use Relaticle\EmailIntegration\Controllers\CalendarPushWebhookController;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
@@ -98,6 +100,33 @@ it('dispatches calendar sync when microsoft sends a valid notification', functio
     ])->assertAccepted();
 
     Bus::assertDispatched(fn (IncrementalCalendarSyncJob $job): bool => $job->connectedAccount->is($account));
+});
+
+it('does not sync a calendar from push notifications while its workspace is paused', function (): void {
+    Feature::define(Billing::class, true);
+    Bus::fake([IncrementalCalendarSyncJob::class]);
+
+    ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'provider' => EmailProvider::GMAIL,
+        'calendar_push_channel_id' => 'channel-paused',
+        'calendar_push_verification_token' => 'secret-token',
+    ]));
+    ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->azure()->create([
+        'calendar_push_channel_id' => 'sub-paused',
+        'calendar_push_verification_token' => 'secret-token',
+    ]));
+
+    $this->post(route('calendar-push.webhook', ['provider' => EmailProvider::GMAIL->value]), [], [
+        'X-Goog-Channel-ID' => 'channel-paused',
+        'X-Goog-Channel-Token' => 'secret-token',
+        'X-Goog-Resource-State' => 'exists',
+    ])->assertNotFound();
+
+    $this->postJson(route('calendar-push.webhook', ['provider' => EmailProvider::AZURE->value]), [
+        'value' => [['subscriptionId' => 'sub-paused', 'clientState' => 'secret-token']],
+    ])->assertAccepted();
+
+    Bus::assertNotDispatched(IncrementalCalendarSyncJob::class);
 });
 
 it('ignores microsoft notifications with a forged client state', function (): void {

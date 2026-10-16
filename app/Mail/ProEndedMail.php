@@ -46,6 +46,7 @@ final class ProEndedMail extends Mailable implements ShouldQueue
                 'heading' => __("mail.pro_ended.{$this->status->value}.heading", ['workspace' => $this->workspace->name]),
                 'billingUrl' => Billing::getUrl(panel: 'app', tenant: $this->workspace),
                 'grandfathered' => $this->workspace->hosted_free_grandfathered_at !== null,
+                'mailboxSyncPaused' => $this->workspace->hasConnectedMailbox(),
             ],
         );
     }

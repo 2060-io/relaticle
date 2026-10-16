@@ -6,6 +6,7 @@ use App\Filament\Pages\Billing;
 use App\Mail\ProEndedMail;
 use App\Models\User;
 use App\Models\Workspace;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
 mutates(ProEndedMail::class);
 
@@ -51,4 +52,14 @@ it('tells a grandfathered workspace it is back on Cloud Free, not paused', funct
     $mail->assertSeeInHtml(__('mail.pro_ended.grandfathered', ['workspace' => 'Acme']));
     $mail->assertSeeInHtml(__('mail.pro_ended.cta_grandfathered'));
     $mail->assertDontSeeInHtml(__('mail.pro_ended.paused', ['workspace' => 'Acme']));
+});
+
+it('says email and calendar sync are paused only when the workspace has a mailbox', function (): void {
+    $workspace = proEndedWorkspace();
+
+    ProEndedMail::afterTrial($workspace)->assertDontSeeInHtml(__('mail.pro_ended.mailbox_sync_paused'));
+
+    ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create(['workspace_id' => $workspace->id]));
+
+    ProEndedMail::afterTrial($workspace)->assertSeeInHtml(__('mail.pro_ended.mailbox_sync_paused'));
 });
