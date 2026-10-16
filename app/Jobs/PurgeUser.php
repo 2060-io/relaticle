@@ -12,7 +12,6 @@ use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Laravel\Jetstream\Contracts\DeletesUsers;
 
@@ -41,9 +40,7 @@ final class PurgeUser implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        DB::transaction(function () use ($deletesUsers): void {
-            $deletesUsers->delete($this->user);
-        });
+        $deletesUsers->delete($this->user);
 
         Log::info('Purged user account', ['user_id' => $this->user->getKey(), 'email' => $this->user->email]);
     }
