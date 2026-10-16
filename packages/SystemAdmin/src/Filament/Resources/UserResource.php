@@ -30,7 +30,6 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Laravel\Jetstream\Contracts\DeletesUsers;
 use Override;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\CreateUser;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\EditUser;
@@ -40,8 +39,8 @@ use Relaticle\SystemAdmin\Filament\Resources\UserResource\RelationManagers\Owned
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\RelationManagers\SocialAccountsRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\RelationManagers\WorkspacesRelationManager;
 use Relaticle\SystemAdmin\Filament\Support\Impersonate;
+use Relaticle\SystemAdmin\Filament\Support\QueuePurge;
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
-use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
 use Relaticle\SystemAdmin\Filament\Support\ViewerTime;
 use Relaticle\SystemAdmin\Metrics\Scopes\GenuineSignup;
 use Relaticle\SystemAdmin\Metrics\Scopes\ReachedFirstValue;
@@ -290,9 +289,7 @@ final class UserResource extends Resource
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    SafeDelete::bulkAction(function (User $record): void {
-                        resolve(DeletesUsers::class)->delete($record);
-                    }),
+                    QueuePurge::bulkAction(),
                 ]),
             ]);
     }

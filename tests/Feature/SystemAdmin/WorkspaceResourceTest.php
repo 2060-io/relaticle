@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Actions\Jetstream\CancelWorkspaceDeletion;
 use App\Enums\BillingStatus;
 use App\Enums\CreationSource;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
 use App\Features\Billing;
+use App\Jobs\PurgeWorkspace;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Company;
@@ -17,6 +19,8 @@ use App\Services\Billing\HostedWorkspaceAccess;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Cashier\Subscription;
@@ -321,6 +325,35 @@ it('deletes workspaces in bulk through the Jetstream deleter so members keep no 
 
     expect(Workspace::query()->whereKey([$workspace->getKey(), $second->getKey()])->count())->toBe(0)
         ->and($member->refresh()->current_workspace_id)->toBeNull();
+});
+
+it('queues the workspace purge on the imports lane and keeps the workspace until the job runs', function (): void {
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    Queue::fake([PurgeWorkspace::class]);
+    $this->freezeSecond();
+
+    livewire(EditWorkspace::class, ['record' => $workspace->getKey()])
+        ->callAction('delete')
+        ->assertHasNoActionErrors()
+        ->assertNotified('Queued for deletion');
+
+    expect($workspace->fresh()->scheduled_deletion_at)->toEqual(now());
+    Queue::assertPushedOn('imports', PurgeWorkspace::class, fn (PurgeWorkspace $job): bool => $job->workspace->is($workspace));
+});
+
+it('keeps a workspace whose deletion is cancelled before the queued purge runs', function (): void {
+    Notification::fake();
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    Queue::fake([PurgeWorkspace::class]);
+
+    livewire(EditWorkspace::class, ['record' => $workspace->getKey()])->callAction('delete');
+    resolve(CancelWorkspaceDeletion::class)->cancel($owner, $workspace->fresh());
+
+    $job = unserialize(serialize(Queue::pushed(PurgeWorkspace::class)->first()));
+    app()->call($job->handle(...));
+
+    expect($workspace->fresh())->not->toBeNull();
 });
 
 it('labels a workspace by why it has its plan, not by the plan alone', function (callable $arrange, BillingStatus $expected): void {
