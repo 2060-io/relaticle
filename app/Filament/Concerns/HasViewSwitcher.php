@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Concerns;
 
 use App\Filament\Resources\NoteResource\Pages\NotesCards;
+use Filament\Pages\Page;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
@@ -45,11 +46,9 @@ trait HasViewSwitcher
         foreach ($resource::getPages() as $name => $registration) {
             $page = $registration->getPage();
 
-            if (! $page::canAccess()) {
-                continue;
-            }
+            $isCollectionPage = is_a($page, ListRecords::class, true) || is_a($page, HasBoard::class, true);
 
-            if (! is_a($page, ListRecords::class, true) && ! is_a($page, HasBoard::class, true)) {
+            if (! $isCollectionPage || ! is_subclass_of($page, Page::class) || ! $page::canAccess()) {
                 continue;
             }
 

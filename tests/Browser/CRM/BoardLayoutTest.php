@@ -46,12 +46,12 @@ it('scrolls a long column inside the board without scrolling the page', function
         (() => {
             const layout = document.querySelector('.fi-layout');
             const tray = document.querySelector('.ff-tray');
-            const scroller = [...tray.querySelectorAll('*')]
-                .find((element) => getComputedStyle(element).overflowY === 'auto');
+            const scroller = [tray, ...tray.querySelectorAll('*')]
+                .find((element) => ['auto', 'scroll'].includes(getComputedStyle(element).overflowY));
 
             return {
                 pageScrolls: layout.scrollHeight > layout.clientHeight,
-                columnScrolls: scroller.scrollHeight > scroller.clientHeight,
+                columnScrolls: scroller !== undefined && scroller.scrollHeight > scroller.clientHeight,
             };
         })();
     JS;
