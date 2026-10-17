@@ -10635,12 +10635,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/relaticle/flowforge.git",
-                "reference": "8dc26ecf2ce4c8ae3ff62baad13e4901aa4707ec"
+                "reference": "b53a06557ae613c66124195fc9ada435359d0c94"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/relaticle/flowforge/zipball/8dc26ecf2ce4c8ae3ff62baad13e4901aa4707ec",
-                "reference": "8dc26ecf2ce4c8ae3ff62baad13e4901aa4707ec",
+                "url": "https://api.github.com/repos/relaticle/flowforge/zipball/b53a06557ae613c66124195fc9ada435359d0c94",
+                "reference": "b53a06557ae613c66124195fc9ada435359d0c94",
                 "shasum": ""
             },
             "require": {
@@ -10716,7 +10716,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-10-17T02:11:31+00:00"
+            "time": "2026-10-17T12:06:46+00:00"
         },
         {
             "name": "relaticle/ink",
