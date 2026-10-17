@@ -1248,16 +1248,16 @@ html.fi-record-stacked .fi-record-layout {
         }
 
         /* The package reserves this slot for a heading the topbar already shows. */
-        & > div:not(.fi-view-switcher) > div > :first-child:not(:has(.fi-header-subheading)) {
+        & > div:not(.fi-view-switcher) > .ff-header-row > :first-child:not(:has(.ff-header-subheading)) {
             @apply hidden;
         }
 
-        & > div:not(.fi-view-switcher) > div,
-        & > div:not(.fi-view-switcher) > div > :last-child {
+        & > div:not(.fi-view-switcher) > .ff-header-row,
+        & > div:not(.fi-view-switcher) > .ff-header-row > :last-child {
             @apply flex-nowrap;
         }
 
-        & > div:not(.fi-view-switcher) > div > :last-child {
+        & > div:not(.fi-view-switcher) > .ff-header-row > :last-child {
             @apply min-w-0 flex-1 flex-row-reverse justify-between gap-x-3;
         }
 
