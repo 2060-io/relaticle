@@ -61,3 +61,50 @@ it('scrolls a long column inside the board without scrolling the page', function
     'tasks' => [Task::class, TaskField::STATUS->value, TaskField::DUE_DATE->value, 'tasks/board'],
     'opportunities' => [Opportunity::class, OpportunityField::STAGE->value, OpportunityField::CLOSE_DATE->value, 'opportunities/board'],
 ]);
+
+it('fills the viewport with a grouped board and lines its headers up with the flat board', function (): void {
+    $this->withVite();
+
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+
+    TenantContextService::setTenantId($workspace->getKey());
+
+    $stage = CustomField::query()->forEntity(Opportunity::class)->where('code', OpportunityField::STAGE->value)->firstOrFail();
+    $firstStage = $stage->options->first();
+
+    Opportunity::factory()->recycle([$user, $workspace])->count(12)->create()
+        ->each(fn (Opportunity $opportunity) => $opportunity->saveCustomFieldValue($stage, $firstStage->getKey()));
+
+    TenantContextService::setTenantId(null);
+
+    $headerTop = 'Math.round(document.querySelector(".ff-column-header").getBoundingClientRect().top)';
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize(1440, 900)
+        ->navigate("/app/{$workspace->slug}/opportunities/board")
+        ->assertVisible('.ff-columns');
+
+    $flatHeaderTop = $page->script($headerTop);
+
+    $page->navigate("/app/{$workspace->slug}/opportunities/board?groupBy=company")
+        ->assertVisible('.ff-lanes')
+        ->assertNoJavaScriptErrors();
+
+    $layout = <<<'JS'
+        (() => {
+            const layout = document.querySelector('.fi-layout');
+            const lanes = document.querySelector('.ff-lanes');
+
+            return {
+                pageScrolls: layout.scrollHeight > layout.clientHeight,
+                lanesScroll: lanes.scrollHeight > lanes.clientHeight,
+                gapBelowLanes: Math.round(innerHeight - lanes.getBoundingClientRect().bottom),
+            };
+        })();
+    JS;
+
+    expect($page->script($layout))->toBe(['pageScrolls' => false, 'lanesScroll' => true, 'gapBelowLanes' => 0])
+        ->and($page->script($headerTop))->toBe($flatHeaderTop);
+});

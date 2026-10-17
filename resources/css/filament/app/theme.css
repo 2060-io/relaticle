@@ -1277,7 +1277,7 @@ html.fi-record-stacked .fi-record-layout {
     }
 
     .fi-page-content {
-        @apply h-full;
+        @apply h-full grid-rows-[minmax(0,1fr)];
 
         & > div {
             @apply h-full;
@@ -1289,7 +1289,11 @@ html.fi-record-stacked .fi-record-layout {
     }
 
     .ff-lanes {
-        @apply px-4 pb-4 lg:px-6;
+        @apply max-h-none px-4 pb-4 lg:px-6;
+    }
+
+    .ff-lanes-heads {
+        @apply pt-4;
     }
 
 }
