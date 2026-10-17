@@ -9,7 +9,7 @@ use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\HtmlString;
-use Relaticle\Flowforge\BoardResourcePage;
+use Relaticle\Flowforge\Contracts\HasBoard;
 
 /**
  * Puts the view switcher at the start of the row under the topbar, so it keeps
@@ -26,7 +26,7 @@ trait HasViewSwitcher
     {
         $header = parent::getHeader();
 
-        if (! $this instanceof BoardResourcePage || ! $header instanceof View) {
+        if (! $this instanceof HasBoard || ! $header instanceof View) {
             return $header;
         }
 
@@ -45,14 +45,16 @@ trait HasViewSwitcher
         foreach ($resource::getPages() as $name => $registration) {
             $page = $registration->getPage();
 
-            $isCollectionPage = is_a($page, ListRecords::class, true) || is_a($page, BoardResourcePage::class, true);
+            if (! $page::canAccess()) {
+                continue;
+            }
 
-            if (! $isCollectionPage || ! $page::canAccess()) {
+            if (! is_a($page, ListRecords::class, true) && ! is_a($page, HasBoard::class, true)) {
                 continue;
             }
 
             $view = match (true) {
-                is_a($page, BoardResourcePage::class, true) => 'board',
+                is_a($page, HasBoard::class, true) => 'board',
                 $page === NotesCards::class => 'cards',
                 default => 'list',
             };
