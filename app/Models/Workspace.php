@@ -14,6 +14,7 @@ use App\Enums\WorkspaceSetupStep;
 use App\Events\WorkspaceCreated;
 use App\Events\WorkspaceDeleted;
 use App\Events\WorkspaceUpdated;
+use App\Jobs\PurgeWorkspace;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Scopes\WorkspaceScope as CrmWorkspaceScope;
@@ -357,6 +358,23 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         return $this->scheduled_deletion_at !== null;
     }
 
+    public function isDeletionDue(): bool
+    {
+        return $this->scheduled_deletion_at?->lessThanOrEqualTo(now()) ?? false;
+    }
+
+    public function queuePurge(): void
+    {
+        $this->forceFill(['scheduled_deletion_at' => now()])->save();
+
+        dispatch(new PurgeWorkspace($this));
+    }
+
+    public function hasConnectedMailbox(): bool
+    {
+        return $this->connectedAccounts()->connected()->exists();
+    }
+
     /**
      * Reads the `subscriptions` relation, so eager load it when rendering this
      * for more than one workspace. It deliberately does not `loadMissing()` on your
@@ -387,6 +405,20 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
                 ['created_at' => 'MAX', 'id' => 'MAX'],
                 fn (Builder $query): Builder => $query->where('type', 'default'),
             );
+    }
+
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    #[Scope]
+    protected function withHostedAccess(Builder $query): Builder
+    {
+        if (! BillingStatus::billingEnabled()) {
+            return $query;
+        }
+
+        return $query->where(fn (Builder $granted): Builder => BillingStatus::grantingAccess($granted));
     }
 
     /**

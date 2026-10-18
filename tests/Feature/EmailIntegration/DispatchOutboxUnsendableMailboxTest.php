@@ -2,9 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\Plan;
+use App\Features\Billing;
+use App\Filament\Pages\Billing as BillingPage;
 use App\Models\User;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
+use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Console\Commands\DispatchOutboxCommand;
@@ -12,6 +16,7 @@ use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Enums\EmailBatchStatus;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Enums\SendFailureRemedy;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
 use Relaticle\EmailIntegration\Jobs\SendEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -19,7 +24,7 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBatch;
 use Relaticle\EmailIntegration\Notifications\EmailSendFailedNotification;
 
-mutates(DispatchOutboxCommand::class, MarkEmailsSendFailedAction::class, SyncEmailBatchCountersAction::class, EmailSendFailedNotification::class, ConnectedAccount::class);
+mutates(DispatchOutboxCommand::class, MarkEmailsSendFailedAction::class, SyncEmailBatchCountersAction::class, EmailSendFailedNotification::class, SendFailureRemedy::class, ConnectedAccount::class);
 
 beforeEach(function (): void {
     Bus::fake();
@@ -77,7 +82,7 @@ it('fails due queued mail on a disconnected mailbox', function (): void {
 
     expect(Email::withoutGlobalScopes()->findOrFail($email->getKey())->status)->toBe(EmailStatus::FAILED);
     Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 1);
-    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->mailboxNeedsReconnect);
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->remedy === SendFailureRemedy::Reconnect);
 });
 
 it('fails due queued mail on an active mailbox that lost send access', function (): void {
@@ -123,7 +128,7 @@ it('counts failed mass-send mail on a disconnected mailbox and tells the sender 
 
     Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 1);
     Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->count === 2
-        && $notification->mailboxNeedsReconnect);
+        && $notification->remedy === SendFailureRemedy::Reconnect);
 });
 
 it('leaves mail scheduled for later queued on a mailbox that needs reconnecting', function (): void {
@@ -142,5 +147,53 @@ it('keeps sending due mail on an active mailbox', function (): void {
     $this->artisan('email:dispatch-outbox')->assertSuccessful();
 
     expect($email->fresh()->status)->not->toBe(EmailStatus::FAILED);
+    Notification::assertNothingSent();
+});
+
+it('fails due mail in a paused workspace and sends the sender to billing', function (): void {
+    Feature::define(Billing::class, true);
+    $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
+    $due = ($this->queue)();
+    $later = ($this->queue)(['scheduled_for' => now()->addDay()]);
+
+    $this->artisan('email:dispatch-outbox')->assertSuccessful();
+
+    expect($due->fresh())
+        ->status->toBe(EmailStatus::FAILED)
+        ->last_error->toBe(__('filament/notifications/email-send-failed.reasons.workspace_paused'))
+        ->and($later->fresh()->status)->toBe(EmailStatus::QUEUED);
+
+    Bus::assertNotDispatched(SendEmailJob::class);
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, function (EmailSendFailedNotification $notification) use ($due): bool {
+        $message = $notification->toDatabase($this->user);
+
+        return $notification->remedy === SendFailureRemedy::Subscribe
+            && $message['body'] === "\"{$due->subject}\" was not sent because {$this->workspace->name} is paused. Once the workspace is reopened, retry the email from the Failed tab."
+            && $message['actions'][0]['url'] === BillingPage::getUrl(panel: 'app', tenant: $this->workspace);
+    });
+});
+
+it('holds due mail in a paused workspace when failing it throws', function (): void {
+    Feature::define(Billing::class, true);
+    $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
+    $email = ($this->queue)();
+    Email::updating(fn (): never => throw new RuntimeException('database unavailable'));
+
+    $this->artisan('email:dispatch-outbox')->assertSuccessful();
+
+    expect($email->fresh()->status)->toBe(EmailStatus::QUEUED);
+    Bus::assertNotDispatched(SendEmailJob::class);
+});
+
+it('sends due mail in a workspace whose trial is running', function (): void {
+    Feature::define(Billing::class, true);
+    $this->workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(5)])->save();
+    $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
+    $email = ($this->queue)();
+
+    $this->artisan('email:dispatch-outbox')->assertSuccessful();
+
+    expect($email->fresh()->status)->toBe(EmailStatus::SENDING);
+    Bus::assertDispatched(SendEmailJob::class);
     Notification::assertNothingSent();
 });

@@ -38,6 +38,9 @@
                         @else
                             {{ __('billing.paused.owner_body', ['workspace' => $workspace->name]) }}
                         @endif
+                        @if($mailboxSyncPaused)
+                            {{ __('billing.paused.mailbox_sync') }}
+                        @endif
                     </p>
 
                     @if($canManageBilling)

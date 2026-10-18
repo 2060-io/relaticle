@@ -56,6 +56,7 @@ return [
         'preheader' => 'Your records are safe. Subscribe to reopen the workspace.',
         'preheader_grandfathered' => 'Your workspace is back on its Cloud Free plan.',
         'paused' => 'Cloud access to :workspace is now paused. Your records are safe, and nothing has been deleted.',
+        'mailbox_sync_paused' => 'Email and calendar sync are paused too, and resume once you subscribe.',
         'restore' => 'Subscribe to Cloud Pro to reopen the app, REST API, MCP server, and AI assistant exactly where you left off.',
         'grandfathered' => ':workspace is back on its grandfathered Cloud Free plan. Your data is untouched, and you can return to Pro at any time.',
         'cta' => 'Subscribe to Pro',

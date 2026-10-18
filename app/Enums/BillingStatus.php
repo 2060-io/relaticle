@@ -127,6 +127,33 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
         return $this->constrain($query);
     }
 
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    public static function grantingAccess(Builder $query): Builder
+    {
+        $outrankingDenials = [];
+
+        foreach (self::cases() as $case) {
+            if (! $case->grantsAccess()) {
+                $outrankingDenials[] = $case;
+
+                continue;
+            }
+
+            $query->orWhere(function (Builder $status) use ($case, $outrankingDenials): void {
+                foreach ($outrankingDenials as $denial) {
+                    $status->whereNot(fn (Builder $denied): Builder => $denial->constrain($denied));
+                }
+
+                $case->constrain($status);
+            });
+        }
+
+        return $query;
+    }
+
     public function grantsAccess(): bool
     {
         return match ($this) {
@@ -184,7 +211,7 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
 
     /**
      * This status's own predicate, blind to the statuses that outrank it.
-     * Only applyToQuery() may call it.
+     * Only applyToQuery() and grantingAccess() may call it.
      *
      * @param  Builder<Workspace>  $query
      * @return Builder<Workspace>

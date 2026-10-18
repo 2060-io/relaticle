@@ -25,6 +25,7 @@ use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Enums\SendFailureRemedy;
 use Relaticle\EmailIntegration\Jobs\SendEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
@@ -212,7 +213,7 @@ it('fails instead of sending when the mailbox was disconnected after the email w
         ->status->toBe(EmailStatus::FAILED)
         ->last_error->toBe(__('filament/notifications/email-send-failed.reasons.mailbox_needs_reconnect'));
 
-    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->mailboxNeedsReconnect);
+    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->remedy === SendFailureRemedy::Reconnect);
 });
 
 it('drops an overlapping duplicate send job instead of releasing it to fail later', function (): void {

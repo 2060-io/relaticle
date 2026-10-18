@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Actions\Jetstream\CancelWorkspaceDeletion;
 use App\Enums\BillingStatus;
 use App\Enums\CreationSource;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
 use App\Features\Billing;
+use App\Jobs\PurgeWorkspace;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\Company;
@@ -17,6 +19,8 @@ use App\Services\Billing\HostedWorkspaceAccess;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Cashier\Subscription;
@@ -43,6 +47,7 @@ use Relaticle\SystemAdmin\Filament\Support\PivotSafeTableQuery;
 use Relaticle\SystemAdmin\Metrics\WorkspaceJourney;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\Helpers\BillingStatusFixture;
 use Tests\Helpers\OverviewData;
 
 mutates(UpdateCustomerRecord::class, EditCustomerRecord::class, BillingStatus::class, WorkspaceResource::class, MembersRelationManager::class, CompaniesRelationManager::class, ActivityRelationManager::class, PivotSafeTableQuery::class, Impersonate::class, WorkspaceJourney::class, ExtendWorkspaceTrial::class, ExtendTrial::class);
@@ -322,115 +327,37 @@ it('deletes workspaces in bulk through the Jetstream deleter so members keep no 
         ->and($member->refresh()->current_workspace_id)->toBeNull();
 });
 
-function billingStatusWorkspace(): Workspace
-{
-    return User::factory()->withPersonalWorkspace()->create()->ownedWorkspaces()->firstOrFail();
-}
+it('queues the workspace purge on the imports lane and keeps the workspace until the job runs', function (): void {
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    Queue::fake([PurgeWorkspace::class]);
+    $this->freezeSecond();
 
-/**
- * @return array<string, array{0: callable(Workspace): void, 1: BillingStatus}>
- */
-function billingStatusArrangements(): array
-{
-    return [
-        'a trial reads Trial, never Pro' => [
-            fn (Workspace $workspace) => $workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(5)])->save(),
-            BillingStatus::Trialing,
-        ],
-        'a paid subscription reads Pro' => [
-            function (Workspace $workspace): void {
-                $workspace->forceFill(['plan' => Plan::Pro])->save();
-                Subscription::factory()->active()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::Subscribed,
-        ],
-        'a lapsed subscription reads Past due, not Pro' => [
-            function (Workspace $workspace): void {
-                $workspace->forceFill(['plan' => Plan::Pro])->save();
-                Subscription::factory()->pastDue()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::PastDue,
-        ],
-        'a past-due subscription past its end date reads Subscription ended' => [
-            function (Workspace $workspace): void {
-                Subscription::factory()->pastDue()->create(['workspace_id' => $workspace->getKey(), 'ends_at' => now()->subDay()]);
-            },
-            BillingStatus::SubscriptionEnded,
-        ],
-        'an expired trial awaiting the nightly downgrade reads Trial ended, not Granted' => [
-            fn (Workspace $workspace) => $workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->subHour()])->save(),
-            BillingStatus::TrialEnded,
-        ],
-        'a trial paused by the nightly downgrade still reads Trial ended' => [
-            fn (Workspace $workspace) => $workspace->forceFill(['plan' => Plan::Free, 'pro_trial_used_at' => now()->subDays(15)])->save(),
-            BillingStatus::TrialEnded,
-        ],
-        'a trial that ended beside an abandoned checkout reads Trial ended' => [
-            function (Workspace $workspace): void {
-                $workspace->forceFill(['pro_trial_used_at' => now()->subDays(15)])->save();
-                Subscription::factory()->incompleteAndExpired()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::TrialEnded,
-        ],
-        'a cancelled subscription reads Subscription ended' => [
-            function (Workspace $workspace): void {
-                $workspace->forceFill(['pro_trial_used_at' => now()->subMonths(3)])->save();
-                Subscription::factory()->canceled()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::SubscriptionEnded,
-        ],
-        'a cancelled subscription followed by an abandoned checkout still reads Subscription ended' => [
-            function (Workspace $workspace): void {
-                Subscription::factory()->canceled()->create([
-                    'workspace_id' => $workspace->getKey(),
-                    'created_at' => now()->subMonths(2),
-                    'updated_at' => now()->subMonths(2),
-                ]);
-                Subscription::factory()->incompleteAndExpired()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::SubscriptionEnded,
-        ],
-        'a cancelled subscriber granted Pro by hand reads Granted' => [
-            function (Workspace $workspace): void {
-                $workspace->forceFill(['plan' => Plan::Pro])->save();
-                Subscription::factory()->canceled()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::Granted,
-        ],
-        'a grandfathered workspace whose subscription ended reads Free (legacy)' => [
-            function (Workspace $workspace): void {
-                $workspace->forceFill(['hosted_free_grandfathered_at' => now()->subYear()])->save();
-                Subscription::factory()->canceled()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::Grandfathered,
-        ],
-        'a checkout abandoned without a trial reads Free' => [
-            function (Workspace $workspace): void {
-                Subscription::factory()->incompleteAndExpired()->create(['workspace_id' => $workspace->getKey()]);
-            },
-            BillingStatus::Free,
-        ],
-        'a hand-assigned plan reads Granted, not Pro' => [
-            fn (Workspace $workspace) => $workspace->forceFill(['plan' => Plan::Pro])->save(),
-            BillingStatus::Granted,
-        ],
-        'an enterprise workspace reads Enterprise' => [
-            fn (Workspace $workspace) => $workspace->forceFill(['plan' => Plan::Enterprise])->save(),
-            BillingStatus::Enterprise,
-        ],
-        'a pre-billing workspace reads Free (legacy)' => [
-            fn (Workspace $workspace) => $workspace->forceFill(['hosted_free_grandfathered_at' => now()])->save(),
-            BillingStatus::Grandfathered,
-        ],
-        'a workspace with nothing bought reads Free' => [
-            fn (Workspace $workspace): null => null,
-            BillingStatus::Free,
-        ],
-    ];
-}
+    livewire(EditWorkspace::class, ['record' => $workspace->getKey()])
+        ->callAction('delete')
+        ->assertHasNoActionErrors()
+        ->assertNotified('Queued for deletion');
+
+    expect($workspace->fresh()->scheduled_deletion_at)->toEqual(now());
+    Queue::assertPushedOn('imports', PurgeWorkspace::class, fn (PurgeWorkspace $job): bool => $job->workspace->is($workspace));
+});
+
+it('keeps a workspace whose deletion is cancelled before the queued purge runs', function (): void {
+    Notification::fake();
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    Queue::fake([PurgeWorkspace::class]);
+
+    livewire(EditWorkspace::class, ['record' => $workspace->getKey()])->callAction('delete');
+    resolve(CancelWorkspaceDeletion::class)->cancel($owner, $workspace->fresh());
+
+    $job = unserialize(serialize(Queue::pushed(PurgeWorkspace::class)->first()));
+    app()->call($job->handle(...));
+
+    expect($workspace->fresh())->not->toBeNull();
+});
 
 it('labels a workspace by why it has its plan, not by the plan alone', function (callable $arrange, BillingStatus $expected): void {
-    $workspace = billingStatusWorkspace();
+    $workspace = BillingStatusFixture::workspace();
     $arrange($workspace);
 
     expect($workspace->fresh()?->billingStatus())->toBe($expected);
@@ -439,13 +366,13 @@ it('labels a workspace by why it has its plan, not by the plan alone', function 
         ->assertCanSeeTableRecords([$workspace])
         ->assertSee($expected->getLabel())
         ->assertSeeHtml($expected->getDescription());
-})->with(billingStatusArrangements());
+})->with(BillingStatusFixture::arrangements());
 
 it('filters workspaces by the badge they show, and by no other', function (): void {
     $arranged = [];
 
-    foreach (billingStatusArrangements() as $name => [$arrange, $status]) {
-        $workspace = billingStatusWorkspace();
+    foreach (BillingStatusFixture::arrangements() as $name => [$arrange, $status]) {
+        $workspace = BillingStatusFixture::workspace();
         $arrange($workspace);
         $arranged[$name] = ['workspace' => $workspace->fresh(), 'status' => $status];
     }
@@ -468,7 +395,7 @@ it('filters workspaces by the badge they show, and by no other', function (): vo
 });
 
 it('filters on the subscription a workspace bills on now, not a superseded one', function (): void {
-    $workspace = billingStatusWorkspace();
+    $workspace = BillingStatusFixture::workspace();
     $workspace->forceFill(['plan' => Plan::Pro])->save();
 
     Subscription::factory()->pastDue()->create([
@@ -491,7 +418,7 @@ it('filters on the subscription a workspace bills on now, not a superseded one',
 });
 
 it('filters a workspace still inside its grace period as Pro, the way the badge reads it', function (): void {
-    $workspace = billingStatusWorkspace();
+    $workspace = BillingStatusFixture::workspace();
     $workspace->forceFill(['plan' => Plan::Pro])->save();
 
     Subscription::factory()->unpaid()->create([
@@ -511,7 +438,7 @@ it('filters a workspace still inside its grace period as Pro, the way the badge 
 });
 
 it('filters on the default subscription, ignoring a newer one of another type', function (): void {
-    $workspace = billingStatusWorkspace();
+    $workspace = BillingStatusFixture::workspace();
     $workspace->forceFill(['plan' => Plan::Pro])->save();
 
     Subscription::factory()->active()->create([
@@ -537,7 +464,7 @@ it('filters on the default subscription, ignoring a newer one of another type', 
 });
 
 it('prefers a live subscription over a trial that has not run out yet', function (): void {
-    $workspace = billingStatusWorkspace();
+    $workspace = BillingStatusFixture::workspace();
     $workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(5)])->save();
     Subscription::factory()->active()->create(['workspace_id' => $workspace->getKey()]);
 

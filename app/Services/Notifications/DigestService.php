@@ -12,6 +12,7 @@ use App\Enums\CustomFields\TaskField;
 use App\Filament\Resources\TaskResource;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Billing\HostedWorkspaceAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class DigestService
 {
+    public function __construct(private HostedWorkspaceAccess $hostedAccess) {}
+
     public function forUser(User $user): DigestPayload
     {
         $timezone = $user->effectiveTimezone();
@@ -29,6 +32,10 @@ final readonly class DigestService
         $sections = [];
 
         foreach ($user->allWorkspaces() as $workspace) {
+            if ($this->hostedAccess->isPaused($workspace)) {
+                continue;
+            }
+
             $section = $this->sectionForWorkspace($user, $workspace, $startOfToday, $windowEnd);
 
             if (! $section->isEmpty()) {
