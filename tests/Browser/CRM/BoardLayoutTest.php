@@ -52,11 +52,12 @@ it('scrolls a long column inside the board without scrolling the page', function
             return {
                 pageScrolls: layout.scrollHeight > layout.clientHeight,
                 columnScrolls: scroller !== undefined && scroller.scrollHeight > scroller.clientHeight,
+                gapBelowCards: Math.round(tray.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom),
             };
         })();
     JS;
 
-    expect($page->script($overflow))->toBe(['pageScrolls' => false, 'columnScrolls' => true]);
+    expect($page->script($overflow))->toBe(['pageScrolls' => false, 'columnScrolls' => true, 'gapBelowCards' => 0]);
 })->with([
     'tasks' => [Task::class, TaskField::STATUS->value, TaskField::DUE_DATE->value, 'tasks/board'],
     'opportunities' => [Opportunity::class, OpportunityField::STAGE->value, OpportunityField::CLOSE_DATE->value, 'opportunities/board'],

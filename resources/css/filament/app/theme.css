@@ -1288,6 +1288,10 @@ html.fi-record-stacked .fi-record-layout {
         @apply px-4 py-4 lg:px-6;
     }
 
+    .ff-cards {
+        @apply max-h-none;
+    }
+
     .ff-lanes {
         @apply max-h-none px-4 pb-4 lg:px-6;
     }
