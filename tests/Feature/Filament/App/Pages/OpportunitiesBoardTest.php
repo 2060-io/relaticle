@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
 use App\Enums\CustomFields\OpportunityField;
 use App\Enums\WorkspaceRole;
@@ -18,6 +19,7 @@ use Filament\Forms\Components\Select;
 use Illuminate\Support\Facades\Date;
 use Relaticle\Flowforge\Board;
 use Relaticle\Flowforge\Grouping;
+use Relaticle\Flowforge\Lane;
 
 mutates(OpportunitiesBoard::class);
 
@@ -123,6 +125,29 @@ it('labels the filter trigger and offers a clear button only while a filter is a
         ->call('removeTableFilters')
         ->assertSet('tableFilters.companies.values', [])
         ->assertDontSeeHtml('fi-board-filter-clear');
+});
+
+it('keeps the board clear button off the opportunity list table', function (): void {
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+    Filament::bootCurrentPanel();
+
+    livewire(ListOpportunities::class)
+        ->filterTable('creation_source', CreationSource::WEB->value)
+        ->assertSeeHtml('fi-ta-filter-indicators')
+        ->assertDontSeeHtml('fi-board-filter-clear');
+});
+
+it('offers a company lane only for companies with an opportunity on the board', function (): void {
+    $withOpportunity = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $withoutOpportunity = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->for($withOpportunity)->create();
+
+    $board = livewire(OpportunitiesBoard::class, ['groupBy' => 'company'])->instance()->getBoard();
+    $laneNames = collect($board->getActiveGrouping()->getLanes($board->getQuery()))
+        ->map(fn (Lane $lane): string => $lane->getName());
+
+    expect($laneNames)->toContain($withOpportunity->getKey())
+        ->not->toContain($withoutOpportunity->getKey());
 });
 
 it('does not show opportunities from other workspaces', function (): void {
