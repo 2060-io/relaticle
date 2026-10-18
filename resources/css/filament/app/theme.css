@@ -1243,7 +1243,12 @@ html.fi-record-stacked .fi-record-layout {
     .fi-board-header {
         @apply flex items-center gap-x-4 border-b border-gray-200/60 bg-white px-4 py-2 lg:px-6 dark:border-white/10 dark:bg-gray-900;
 
-        & > div:not(.fi-view-switcher) {
+        /* Contents puts the clear filters button on the toolbar line, right after the filter trigger. */
+        & > .ff-header {
+            @apply contents;
+        }
+
+        & > .ff-header > .ff-header-row {
             @apply min-w-0 flex-1;
         }
 
@@ -1272,12 +1277,33 @@ html.fi-record-stacked .fi-record-layout {
         }
     }
 
+    /* The clear button is a sibling of the toolbar row, so the active trigger and it join into one pill. */
+    &:has(.fi-board-filter-clear) .fi-ta-filters-dropdown .fi-btn {
+        @apply rounded-e-none bg-primary-50 text-primary-700 ring-primary-200 hover:bg-primary-100 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-400/30 dark:hover:bg-primary-500/20;
+    }
+
+    .fi-board-header .fi-ta-filters-dropdown .fi-btn-badge-ctn {
+        @apply static translate-none bg-transparent;
+
+        .fi-badge {
+            @apply min-w-[1.125rem] justify-center rounded-full bg-primary-600 px-1.5 text-white ring-0 dark:bg-primary-500 dark:text-white;
+        }
+    }
+
+    .fi-board-filter-clear {
+        @apply -ms-[calc(1rem+1px)] flex h-8 items-center rounded-e-lg bg-primary-50 px-2 text-primary-500 ring-1 ring-primary-200 transition hover:bg-primary-100 hover:text-primary-700 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-400/30 dark:hover:bg-primary-500/20;
+    }
+
+    .fi-board-filter-clear-icon {
+        @apply size-4;
+    }
+
     .fi-page-main {
         @apply min-h-0 flex-1;
     }
 
     .fi-page-content {
-        @apply h-full;
+        @apply h-full grid-rows-[minmax(0,1fr)];
 
         & > div {
             @apply h-full;
@@ -1288,8 +1314,16 @@ html.fi-record-stacked .fi-record-layout {
         @apply px-4 py-4 lg:px-6;
     }
 
+    .ff-cards {
+        @apply max-h-none;
+    }
+
     .ff-lanes {
-        @apply px-4 pb-4 lg:px-6;
+        @apply max-h-none px-4 pb-4 lg:px-6;
+    }
+
+    .ff-lanes-heads {
+        @apply pt-4;
     }
 
 }

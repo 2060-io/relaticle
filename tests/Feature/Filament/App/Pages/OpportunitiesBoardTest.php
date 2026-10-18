@@ -109,6 +109,22 @@ it('orders the company filter alphabetically and chips each option', function ()
     expect($labels)->toBe(['Acme Corp', 'Zeta Industries']);
 });
 
+it('labels the filter trigger and offers a clear button only while a filter is active', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+    Filament::bootCurrentPanel();
+
+    livewire(OpportunitiesBoard::class)
+        ->assertSeeText(__('filament/pages/boards.filters_button.label'))
+        ->assertDontSeeHtml('fi-board-filter-clear')
+        ->set('tableFilters.companies.values', [$company->getKey()])
+        ->assertSeeHtml('fi-board-filter-clear')
+        ->assertSeeHtml('wire:click="removeTableFilters"')
+        ->call('removeTableFilters')
+        ->assertSet('tableFilters.companies.values', [])
+        ->assertDontSeeHtml('fi-board-filter-clear');
+});
+
 it('does not show opportunities from other workspaces', function (): void {
     $otherUser = User::factory()->withWorkspace()->create();
     $otherOpportunity = Opportunity::factory()->for($otherUser->currentWorkspace)->create();

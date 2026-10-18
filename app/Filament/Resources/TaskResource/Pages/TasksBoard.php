@@ -21,6 +21,7 @@ use Exception;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Size;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentTimezone;
 use Illuminate\Database\Eloquent\Builder;
@@ -151,16 +152,25 @@ final class TasksBoard extends BoardResourcePage
                     }),
             ])
             ->groupings([$this->assigneeGrouping()])
-            ->filters([
-                RecordSelectFilter::make('assignees')
-                    ->label(__('filament/pages/boards.tasks.filters.assignee'))
-                    ->relationship('assignees', 'name', WorkspaceMemberSelect::currentWorkspaceMembers())
-                    ->searchable()
-                    ->preload()
-                    ->multiple(),
-            ])
+            ->filters($this->boardFilters())
             ->filtersFormWidth(Width::Medium)
+            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
             ->headerToolbar();
+    }
+
+    /**
+     * @return array<int, RecordSelectFilter>
+     */
+    private function boardFilters(): array
+    {
+        return [
+            RecordSelectFilter::make('assignees')
+                ->label(__('filament/pages/boards.tasks.filters.assignee'))
+                ->relationship('assignees', 'name', WorkspaceMemberSelect::currentWorkspaceMembers())
+                ->searchable()
+                ->preload()
+                ->multiple(),
+        ];
     }
 
     protected function authorizeCardMove(Model $card, string $targetColumnId, ?string $toLaneId = null): void

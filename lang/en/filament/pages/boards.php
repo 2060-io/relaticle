@@ -12,6 +12,11 @@ return [
 
     'move_denied' => 'You do not have permission to move this card.',
 
+    'filters_button' => [
+        'label' => 'Filters',
+        'clear' => 'Clear filters',
+    ],
+
     'opportunities' => [
         'title' => 'Opportunities',
         'actions' => [
