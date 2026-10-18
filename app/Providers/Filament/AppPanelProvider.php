@@ -295,6 +295,13 @@ final class AppPanelProvider extends PanelProvider
      * zone is chosen on its own profile page and never detected, so narrow to the
      * customer model rather than assuming.
      */
+    private function signedInUser(): ?User
+    {
+        $user = Auth::user();
+
+        return $user instanceof User ? $user : null;
+    }
+
     private function registerInvitationHooks(Panel $panel): void
     {
         $panel
@@ -314,13 +321,6 @@ final class AppPanelProvider extends PanelProvider
                 fn (): string => Blade::render('@livewire(\App\Livewire\App\Workspaces\PendingInvitationsForUser::class)'),
                 scopes: CreateWorkspace::class,
             );
-    }
-
-    private function signedInUser(): ?User
-    {
-        $user = Auth::user();
-
-        return $user instanceof User ? $user : null;
     }
 
     private function upgradeModal(): string
