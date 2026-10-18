@@ -150,7 +150,7 @@ final class OpportunitiesBoard extends BoardResourcePage
             ->groupings([$this->companyGrouping()])
             ->filters($this->boardFilters())
             ->filtersFormWidth(Width::Medium)
-            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
+            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->labeledFrom('sm')->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
             ->headerToolbar();
     }
 

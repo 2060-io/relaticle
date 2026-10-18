@@ -6,6 +6,7 @@ use App\Enums\CustomFields\OpportunityField;
 use App\Enums\CustomFields\TaskField;
 use App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard;
 use App\Filament\Resources\TaskResource\Pages\TasksBoard;
+use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\Task;
@@ -109,3 +110,41 @@ it('fills the viewport with a grouped board and lines its headers up with the fl
     expect($page->script($layout))->toBe(['pageScrolls' => false, 'lanesScroll' => true, 'gapBelowLanes' => 0])
         ->and($page->script($headerTop))->toBe($flatHeaderTop);
 });
+
+it('joins the active filter trigger and its clear button into one pill', function (int $width, bool $iconOnly): void {
+    $this->withVite();
+
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $company = Company::factory()->recycle([$user, $workspace])->create();
+    Opportunity::factory()->recycle([$user, $workspace])->for($company)->create();
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize($width, 900)
+        ->navigate("/app/{$workspace->slug}/opportunities/board?filters%5Bcompanies%5D%5Bvalues%5D%5B0%5D={$company->getKey()}")
+        ->assertVisible('.fi-board-filter-clear')
+        ->assertNoJavaScriptErrors();
+
+    $pill = <<<'JS'
+        (() => {
+            const trigger = [...document.querySelectorAll('.fi-ta-filters-dropdown > .fi-dropdown-trigger :is(.fi-btn, .fi-icon-btn)')]
+                .find((element) => element.checkVisibility());
+            const triggerBox = trigger.getBoundingClientRect();
+            const clearBox = document.querySelector('.fi-board-filter-clear').getBoundingClientRect();
+
+            return {
+                iconOnly: Math.round(triggerBox.width) === 32,
+                height: Math.round(triggerBox.height),
+                seam: Math.round(clearBox.left - triggerBox.right),
+                sameRow: Math.round(clearBox.top) === Math.round(triggerBox.top),
+                ringed: getComputedStyle(trigger).boxShadow !== 'none',
+            };
+        })();
+    JS;
+
+    expect($page->script($pill))->toBe(['iconOnly' => $iconOnly, 'height' => 32, 'seam' => 1, 'sameRow' => true, 'ringed' => true]);
+})->with([
+    'phone' => [390, true],
+    'desktop' => [1440, false],
+]);
