@@ -26,7 +26,9 @@ use App\Filament\Pages\Workspace\ActivityLog;
 use App\Filament\Pages\Workspace\CustomFields;
 use App\Filament\Pages\Workspace\Members;
 use App\Filament\Resources\OpportunityResource;
+use App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard;
 use App\Filament\Resources\TaskResource;
+use App\Filament\Resources\TaskResource\Pages\TasksBoard;
 use App\Http\Controllers\SyncUserTimezoneController;
 use App\Http\Middleware\ApplyTenantScopes;
 use App\Http\Middleware\CheckScheduledDeletion;
@@ -77,6 +79,7 @@ use Filament\Support\Facades\FilamentTimezone;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Filament\Tables\View\TablesRenderHook;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
@@ -297,6 +300,27 @@ final class AppPanelProvider extends PanelProvider
         $user = Auth::user();
 
         return $user instanceof User ? $user : null;
+    }
+
+    private function registerInvitationHooks(Panel $panel): void
+    {
+        $panel
+            // Mounted on the body: a modal inside the sidebar is clipped to its width.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                $this->inviteMembersModal(...),
+            )
+            ->renderHook(
+                PanelsRenderHook::PAGE_START,
+                fn (): string => Blade::render('@livewire(\App\Livewire\App\Workspaces\PendingInvitationsForUser::class)'),
+            )
+            ->renderHook(
+                // CreateWorkspace renders a custom view that PAGE_START never fires on.
+                // Scoping to it keeps this off the guest pages sharing that layout.
+                PanelsRenderHook::SIMPLE_LAYOUT_START,
+                fn (): string => Blade::render('@livewire(\App\Livewire\App\Workspaces\PendingInvitationsForUser::class)'),
+                scopes: CreateWorkspace::class,
+            );
     }
 
     private function upgradeModal(): string
@@ -541,6 +565,11 @@ final class AppPanelProvider extends PanelProvider
                 ])
             )
             ->renderHook(
+                TablesRenderHook::FILTER_INDICATORS,
+                fn (): View|Factory => view('filament.app.board-filter-clear'),
+                scopes: [OpportunitiesBoard::class, TasksBoard::class],
+            )
+            ->renderHook(
                 PanelsRenderHook::HEAD_START,
                 fn (): View|Factory => view('filament.app.appearance-preference')
             )
@@ -587,23 +616,9 @@ final class AppPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 $this->upgradeModal(...),
-            )
-            // Mounted on the body: a modal inside the sidebar is clipped to its width.
-            ->renderHook(
-                PanelsRenderHook::BODY_END,
-                $this->inviteMembersModal(...),
-            )
-            ->renderHook(
-                PanelsRenderHook::PAGE_START,
-                fn (): string => Blade::render('@livewire(\App\Livewire\App\Workspaces\PendingInvitationsForUser::class)'),
-            )
-            ->renderHook(
-                // CreateWorkspace renders a custom view that PAGE_START never fires on.
-                // Scoping to it keeps this off the guest pages sharing that layout.
-                PanelsRenderHook::SIMPLE_LAYOUT_START,
-                fn (): string => Blade::render('@livewire(\App\Livewire\App\Workspaces\PendingInvitationsForUser::class)'),
-                scopes: CreateWorkspace::class,
             );
+
+        $this->registerInvitationHooks($panel);
 
         // Hidden without a bound tenant: the old panel-root fallback sent these
         // to the dashboard, silently abandoning the create-workspace wizard.

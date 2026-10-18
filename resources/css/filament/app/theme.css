@@ -26,7 +26,6 @@
 @source '../../../../packages/EmailIntegration/src';
 
 /* Custom Fields */
-@source '../../../../vendor/relaticle/flowforge/resources/views/**/*.blade.php';
 @source '../../../../vendor/relaticle/custom-fields/resources';
 
 /* Activity Log */
@@ -799,8 +798,8 @@ a.fi-linked-records-chip {
 
 /* Row and card menus recede until hovered; a primary-coloured trigger on every row reads as noise. */
 .fi-ta-row .fi-ac-icon-btn-group,
-.flowforge-card .fi-ac-icon-btn-group,
-.flowforge-column-header .fi-icon-btn {
+.ff-card-actions .fi-ac-icon-btn-group,
+.ff-column-header .fi-icon-btn {
     @apply text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200;
 }
 
@@ -1244,27 +1243,74 @@ html.fi-record-stacked .fi-record-layout {
     .fi-board-header {
         @apply flex items-center gap-x-4 border-b border-gray-200/60 bg-white px-4 py-2 lg:px-6 dark:border-white/10 dark:bg-gray-900;
 
-        & > div:not(.fi-view-switcher) {
+        /* Contents puts the clear filters button on the toolbar line, right after the filter trigger. */
+        & > .ff-header {
+            @apply contents;
+        }
+
+        & > .ff-header > .ff-header-row {
             @apply min-w-0 flex-1;
         }
 
         /* The package reserves this slot for a heading the topbar already shows. */
-        & > div:not(.fi-view-switcher) > div > :first-child:not(:has(.fi-header-subheading)) {
+        & > div:not(.fi-view-switcher) > .ff-header-row > :first-child:not(:has(.ff-header-subheading)) {
             @apply hidden;
         }
 
-        & > div:not(.fi-view-switcher) > div,
-        & > div:not(.fi-view-switcher) > div > :last-child {
+        & > div:not(.fi-view-switcher) > .ff-header-row,
+        & > div:not(.fi-view-switcher) > .ff-header-row > :last-child {
             @apply flex-nowrap;
         }
 
-        & > div:not(.fi-view-switcher) > div > :last-child {
+        & > div:not(.fi-view-switcher) > .ff-header-row > :last-child {
             @apply min-w-0 flex-1 flex-row-reverse justify-between gap-x-3;
         }
 
         .fi-ta-search-field {
-            @apply min-w-0 shrink;
+            @apply me-auto min-w-0 shrink;
         }
+
+        /* The row is reversed, so a lower order sits further right: the filter keeps the edge. */
+        .fi-ta-filters-dropdown,
+        .fi-ta-filters-modal {
+            @apply -order-1;
+        }
+    }
+
+    /* Below sm the trigger is an icon button; give it the same box as the toolbar's gray buttons. */
+    .fi-board-header .fi-ta-filters-dropdown > .fi-dropdown-trigger .fi-icon-btn {
+        @apply m-0 bg-white text-gray-700 ring-1 ring-gray-950/10 hover:bg-gray-50 dark:bg-white/5 dark:text-gray-200 dark:ring-white/10 dark:hover:bg-white/10;
+    }
+
+    /* The clear button is a sibling of the toolbar row, so the active trigger and it join into one pill. */
+    &:has(.fi-board-filter-clear) .fi-ta-filters-dropdown > .fi-dropdown-trigger :is(.fi-btn, .fi-icon-btn) {
+        @apply rounded-e-none bg-primary-50 text-primary-700 ring-primary-200 hover:bg-primary-100 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-400/30 dark:hover:bg-primary-500/20;
+
+        .fi-icon {
+            @apply text-primary-500 dark:text-primary-400;
+        }
+    }
+
+    .fi-board-header .fi-ta-filters-dropdown > .fi-dropdown-trigger .fi-btn-badge-ctn {
+        @apply static translate-none bg-transparent;
+    }
+
+    .fi-board-header .fi-ta-filters-dropdown > .fi-dropdown-trigger .fi-icon-btn-badge-ctn {
+        @apply rounded-full;
+    }
+
+    .fi-board-header .fi-ta-filters-dropdown > .fi-dropdown-trigger :is(.fi-btn-badge-ctn, .fi-icon-btn-badge-ctn) {
+        .fi-badge {
+            @apply min-w-[1.125rem] justify-center rounded-full bg-primary-600 px-1.5 text-white ring-0 dark:bg-primary-500 dark:text-white;
+        }
+    }
+
+    .fi-board-filter-clear {
+        @apply -ms-[calc(1rem-1px)] flex h-8 items-center rounded-e-lg bg-primary-50 px-2 text-primary-500 ring-1 ring-primary-200 transition hover:bg-primary-100 hover:text-primary-700 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-400/30 dark:hover:bg-primary-500/20;
+    }
+
+    .fi-board-filter-clear-icon {
+        @apply size-4;
     }
 
     .fi-page-main {
@@ -1272,45 +1318,27 @@ html.fi-record-stacked .fi-record-layout {
     }
 
     .fi-page-content {
-        @apply h-full;
+        @apply h-full grid-rows-[minmax(0,1fr)];
 
         & > div {
             @apply h-full;
         }
     }
 
-    :has(> .flowforge-column) {
-        @apply gap-x-3 px-4 py-4 lg:px-6;
+    .ff-columns {
+        @apply px-4 py-4 lg:px-6;
     }
 
-    .flowforge-column {
-        @apply border-transparent bg-gray-50 shadow-none dark:border-transparent dark:bg-gray-950/50;
+    .ff-cards {
+        @apply max-h-none;
     }
 
-    .flowforge-column-header {
-        @apply rounded-none border-b-0 bg-transparent py-2.5 dark:bg-transparent;
-
-        h3 {
-            @apply font-semibold text-gray-950 dark:text-white;
-        }
+    .ff-lanes {
+        @apply max-h-none px-4 pb-4 lg:px-6;
     }
 
-    /* Positioned, so a card's screen-reader labels scroll with the column instead of stretching the page. */
-    .flowforge-column-content {
-        @apply relative px-2 pt-0 pb-2;
-
-        /* The empty state is a hint, not a drop zone the size of the column. */
-        & > .border-dashed {
-            @apply h-auto min-h-0 border-0 py-10;
-
-            svg {
-                @apply size-6;
-            }
-        }
-    }
-
-    .flowforge-card {
-        @apply mb-2 rounded-xl shadow-xs;
+    .ff-lanes-heads {
+        @apply pt-4;
     }
 }
 
@@ -1609,9 +1637,17 @@ html.fi:has(body.fi-onboarding-wizard),
     }
 }
 
-/* FlowForge Specific Customizations */
-.flowforge-column-header {
-    @apply bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 rounded-t-xl;
+.ff-board {
+    --ff-surface: #fff;
+    --ff-tray-bg: var(--gray-50);
+    --ff-card-bg: var(--surface-block-bg);
+    --ff-card-ring: var(--surface-block-border);
+    --ff-gap: 0.75rem;
+}
+
+.dark .ff-board {
+    --ff-surface: var(--gray-900);
+    --ff-tray-bg: color-mix(in oklab, var(--gray-950) 50%, transparent);
 }
 
 /* Chat Side Panel */
