@@ -23,6 +23,7 @@ use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Size;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentTimezone;
@@ -147,22 +148,31 @@ final class OpportunitiesBoard extends BoardResourcePage
                     }),
             ])
             ->groupings([$this->companyGrouping()])
-            ->filters([
-                RecordSelectFilter::make('companies')
-                    ->label(__('filament/pages/boards.opportunities.filters.company'))
-                    ->relationship('company', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->multiple(),
-                RecordSelectFilter::make('contacts')
-                    ->label(__('filament/pages/boards.opportunities.filters.contact'))
-                    ->relationship('contact', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->multiple(),
-            ])
+            ->filters($this->boardFilters())
             ->filtersFormWidth(Width::Medium)
+            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
             ->headerToolbar();
+    }
+
+    /**
+     * @return array<int, RecordSelectFilter>
+     */
+    private function boardFilters(): array
+    {
+        return [
+            RecordSelectFilter::make('companies')
+                ->label(__('filament/pages/boards.opportunities.filters.company'))
+                ->relationship('company', 'name')
+                ->searchable()
+                ->preload()
+                ->multiple(),
+            RecordSelectFilter::make('contacts')
+                ->label(__('filament/pages/boards.opportunities.filters.contact'))
+                ->relationship('contact', 'name')
+                ->searchable()
+                ->preload()
+                ->multiple(),
+        ];
     }
 
     protected function authorizeCardMove(Model $card, string $targetColumnId, ?string $toLaneId = null): void
