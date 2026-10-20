@@ -28,6 +28,7 @@ use Relaticle\EmailIntegration\Console\Commands\DisconnectFormerMemberMailboxesC
 use Relaticle\EmailIntegration\Console\Commands\DispatchOutboxCommand;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalCalendarSyncCommand;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalEmailSyncCommand;
+use Relaticle\EmailIntegration\Console\Commands\RemoveOwnDomainRecordsCommand;
 use Relaticle\EmailIntegration\Console\Commands\RenewCalendarPushChannelsCommand;
 use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource\Pages\ManageEmailTemplates;
 use Relaticle\EmailIntegration\Listeners\DisconnectRemovedMemberMailboxesListener;
@@ -197,7 +198,10 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         Event::listen(TeamMemberRemoved::class, DisconnectRemovedMemberMailboxesListener::class);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([DisconnectFormerMemberMailboxesCommand::class]);
+            $this->commands([
+                DisconnectFormerMemberMailboxesCommand::class,
+                RemoveOwnDomainRecordsCommand::class,
+            ]);
         }
     }
 }
