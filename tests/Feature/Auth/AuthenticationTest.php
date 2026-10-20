@@ -22,6 +22,7 @@ use App\Notifications\Auth\VerifyEmail;
 use App\Support\Auth\AuthenticationSession;
 use App\Support\Auth\IdentityConfirmation;
 use Filament\Facades\Filament;
+use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -1273,6 +1274,14 @@ test('expired sign-in MFA shows a way to start again', function (): void {
         ->assertSee(__('auth.mfa.expired'))
         ->assertSee(__('auth.mfa.restart'))
         ->assertDontSee('autocomplete="one-time-code"', false);
+});
+
+it('preloads the password reveal script before the identifier step reveals the field', function (): void {
+    $revealScript = FilamentAsset::getAlpineComponentSrc('text-input/password-reveal', 'filament/forms');
+
+    $this->get(url()->getAppUrl('login'))
+        ->assertSuccessful()
+        ->assertSee('<link rel="modulepreload" href="'.e($revealScript).'">', escape: false);
 });
 
 it('lists each seeded local account as a login link form on the local login page', function (): void {

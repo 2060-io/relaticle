@@ -530,6 +530,13 @@ final class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): View|Factory => view('filament.app.analytics')
             )
+            // The password field binds only once Filament loads its reveal script on demand,
+            // overwriting anything typed or autofilled before. Fetching it with the page closes that gap.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View|Factory => view('filament.app.password-reveal-preload'),
+                scopes: [Login::class, ResetPassword::class],
+            )
             /**
              * BODY_START rather than a topbar slot: the banner has to be present on
              * every page of the panel, including the ones that render no topbar.
