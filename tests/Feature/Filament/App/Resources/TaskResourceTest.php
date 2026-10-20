@@ -270,6 +270,27 @@ it('can edit a task', function (): void {
     expect($record->refresh()->title)->toBe('Updated Task');
 });
 
+it('notifies only the member newly assigned through the edit action', function (): void {
+    $this->withoutDefer();
+
+    $kept = User::factory()->create();
+    $added = User::factory()->create();
+    $this->workspace->users()->attach([$kept->id, $added->id], ['role' => 'member']);
+
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $record->assignees()->attach($kept);
+
+    livewire(ManageTasks::class)
+        ->callAction(TestAction::make('edit')->table($record), data: [
+            'assignees' => [$kept->id, $added->id],
+        ])
+        ->assertHasNoActionErrors();
+
+    expect($record->refresh()->assignees->modelKeys())->toEqualCanonicalizing([$kept->id, $added->id])
+        ->and($added->notifications()->count())->toBe(1)
+        ->and($kept->notifications()->count())->toBe(0);
+});
+
 it('can delete a task', function (): void {
     $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
 

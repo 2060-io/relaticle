@@ -5,15 +5,14 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Actions\Task\CompleteTask;
-use App\Actions\Task\UpdateTask;
 use App\Enums\WorkspaceCapability;
 use App\Filament\Actions\CreateTaskAction;
+use App\Filament\Actions\EditTaskAction;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Models\Task;
 use App\Models\User;
 use BackedEnum;
-use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Pages\Page;
 use Filament\Panel;
@@ -158,20 +157,14 @@ final class Dashboard extends Page
         ]);
     }
 
-    public function editTaskAction(): EditAction
+    public function editTaskAction(): EditTaskAction
     {
-        return EditAction::make('editTask')
+        return EditTaskAction::make('editTask')
             ->record(fn (array $arguments): ?Task => $this->tenantTask($arguments['task'] ?? null))
             ->recordTitleAttribute('title')
             ->authorize('update')
             ->slideOver()
             ->schema(fn (Schema $schema): Schema => TaskForm::get($schema))
-            ->using(function (Task $record, array $data): Task {
-                /** @var User $user */
-                $user = Filament::auth()->user();
-
-                return resolve(UpdateTask::class)->execute($user, $record, $data);
-            })
             ->after(function (): void {
                 unset($this->myTasks);
             });

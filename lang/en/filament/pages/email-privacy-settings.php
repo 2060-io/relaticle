@@ -89,7 +89,7 @@ return [
     ],
     'record_creation' => [
         'heading' => 'Automatic record creation',
-        'description' => 'Applies to every connected mailbox and calendar in the workspace. Changing this setting only affects newly synced emails and events.',
+        'description' => 'Applies to every connected mailbox and calendar in the workspace. Addresses on your workspace members\' email domains never create records. Changing this setting only affects newly synced emails and events.',
         'recommended' => 'Recommended',
         'modes' => [
             'all' => [

@@ -122,7 +122,7 @@ final class MicrosoftGraphMailService implements MailServiceInterface
     public function fetchMessage(string $providerMessageId): FetchedEmailData
     {
         $message = $this->getMessageJson($providerMessageId, [
-            '$select' => 'id,internetMessageId,internetMessageHeaders,conversationId,subject,bodyPreview,receivedDateTime,sentDateTime,isRead,hasAttachments,parentFolderId,from,toRecipients,ccRecipients,bccRecipients,body',
+            '$select' => 'id,internetMessageId,internetMessageHeaders,conversationId,subject,bodyPreview,receivedDateTime,sentDateTime,isRead,hasAttachments,parentFolderId,from,toRecipients,ccRecipients,bccRecipients,replyTo,body',
             // Pull attachment metadata (not bytes) alongside the message so has-attachment
             // rows expose a downloadable list; bytes are fetched on demand via downloadAttachment().
             // contentId lives on fileAttachment; Graph answers 400 when it is selected on the base type.
@@ -134,6 +134,7 @@ final class MicrosoftGraphMailService implements MailServiceInterface
             ...$this->mapAddresses('to', array_column($message['toRecipients'] ?? [], 'emailAddress')),
             ...$this->mapAddresses('cc', array_column($message['ccRecipients'] ?? [], 'emailAddress')),
             ...$this->mapAddresses('bcc', array_column($message['bccRecipients'] ?? [], 'emailAddress')),
+            ...$this->mapAddresses('reply_to', array_column($message['replyTo'] ?? [], 'emailAddress')),
         ];
 
         $sentAt = Date::parse((string) ($message['receivedDateTime'] ?? $message['sentDateTime'] ?? now()->toIso8601String()));

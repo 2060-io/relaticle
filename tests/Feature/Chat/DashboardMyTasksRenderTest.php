@@ -117,6 +117,30 @@ it('leaves the task link to the tasks page for a viewer who cannot edit', functi
         ->assertActionNotMounted('editTask');
 });
 
+it('notifies only the member newly assigned from the dashboard edit', function (): void {
+    $this->withoutDefer();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $added = User::factory()->create();
+    $workspace->users()->attach($added, ['role' => 'member']);
+
+    $task = Task::factory()->for($workspace)->create(['title' => 'Ship the widget']);
+    $task->assignees()->attach($user);
+
+    $this->actingAs($user);
+    Filament::setTenant($workspace);
+
+    livewire(Dashboard::class)
+        ->mountAction('editTask', ['task' => $task->id])
+        ->setActionData(['assignees' => [$user->id, $added->id]])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    expect($added->notifications()->count())->toBe(1)
+        ->and($user->notifications()->count())->toBe(0);
+});
+
 it('does not open a task from another workspace for editing', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $stranger = User::factory()->withPersonalWorkspace()->create();

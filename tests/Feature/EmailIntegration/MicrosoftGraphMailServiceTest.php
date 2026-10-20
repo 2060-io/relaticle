@@ -429,6 +429,22 @@ it('drops a Graph display name that is only the email address', function (): voi
         ->and($from['name'])->toBeNull();
 });
 
+it('lists Graph replyTo addresses as reply_to participants', function (): void {
+    Http::fake([
+        ...graphWellKnownFolderFakes(),
+        'https://graph.microsoft.com/v1.0/me/messages/FORM1*' => Http::response(graphMessagePayload([
+            'id' => 'FORM1',
+            'from' => ['emailAddress' => ['address' => 'noreply@forms.example', 'name' => 'Forms']],
+            'replyTo' => [['emailAddress' => ['address' => 'polly@5forests.example', 'name' => 'Polly Hammond']]],
+        ])),
+    ]);
+
+    $email = resolve(MicrosoftGraphServiceFactory::class)->make(makeAzureAccount())->fetchMessage('FORM1');
+
+    expect(collect($email->participants)->where('role', 'reply_to')->values()->all())
+        ->toBe([['role' => 'reply_to', 'email_address' => 'polly@5forests.example', 'name' => 'Polly Hammond']]);
+});
+
 it('maps a Graph drafts-folder message as an inbound draft', function (): void {
     Http::fake([
         ...graphWellKnownFolderFakes(),
