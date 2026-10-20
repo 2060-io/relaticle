@@ -14,6 +14,7 @@ use App\Actions\Opportunity\UpdateOpportunity;
 use App\Actions\People\CreatePeople;
 use App\Actions\Task\CreateTask;
 use App\Actions\Task\UpdateTask;
+use App\Console\Concerns\ReadsStringOptions;
 use App\Enums\CreationSource;
 use App\Jobs\FetchFaviconForCompany;
 use App\Models\ActivityLog\Activity;
@@ -49,6 +50,7 @@ use RuntimeException;
 final class ResetDemoAccountCommand extends Command
 {
     use ConfirmableTrait;
+    use ReadsStringOptions;
 
     public const string EMAIL = 'demo@relaticle.com';
 
@@ -82,7 +84,7 @@ final class ResetDemoAccountCommand extends Command
             return self::FAILURE;
         }
 
-        $password = $this->password();
+        $password = $this->stringOption('password');
         $existing = User::query()->where('email', self::EMAIL)->first();
 
         if (! $existing instanceof User && $password === null) {
@@ -163,13 +165,6 @@ final class ResetDemoAccountCommand extends Command
         $companies->each(function (Company $company): void {
             dispatch(new FetchFaviconForCompany($company));
         });
-    }
-
-    private function password(): ?string
-    {
-        $option = $this->option('password');
-
-        return is_string($option) && $option !== '' ? $option : null;
     }
 
     private function reviewer(?User $user, ?string $password): User

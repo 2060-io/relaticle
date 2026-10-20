@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsStringOptions;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -33,6 +34,8 @@ use Symfony\Component\Finder\Finder;
         {--update-snapshot : Write the current en hashes as the new baseline; skip diff output}')]
 final class LocaleDiffCommand extends Command
 {
+    use ReadsStringOptions;
+
     public function handle(): int
     {
         $locale = $this->argument('locale');
@@ -43,10 +46,8 @@ final class LocaleDiffCommand extends Command
             return self::FAILURE;
         }
 
-        $langPath = $this->option('lang-path');
-        $root = is_string($langPath) ? $langPath : lang_path();
-        $format = $this->option('format');
-        $format = is_string($format) ? $format : 'text';
+        $root = $this->stringOption('lang-path') ?? lang_path();
+        $format = $this->stringOption('format') ?? 'text';
         $updateSnapshot = (bool) $this->option('update-snapshot');
 
         if (! in_array($format, ['text', 'json'], true)) {
