@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Mail;
 
 final readonly class NotifyTaskAssignees
 {
+    public function __construct(private CanonicalRecordUrl $urls) {}
+
     /**
      * @param  array<int, string>  $assigneeIds
      */
@@ -63,6 +65,6 @@ final readonly class NotifyTaskAssignees
 
     private function resolveTaskUrl(Task $task): string
     {
-        return resolve(CanonicalRecordUrl::class)->buildOrFail(CrmEntity::Task, (string) $task->getKey(), $task->workspace);
+        return $this->urls->buildOrFail(CrmEntity::Task, (string) $task->getKey(), $task->workspace);
     }
 }

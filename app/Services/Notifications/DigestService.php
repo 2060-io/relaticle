@@ -22,7 +22,10 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class DigestService
 {
-    public function __construct(private HostedWorkspaceAccess $hostedAccess) {}
+    public function __construct(
+        private HostedWorkspaceAccess $hostedAccess,
+        private CanonicalRecordUrl $urls,
+    ) {}
 
     public function forUser(User $user): DigestPayload
     {
@@ -82,8 +85,6 @@ final readonly class DigestService
             ->select(['t.id', 't.title', 'due.datetime_value as due_at'])
             ->get();
 
-        $urls = resolve(CanonicalRecordUrl::class);
-
         $overdue = [];
         $upcoming = [];
 
@@ -93,7 +94,7 @@ final readonly class DigestService
             $item = new DigestTaskItem(
                 title: (string) $row->title,
                 dueAt: $dueAt,
-                editUrl: $urls->buildOrFail(CrmEntity::Task, (string) $row->id, $workspace),
+                editUrl: $this->urls->buildOrFail(CrmEntity::Task, (string) $row->id, $workspace),
             );
 
             if ($dueAt->lt($startOfToday)) {
