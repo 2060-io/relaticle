@@ -148,7 +148,7 @@ it('continueToMapping creates ImportStore with rows', function (): void {
     $component->assertDispatched('completed', function (string $event, array $params): bool {
         $this->createdStoreIds[] = $params['storeId'];
 
-        $import = Import::find($params['storeId']);
+        $import = Import::query()->find($params['storeId']);
         $store = ImportStore::forRead($params['storeId']);
 
         expect($import)->not->toBeNull()
