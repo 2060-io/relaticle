@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Data\DigestPayload;
 use App\Enums\Plan;
 use App\Listeners\Email\DropBouncedRecipientsListener;
+use App\Listeners\Email\ParkInactiveRecipientsListener;
 use App\Mail\ProEndedMail;
 use App\Mail\ProTrialEndingSoonMail;
 use App\Mail\SetupNudgeMail;
@@ -26,7 +27,7 @@ use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\Mailer\Exception\HttpTransportException;
 
-mutates(ParksInactiveRecipientsTransport::class, DropBouncedRecipientsListener::class);
+mutates(ParksInactiveRecipientsTransport::class, ParkInactiveRecipientsListener::class, DropBouncedRecipientsListener::class);
 
 function useMailcoachAnswering(MockHttpClient $client): void
 {
@@ -177,11 +178,49 @@ it('still sends a password reset notification to a parked user', function (): vo
     expect(Mail::mailer('array')->getSymfonyTransport()->messages())->toHaveCount(1);
 });
 
-it('does not fail a plain send or a notification when the provider rejects an inactive recipient', function (): void {
+it('parks the user without failing when a notification bounces', function (): void {
     $user = User::factory()->create();
     useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
 
     Password::sendResetLink(['email' => $user->email]);
 
     expect($user->fresh()->email_bounced_at)->not->toBeNull();
+});
+
+it('parks the recipient without failing when a plain send bounces', function (): void {
+    $user = User::factory()->create();
+    useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
+
+    Mail::mailer('array')->raw('hello', fn (Message $message) => $message->to($user->email));
+
+    expect($user->fresh()->email_bounced_at)->not->toBeNull();
+});
+
+it('parks nobody and keeps failing when a message with several recipients bounces', function (): void {
+    $first = User::factory()->withPersonalWorkspace()->create();
+    $second = User::factory()->create();
+    useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
+
+    expect(fn () => Mail::mailer('array')->to([$first, $second])->send(new TaskDigestMail($first, new DigestPayload([]))))
+        ->toThrow(HttpTransportException::class);
+
+    expect($first->fresh()->email_bounced_at)->toBeNull()
+        ->and($second->fresh()->email_bounced_at)->toBeNull();
+});
+
+it('parks nobody and keeps failing when a copied message bounces', function (): void {
+    $user = User::factory()->create();
+    useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
+
+    expect(fn () => Mail::mailer('array')->raw('hello', fn (Message $message) => $message->to($user->email)->cc('copy@example.com')))
+        ->toThrow(HttpTransportException::class);
+
+    expect($user->fresh()->email_bounced_at)->toBeNull();
+});
+
+it('builds the configured mailcoach mailer on the parking transport', function (): void {
+    config(['mail.mailers.mailcoach.domain' => 'relaticle.mailcoach.test', 'mail.mailers.mailcoach.token' => 'token']);
+    Mail::purge('mailcoach');
+
+    expect(Mail::mailer('mailcoach')->getSymfonyTransport())->toBeInstanceOf(ParksInactiveRecipientsTransport::class);
 });

@@ -26,7 +26,7 @@ final class DropBouncedRecipientsListener
         }
 
         $bounced = User::query()
-            ->whereIn('email', array_map(fn (Address $recipient): string => EmailAddress::canonicalize($recipient->getAddress()), $recipients))
+            ->withEmailIn(array_map(fn (Address $recipient): string => $recipient->getAddress(), $recipients))
             ->whereNotNull('email_bounced_at')
             ->pluck('email')
             ->all();

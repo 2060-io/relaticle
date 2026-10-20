@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Mail;
 
-use App\Models\User;
-use App\Support\EmailAddress;
+use App\Events\InactiveRecipientsRejected;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Exception\HttpTransportException;
@@ -29,7 +28,15 @@ final readonly class ParksInactiveRecipientsTransport implements TransportInterf
         } catch (HttpTransportException $exception) {
             throw_if($exception->getResponse()->getInfo('http_code') !== self::INACTIVE_RECIPIENT_STATUS, $exception);
 
-            $this->park($message);
+            $addresses = $this->rejectedAddresses($message);
+
+            if ($addresses === []) {
+                Log::warning('Mail provider rejected a message with several recipients.');
+
+                throw $exception;
+            }
+
+            event(new InactiveRecipientsRejected($addresses));
 
             return null;
         }
@@ -40,20 +47,19 @@ final readonly class ParksInactiveRecipientsTransport implements TransportInterf
         return (string) $this->inner;
     }
 
-    private function park(RawMessage $message): void
+    /**
+     * @return list<string>
+     */
+    private function rejectedAddresses(RawMessage $message): array
     {
-        $recipients = $message instanceof Email ? $message->getTo() : [];
+        if (! $message instanceof Email) {
+            return [];
+        }
 
-        $emails = array_map(
-            fn (Address $recipient): string => EmailAddress::canonicalize($recipient->getAddress()),
-            $recipients,
-        );
+        if (count($message->getTo()) !== 1 || $message->getCc() !== [] || $message->getBcc() !== []) {
+            return [];
+        }
 
-        User::query()->whereIn('email', $emails)->update(['email_bounced_at' => now()]);
-
-        Log::info('Mail provider rejected an inactive recipient.', [
-            'recipients' => $emails,
-            'subject' => $message instanceof Email ? $message->getSubject() : null,
-        ]);
+        return array_values(array_map(fn (Address $recipient): string => $recipient->getAddress(), $message->getTo()));
     }
 }

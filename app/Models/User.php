@@ -18,6 +18,7 @@ use App\Models\Pivots\TaskAssignee;
 use App\Notifications\Auth\ResetPassword;
 use App\Notifications\Auth\VerifyEmail;
 use App\Observers\UserObserver;
+use App\Support\EmailAddress;
 use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
 use DateTimeZone;
@@ -231,6 +232,17 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
         $this->forceFill(['scheduled_deletion_at' => now()])->save();
 
         dispatch(new PurgeUser($this));
+    }
+
+    /**
+     * @param  Builder<User>  $query
+     * @param  array<string>  $addresses
+     * @return Builder<User>
+     */
+    #[Scope]
+    protected function withEmailIn(Builder $query, array $addresses): Builder
+    {
+        return $query->whereIn('email', array_map(EmailAddress::canonicalize(...), $addresses));
     }
 
     /**

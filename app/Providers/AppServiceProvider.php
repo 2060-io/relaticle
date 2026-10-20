@@ -8,6 +8,7 @@ use App\Console\Commands\MakeFilamentUserCommand;
 use App\Enums\CrmEntity;
 use App\Enums\EmailGrant;
 use App\Enums\Plan;
+use App\Events\InactiveRecipientsRejected;
 use App\Events\WorkspaceCreated;
 use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
@@ -19,6 +20,7 @@ use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
 use App\Listeners\CreateSetupConversationListener;
 use App\Listeners\Email\DropBouncedRecipientsListener;
 use App\Listeners\Email\NewSubscriberListener;
+use App\Listeners\Email\ParkInactiveRecipientsListener;
 use App\Listeners\Email\RecordLoginTimestampListener;
 use App\Listeners\Email\WorkspaceCreatedTagListener;
 use App\Listeners\Email\WorkspaceMemberAddedListener;
@@ -130,7 +132,9 @@ use SocialiteProviders\Microsoft\MicrosoftExtendSocialite;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\PendingActivityLog;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
+use Spatie\MailcoachMailer\MailcoachTransportFactory;
 use Spatie\Onboard\OnboardingSteps;
+use Symfony\Component\Mailer\Transport\Dsn;
 use Symfony\Component\Mailer\Transport\TransportInterface;
 
 final class AppServiceProvider extends ServiceProvider
@@ -232,9 +236,14 @@ final class AppServiceProvider extends ServiceProvider
 
     private function registerParkingMailTransport(): void
     {
-        Facades\Mail::extend('mailcoach-parking', fn (array $config): TransportInterface => new ParksInactiveRecipientsTransport(
-            Facades\Mail::createSymfonyTransport([...$config, 'transport' => 'mailcoach']),
-        ));
+        $this->app->booted(fn () => Facades\Mail::extend('mailcoach', function (array $config): TransportInterface {
+            $inner = (new MailcoachTransportFactory)->create(new Dsn('mailcoach', $config['domain'], options: [
+                'token' => $config['token'],
+                'api_base_url' => $config['api_base_url'] ?? null,
+            ]));
+
+            return new ParksInactiveRecipientsTransport($inner);
+        }));
     }
 
     /**
@@ -259,6 +268,7 @@ final class AppServiceProvider extends ServiceProvider
         Event::listen(Login::class, RecordLoginTimestampListener::class);
         Event::listen(Verified::class, NewSubscriberListener::class);
         Event::listen(MessageSending::class, DropBouncedRecipientsListener::class);
+        Event::listen(InactiveRecipientsRejected::class, ParkInactiveRecipientsListener::class);
         Event::listen(TeamMemberAdded::class, WorkspaceMemberAddedListener::class);
         Event::listen(WorkspaceCreated::class, WorkspaceCreatedTagListener::class);
         Event::listen(WorkspaceCreated::class, SeedWorkspaceCreditBalanceListener::class);

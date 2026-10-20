@@ -98,7 +98,7 @@ return [
         ],
 
         'mailcoach' => [
-            'transport' => 'mailcoach-parking',
+            'transport' => 'mailcoach',
             'domain' => env('MAILCOACH_DOMAIN'),
             'token' => env('MAILCOACH_API_TOKEN'),
         ],
