@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions\Task;
 
+use App\Enums\CrmEntity;
 use App\Enums\Notifications\NotificationChannel;
 use App\Enums\Notifications\NotificationType;
-use App\Filament\Resources\TaskResource;
 use App\Mail\TaskAssignedMail;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\CanonicalRecordUrl;
 use Filament\Actions\Action;
-use Filament\Actions\EditAction;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Mail;
@@ -63,10 +63,6 @@ final readonly class NotifyTaskAssignees
 
     private function resolveTaskUrl(Task $task): string
     {
-        // MCP, API and queued writes bind no Filament panel or tenant, so both are named.
-        return TaskResource::getUrl('index', [
-            'tableAction' => EditAction::getDefaultName(),
-            'tableActionRecord' => $task,
-        ], panel: 'app', tenant: $task->workspace);
+        return resolve(CanonicalRecordUrl::class)->buildOrFail(CrmEntity::Task, (string) $task->getKey(), $task->workspace);
     }
 }
