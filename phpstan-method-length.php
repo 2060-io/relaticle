@@ -21,7 +21,7 @@ return [
                 'App\Filament\Resources\CompanyResource::table' => 70,
                 'App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard::board' => 98,
                 'App\Filament\Resources\PeopleResource::table' => 62,
-                'App\Filament\Resources\TaskResource\Pages\TasksBoard::board' => 102,
+                'App\Filament\Resources\TaskResource\Pages\TasksBoard::board' => 96,
                 'App\Livewire\App\AccessTokens\ManageOAuthConnectors::table' => 65,
                 'App\Livewire\App\Workspaces\InviteWorkspaceMembers::manageInviteLinkAction' => 84,
                 'App\Mcp\Tools\BaseListTool::handle' => 89,

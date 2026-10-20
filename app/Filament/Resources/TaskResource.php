@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources;
 
-use App\Actions\Task\UpdateTask;
 use App\Enums\CreationSource;
 use App\Enums\CrmEntity;
+use App\Filament\Actions\EditTaskAction;
 use App\Filament\Components\Forms\WorkspaceMemberSelect;
 use App\Filament\Components\Tables\Filters\RecordSelectFilter;
 use App\Filament\Components\Tables\LinkedRecordsColumn;
@@ -17,12 +17,10 @@ use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Filament\Resources\TaskResource\Pages\TasksBoard;
 use App\Models\CustomField;
 use App\Models\Task;
-use App\Models\User;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreAction;
@@ -115,13 +113,7 @@ final class TaskResource extends Resource
             ]))
             ->recordActions([
                 ActionGroup::make([
-                    EditAction::make()
-                        ->using(function (Task $record, array $data): Task {
-                            /** @var User $user */
-                            $user = auth()->user();
-
-                            return resolve(UpdateTask::class)->execute($user, $record, $data);
-                        }),
+                    EditTaskAction::make(),
                     RestoreAction::make(),
                     DeleteAction::make(),
                     ForceDeleteAction::make(),
