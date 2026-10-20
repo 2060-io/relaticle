@@ -120,7 +120,6 @@ final class TaskResource extends Resource
                     DeleteAction::make(),
                     ForceDeleteAction::make(),
                     ViewAction::make()
-                        ->authorize('view')
                         ->visible(fn (Task $record): bool => Gate::denies('update', $record)),
                 ]),
             ])
