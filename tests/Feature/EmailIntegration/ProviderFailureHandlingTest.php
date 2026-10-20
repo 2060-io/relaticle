@@ -261,8 +261,7 @@ it('turns calendar sync off and keeps the mailbox active when the user has no Go
         ->and($fresh?->hasCalendar())->toBeFalse()
         ->and($fresh?->hasEmail())->toBeTrue()
         ->and($fresh?->calendar_push_channel_id)->toBeNull()
-        ->and($fresh?->last_error)->toBe(SyncErrorReason::GoogleCalendarDisabled->value)
-        ->and($fresh?->syncErrorReason())->toBe("Google Calendar isn't enabled for this Google account. Ask your Google admin to turn it on, then reconnect.");
+        ->and($fresh?->last_error)->toBeNull();
 })->with([
     'incremental calendar' => [fn (ConnectedAccount $account): IncrementalCalendarSyncJob => new IncrementalCalendarSyncJob($account)],
     'initial calendar' => [fn (ConnectedAccount $account): InitialCalendarSyncJob => new InitialCalendarSyncJob($account)],
@@ -280,7 +279,6 @@ it('keeps reporting a google 403 that is not a disabled service', function (): v
     Exceptions::assertReported(GoogleServiceException::class);
 
     expect($fresh?->hasCalendar())->toBeTrue()
-        ->and($fresh?->last_error)->not->toBe(SyncErrorReason::GoogleCalendarDisabled->value)
         ->and($fresh?->status)->not->toBe(EmailAccountStatus::REAUTH_REQUIRED);
 });
 

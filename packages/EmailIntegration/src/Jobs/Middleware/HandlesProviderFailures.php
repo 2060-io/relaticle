@@ -106,8 +106,6 @@ final class HandlesProviderFailures
 
             resolve(MailboxHistoryImportService::class)->completeCalendarImport($account, succeeded: false);
             resolve(CompleteMailboxHistoryImportAction::class)->executeForAccount($account);
-
-            $account->fresh()?->update(['last_error' => SyncErrorReason::GoogleCalendarDisabled->value]);
         }
 
         $job->delete();

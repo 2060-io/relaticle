@@ -107,7 +107,6 @@ return [
         'heading' => 'Some items could not be synced',
         'reasons' => [
             'google_mail_disabled' => "Gmail isn't enabled for this Google Workspace account. Ask your Google admin to turn it on, then reconnect.",
-            'google_calendar_disabled' => "Google Calendar isn't enabled for this Google account. Ask your Google admin to turn it on, then reconnect.",
         ],
     ],
     'importing' => 'Syncing',

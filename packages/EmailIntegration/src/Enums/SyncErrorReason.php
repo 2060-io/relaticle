@@ -7,13 +7,11 @@ namespace Relaticle\EmailIntegration\Enums;
 enum SyncErrorReason: string
 {
     case GoogleMailDisabled = 'google.mail_disabled';
-    case GoogleCalendarDisabled = 'google.calendar_disabled';
 
     public function getLabel(): string
     {
         return match ($this) {
             self::GoogleMailDisabled => __('filament/pages/email-accounts.sync_error.reasons.google_mail_disabled'),
-            self::GoogleCalendarDisabled => __('filament/pages/email-accounts.sync_error.reasons.google_calendar_disabled'),
         };
     }
 }
