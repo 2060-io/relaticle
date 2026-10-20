@@ -302,6 +302,22 @@ final class AppPanelProvider extends PanelProvider
         return $user instanceof User ? $user : null;
     }
 
+    private function registerHeadHooks(Panel $panel): void
+    {
+        $panel
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View|Factory => view('filament.app.analytics')
+            )
+            // The password field binds only once Filament loads its reveal script on demand,
+            // overwriting anything typed or autofilled before. Fetching it with the page closes that gap.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View|Factory => view('filament.app.password-reveal-preload'),
+                scopes: [Login::class, ResetPassword::class],
+            );
+    }
+
     private function registerInvitationHooks(Panel $panel): void
     {
         $panel
@@ -525,18 +541,9 @@ final class AppPanelProvider extends PanelProvider
                 ->discoverPages(in: base_path('packages/EmailIntegration/src/Filament/Pages'), for: 'Relaticle\\EmailIntegration\\Filament\\Pages');
         }
 
+        $this->registerHeadHooks($panel);
+
         $panel
-            ->renderHook(
-                PanelsRenderHook::HEAD_END,
-                fn (): View|Factory => view('filament.app.analytics')
-            )
-            // The password field binds only once Filament loads its reveal script on demand,
-            // overwriting anything typed or autofilled before. Fetching it with the page closes that gap.
-            ->renderHook(
-                PanelsRenderHook::HEAD_END,
-                fn (): View|Factory => view('filament.app.password-reveal-preload'),
-                scopes: [Login::class, ResetPassword::class],
-            )
             /**
              * BODY_START rather than a topbar slot: the banner has to be present on
              * every page of the panel, including the ones that render no topbar.
