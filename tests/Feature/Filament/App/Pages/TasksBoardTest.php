@@ -341,6 +341,50 @@ it('buckets the due-date badge against the user calendar, not the server clock',
         ->assertDontSee('Due Today');
 });
 
+it('keeps a card\'s assignees and status when only its title is edited', function (): void {
+    $assignee = User::factory()->create();
+    $this->workspace->users()->attach($assignee, ['role' => 'member']);
+    $inProgress = $this->statusField->options->firstWhere('name', 'In progress');
+
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Draft the proposal']);
+    $task->saveCustomFieldValue($this->statusField, $inProgress->getKey());
+    $task->assignees()->attach($assignee);
+
+    livewire(TasksBoard::class)
+        ->call('mountAction', 'edit', [], ['recordKey' => (string) $task->id])
+        ->set('mountedActions.0.data.title', 'Send the proposal')
+        ->call('callMountedAction')
+        ->assertHasNoActionErrors();
+
+    $task->refresh();
+
+    expect($task->title)->toBe('Send the proposal')
+        ->and($task->assignees->modelKeys())->toBe([$assignee->id])
+        ->and(DB::table('custom_field_values')->where('entity_id', $task->id)->where('custom_field_id', $this->statusField->id)->value('string_value'))->toBe((string) $inProgress->getKey());
+});
+
+it('notifies only the member newly assigned from a card edit', function (): void {
+    $this->withoutDefer();
+
+    $kept = User::factory()->create();
+    $added = User::factory()->create();
+    $this->workspace->users()->attach([$kept->id, $added->id], ['role' => 'member']);
+
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $task->saveCustomFieldValue($this->statusField, $this->statusField->options->firstWhere('name', 'To do')->getKey());
+    $task->assignees()->attach($kept);
+
+    livewire(TasksBoard::class)
+        ->call('mountAction', 'edit', [], ['recordKey' => (string) $task->id])
+        ->set('mountedActions.0.data.assignees', [$kept->id, $added->id])
+        ->call('callMountedAction')
+        ->assertHasNoActionErrors();
+
+    expect($task->refresh()->assignees->modelKeys())->toEqualCanonicalizing([$kept->id, $added->id])
+        ->and($added->notifications()->count())->toBe(1)
+        ->and($kept->notifications()->count())->toBe(0);
+});
+
 it('notifies the assignee of a task added from a board column', function (): void {
     $this->withoutDefer();
 
