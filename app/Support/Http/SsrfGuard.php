@@ -7,7 +7,9 @@ namespace App\Support\Http;
 use App\Exceptions\SsrfGuardException;
 use App\Exceptions\UploadException;
 use App\Support\Media\UploadAllowlist;
+use Carbon\CarbonImmutable;
 use Closure;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -50,14 +52,14 @@ final readonly class SsrfGuard
         }
     }
 
-    public static function guard(PendingRequest $request): PendingRequest
+    public static function guard(PendingRequest $request, ?CarbonImmutable $deadline = null): PendingRequest
     {
         return $request
             ->withOptions([
                 'allow_redirects' => ['max' => 5, 'strict' => true, 'referer' => false, 'protocols' => ['http', 'https']],
                 'progress' => self::abortPastUploadLimit(...),
             ])
-            ->withMiddleware(self::pinToValidatedAddress(...));
+            ->withMiddleware(self::pinToValidatedAddress($deadline));
     }
 
     private static function abortPastUploadLimit(int $downloadTotal, int $downloaded): void
@@ -67,9 +69,10 @@ final readonly class SsrfGuard
 
     // Runs inside the redirect middleware, so every hop connects to the address it
     // was validated against and a second DNS answer cannot rebind it.
-    private static function pinToValidatedAddress(callable $handler): Closure
+    private static function pinToValidatedAddress(?CarbonImmutable $deadline): Closure
     {
-        return static function (RequestInterface $request, array $options) use ($handler): PromiseInterface {
+        return static fn (callable $handler): Closure => static function (RequestInterface $request, array $options) use ($handler, $deadline): PromiseInterface {
+            $options = self::withinDeadline($request, $options, $deadline);
             $uri = $request->getUri();
             $host = trim($uri->getHost(), '[]');
             $port = $uri->getPort() ?? ($uri->getScheme() === 'https' ? 443 : 80);
@@ -88,6 +91,27 @@ final readonly class SsrfGuard
 
             return $handler($request, $options);
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    private static function withinDeadline(RequestInterface $request, array $options, ?CarbonImmutable $deadline): array
+    {
+        if (! $deadline instanceof CarbonImmutable) {
+            return $options;
+        }
+
+        $secondsLeft = now()->diffInSeconds($deadline, false);
+
+        throw_if($secondsLeft < 1, ConnectException::class, 'The time budget for this request chain has run out', $request);
+
+        foreach (['timeout', 'connect_timeout'] as $option) {
+            $options[$option] = ($options[$option] ?? 0) > 0 ? min($options[$option], $secondsLeft) : $secondsLeft;
+        }
+
+        return $options;
     }
 
     public static function pinnedClient(string $url): PendingRequest

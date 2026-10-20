@@ -244,3 +244,51 @@ test('keeps the third party lookups for a fully qualified host with a trailing d
     expect((new HighQualityDriver)->fetch('https://example.com.')?->getFaviconUrl())
         ->toBe('https://icons.duckduckgo.com/ip3/example.com.ico');
 });
+
+test('caps a request at the time left in the budget', function (): void {
+    $this->freezeTime();
+
+    $timeouts = [];
+
+    Http::fake(function (HttpClientRequest $request, array $options) use (&$timeouts) {
+        $timeouts[] = [$options['timeout'], $options['connect_timeout']];
+        $this->travel(17)->seconds();
+
+        return Http::response('', 404);
+    });
+
+    expect(fn (): ?Favicon => (new HighQualityDriver)->fetch('https://1.1.1.1'))->toThrow(ConnectionException::class)
+        ->and($timeouts[0])->toEqual([5, 3])
+        ->and($timeouts[1])->toEqual([3, 3]);
+});
+
+test('returns an icon found at the end of the budget without verifying it', function (): void {
+    $this->freezeTime();
+
+    $requested = [];
+
+    Http::fake(function (HttpClientRequest $request) use (&$requested) {
+        $requested[] = $request->method().' '.$request->url();
+        $this->travel(19)->seconds();
+
+        return Http::response('<link rel="apple-touch-icon" href="/touch.png">');
+    });
+
+    expect((new HighQualityDriver)->fetch('https://1.1.1.1')?->getFaviconUrl())->toBe('https://1.1.1.1/touch.png')
+        ->and($requested)->toBe(['GET https://1.1.1.1']);
+});
+
+test('finds no favicon when the last source answers not found at the end of the budget', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+    $this->freezeTime();
+
+    Http::fake(function (HttpClientRequest $request) {
+        if (str_contains($request->url(), 'duckduckgo')) {
+            $this->travel(20)->seconds();
+        }
+
+        return Http::response('', 404);
+    });
+
+    expect((new HighQualityDriver)->fetch('https://1.1.1.1'))->toBeNull();
+});

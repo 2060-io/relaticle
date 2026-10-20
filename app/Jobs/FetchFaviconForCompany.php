@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Enums\CustomFields\CompanyField;
 use App\Exceptions\SsrfGuardException;
 use App\Models\Company;
+use App\Support\Http\HostResolver;
 use App\Support\Http\SsrfGuard;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
@@ -50,73 +51,74 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
         $deadline = now()->addSeconds(self::BUDGET_SECONDS);
 
         try {
-            $sourceUrl = self::sourceUrl($this->company);
-
-            if ($sourceUrl === null) {
-                return;
-            }
-
-            $favicon = Favicon::driver('high-quality')->fetch($sourceUrl);
-            $url = $favicon?->getFaviconUrl();
-
-            if ($url === null) {
-                $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
-                    ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $sourceUrl))
-                    ->each
-                    ->delete();
-
-                return;
-            }
-
-            if (filter_var($url, FILTER_VALIDATE_URL) === false) {
-                return;
-            }
-
-            if (! SsrfGuard::isAllowed($url)) {
-                return;
-            }
-
-            $body = $this->downloadIcon($url, $deadline);
-
-            if ($body === null) {
-                return;
-            }
-
-            $extension = Company::LOGO_MIME_TYPES[new finfo(FILEINFO_MIME_TYPE)->buffer($body)] ?? null;
-
-            if ($extension === null) {
-                return;
-            }
-
-            $logo = $this->company
-                ->addMediaFromString($body)
-                ->usingFileName("logo.{$extension}")
-                ->usingName('company_logo')
-                ->withCustomProperties([
-                    'domain' => $sourceUrl,
-                    'original_size' => $favicon->getIconSize(),
-                    'icon_type' => $favicon->getIconType(),
-                    'fetched_at' => now()->toIso8601String(),
-                ])
-                ->toMediaCollection(Company::LOGO_MEDIA_COLLECTION);
-
-            $this->company->clearMediaCollectionExcept(Company::LOGO_MEDIA_COLLECTION, $logo);
+            HostResolver::remembering(fn () => $this->storeLogo($deadline));
         } catch (Throwable $exception) {
             report_unless($this->isUnreachableSite($exception), $exception);
         }
+    }
+
+    private function storeLogo(CarbonImmutable $deadline): void
+    {
+        $sourceUrl = self::sourceUrl($this->company);
+
+        if ($sourceUrl === null) {
+            return;
+        }
+
+        $favicon = Favicon::driver('high-quality')->fetch($sourceUrl);
+        $url = $favicon?->getFaviconUrl();
+
+        if ($url === null) {
+            $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
+                ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $sourceUrl))
+                ->each
+                ->delete();
+
+            return;
+        }
+
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return;
+        }
+
+        $body = $this->downloadIcon($url, $deadline);
+
+        if ($body === null) {
+            return;
+        }
+
+        $extension = Company::LOGO_MIME_TYPES[new finfo(FILEINFO_MIME_TYPE)->buffer($body)] ?? null;
+
+        if ($extension === null) {
+            return;
+        }
+
+        $logo = $this->company
+            ->addMediaFromString($body)
+            ->usingFileName("logo.{$extension}")
+            ->usingName('company_logo')
+            ->withCustomProperties([
+                'domain' => $sourceUrl,
+                'original_size' => $favicon->getIconSize(),
+                'icon_type' => $favicon->getIconType(),
+                'fetched_at' => now()->toIso8601String(),
+            ])
+            ->toMediaCollection(Company::LOGO_MEDIA_COLLECTION);
+
+        $this->company->clearMediaCollectionExcept(Company::LOGO_MEDIA_COLLECTION, $logo);
     }
 
     private function downloadIcon(string $url, CarbonImmutable $deadline): ?string
     {
         $secondsLeft = now()->diffInSeconds($deadline, false);
 
-        if ($secondsLeft < 1) {
+        if ($secondsLeft < 1 || ! SsrfGuard::isAllowed($url)) {
             return null;
         }
 
         $response = SsrfGuard::guard(
-            Http::timeout(min(self::DOWNLOAD_TIMEOUT_SECONDS, $secondsLeft))
-                ->connectTimeout(min(self::CONNECT_TIMEOUT_SECONDS, $secondsLeft))
+            Http::timeout(self::DOWNLOAD_TIMEOUT_SECONDS)->connectTimeout(self::CONNECT_TIMEOUT_SECONDS),
+            $deadline,
         )->get($url);
 
         return $response->successful() ? $response->body() : null;

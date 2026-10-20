@@ -8,7 +8,6 @@ use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\User;
-use App\Support\Http\HostResolver;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
 use Filament\Facades\Filament;
@@ -356,27 +355,54 @@ test('a favicon whose host does not resolve is skipped without being reported', 
     expect($company->fresh()->getMedia('logo'))->toBeEmpty();
 });
 
-test('a favicon host that stops resolving before the download is not reported', function (): void {
+test('resolves each host once per job run', function (): void {
+    Storage::fake('public');
+
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['slow.example']],
+    ]);
+
+    $lookups = 0;
+    resolveHostsTo(['93.184.216.34'], $lookups);
+
+    Http::fake([
+        'https://slow.example' => Http::response('<link rel="apple-touch-icon" href="/touch.png">'),
+        'https://slow.example/touch.png' => Http::response(onePixelPng()),
+    ]);
+
+    new FetchFaviconForCompany($company->fresh())->handle();
+
+    expect($company->fresh()->getMedia('logo'))->toHaveCount(1)
+        ->and($lookups)->toBe(1);
+});
+
+test('stops following redirects once the time budget has passed', function (): void {
+    Storage::fake('public');
+
     $company = Company::factory()->for($this->user->currentWorkspace)->create([
         'custom_fields' => [CompanyField::DOMAINS->value => ['example.com']],
     ]);
 
     $favicon = Mockery::mock(AshAllenDesign\FaviconFetcher\Favicon::class);
-    $favicon->shouldReceive('getFaviconUrl')->andReturn('https://icons.flaky-host.example/favicon.png');
+    $favicon->shouldReceive('getFaviconUrl')->andReturn('https://1.1.1.1/favicon.png');
 
     Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
-    Http::fake();
+    $this->freezeTime();
 
-    $lookups = 0;
-    app()->instance(HostResolver::class, new HostResolver(function () use (&$lookups): array {
-        $lookups++;
+    $requested = [];
 
-        return $lookups === 1 ? ['93.184.216.34'] : [];
-    }));
+    Http::fake(function (HttpClientRequest $request) use (&$requested) {
+        $requested[] = $request->url();
+        $this->travel(14)->seconds();
+
+        return Http::response('', 302, ['Location' => 'https://1.1.1.1/hop-'.count($requested).'.png']);
+    });
 
     new FetchFaviconForCompany($company->fresh())->handle();
 
-    Http::assertNothingSent();
+    expect($requested)->toBe(['https://1.1.1.1/favicon.png', 'https://1.1.1.1/hop-1.png'])
+        ->and($company->fresh()->getMedia('logo'))->toBeEmpty();
+
     Exceptions::assertNothingReported();
 });
 

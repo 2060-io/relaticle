@@ -15,6 +15,7 @@ use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Exceptions\InvalidUrlException;
 use AshAllenDesign\FaviconFetcher\Favicon;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 
@@ -32,7 +33,11 @@ final class HighQualityDriver implements Fetcher
 
     private const int MINIMUM_SECONDS_PER_REQUEST = 1;
 
+    private const int MINIMUM_SECONDS_TO_VERIFY = 2;
+
     private CarbonImmutable $deadline;
+
+    private bool $skippedForLackOfTime = false;
 
     /**
      * Attempt to fetch high-quality favicon using a waterfall strategy.
@@ -78,16 +83,16 @@ final class HighQualityDriver implements Fetcher
             return $favicon;
         }
 
-        $favicon = $this->hasTimeLeft() ? $this->tryGoogleHighRes($url) : null;
+        $favicon = $this->whileTimeLeft(fn (): ?Favicon => $this->tryGoogleHighRes($url));
         if ($favicon instanceof Favicon && $this->faviconIsAccessible($favicon)) {
             return $favicon;
         }
 
-        $favicon = $this->hasTimeLeft() ? $this->tryDuckDuckGo($url) : null;
+        $favicon = $this->whileTimeLeft(fn (): ?Favicon => $this->tryDuckDuckGo($url));
 
         if (! $favicon instanceof Favicon) {
             throw_if($siteUnreachable instanceof ConnectionException, $siteUnreachable);
-            throw_unless($this->hasTimeLeft(), ConnectionException::class, "Ran out of time looking for a favicon for {$url}");
+            throw_if($this->skippedForLackOfTime, ConnectionException::class, "Ran out of time looking for a favicon for {$url}");
         }
 
         return $favicon;
@@ -96,6 +101,17 @@ final class HighQualityDriver implements Fetcher
     private function secondsLeft(): float
     {
         return now()->diffInSeconds($this->deadline, false);
+    }
+
+    private function whileTimeLeft(Closure $source): ?Favicon
+    {
+        if ($this->hasTimeLeft()) {
+            return $source();
+        }
+
+        $this->skippedForLackOfTime = true;
+
+        return null;
     }
 
     private function hasTimeLeft(): bool
@@ -132,14 +148,17 @@ final class HighQualityDriver implements Fetcher
 
     private function guardedHttpClient(): PendingRequest
     {
-        throw_unless($this->hasTimeLeft(), ConnectionException::class, 'Ran out of time looking for a favicon');
+        if (! $this->hasTimeLeft()) {
+            $this->skippedForLackOfTime = true;
 
-        $secondsLeft = $this->secondsLeft();
+            throw new ConnectionException('Ran out of time looking for a favicon');
+        }
 
         return SsrfGuard::guard(
             $this->httpClient()
-                ->timeout(min(self::REQUEST_TIMEOUT_SECONDS, $secondsLeft))
-                ->connectTimeout(min(self::CONNECT_TIMEOUT_SECONDS, $secondsLeft))
+                ->timeout(self::REQUEST_TIMEOUT_SECONDS)
+                ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS),
+            $this->deadline,
         );
     }
 
@@ -324,6 +343,10 @@ final class HighQualityDriver implements Fetcher
 
         if (! SsrfGuard::isAllowed($faviconUrl)) {
             return false;
+        }
+
+        if ($this->secondsLeft() < self::MINIMUM_SECONDS_TO_VERIFY) {
+            return true;
         }
 
         try {
