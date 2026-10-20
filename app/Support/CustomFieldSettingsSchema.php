@@ -9,12 +9,12 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
-use Relaticle\CustomFields\Data\FieldTypeData;
 use Relaticle\CustomFields\Data\Settings\CurrencyFieldSettingsData;
 use Relaticle\CustomFields\Enums\CustomFieldsFeature;
 use Relaticle\CustomFields\Enums\DescriptionPosition;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
 use Relaticle\CustomFields\FeatureSystem\FeatureManager;
+use Relaticle\CustomFields\Rules\KeepsStoredDecimals;
 use Relaticle\CustomFields\Support\CurrencyProvider;
 
 final readonly class CustomFieldSettingsSchema
@@ -91,7 +91,7 @@ final readonly class CustomFieldSettingsSchema
             }
         }
 
-        return [...$rules, ...self::typeRules($type)];
+        return [...$rules, ...self::typeRules($field)];
     }
 
     /**
@@ -108,7 +108,7 @@ final readonly class CustomFieldSettingsSchema
     public static function apply(CustomField $field, array $settings): CustomFieldSettingsData
     {
         $data = clone $field->settings;
-        $typeKeys = array_keys(self::typeRules(CustomFieldsType::getFieldType($field->type)));
+        $typeKeys = array_keys(self::typeRules($field));
         $touchesTypeSettings = array_intersect_key($settings, array_flip($typeKeys)) !== [];
 
         // Pinning every type default keeps the decimals when only the currency changes.
@@ -232,13 +232,13 @@ final readonly class CustomFieldSettingsSchema
     /**
      * @return array<string, array<int, mixed>>
      */
-    private static function typeRules(?FieldTypeData $type): array
+    private static function typeRules(CustomField $field): array
     {
-        return match ($type?->settingsDataClass) {
+        return match (CustomFieldsType::getFieldType($field->type)?->settingsDataClass) {
             CurrencyFieldSettingsData::class => [
                 'currency_code' => ['string', Rule::in(array_keys(CurrencyProvider::getOptions()))],
                 'display_type' => ['string', Rule::in(self::CURRENCY_DISPLAY_TYPES)],
-                'decimal_places' => ['integer', Rule::in(self::CURRENCY_DECIMAL_PLACES)],
+                'decimal_places' => ['integer', Rule::in(self::CURRENCY_DECIMAL_PLACES), new KeepsStoredDecimals($field)],
             ],
             default => [],
         };
