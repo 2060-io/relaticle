@@ -16,6 +16,7 @@ use Relaticle\EmailIntegration\Actions\DisconnectConnectedAccountAction;
 use Relaticle\EmailIntegration\Data\ConnectAccountData;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Enums\EmailProvider;
+use Relaticle\EmailIntegration\Enums\SyncErrorReason;
 use Relaticle\EmailIntegration\Filament\Concerns\HasConnectedAccountActions;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccessRequestsPage;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountSettingsPage;
@@ -342,8 +343,8 @@ it('queues mailbox history import from the account menu', function (): void {
         ->callAction('reimportHistory', arguments: ['account_id' => $this->account->id])
         ->assertNotified();
 
-    Bus::assertDispatched(RelinkMailboxHistoryJob::class, fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($this->account));
-    Bus::assertDispatched(InitialEmailSyncJob::class, fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($this->account));
+    Bus::assertDispatched(fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($this->account));
+    Bus::assertDispatched(fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($this->account));
     Bus::assertNotDispatched(IncrementalEmailSyncJob::class);
 });
 
@@ -443,6 +444,22 @@ it('shows a sync issue badge when incremental sync could not store mail', functi
         ->assertSee(__('filament/pages/email-accounts.sync_error.badge'))
         ->assertDontSee(__('filament/pages/email-accounts.sync_error.heading'))
         ->assertDontSee(__('filament/pages/email-accounts.in_sync'));
+});
+
+it('explains on the sync issue badge that Gmail is switched off', function (): void {
+    $reason = SyncErrorReason::GoogleMailDisabled;
+
+    $this->account->update([
+        'status' => EmailAccountStatus::ERROR,
+        'sync_cursor' => 'mail-cursor',
+        'last_synced_at' => now(),
+        'last_error' => $reason->value,
+    ]);
+
+    livewire(EmailAccountsPage::class)
+        ->assertSee(__('filament/pages/email-accounts.sync_error.badge'))
+        ->assertSeeHtml(e($reason->getLabel()))
+        ->assertDontSee($reason->value);
 });
 
 it('stays in sync after history import store failures', function (): void {
