@@ -56,6 +56,7 @@ use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Http\RequestAbility;
 use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
+use App\Support\Mail\ParksInactiveRecipientsTransport;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
 use App\Support\Migrations\TenantMigration;
@@ -130,6 +131,7 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\PendingActivityLog;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
 use Spatie\Onboard\OnboardingSteps;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 
 final class AppServiceProvider extends ServiceProvider
 {
@@ -228,11 +230,20 @@ final class AppServiceProvider extends ServiceProvider
         Passport::$deviceCodeGrantEnabled = false;
     }
 
+    private function registerParkingMailTransport(): void
+    {
+        Facades\Mail::extend('mailcoach-parking', fn (array $config): TransportInterface => new ParksInactiveRecipientsTransport(
+            Facades\Mail::createSymfonyTransport([...$config, 'transport' => 'mailcoach']),
+        ));
+    }
+
     /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
+        $this->registerParkingMailTransport();
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MakeFilamentUserCommand::class,

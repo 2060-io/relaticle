@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Listeners\Email;
 
-use App\Mail\Concerns\ParksBouncedRecipients;
+use App\Mail\Contracts\EssentialMail;
 use App\Models\User;
 use App\Support\EmailAddress;
 use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Mail\Mailable;
 use Symfony\Component\Mime\Address;
 
 final class DropBouncedRecipientsListener
@@ -51,6 +52,7 @@ final class DropBouncedRecipientsListener
     private function isParkable(mixed $mailable): bool
     {
         return is_string($mailable)
-            && in_array(ParksBouncedRecipients::class, class_uses_recursive($mailable), true);
+            && is_subclass_of($mailable, Mailable::class)
+            && ! is_subclass_of($mailable, EssentialMail::class);
     }
 }

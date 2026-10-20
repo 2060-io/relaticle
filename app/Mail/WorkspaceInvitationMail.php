@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Mail\Contracts\EssentialMail;
 use App\Models\WorkspaceInvitation;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
@@ -19,7 +20,7 @@ use Laravel\Jetstream\Jetstream;
  * only as a hash, so it must not sit in clear text in the payload or in a
  * failed_jobs row that outlives the invitation.
  */
-final class WorkspaceInvitationMail extends Mailable implements ShouldBeEncrypted, ShouldQueue
+final class WorkspaceInvitationMail extends Mailable implements EssentialMail, ShouldBeEncrypted, ShouldQueue
 {
     use Queueable, SerializesModels;
 
