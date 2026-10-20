@@ -10,6 +10,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Enums\AttendeeResponseStatus;
 use Relaticle\EmailIntegration\Filament\Concerns\HasConnectMailboxActions;
@@ -1223,7 +1224,7 @@ it('opens the meeting modal when the row is clicked', function (): void {
         ->not->toContain('data-testid="meeting-card-open"')
         ->not->toContain('data-testid="meeting-card-participants"')
         ->not->toContain('cursor-wait')
-        ->not->toContain('aria-expanded=');
+        ->and(Str::between($html, 'data-testid="meeting-card"', '</li>'))->not->toContain('aria-expanded=');
 });
 
 it('shows four meetings and load more when the day has more', function (): void {

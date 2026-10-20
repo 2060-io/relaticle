@@ -489,7 +489,7 @@ it('offers undo on the queued toast for the undo window', function (): void {
         ->call('send');
 
     $email = Email::query()->where('subject', 'Undo me')->sole();
-    $notification = collect(session('filament.claimed_notifications'))
+    $notification = flashedNotifications()
         ->firstWhere('title', __('filament/concerns/email-compose.notifications.queued.title'));
 
     expect($notification)->not->toBeNull()

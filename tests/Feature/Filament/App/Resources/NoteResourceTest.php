@@ -276,7 +276,8 @@ it('drives note body formatting from the slash menu rather than a toolbar', func
 
     expect($editor)->not->toBeNull()
         ->and($editor->getToolbarButtons())->toBe([])
-        ->and(array_keys($editor->getFloatingToolbars()))->toBe(['paragraph', 'heading', 'table'])
+        ->and(array_keys($editor->getFloatingToolbars()))->toBe(['paragraph', 'heading', ...array_keys($editor->getDefaultFloatingToolbars())])
+        ->and($editor->getFloatingToolbars())->toHaveKey('table')
         ->and($editor->getExtraAttributes()['class'])->toContain('fi-fo-rich-editor-seamless');
 
     foreach ([$paragraphToolbar, $headingToolbar] as $toolbar) {

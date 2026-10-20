@@ -977,7 +977,7 @@ it('queues one email in the undo window and shows the undo toast when the card i
     $email = Email::query()->sole();
     $undoWindow = config('email-integration.outbox.undo_send_window_seconds');
 
-    $toast = collect(session('filament.notifications'))->sole();
+    $toast = flashedNotifications()->sole();
 
     expect($email->status)->toBe(EmailStatus::QUEUED)
         ->and($email->creation_source)->toBe(EmailCreationSource::CHAT)
