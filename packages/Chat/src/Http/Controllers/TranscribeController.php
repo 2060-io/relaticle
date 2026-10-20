@@ -37,8 +37,15 @@ final class TranscribeController
         // match: the SDK triples the bytes in memory, holding the raw upload
         // plus its base64 (Base64Audio::fromUpload) and then base64-decoding
         // the whole thing again for the outbound attach.
+        $unreadable = $this->unreadableMessage();
+
         $request->validate([
             'audio' => ['required', 'file', 'max:2048', 'mimetypes:audio/webm,video/webm,audio/mp4,video/mp4'],
+        ], [
+            'audio.required' => $unreadable,
+            'audio.file' => $unreadable,
+            'audio.max' => $unreadable,
+            'audio.mimetypes' => $unreadable,
         ]);
 
         /** @var UploadedFile $audio */
@@ -63,7 +70,7 @@ final class TranscribeController
             || ($status === 400 && str_starts_with((string) $exception->response->json('error.message'), 'Audio file'));
 
         if ($unreadable) {
-            $message = __("That recording couldn't be read. Try again.");
+            $message = $this->unreadableMessage();
 
             return response()->json(['message' => $message, 'errors' => ['audio' => [$message]]], 422);
         }
@@ -71,6 +78,11 @@ final class TranscribeController
         throw_if($status < 500, $exception);
 
         return $this->busyResponse();
+    }
+
+    private function unreadableMessage(): string
+    {
+        return __("That recording couldn't be read. Try again.");
     }
 
     private function busyResponse(): JsonResponse

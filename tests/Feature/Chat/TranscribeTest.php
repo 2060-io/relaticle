@@ -98,6 +98,17 @@ it('422s when the upload is not audio', function (): void {
         ->assertJsonValidationErrors('audio');
 });
 
+it('answers an upload that fails validation with the same message as an unreadable recording', function (): void {
+    $message = "That recording couldn't be read. Try again.";
+
+    $this->postJson(route('chat.transcribe'), [
+        'audio' => new UploadedFile(base_path('tests/fixtures/imports/companies.csv'), 'recording.webm', null, null, true),
+    ])
+        ->assertStatus(422)
+        ->assertJsonPath('message', $message)
+        ->assertJsonPath('errors.audio', [$message]);
+});
+
 it('returns the transcribed text', function (): void {
     Transcription::fake(['Schedule a follow up with Acme next Tuesday']);
 
