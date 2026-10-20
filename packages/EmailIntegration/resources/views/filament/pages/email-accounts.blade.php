@@ -48,7 +48,9 @@
                                 <x-filament::badge
                                     color="warning"
                                     icon="heroicon-m-exclamation-triangle"
-                                    :title="$account->last_synced_at ? __('filament/pages/email-accounts.synced_at', ['time' => $account->last_synced_at->diffForHumans()]) : null"
+                                    :title="$account->last_error === __('filament/pages/email-accounts.sync_error.mail_disabled')
+                                        ? $account->last_error
+                                        : ($account->last_synced_at ? __('filament/pages/email-accounts.synced_at', ['time' => $account->last_synced_at->diffForHumans()]) : null)"
                                 >
                                     {{ __('filament/pages/email-accounts.sync_error.badge') }}
                                 </x-filament::badge>

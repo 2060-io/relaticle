@@ -445,6 +445,22 @@ it('shows a sync issue badge when incremental sync could not store mail', functi
         ->assertDontSee(__('filament/pages/email-accounts.in_sync'));
 });
 
+it('explains on the sync issue badge that Gmail is switched off for the workspace', function (): void {
+    $reason = __('filament/pages/email-accounts.sync_error.mail_disabled');
+
+    $this->account->update([
+        'status' => EmailAccountStatus::ERROR,
+        'sync_cursor' => 'mail-cursor',
+        'last_synced_at' => now(),
+        'last_error' => $reason,
+    ]);
+
+    livewire(EmailAccountsPage::class)
+        ->assertSee(__('filament/pages/email-accounts.sync_error.badge'))
+        ->assertSeeHtml('title="'.e($reason).'"')
+        ->assertDontSee(__('filament/pages/email-accounts.synced_at', ['time' => '']));
+});
+
 it('stays in sync after history import store failures', function (): void {
     $batch = resolve(MailboxHistoryImportService::class)->startBatch($this->account);
 
