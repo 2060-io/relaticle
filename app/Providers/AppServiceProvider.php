@@ -132,6 +132,7 @@ use SocialiteProviders\Microsoft\MicrosoftExtendSocialite;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\PendingActivityLog;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
+use Spatie\MailcoachMailer\Exceptions\InvalidMailerConfig;
 use Spatie\MailcoachMailer\MailcoachTransportFactory;
 use Spatie\Onboard\OnboardingSteps;
 use Symfony\Component\Mailer\Transport\Dsn;
@@ -237,6 +238,11 @@ final class AppServiceProvider extends ServiceProvider
     private function registerParkingMailTransport(): void
     {
         $this->app->booted(fn () => Facades\Mail::extend('mailcoach', function (array $config): TransportInterface {
+            foreach (['domain', 'token'] as $key) {
+                throw_unless(array_key_exists($key, $config), InvalidMailerConfig::missingKey($key));
+                throw_if($config[$key] === null, InvalidMailerConfig::missingValue($key));
+            }
+
             $inner = (new MailcoachTransportFactory)->create(new Dsn('mailcoach', $config['domain'], options: [
                 'token' => $config['token'],
                 'api_base_url' => $config['api_base_url'] ?? null,

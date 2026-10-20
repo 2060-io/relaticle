@@ -21,6 +21,7 @@ use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
+use Spatie\MailcoachMailer\Exceptions\InvalidMailerConfig;
 use Spatie\MailcoachMailer\MailcoachApiTransport;
 use Symfony\Component\HttpClient\Exception\TransportException;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -223,4 +224,11 @@ it('builds the configured mailcoach mailer on the parking transport', function (
     Mail::purge('mailcoach');
 
     expect(Mail::mailer('mailcoach')->getSymfonyTransport())->toBeInstanceOf(ParksInactiveRecipientsTransport::class);
+});
+
+it('names the missing mailcoach setting when the mailer is not configured', function (): void {
+    config(['mail.mailers.mailcoach.domain' => null, 'mail.mailers.mailcoach.token' => 'token']);
+    Mail::purge('mailcoach');
+
+    expect(fn () => Mail::mailer('mailcoach'))->toThrow(InvalidMailerConfig::class);
 });
