@@ -342,8 +342,8 @@ it('queues mailbox history import from the account menu', function (): void {
         ->callAction('reimportHistory', arguments: ['account_id' => $this->account->id])
         ->assertNotified();
 
-    Bus::assertDispatched(RelinkMailboxHistoryJob::class, fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($this->account));
-    Bus::assertDispatched(InitialEmailSyncJob::class, fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($this->account));
+    Bus::assertDispatched(fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($this->account));
+    Bus::assertDispatched(fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($this->account));
     Bus::assertNotDispatched(IncrementalEmailSyncJob::class);
 });
 
