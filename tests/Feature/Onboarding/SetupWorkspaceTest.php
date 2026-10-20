@@ -1586,7 +1586,7 @@ describe('invite team', function (): void {
             ->assertHasNoFormErrors()
             ->assertRedirect(Dashboard::getUrl(['tenant' => $workspace]));
 
-        $notifications = collect(session('filament.notifications'));
+        $notifications = flashedNotifications();
 
         Exceptions::assertReported(RuntimeException::class);
 

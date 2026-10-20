@@ -9,6 +9,8 @@
 --}}
 <div>
     @php
+        use Illuminate\Support\Facades\Vite;
+
         $navigation = filament()->getNavigation();
         $isRtl = __('filament-panels::layout.direction') === 'rtl';
         $isSidebarCollapsibleOnDesktop = filament()->isSidebarCollapsibleOnDesktop();
@@ -16,6 +18,8 @@
         $hasNavigation = filament()->hasNavigation();
         $hasTopbar = filament()->hasTopbar();
         $isCollapsible = $isSidebarCollapsibleOnDesktop || $isSidebarFullyCollapsibleOnDesktop;
+
+        $cspNonce = Vite::cspNonce();
     @endphp
 
     {{-- format-ignore-start --}}
@@ -175,18 +179,18 @@
                 @endforeach
             </ul>
 
-            <script>
+            <script @if (filled($cspNonce)) nonce="{{ $cspNonce }}" @endif>
                 var collapsedGroups = JSON.parse(
-                    localStorage.getItem('collapsedGroups'),
+                    localStorage.getItem('filament:sidebar:collapsed_groups'),
                 )
 
                 if (collapsedGroups === null || collapsedGroups === 'null') {
                     localStorage.setItem(
-                        'collapsedGroups',
+                        'filament:sidebar:collapsed_groups',
                         JSON.stringify(@js(
                         collect($navigation)
                             ->filter(fn (\Filament\Navigation\NavigationGroup $group): bool => $group->isCollapsed())
-                            ->map(fn (\Filament\Navigation\NavigationGroup $group): string => $group->getLabel())
+                            ->map(fn (\Filament\Navigation\NavigationGroup $group): ?string => ($label = $group->getLabel()) instanceof \Illuminate\Contracts\Support\Htmlable ? $label->toHtml() : $label)
                             ->values()
                             ->all()
                     )),
@@ -194,7 +198,7 @@
                 }
 
                 collapsedGroups = JSON.parse(
-                    localStorage.getItem('collapsedGroups'),
+                    localStorage.getItem('filament:sidebar:collapsed_groups'),
                 )
 
                 document

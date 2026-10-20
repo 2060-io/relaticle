@@ -455,6 +455,8 @@ final class InstallCommand extends Command
 
     private function envPath(): string
     {
-        return $this->option('env-file') ?: base_path('.env');
+        $envFile = $this->option('env-file');
+
+        return is_string($envFile) && $envFile !== '' ? $envFile : base_path('.env');
     }
 }

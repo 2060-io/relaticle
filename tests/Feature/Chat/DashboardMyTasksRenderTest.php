@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Actions\Task\CompleteTask;
 use App\Actions\Task\NotifyTaskAssignees;
+use App\Actions\Task\UpdateTask;
 use App\Features\OnboardSeed;
 use App\Filament\Pages\Dashboard;
 use App\Mail\TaskAssignedMail;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 
-mutates(CompleteTask::class, Dashboard::class, NotifyTaskAssignees::class);
+mutates(CompleteTask::class, Dashboard::class, NotifyTaskAssignees::class, UpdateTask::class);
 
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
@@ -71,6 +72,64 @@ it('mounts the createTask action on the page', function (): void {
 
     livewire(Dashboard::class)
         ->assertActionExists('createTask');
+});
+
+it('edits a task in place from the dashboard', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+
+    $task = Task::factory()->for($workspace)->create(['title' => 'Ship the widget']);
+    $task->assignees()->attach($user);
+
+    $this->actingAs($user);
+    Filament::setTenant($workspace);
+
+    livewire(Dashboard::class)
+        ->assertSeeHtml("mountAction('editTask', { task: '{$task->id}' })")
+        ->mountAction('editTask', ['task' => $task->id])
+        ->assertActionMounted('editTask')
+        ->assertSchemaStateSet(['title' => 'Ship the widget', 'assignees' => [$user->id]])
+        ->setActionData(['title' => 'Ship the gadget'])
+        ->callMountedAction()
+        ->assertHasNoActionErrors()
+        ->assertSee('Ship the gadget')
+        ->assertDontSee('Ship the widget');
+
+    expect($task->refresh()->title)->toBe('Ship the gadget');
+});
+
+it('leaves the task link to the tasks page for a viewer who cannot edit', function (): void {
+    $owner = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $viewer = User::factory()->create(['current_workspace_id' => $workspace->id]);
+    $workspace->users()->attach($viewer, ['role' => 'viewer']);
+
+    $task = Task::factory()->for($workspace)->create(['title' => 'Ship the widget']);
+    $task->assignees()->attach($viewer);
+
+    $this->actingAs($viewer);
+    Filament::setTenant($workspace);
+
+    livewire(Dashboard::class)
+        ->assertSee('Ship the widget')
+        ->assertDontSeeHtml("mountAction('editTask'")
+        ->mountAction('editTask', ['task' => $task->id])
+        ->assertActionNotMounted('editTask');
+});
+
+it('does not open a task from another workspace for editing', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $stranger = User::factory()->withPersonalWorkspace()->create();
+    $foreign = Task::factory()->for($stranger->currentWorkspace)->create(['title' => 'Not yours']);
+
+    $this->actingAs($user);
+    Filament::setTenant($user->currentWorkspace);
+
+    livewire(Dashboard::class)
+        ->mountAction('editTask', ['task' => $foreign->id])
+        ->assertActionNotMounted('editTask');
+
+    expect($foreign->refresh()->title)->toBe('Not yours');
 });
 
 it('notifies only the assignees submitted through the dashboard create action', function (): void {

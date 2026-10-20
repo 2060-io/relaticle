@@ -7,6 +7,7 @@ use App\Livewire\FilamentNotifications;
 use Filament\Livewire\Notifications;
 use Filament\Notifications\Notification;
 use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 it('filters non-array junk out of the notifications livewire payload', function (): void {
     $valid = Notification::make('valid-notification')->title('Hello')->toArray();
@@ -22,6 +23,10 @@ it('filters non-array junk out of the notifications livewire payload', function 
         ->and($collection->first())->toBeInstanceOf(Notification::class)
         ->and($collection->first()->getId())->toBe('valid-notification');
 });
+
+it('leaves a notifications payload that is not a list to the parent 419', function (): void {
+    NotificationCollection::fromLivewire(42);
+})->throws(HttpException::class);
 
 it('resolves the panel notifications component to the resilient subclass', function (): void {
     $panelPath = config('app.app_panel_path', 'app');

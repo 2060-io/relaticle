@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Actions\Task\CompleteTask;
+use App\Actions\Task\UpdateTask;
+use App\Enums\WorkspaceCapability;
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Models\Task;
 use App\Models\User;
 use BackedEnum;
+use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Pages\Page;
 use Filament\Panel;
@@ -120,6 +123,15 @@ final class Dashboard extends Page
         return $workspace !== null && resolve(MyTasksService::class)->hasDoneOption($workspace);
     }
 
+    #[Computed]
+    public function canEditTasks(): bool
+    {
+        /** @var User $user */
+        $user = Filament::auth()->user();
+
+        return $user->hasWorkspaceCapability(Filament::getTenant()?->getKey(), WorkspaceCapability::RecordsUpdate);
+    }
+
     public function completeTask(string $taskId): void
     {
         /** @var User $user */
@@ -130,7 +142,7 @@ final class Dashboard extends Page
         // field id written onto it. A row that no longer resolves (completed in
         // another tab, deleted meanwhile) is not an error: the desired end state
         // is already true, so just refresh instead of throwing a 404 over Home.
-        $task = Task::query()->where('workspace_id', Filament::getTenant()?->getKey())->find($taskId);
+        $task = $this->tenantTask($taskId);
 
         if ($task instanceof Task) {
             resolve(CompleteTask::class)->execute($user, $task);
@@ -144,6 +156,33 @@ final class Dashboard extends Page
         return TaskResource::getUrl('index', [
             'tableFilters' => ['assigned_to_me' => ['isActive' => true]],
         ]);
+    }
+
+    public function editTaskAction(): EditAction
+    {
+        return EditAction::make('editTask')
+            ->record(fn (array $arguments): ?Task => $this->tenantTask($arguments['task'] ?? null))
+            ->recordTitleAttribute('title')
+            ->authorize('update')
+            ->slideOver()
+            ->schema(fn (Schema $schema): Schema => TaskForm::get($schema))
+            ->using(function (Task $record, array $data): Task {
+                /** @var User $user */
+                $user = Filament::auth()->user();
+
+                return resolve(UpdateTask::class)->execute($user, $record, $data);
+            })
+            ->after(function (): void {
+                unset($this->myTasks);
+            });
+    }
+
+    private function tenantTask(mixed $taskId): ?Task
+    {
+        return Task::query()
+            ->where('workspace_id', Filament::getTenant()?->getKey())
+            ->whereKey($taskId)
+            ->first();
     }
 
     public function createTaskAction(): CreateTaskAction

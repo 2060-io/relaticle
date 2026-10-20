@@ -29,11 +29,7 @@ it('turns any typed email address into a recipient chip and keeps invalid text e
         'last_synced_at' => now(),
     ]));
 
-    $page = visit('/app/login')->{$theme}()
-        ->type('[id="form.email"]', $user->email)
-        ->click('button[type="submit"]')
-        ->type('[id="form.password"]', 'password')
-        ->click('button[type="submit"]')
+    $page = loginViaBrowser($user, $theme)
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/email")
         ->click(__('filament/concerns/email-compose.actions.compose.label'))
@@ -82,11 +78,7 @@ it('lists a CRM person once when they are also a recent correspondent', function
         'role' => EmailParticipantRole::FROM,
     ]);
 
-    visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->click('button[type="submit"]')
-        ->type('[id="form.password"]', 'password')
-        ->click('button[type="submit"]')
+    loginViaBrowser($user)
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/email")
         ->click(__('filament/concerns/email-compose.actions.compose.label'))
@@ -117,11 +109,7 @@ it('opens the composer from a record emails tab addressed to the person with the
 
     $floatingComposer = 'Livewire.all().map((component) => Livewire.find(component.id)).find((component) => component.get("dock") === "floating")';
 
-    visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->click('button[type="submit"]')
-        ->type('[id="form.password"]', 'password')
-        ->click('button[type="submit"]')
+    loginViaBrowser($user)
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
         ->click('[role="tab"]:has-text("Emails")')
@@ -155,11 +143,7 @@ it('opens a saved draft from a click on its drafts table row', function (): void
         'creation_source' => EmailCreationSource::COMPOSE,
     ]);
 
-    visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->click('button[type="submit"]')
-        ->type('[id="form.password"]', 'password')
-        ->click('button[type="submit"]')
+    loginViaBrowser($user)
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/email")
         ->click('Half-written pitch')
@@ -178,11 +162,7 @@ it('closes the composer with escape and keeps the draft', function (): void {
         'last_synced_at' => now(),
     ]));
 
-    visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->click('button[type="submit"]')
-        ->type('[id="form.password"]', 'password')
-        ->click('button[type="submit"]')
+    loginViaBrowser($user)
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/email")
         ->click(__('filament/concerns/email-compose.actions.compose.label'))
@@ -225,11 +205,7 @@ it('puts the caret on the recipient in a new email and on the message in an addr
         'role' => EmailParticipantRole::TO,
     ]);
 
-    visit('/app/login')
-        ->type('[id="form.email"]', $user->email)
-        ->click('button[type="submit"]')
-        ->type('[id="form.password"]', 'password')
-        ->click('button[type="submit"]')
+    loginViaBrowser($user)
         ->assertPathIs("/app/{$workspace->slug}")
         ->navigate("/app/{$workspace->slug}/email")
         ->click(__('filament/concerns/email-compose.actions.compose.label'))

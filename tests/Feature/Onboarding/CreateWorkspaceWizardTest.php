@@ -521,6 +521,7 @@ it('asks which assistant and what was asked only for an AI referral', function (
     $this->actingAs($user);
 
     livewire(CreateWorkspace::class)
+        ->fillForm(['name' => 'Acme Corp'])
         ->goToWizardStep(2)
         ->assertWizardCurrentStep(2)
         ->fillForm([
@@ -544,8 +545,12 @@ it('shows the AI follow-ups as soon as the source is picked, without waiting for
     $this->actingAs($user);
 
     livewire(CreateWorkspace::class)
+        ->fillForm(['name' => 'Acme Corp'])
         ->goToWizardStep(2)
-        ->assertSeeHtml('wire:model.live="data.onboarding_referral_source"');
+        ->assertSeeHtmlInOrder([
+            'stateBindingModifiers: JSON.parse(&#039;[\u0022live\u0022]&#039;)',
+            '$wire.$entangle(&#039;data.onboarding_referral_source&#039;',
+        ]);
 });
 
 it('caps the question behind an AI referral at 200 characters', function (): void {

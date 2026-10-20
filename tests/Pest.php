@@ -23,10 +23,12 @@ use App\Support\Http\HostResolver;
 use Filament\Actions\Action;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\NotificationMailbox;
 use Illuminate\Contracts\Broadcasting\Broadcaster as BroadcasterContract;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -64,6 +66,17 @@ if (class_exists(Playwright::class)) {
 function livewire(string $component, array $params = []): Testable
 {
     return Livewire::test($component, $params);
+}
+
+/**
+ * @return Collection<int, array<string, mixed>>
+ */
+function flashedNotifications(): Collection
+{
+    $mailbox = resolve(NotificationMailbox::class);
+    $mailbox->flush();
+
+    return collect($mailbox->pull());
 }
 
 /**
@@ -237,13 +250,26 @@ function assertActionHasMailboxOAuthUrl(
  * Log in through the real two-step login form: type the email and submit to
  * reveal the password field, then type the password and submit again.
  */
-function loginViaBrowser(User $user): AwaitableWebpage
+function loginViaBrowser(User $user, ?string $theme = null): AwaitableWebpage
 {
-    return test()->visit('/app/login')
+    $page = test()->visit('/app/login');
+
+    if ($theme !== null) {
+        $page = $page->{$theme}();
+    }
+
+    return $page
         ->type('[id="form.email"]', $user->email)
         ->click('button[type="submit"]')
+        ->assertVisible('[id="form.password"]')
+        ->assertScript(asyncAlpineComponentsLoaded())
         ->type('[id="form.password"]', 'password')
         ->click('button[type="submit"]');
+}
+
+function asyncAlpineComponentsLoaded(): string
+{
+    return 'document.querySelector("[x-load][x-ignore]") === null';
 }
 
 function pdfBytes(): string
