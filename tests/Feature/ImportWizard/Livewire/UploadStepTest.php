@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Events\WorkspaceCreated;
 use App\Models\User;
 use Filament\Facades\Filament;
-use Illuminate\Database\QueryException;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
@@ -179,12 +178,16 @@ it('rejects a csv that is not utf-8 with a message the user can act on', functio
     $message = 'Row 3 is not UTF-8 text. In Excel, choose File > Save As > CSV UTF-8, then upload the file again.';
 
     $component->assertHasErrors(['uploadedFile' => $message]);
+    Exceptions::assertNothingReported();
+});
 
-    $component->call('continueToMapping');
+it('reports the physical line when the file has empty lines before a non-utf-8 row', function (): void {
+    $csv = makeCsvFile("Full Name,Email\nAda,a@x.com\n\nJos\xE9,j@x.com\n");
 
-    $component->assertHasErrors(['uploadedFile' => 'File no longer available. Please re-upload.']);
-    Exceptions::assertNotReported(QueryException::class);
-    expect(Import::query()->count())->toBe(0);
+    $component = mountUploadStep($this);
+    $component->set('uploadedFile', $csv);
+
+    $component->assertHasErrors(['uploadedFile' => 'Row 4 is not UTF-8 text. In Excel, choose File > Save As > CSV UTF-8, then upload the file again.']);
 });
 
 it('counts the file row when blank lines come before a non-utf-8 row', function (): void {

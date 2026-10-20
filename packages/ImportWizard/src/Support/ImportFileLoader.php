@@ -11,6 +11,7 @@ use Relaticle\ImportWizard\Exceptions\ImportFileException;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Spatie\SimpleExcel\SimpleExcelReader;
+use SplFileObject;
 use Throwable;
 
 final readonly class ImportFileLoader
@@ -34,8 +35,11 @@ final readonly class ImportFileLoader
             ->reject(fn (array $row): bool => array_all($row, blank(...)))
             ->take($this->maxRows() + 1);
 
-        foreach ($rows as $position => $row) {
-            $this->assertUtf8($row, $position + 2);
+        foreach ($rows as $row) {
+            if (! $this->isUtf8($row)) {
+                throw new ImportFileException(__('Row :row is not UTF-8 text. In Excel, choose File > Save As > CSV UTF-8, then upload the file again.', ['row' => $this->firstNonUtf8Line($path)]));
+            }
+
             $rowCount++;
         }
 
@@ -108,11 +112,20 @@ final readonly class ImportFileLoader
     /**
      * @param  array<int|string, mixed>  $row
      */
-    private function assertUtf8(array $row, int $fileRow): void
+    private function isUtf8(array $row): bool
     {
-        $isUtf8 = array_all($row, fn (mixed $cell): bool => ! is_string($cell) || mb_check_encoding($cell, 'UTF-8'));
+        return array_all($row, fn (mixed $cell): bool => ! is_string($cell) || mb_check_encoding($cell, 'UTF-8'));
+    }
 
-        throw_unless($isUtf8, ImportFileException::class, __('Row :row is not UTF-8 text. In Excel, choose File > Save As > CSV UTF-8, then upload the file again.', ['row' => $fileRow]));
+    private function firstNonUtf8Line(string $path): int
+    {
+        foreach (new SplFileObject($path) as $index => $line) {
+            if (is_string($line) && ! mb_check_encoding($line, 'UTF-8')) {
+                return $index + 1;
+            }
+        }
+
+        return 0;
     }
 
     private function discard(Import $import, ImportStore $store): void
