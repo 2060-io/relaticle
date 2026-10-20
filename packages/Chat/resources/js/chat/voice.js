@@ -14,6 +14,9 @@ const RECORDING_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
 
 const MAX_RECORDING_MS = 120_000;
 
+// The provider rejects anything shorter as "too short", so it is not worth an upload.
+const MIN_RECORDING_MS = 1000;
+
 // Set explicitly rather than inherited: Chrome defaults this codec to 128 kbps
 // (measured), which puts a full-length recording within a few percent of the
 // server cap, and the default is free to change between engines and releases.
@@ -101,6 +104,7 @@ export function voiceRecorder({ transcribeUrl, unsupportedText, deniedText, fail
             }
 
             const chunks = [];
+            let startedAt = Date.now();
             let recorder;
             try {
                 // isTypeSupported above validates the mimeType but not its pairing with
@@ -128,8 +132,15 @@ export function voiceRecorder({ transcribeUrl, unsupportedText, deniedText, fail
                 this._recorder = null;
                 this.recording = false;
 
+                if (this._destroyed) return;
+
+                if (Date.now() - startedAt < MIN_RECORDING_MS) {
+                    this.voiceError = silentText;
+                    return;
+                }
+
                 const blob = new Blob(chunks, { type: recorder.mimeType });
-                if (blob.size > 0 && ! this._destroyed) this.transcribeBlob(blob);
+                if (blob.size > 0) this.transcribeBlob(blob);
             };
 
             this._recorder = recorder;
@@ -138,6 +149,7 @@ export function voiceRecorder({ transcribeUrl, unsupportedText, deniedText, fail
 
             try {
                 recorder.start();
+                startedAt = Date.now();
             } catch {
                 // recording was already true, so without this the button stays stuck in
                 // its recording state and the next toggle calls stop() on a recorder
@@ -173,7 +185,11 @@ export function voiceRecorder({ transcribeUrl, unsupportedText, deniedText, fail
                 });
 
                 if (! response.ok) {
-                    this.voiceError = failedText;
+                    const serverMessage = [422, 503].includes(response.status)
+                        ? (await response.json().catch(() => null))?.message
+                        : null;
+
+                    this.voiceError = serverMessage || failedText;
                     return;
                 }
 

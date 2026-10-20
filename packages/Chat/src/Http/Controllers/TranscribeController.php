@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Http\Controllers;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Laravel\Ai\Exceptions\ProviderConnectionException;
+use Laravel\Ai\Exceptions\ProviderOverloadedException;
+use Laravel\Ai\Exceptions\RateLimitedException;
 use Laravel\Ai\Transcription;
 use Relaticle\Chat\Services\ModelRegistry;
 
@@ -39,8 +44,37 @@ final class TranscribeController
         /** @var UploadedFile $audio */
         $audio = $request->file('audio');
 
-        return response()->json([
-            'text' => Transcription::fromUpload($audio)->generate()->text,
-        ]);
+        try {
+            $text = Transcription::fromUpload($audio)->generate()->text;
+        } catch (RequestException $exception) {
+            return $this->failedResponse($exception);
+        } catch (RateLimitedException|ProviderOverloadedException|ProviderConnectionException|ConnectionException) {
+            return $this->busyResponse();
+        }
+
+        return response()->json(['text' => $text]);
+    }
+
+    private function failedResponse(RequestException $exception): JsonResponse
+    {
+        $status = $exception->response->status();
+
+        $unreadable = in_array($status, [413, 415], true)
+            || ($status === 400 && str_starts_with((string) $exception->response->json('error.message'), 'Audio file'));
+
+        if ($unreadable) {
+            $message = __("That recording couldn't be read. Try again.");
+
+            return response()->json(['message' => $message, 'errors' => ['audio' => [$message]]], 422);
+        }
+
+        throw_if($status < 500, $exception);
+
+        return $this->busyResponse();
+    }
+
+    private function busyResponse(): JsonResponse
+    {
+        return response()->json(['message' => __('Voice input is busy. Try again in a moment.')], 503);
     }
 }
