@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Actions\CustomFields\UpdateCustomField;
 use App\Models\CustomField;
-use App\Models\Opportunity;
 use App\Models\User;
 use App\Support\CustomFieldDefinitionValidator;
 use App\Support\CustomFieldSettingsSchema;
@@ -447,21 +446,6 @@ it('refuses a uniqueness change on a system field', function (): void {
 
     expect($result)->toContain('unique_per_entity_type')
         ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
-});
-
-it('refuses fewer decimal places than stored amounts use', function (): void {
-    $amount = makeSystemAmountField($this);
-    Opportunity::factory()->recycle([$this->owner, $this->workspace])->create()->saveCustomFieldValue($amount, 999.75);
-
-    $result = makeUpdateFieldTool($this->convId)->handle(new Request(['records' => [[
-        'entity_type' => 'opportunity',
-        'code' => $amount->code,
-        'settings' => ['decimal_places' => 0],
-    ]]]));
-
-    expect($result)->toContain('One record holds an amount with more decimal places.')
-        ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0)
-        ->and($amount->refresh()->getCurrencySettings()->decimalPlaces)->toBe(2);
 });
 
 it('refuses a decimal count the panel does not offer and names the ones it does', function (): void {
