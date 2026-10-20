@@ -41,7 +41,7 @@ it('resolves the panel notifications component to the resilient subclass', funct
 
     $this->get("/{$panelPath}/login")->assertOk();
 
-    [$name, $class] = app('livewire.factory')
+    [$name, $class] = resolve('livewire.factory')
         ->resolveComponentNameAndClass(Notifications::class);
 
     expect($class)->toBe(FilamentNotifications::class);
