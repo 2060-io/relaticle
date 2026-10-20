@@ -309,8 +309,8 @@ final class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): View|Factory => view('filament.app.analytics')
             )
-            // The password field binds only once Filament loads its reveal script on demand,
-            // overwriting anything typed or autofilled before. Fetching it with the page closes that gap.
+            // Filament loads the reveal script on demand, and the password field binds only then,
+            // overwriting anything typed or autofilled before it arrived.
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): View|Factory => view('filament.app.password-reveal-preload'),
