@@ -47,6 +47,8 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
             Gate::forUser($user)->authorize('promoteToAdmin', $workspace);
         }
 
+        $this->ensureWorkspaceIsNotClosing($workspace);
+
         $email = EmailAddress::canonicalize($email);
 
         $this->validate($workspace, $email, $role);
@@ -88,6 +90,17 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
         $this->ceiling->recordSent($user, $workspace);
 
         return $invitation;
+    }
+
+    private function ensureWorkspaceIsNotClosing(Workspace $workspace): void
+    {
+        if (! $workspace->isScheduledForDeletion()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'email' => __('workspaces.validation.workspace_scheduled_for_deletion'),
+        ])->errorBag('addWorkspaceMember');
     }
 
     /**

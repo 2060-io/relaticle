@@ -422,6 +422,25 @@ test('an administrator can invite someone as a member', function (): void {
     expect(WorkspaceInvitation::query()->where('email', 'fine@example.com')->exists())->toBeTrue();
 });
 
+test('inviting into a workspace scheduled for deletion is refused with the reason and sends no mail', function (): void {
+    $this->workspace->forceFill(['scheduled_deletion_at' => now()->addDays(30)])->save();
+
+    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->callAction('invitePeople', [
+            'emails' => 'closing@example.com',
+            'role' => WorkspaceRole::Member->value,
+        ])
+        ->assertNotified(
+            Notification::make()
+                ->title(__('workspaces.notifications.some_invites_failed.title'))
+                ->body('closing@example.com: '.__('workspaces.validation.workspace_scheduled_for_deletion'))
+                ->warning(),
+        );
+
+    expect($this->workspace->workspaceInvitations()->exists())->toBeFalse();
+    Mail::assertNothingQueued();
+});
+
 test('explains the chosen role under the invite modal role select', function (WorkspaceRole $role): void {
     livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
         ->mountAction('invitePeople')
