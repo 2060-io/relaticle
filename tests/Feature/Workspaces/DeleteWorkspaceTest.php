@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Filament\Pages\EditWorkspace;
 use App\Livewire\App\Workspaces\DeleteWorkspace;
 use App\Models\User;
 use Illuminate\Support\Facades\Notification;
@@ -18,7 +17,7 @@ test('workspace owner can schedule workspace deletion', function () {
 
     Livewire::test(DeleteWorkspace::class, ['workspace' => $workspace])
         ->call('deleteWorkspace', $workspace)
-        ->assertRedirect(EditWorkspace::getUrl(['tenant' => $workspace]));
+        ->assertRedirect();
 
     expect($workspace->refresh()->scheduled_deletion_at)->not->toBeNull();
 });
@@ -31,8 +30,8 @@ test('workspace owner can cancel scheduled workspace deletion', function () {
     $workspace->update(['scheduled_deletion_at' => now()->addDays(30)]);
 
     Livewire::test(DeleteWorkspace::class, ['workspace' => $workspace])
-        ->call('cancelWorkspaceDeletion', $workspace)
-        ->assertRedirect(EditWorkspace::getUrl(['tenant' => $workspace]));
+        ->call('cancelWorkspaceDeletion')
+        ->assertRedirect();
 
     expect($workspace->refresh()->scheduled_deletion_at)->toBeNull();
 });

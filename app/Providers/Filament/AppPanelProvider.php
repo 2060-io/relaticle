@@ -327,21 +327,18 @@ final class AppPanelProvider extends PanelProvider
             );
     }
 
-    private function workspaceDeletionBanner(): View|Factory|string
+    private function workspaceDeletionBanner(): string
     {
         $workspace = Filament::getTenant();
-        $user = $this->signedInUser();
 
-        if (! $workspace instanceof Workspace || ! $user instanceof User || ! $workspace->isScheduledForDeletion()) {
+        if (! $workspace instanceof Workspace || ! $workspace->isScheduledForDeletion()) {
             return '';
         }
 
-        return view('filament.app.workspace-deletion-banner', [
-            'deletionDate' => $workspace->scheduled_deletion_at,
-            'cancelUrl' => $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::WorkspaceManage)
-                ? EditWorkspace::getUrl(['tenant' => $workspace])
-                : null,
-        ]);
+        return Blade::render(
+            '@livewire(\App\Livewire\App\Workspaces\WorkspaceDeletionBanner::class, [\'workspace\' => $workspace])',
+            ['workspace' => $workspace],
+        );
     }
 
     private function registerInvitationHooks(Panel $panel): void

@@ -359,7 +359,6 @@ return [
 
     'deletion_banner' => [
         'message' => 'This workspace will be permanently deleted on :date.',
-        'cancel' => 'Cancel deletion',
     ],
 
     'pending_for_user' => [
