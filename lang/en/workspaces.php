@@ -129,6 +129,7 @@ return [
         'no_valid_emails' => 'Enter at least one email address.',
         'too_many_invites' => 'You can invite up to :max people at a time.',
         'remove_members_before_deleting' => 'Remove all members from these workspaces, or delete the workspaces, before deleting your account: :workspaces',
+        'workspace_scheduled_for_deletion' => 'This workspace is scheduled for deletion. Cancel the deletion to invite people.',
     ],
 
     'modals' => [
@@ -356,6 +357,11 @@ return [
         ],
     ],
 
+    'deletion_banner' => [
+        'message' => 'This workspace will be permanently deleted on :date.',
+        'cancel' => 'Cancel deletion',
+    ],
+
     'pending_for_user' => [
         'heading' => 'You have been invited to join :workspace',
         'detail_with_inviter' => ':inviter invited you with :role access.',
@@ -371,6 +377,11 @@ return [
         'no_longer_valid' => 'That invitation is no longer valid. It may have been revoked or it may have expired.',
         'account_deleting' => 'You cannot accept invitations while your account is scheduled for deletion.',
         'workspace_deleting' => 'This workspace is scheduled for deletion and is not accepting new members.',
+        'deleting' => [
+            'heading' => ':workspace is not accepting new members',
+            'body' => 'This workspace is scheduled for deletion. Ask the person who invited you to cancel the deletion, then open the invitation again.',
+            'action' => 'Go to my workspace',
+        ],
         'ready' => [
             'heading' => 'Join :workspace',
             'body_with_inviter' => ':inviter invited you to join :workspace with :role access.',

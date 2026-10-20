@@ -6,6 +6,7 @@ namespace App\Livewire\App\Workspaces;
 
 use App\Actions\Jetstream\CancelWorkspaceDeletion;
 use App\Actions\Jetstream\ScheduleWorkspaceDeletion;
+use App\Filament\Pages\EditWorkspace;
 use App\Livewire\BaseLivewireComponent;
 use App\Models\Workspace;
 use Filament\Actions\Action;
@@ -79,6 +80,7 @@ final class DeleteWorkspace extends BaseLivewireComponent
             resolve(ScheduleWorkspaceDeletion::class)->schedule($this->authUser(), $workspace);
 
             $this->sendNotification("Workspace scheduled for deletion on {$workspace->refresh()->scheduled_deletion_at->format('F j, Y')}");
+            $this->reloadSettings($workspace);
         } catch (AuthorizationException) {
             $this->sendNotification(
                 __('workspaces.notifications.permission_denied.cannot_delete_workspace'),
@@ -95,11 +97,18 @@ final class DeleteWorkspace extends BaseLivewireComponent
             resolve(CancelWorkspaceDeletion::class)->cancel($this->authUser(), $workspace);
 
             $this->sendNotification('Workspace deletion cancelled');
+            $this->reloadSettings($workspace);
         } catch (AuthorizationException) {
             $this->sendNotification(
                 __('workspaces.notifications.permission_denied.cannot_cancel_workspace_deletion'),
                 type: 'danger'
             );
         }
+    }
+
+    // The deletion banner renders outside this component, so only a page load redraws it.
+    private function reloadSettings(Workspace $workspace): void
+    {
+        $this->redirect(EditWorkspace::getUrl(['tenant' => $workspace]), navigate: true);
     }
 }
