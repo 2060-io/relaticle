@@ -302,6 +302,22 @@ final class AppPanelProvider extends PanelProvider
         return $user instanceof User ? $user : null;
     }
 
+    private function registerHeadHooks(Panel $panel): void
+    {
+        $panel
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View|Factory => view('filament.app.analytics')
+            )
+            // Filament loads the reveal script on demand, and the password field binds only then,
+            // overwriting anything typed or autofilled before it arrived.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View|Factory => view('filament.app.password-reveal-preload'),
+                scopes: [Login::class, ResetPassword::class],
+            );
+    }
+
     /**
      * BODY_START rather than a topbar slot: a banner has to be present on every
      * page of the panel, including the ones that render no topbar.
@@ -564,11 +580,9 @@ final class AppPanelProvider extends PanelProvider
                 ->discoverPages(in: base_path('packages/EmailIntegration/src/Filament/Pages'), for: 'Relaticle\\EmailIntegration\\Filament\\Pages');
         }
 
+        $this->registerHeadHooks($panel);
+
         $panel
-            ->renderHook(
-                PanelsRenderHook::HEAD_END,
-                fn (): View|Factory => view('filament.app.analytics')
-            )
             /**
              * The sidebar collapse toggle is panel chrome, so the panel owns it.
              * TENANT_MENU_AFTER puts it inside the sidebar, level with the

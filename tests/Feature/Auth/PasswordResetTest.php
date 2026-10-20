@@ -7,6 +7,7 @@ use App\Filament\Pages\Auth\ResetPassword;
 use App\Models\User;
 use App\Notifications\Auth\ResetPassword as ResetPasswordNotification;
 use Filament\Facades\Filament;
+use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
@@ -17,6 +18,23 @@ test('forgot password page can be rendered', function () {
     $response = $this->get(url()->getAppUrl('password-reset/request'));
 
     $response->assertSuccessful();
+});
+
+test('the reset page preloads the script its password fields bind with', function () {
+    $user = User::factory()->withWorkspace()->create();
+    $url = Filament::getPanel('app')->getResetPasswordUrl(Password::broker('users')->createToken($user), $user);
+    $revealScript = FilamentAsset::getAlpineComponentSrc('text-input/password-reveal', 'filament/forms');
+
+    $this->get($url)
+        ->assertSuccessful()
+        ->assertSee('<link rel="modulepreload" href="'.e($revealScript).'">', escape: false)
+        ->assertSee('x-load-src="'.e($revealScript).'"', escape: false);
+});
+
+test('the forgot password page, which has no password field, preloads nothing', function () {
+    $this->get(url()->getAppUrl('password-reset/request'))
+        ->assertSuccessful()
+        ->assertDontSee('password-reveal.js', escape: false);
 });
 
 test('reset password link can be requested', function () {

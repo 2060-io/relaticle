@@ -50,6 +50,15 @@ it('keeps panel auth pages out of tenant-slug normalization', function (): void 
         ->and($html)->toContain("'/email-verification'");
 });
 
+it('loads Fathom on the sign-in page', function (): void {
+    $this->app['env'] = 'production';
+    config(['services.fathom.site_id' => 'TESTSITE']);
+
+    $this->get(url()->getAppUrl('login'))
+        ->assertSuccessful()
+        ->assertSee('https://cdn.usefathom.com/script.js', escape: false);
+});
+
 it('rejects a signup from a disposable email domain', function (): void {
     $email = 'burner-'.uniqid().'@mailinator.com';
 
