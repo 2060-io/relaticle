@@ -66,6 +66,7 @@ it('can sort `:dataset` column', function (string $column): void {
         : $column;
 
     livewire(ManageNotes::class)
+        ->toggleAllTableColumns()
         ->sortTable($column)
         ->assertCanSeeTableRecords($records->sortBy($sortingKey), inOrder: true)
         ->sortTable($column, 'desc')
