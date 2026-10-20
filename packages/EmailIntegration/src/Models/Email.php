@@ -343,12 +343,26 @@ final class Email extends Model
      */
     public function replyRecipients(): array
     {
-        $replyTo = $this->participants->where('role', EmailParticipantRole::REPLY_TO);
-
-        return array_values(($replyTo->isNotEmpty() ? $replyTo : $this->participants->where('role', EmailParticipantRole::FROM))
+        return array_values($this->replyParticipants()
             ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address)
             ->filter(fn (string $address): bool => $address !== '')
             ->all());
+    }
+
+    /**
+     * @return EloquentCollection<int, EmailParticipant>
+     */
+    private function replyParticipants(): EloquentCollection
+    {
+        if ($this->direction === EmailDirection::OUTBOUND) {
+            return $this->participants->where('role', EmailParticipantRole::TO);
+        }
+
+        $replyTo = $this->participants->where('role', EmailParticipantRole::REPLY_TO);
+
+        return $replyTo->isNotEmpty()
+            ? $replyTo
+            : $this->participants->where('role', EmailParticipantRole::FROM);
     }
 
     /**

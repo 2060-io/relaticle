@@ -216,6 +216,40 @@ it('addresses a reply and a reply-all to the Reply-To address instead of the sen
     expect($replyAll)->toEqualCanonicalizing(['visitor@lead.com', 'cc-person@contact.com']);
 });
 
+it('addresses a reply to an email the mailbox sent to that email\'s recipients', function (): void {
+    $sent = Email::create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'subject' => 'Proposal',
+        'sent_at' => now()->subHour(),
+        'direction' => EmailDirection::OUTBOUND,
+        'status' => EmailStatus::SYNCED,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'creation_source' => EmailCreationSource::SYNC,
+        'rfc_message_id' => '<sent@example.com>',
+        'thread_id' => 'thread-sent',
+    ]);
+
+    foreach ([
+        ['me@example.com', EmailParticipantRole::FROM],
+        ['client@contact.com', EmailParticipantRole::TO],
+        ['manager@contact.com', EmailParticipantRole::CC],
+    ] as [$address, $role]) {
+        EmailParticipant::create(['email_id' => $sent->id, 'email_address' => $address, 'role' => $role]);
+    }
+
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $sent->id, 'reply')
+        ->assertSet('to', ['client@contact.com']);
+
+    $replyAll = livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $sent->id, 'reply_all')
+        ->get('to');
+
+    expect($replyAll)->toEqualCanonicalizing(['client@contact.com', 'manager@contact.com']);
+});
+
 it('inline composer prefills reply-all and forward from their modes', function (): void {
     $replyAll = livewire(EmailComposer::class, ['dock' => 'inline'])
         ->call('openReply', $this->inboundEmail->id, 'reply_all')
