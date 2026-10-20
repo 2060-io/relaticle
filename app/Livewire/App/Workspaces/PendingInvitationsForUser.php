@@ -10,6 +10,7 @@ use App\Livewire\BaseLivewireComponent;
 use App\Models\WorkspaceInvitation;
 use Filament\Facades\Filament;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
@@ -30,6 +31,7 @@ final class PendingInvitationsForUser extends BaseLivewireComponent
             ->with(['workspace', 'inviter'])
             ->whereRaw('lower(email) = ?', [Str::lower($this->authUser()->email)])
             ->where('expires_at', '>', now())
+            ->whereDoesntHave('workspace', fn (Builder $workspace): Builder => $workspace->scheduledForDeletion())
             ->get();
     }
 

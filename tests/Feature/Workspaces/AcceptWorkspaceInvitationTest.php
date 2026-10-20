@@ -227,10 +227,30 @@ test('a workspace scheduled for deletion cannot be joined', function (): void {
 
     $this->actingAs($this->user)
         ->post($joinUrl)
-        ->assertStatus(410);
+        ->assertStatus(410)
+        ->assertSee(__('workspaces.accept.deleting.heading', ['workspace' => $workspace->name]));
 
     expect($workspace->fresh()->hasUser($this->user))->toBeFalse();
     expect(WorkspaceInvitation::query()->whereKey($invitation->id)->exists())->toBeTrue();
+});
+
+test('an invitation to a workspace scheduled for deletion says so instead of offering to join', function (): void {
+    $workspace = Workspace::factory()->create();
+    $workspace->forceFill(['scheduled_deletion_at' => now()->addDays(30)])->save();
+
+    /** @var WorkspaceInvitation $invitation */
+    $invitation = $workspace->workspaceInvitations()->create([
+        'email' => $this->user->email,
+        'role' => 'member',
+        'expires_at' => now()->addDays(7),
+    ]);
+
+    $this->actingAs($this->user)
+        ->get(route('workspace-invitations.token.accept', ['token' => rawTokenFor($invitation)]))
+        ->assertStatus(410)
+        ->assertSee(__('workspaces.accept.deleting.heading', ['workspace' => $workspace->name]))
+        ->assertSee(__('workspaces.accept.deleting.body'))
+        ->assertDontSee(__('workspaces.accept.ready.action', ['workspace' => $workspace->name]));
 });
 
 test('a GET on the accept link never joins the workspace', function (): void {

@@ -318,6 +318,45 @@ final class AppPanelProvider extends PanelProvider
             );
     }
 
+    /**
+     * BODY_START rather than a topbar slot: a banner has to be present on every
+     * page of the panel, including the ones that render no topbar.
+     */
+    private function registerBanners(Panel $panel): void
+    {
+        $panel
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                function (): View|Factory|string {
+                    $user = $this->signedInUser();
+
+                    if (! $user instanceof User || ! resolve(Impersonator::class)->active(request())) {
+                        return '';
+                    }
+
+                    return view('filament.app.impersonation-banner', ['user' => $user]);
+                }
+            )
+            ->renderHook(
+                PanelsRenderHook::BODY_START,
+                $this->workspaceDeletionBanner(...),
+            );
+    }
+
+    private function workspaceDeletionBanner(): string
+    {
+        $workspace = Filament::getTenant();
+
+        if (! $workspace instanceof Workspace || ! $workspace->isScheduledForDeletion()) {
+            return '';
+        }
+
+        return Blade::render(
+            '@livewire(\App\Livewire\App\Workspaces\WorkspaceDeletionBanner::class, [\'workspace\' => $workspace])',
+            ['workspace' => $workspace],
+        );
+    }
+
     private function registerInvitationHooks(Panel $panel): void
     {
         $panel
@@ -545,22 +584,6 @@ final class AppPanelProvider extends PanelProvider
 
         $panel
             /**
-             * BODY_START rather than a topbar slot: the banner has to be present on
-             * every page of the panel, including the ones that render no topbar.
-             */
-            ->renderHook(
-                PanelsRenderHook::BODY_START,
-                function (): View|Factory|string {
-                    $user = $this->signedInUser();
-
-                    if (! $user instanceof User || ! resolve(Impersonator::class)->active(request())) {
-                        return '';
-                    }
-
-                    return view('filament.app.impersonation-banner', ['user' => $user]);
-                }
-            )
-            /**
              * The sidebar collapse toggle is panel chrome, so the panel owns it.
              * TENANT_MENU_AFTER puts it inside the sidebar, level with the
              * workspace switcher; `.fi-sidebar-toggle-btn` places it in both the
@@ -632,6 +655,7 @@ final class AppPanelProvider extends PanelProvider
                 $this->upgradeModal(...),
             );
 
+        $this->registerBanners($panel);
         $this->registerInvitationHooks($panel);
 
         // Hidden without a bound tenant: the old panel-root fallback sent these

@@ -421,6 +421,17 @@ it('refuses to propose an invitation for a member who does not own the workspace
         ->and(WorkspaceInvitation::query()->where('workspace_id', $this->workspace->getKey())->count())->toBe(0);
 });
 
+it('refuses to propose an invitation into a workspace scheduled for deletion', function (): void {
+    $this->workspace->forceFill(['scheduled_deletion_at' => now()->addDays(30)])->save();
+
+    $result = (new InviteWorkspaceMemberTool)->handle(new Request([
+        'records' => [['email' => 'alex@example.com', 'role' => WorkspaceRole::Member->value]],
+    ]));
+
+    expect($result)->toContain('scheduled for deletion')
+        ->and(PendingAction::query()->where('workspace_id', $this->workspace->getKey())->count())->toBe(0);
+});
+
 it('never links the non-owner refusal to a page that would 403 for them', function (): void {
     $member = User::factory()->create();
     $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
