@@ -250,13 +250,26 @@ function assertActionHasMailboxOAuthUrl(
  * Log in through the real two-step login form: type the email and submit to
  * reveal the password field, then type the password and submit again.
  */
-function loginViaBrowser(User $user): AwaitableWebpage
+function loginViaBrowser(User $user, ?string $theme = null): AwaitableWebpage
 {
-    return test()->visit('/app/login')
+    $page = test()->visit('/app/login');
+
+    if ($theme !== null) {
+        $page = $page->{$theme}();
+    }
+
+    return $page
         ->type('[id="form.email"]', $user->email)
         ->click('button[type="submit"]')
+        ->assertVisible('[id="form.password"]')
+        ->assertScript(asyncAlpineComponentsLoaded())
         ->type('[id="form.password"]', 'password')
         ->click('button[type="submit"]');
+}
+
+function asyncAlpineComponentsLoaded(): string
+{
+    return 'document.querySelector("[x-load][x-ignore]") === null';
 }
 
 function pdfBytes(): string
