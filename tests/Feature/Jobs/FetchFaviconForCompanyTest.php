@@ -46,7 +46,7 @@ test('job swallows throwable from favicon driver instead of letting it escape', 
         ->forEntity(Company::class)
         ->firstOrFail();
 
-    CustomFieldValue::forceCreate([
+    CustomFieldValue::query()->forceCreate([
         'tenant_id' => $this->user->currentWorkspace->getKey(),
         'entity_type' => 'company',
         'entity_id' => $company->getKey(),
@@ -60,7 +60,7 @@ test('job swallows throwable from favicon driver instead of letting it escape', 
 
     // If the job's catch were `catch (Exception)`, the TypeError would escape this call.
     // The test passes simply by not throwing.
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect(true)->toBeTrue();
 });
@@ -73,7 +73,7 @@ test('job rejects favicon url that resolves to private address', function (): vo
         ->forEntity(Company::class)
         ->firstOrFail();
 
-    CustomFieldValue::forceCreate([
+    CustomFieldValue::query()->forceCreate([
         'tenant_id' => $this->user->currentWorkspace->getKey(),
         'entity_type' => 'company',
         'entity_id' => $company->getKey(),
@@ -88,7 +88,7 @@ test('job rejects favicon url that resolves to private address', function (): vo
 
     Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($company->fresh()->getMedia('logo'))->toBeEmpty();
 });
@@ -103,7 +103,7 @@ test('downloads the favicon through the guarded client and stores it', function 
         ->forEntity(Company::class)
         ->firstOrFail();
 
-    CustomFieldValue::forceCreate([
+    CustomFieldValue::query()->forceCreate([
         'tenant_id' => $this->user->currentWorkspace->getKey(),
         'entity_type' => 'company',
         'entity_id' => $company->getKey(),
@@ -121,7 +121,7 @@ test('downloads the favicon through the guarded client and stores it', function 
     $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
     Http::fake(['https://1.1.1.1/favicon.png' => Http::response($pngBytes, 200)]);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Http::assertSent(fn ($request): bool => $request->url() === 'https://1.1.1.1/favicon.png');
     expect($company->fresh()->getMedia('logo'))->toHaveCount(1);
@@ -133,7 +133,7 @@ test('downloads the favicon when the company carries several custom field values
     $company = Company::factory()->for($this->user->currentWorkspace)->create();
 
     foreach ([CompanyField::DOMAINS->value => ['example.com'], CompanyField::LINKEDIN->value => 'www.linkedin.com/company/example'] as $code => $value) {
-        CustomFieldValue::forceCreate([
+        CustomFieldValue::query()->forceCreate([
             'tenant_id' => $this->user->currentWorkspace->getKey(),
             'entity_type' => 'company',
             'entity_id' => $company->getKey(),
@@ -152,7 +152,7 @@ test('downloads the favicon when the company carries several custom field values
     $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
     Http::fake(['https://1.1.1.1/favicon.png' => Http::response($pngBytes, 200)]);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($company->fresh()->getMedia('logo'))->toHaveCount(1);
 });
@@ -162,7 +162,7 @@ test('refuses a favicon whose body is not a raster image', function (string $url
 
     $company = Company::factory()->for($this->user->currentWorkspace)->create();
 
-    CustomFieldValue::forceCreate([
+    CustomFieldValue::query()->forceCreate([
         'tenant_id' => $this->user->currentWorkspace->getKey(),
         'entity_type' => 'company',
         'entity_id' => $company->getKey(),
@@ -179,7 +179,7 @@ test('refuses a favicon whose body is not a raster image', function (string $url
 
     Http::fake([$url => Http::response($body, 200)]);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($company->fresh()->getMedia('logo'))->toBeEmpty();
 })->with([
@@ -192,7 +192,7 @@ test('names the stored logo after its content rather than its url', function ():
 
     $company = Company::factory()->for($this->user->currentWorkspace)->create();
 
-    CustomFieldValue::forceCreate([
+    CustomFieldValue::query()->forceCreate([
         'tenant_id' => $this->user->currentWorkspace->getKey(),
         'entity_type' => 'company',
         'entity_id' => $company->getKey(),
@@ -210,7 +210,7 @@ test('names the stored logo after its content rather than its url', function ():
     $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
     Http::fake(['https://1.1.1.1/favicon.svg' => Http::response($pngBytes, 200)]);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($company->fresh()->getFirstMedia('logo')?->file_name)->toBe('logo.png');
 });
@@ -246,7 +246,7 @@ test('replaces the logo fetched for a previous domain', function (): void {
     Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
     Http::fake(['https://1.1.1.1/favicon.png' => Http::response(onePixelPng(), 200)]);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     $logos = $company->fresh()->getMedia('logo');
 
@@ -268,7 +268,7 @@ test('drops the logo of a previous domain when the new domain has no favicon', f
 
     Favicon::shouldReceive('driver->fetch')->andReturn(null);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($company->fresh()->getMedia('logo'))->toBeEmpty();
 });
@@ -288,7 +288,7 @@ test('ignores a domain stored against another workspace field', function (): voi
     CustomFieldValue::withoutEvents(function () use ($company, $otherWorkspace, $foreignDomainsField): void {
         $company->customFieldValues()->delete();
 
-        CustomFieldValue::forceCreate([
+        CustomFieldValue::query()->forceCreate([
             'tenant_id' => $otherWorkspace->getKey(),
             'entity_type' => 'company',
             'entity_id' => $company->getKey(),
@@ -300,7 +300,7 @@ test('ignores a domain stored against another workspace field', function (): voi
     Filament::setTenant(null);
     Favicon::shouldReceive('driver')->never();
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 });
 
 test('keeps the logo of a previous domain when the fetch for the new domain throws', function (): void {
@@ -317,7 +317,7 @@ test('keeps the logo of a previous domain when the fetch for the new domain thro
 
     Favicon::shouldReceive('driver->fetch')->andThrow(new RuntimeException('Could not resolve host'));
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     $logos = $company->fresh()->getMedia('logo');
 
@@ -333,7 +333,7 @@ test('an unreachable company site is not reported as an error', function (): voi
     Favicon::shouldReceive('driver->fetch')
         ->andThrow(new ConnectionException('Could not resolve host for https://dead-host.example'));
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Exceptions::assertNothingReported();
 });
@@ -349,7 +349,7 @@ test('a favicon whose host does not resolve is skipped without being reported', 
     Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
     Http::fake();
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Http::assertNothingSent();
     Exceptions::assertNothingReported();
@@ -374,7 +374,7 @@ test('a favicon host that stops resolving before the download is not reported', 
         return $lookups === 1 ? ['93.184.216.34'] : [];
     }));
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Http::assertNothingSent();
     Exceptions::assertNothingReported();
@@ -387,7 +387,7 @@ test('an unexpected failure while fetching a favicon is reported', function (): 
 
     Favicon::shouldReceive('driver->fetch')->andThrow(new TypeError('broken driver'));
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Exceptions::assertReported(TypeError::class);
 });
@@ -400,7 +400,7 @@ test('a company domain that resolves to a private address is skipped without bei
     resolveHostsTo(['10.10.0.77']);
     Http::fake();
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Http::assertNothingSent();
     Exceptions::assertNothingReported();
@@ -417,7 +417,7 @@ test('a favicon download that times out is not reported', function (): void {
     Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
     Http::fake(['https://1.1.1.1/favicon.png' => fn () => throw new HttpConnectionException('cURL error 28: SSL connection timeout')]);
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     Exceptions::assertNothingReported();
     expect($company->fresh()->getMedia('logo'))->toBeEmpty();
@@ -444,7 +444,7 @@ test('stops trying further sources once the time budget has passed', function ()
         return Http::response('', 404);
     });
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($requested)->toBe(['https://slow.example', 'https://slow.example'])
         ->and($company->fresh()->getMedia('logo'))->toHaveCount(1);
@@ -475,7 +475,7 @@ test('still stores the logo when the first source answers in time', function ():
         };
     });
 
-    (new FetchFaviconForCompany($company->fresh()))->handle();
+    new FetchFaviconForCompany($company->fresh())->handle();
 
     expect($company->fresh()->getMedia('logo'))->toHaveCount(1)
         ->and($timeouts)->toEqual([[5, 3], [5, 3], [7, 3]]);

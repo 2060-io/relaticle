@@ -83,11 +83,9 @@ test('accepts a clearly-public address literal', function (): void {
 });
 
 test('guard refuses a redirect to a non-public host and follows a public one', function (string $location, bool $followed): void {
-    Http::fake(function (HttpClientRequest $request) use ($location) {
-        return $request->url() === 'https://1.1.1.1/icon.png'
-            ? Http::response('', 302, ['Location' => $location])
-            : Http::response('png');
-    });
+    Http::fake(fn (HttpClientRequest $request) => $request->url() === 'https://1.1.1.1/icon.png'
+        ? Http::response('', 302, ['Location' => $location])
+        : Http::response('png'));
 
     $send = fn () => SsrfGuard::guard(Http::timeout(5))->get('https://1.1.1.1/icon.png');
 
