@@ -6,6 +6,7 @@ use App\Services\Favicon\Drivers\HighQualityDriver;
 use App\Support\Http\HostResolver;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Favicon;
+use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
 use Illuminate\Http\Client\Request as HttpClientRequest;
 use Illuminate\Support\Facades\Http;
 
@@ -291,4 +292,21 @@ test('finds no favicon when the last source answers not found at the end of the 
     });
 
     expect((new HighQualityDriver)->fetch('https://1.1.1.1'))->toBeNull();
+});
+
+test('treats a lookup cut off by the end of the budget as out of time, not as no favicon', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+    $this->freezeTime();
+
+    Http::fake(function (HttpClientRequest $request) {
+        if (str_contains($request->url(), 'duckduckgo')) {
+            $this->travel(20)->seconds();
+
+            throw new HttpConnectionException('cURL error 28: Operation timed out');
+        }
+
+        return Http::response('', 404);
+    });
+
+    expect(fn (): ?Favicon => (new HighQualityDriver)->fetch('https://1.1.1.1'))->toThrow(ConnectionException::class);
 });

@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\User;
+use App\Support\Http\HostResolver;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
 use Filament\Facades\Filament;
@@ -404,6 +405,24 @@ test('stops following redirects once the time budget has passed', function (): v
         ->and($company->fresh()->getMedia('logo'))->toBeEmpty();
 
     Exceptions::assertNothingReported();
+});
+
+test('a favicon download that redirects to a host that does not resolve is not reported', function (): void {
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['example.com']],
+    ]);
+
+    $favicon = Mockery::mock(AshAllenDesign\FaviconFetcher\Favicon::class);
+    $favicon->shouldReceive('getFaviconUrl')->andReturn('https://icons.example.com/favicon.png');
+
+    Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
+    app()->instance(HostResolver::class, new HostResolver(fn (string $host): array => $host === 'icons.example.com' ? ['93.184.216.34'] : []));
+    Http::fake(['https://icons.example.com/favicon.png' => Http::response('', 302, ['Location' => 'https://gone.example/favicon.png'])]);
+
+    new FetchFaviconForCompany($company->fresh())->handle();
+
+    Exceptions::assertNothingReported();
+    expect($company->fresh()->getMedia('logo'))->toBeEmpty();
 });
 
 test('an unexpected failure while fetching a favicon is reported', function (): void {

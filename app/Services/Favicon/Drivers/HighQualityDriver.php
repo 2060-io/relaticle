@@ -114,6 +114,13 @@ final class HighQualityDriver implements Fetcher
         return null;
     }
 
+    private function noteIfOutOfTime(): void
+    {
+        if (! $this->hasTimeLeft()) {
+            $this->skippedForLackOfTime = true;
+        }
+    }
+
     private function hasTimeLeft(): bool
     {
         return $this->secondsLeft() >= self::MINIMUM_SECONDS_PER_REQUEST;
@@ -288,7 +295,7 @@ final class HighQualityDriver implements Fetcher
             }
 
         } catch (\Exception) {
-            // Fall through
+            $this->noteIfOutOfTime();
         }
 
         return null;
@@ -322,7 +329,7 @@ final class HighQualityDriver implements Fetcher
             }
 
         } catch (\Exception) {
-            // Fall through
+            $this->noteIfOutOfTime();
         }
 
         return $this->notFound($url);

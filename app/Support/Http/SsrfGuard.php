@@ -72,7 +72,6 @@ final readonly class SsrfGuard
     private static function pinToValidatedAddress(?CarbonImmutable $deadline): Closure
     {
         return static fn (callable $handler): Closure => static function (RequestInterface $request, array $options) use ($handler, $deadline): PromiseInterface {
-            $options = self::withinDeadline($request, $options, $deadline);
             $uri = $request->getUri();
             $host = trim($uri->getHost(), '[]');
             $port = $uri->getPort() ?? ($uri->getScheme() === 'https' ? 443 : 80);
@@ -84,6 +83,8 @@ final readonly class SsrfGuard
 
                 throw $exception;
             }
+
+            $options = self::withinDeadline($request, $options, $deadline);
 
             if ($pin !== null) {
                 $options['curl'][CURLOPT_RESOLVE] = [$pin];
