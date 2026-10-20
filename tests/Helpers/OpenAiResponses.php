@@ -14,6 +14,10 @@ use Illuminate\Support\Facades\Http;
  */
 final class OpenAiResponses
 {
+    private const int REASONING_TOKENS = 46;
+
+    private const float CHARACTERS_PER_TOKEN = 1.8;
+
     /** @param array<string, mixed> $structured */
     public static function fakeStructured(array $structured, string $model = 'gpt-5.6-luna'): void
     {
@@ -35,26 +39,24 @@ final class OpenAiResponses
     }
 
     /** @param array<string, mixed> $structured */
-    public static function fakeStructuredWithinBudget(array $structured, int $reasoningTokens = 46, float $charactersPerToken = 1.8): void
+    public static function fakeStructuredWithinBudget(array $structured): void
     {
         Http::fake([
-            'api.openai.com/*' => static function (Request $request) use ($structured, $reasoningTokens, $charactersPerToken): PromiseInterface {
+            'api.openai.com/*' => static function (Request $request) use ($structured): PromiseInterface {
                 $text = json_encode($structured, JSON_THROW_ON_ERROR);
-                $budget = (int) ($request->data()['max_output_tokens'] ?? PHP_INT_MAX);
-                $visibleCharacters = (int) floor(max(0, $budget - $reasoningTokens) * $charactersPerToken);
-                $isTruncated = mb_strlen($text) > $visibleCharacters;
+                $visibleCharacters = (int) floor(max(0, $request->data()['max_output_tokens'] - self::REASONING_TOKENS) * self::CHARACTERS_PER_TOKEN);
+                $status = mb_strlen($text) > $visibleCharacters ? 'incomplete' : 'completed';
 
                 return Http::response([
                     'id' => 'resp_fake',
                     'model' => 'gpt-5.6-luna',
-                    'status' => $isTruncated ? 'incomplete' : 'completed',
-                    'incomplete_details' => $isTruncated ? ['reason' => 'max_output_tokens'] : null,
+                    'status' => $status,
                     'output' => [[
                         'type' => 'message',
-                        'status' => $isTruncated ? 'incomplete' : 'completed',
-                        'content' => [['type' => 'output_text', 'text' => $isTruncated ? mb_substr($text, 0, $visibleCharacters) : $text, 'annotations' => []]],
+                        'status' => $status,
+                        'content' => [['type' => 'output_text', 'text' => mb_substr($text, 0, $visibleCharacters), 'annotations' => []]],
                     ]],
-                    'usage' => ['input_tokens' => 533, 'output_tokens' => min($budget, $reasoningTokens + 20), 'output_tokens_details' => ['reasoning_tokens' => $reasoningTokens]],
+                    'usage' => ['input_tokens' => 533, 'output_tokens' => self::REASONING_TOKENS + 20, 'output_tokens_details' => ['reasoning_tokens' => self::REASONING_TOKENS]],
                 ]);
             },
         ]);
