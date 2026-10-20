@@ -53,8 +53,9 @@ function decodeRaw(Message $message): string
 
 /**
  * @param  list<string>  $labelIds
+ * @param  array<string, string>  $extraHeaders
  */
-function fetchGmailMessageFromHeader(string $from, array $labelIds = ['INBOX']): FetchedEmailData
+function fetchGmailMessageFromHeader(string $from, array $labelIds = ['INBOX'], array $extraHeaders = []): FetchedEmailData
 {
     $account = ConnectedAccount::factory()->make();
 
@@ -65,6 +66,11 @@ function fetchGmailMessageFromHeader(string $from, array $labelIds = ['INBOX']):
         new MessagePartHeader(['name' => 'Subject', 'value' => 'Hello']),
         new MessagePartHeader(['name' => 'From', 'value' => $from]),
         new MessagePartHeader(['name' => 'To', 'value' => 'Owner <owner@example.test>']),
+        ...array_map(
+            fn (string $name, string $value): MessagePartHeader => new MessagePartHeader(['name' => $name, 'value' => $value]),
+            array_keys($extraHeaders),
+            $extraHeaders,
+        ),
     ]);
     $payload->setBody(new MessagePartBody([
         'data' => rtrim(strtr(base64_encode('Hello'), '+/', '-_'), '='),
@@ -919,4 +925,38 @@ it('does not flag mail in the primary tab as bulk', function (): void {
     $data = fetchGmailMessageFromHeader('Prospect <prospect@acme.example>', ['INBOX', 'CATEGORY_PERSONAL']);
 
     expect($data->isBulkMail)->toBeFalse();
+});
+
+it('lists every Reply-To address as a reply_to participant', function (): void {
+    $data = fetchGmailMessageFromHeader('Forms <noreply@forms.example>', extraHeaders: [
+        'Reply-To' => 'support@forms.example, Polly Hammond <polly@5forests.example>',
+    ]);
+
+    expect(collect($data->participants)->where('role', 'reply_to')->pluck('email_address')->all())
+        ->toBe(['support@forms.example', 'polly@5forests.example']);
+});
+
+it('keeps a form notification Gmail filed under a bulk category', function (string $label): void {
+    $data = fetchGmailMessageFromHeader('Relaticle <noreply@notifications.relaticle.example>', ['INBOX', $label], [
+        'Reply-To' => 'support@relaticle.example, polly@5forests.example',
+    ]);
+
+    expect($data->isBulkMail)->toBeFalse();
+})->with(['CATEGORY_UPDATES', 'CATEGORY_PROMOTIONS']);
+
+it('flags bulk mail whose Reply-To stays on the sender organisation', function (): void {
+    $data = fetchGmailMessageFromHeader('Brand <news@mail.brand.co.uk>', ['INBOX', 'CATEGORY_UPDATES'], [
+        'Reply-To' => 'help@brand.co.uk',
+    ]);
+
+    expect($data->isBulkMail)->toBeTrue();
+});
+
+it('flags a newsletter with a List-Unsubscribe header even when it replies to another domain', function (): void {
+    $data = fetchGmailMessageFromHeader('Author <author@newsletters.example>', ['INBOX', 'CATEGORY_UPDATES'], [
+        'Reply-To' => 'author@gmail.example',
+        'List-Unsubscribe' => '<https://newsletters.example/unsubscribe>',
+    ]);
+
+    expect($data->isBulkMail)->toBeTrue();
 });
