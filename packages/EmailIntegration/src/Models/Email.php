@@ -339,7 +339,20 @@ final class Email extends Model
     }
 
     /**
-     * Reply-all recipient addresses: the original sender PLUS the to/cc recipients
+     * @return list<string>
+     */
+    public function replyRecipients(): array
+    {
+        $replyTo = $this->participants->where('role', EmailParticipantRole::REPLY_TO);
+
+        return array_values(($replyTo->isNotEmpty() ? $replyTo : $this->participants->where('role', EmailParticipantRole::FROM))
+            ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address)
+            ->filter(fn (string $address): bool => $address !== '')
+            ->all());
+    }
+
+    /**
+     * Reply-all recipient addresses: the reply recipients PLUS the to/cc recipients
      * (never bcc), excluding the replying user's own account address. De-duplicated
      * case-insensitively. Operates on the loaded `participants` relation.
      *
@@ -349,9 +362,10 @@ final class Email extends Model
     {
         $normalizedExclude = $excludeAddress !== null ? strtolower($excludeAddress) : null;
 
-        return array_values($this->participants
-            ->whereIn('role', [EmailParticipantRole::FROM, EmailParticipantRole::TO, EmailParticipantRole::CC])
-            ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address)
+        return array_values(collect($this->replyRecipients())
+            ->merge($this->participants
+                ->whereIn('role', [EmailParticipantRole::TO, EmailParticipantRole::CC])
+                ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address))
             ->filter(fn (string $address): bool => $address !== '' && strtolower($address) !== $normalizedExclude)
             ->unique(fn (string $address): string => strtolower($address))
             ->all());

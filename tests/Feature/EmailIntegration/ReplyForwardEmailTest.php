@@ -197,6 +197,25 @@ it('inline composer prefills a reply from the selected email and queues it', fun
         ->and($reply->in_reply_to)->toBe($this->inboundEmail->rfc_message_id);
 });
 
+it('addresses a reply and a reply-all to the Reply-To address instead of the sender', function (): void {
+    EmailParticipant::create([
+        'email_id' => $this->inboundEmail->id,
+        'email_address' => 'visitor@lead.com',
+        'name' => 'Visitor',
+        'role' => EmailParticipantRole::REPLY_TO,
+    ]);
+
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'reply')
+        ->assertSet('to', ['visitor@lead.com']);
+
+    $replyAll = livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'reply_all')
+        ->get('to');
+
+    expect($replyAll)->toEqualCanonicalizing(['visitor@lead.com', 'cc-person@contact.com']);
+});
+
 it('inline composer prefills reply-all and forward from their modes', function (): void {
     $replyAll = livewire(EmailComposer::class, ['dock' => 'inline'])
         ->call('openReply', $this->inboundEmail->id, 'reply_all')

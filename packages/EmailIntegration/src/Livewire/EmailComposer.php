@@ -53,7 +53,6 @@ use Relaticle\EmailIntegration\Filament\RichContent\SignatureBlock;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAttachment;
-use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Models\EmailTemplate;
 use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
@@ -312,16 +311,8 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         $this->to = match ($this->replyMode) {
             'forward' => [],
-            // Reply-all addresses the original sender PLUS the to/cc recipients
-            // (never bcc), minus the user's own account address.
             'reply_all' => $email->replyAllRecipients($account->email_address),
-            // `where()` on the loaded collection keeps the original keys, so the
-            // result has to be re-indexed to satisfy the list-typed property.
-            default => array_values($email->participants
-                ->where('role', EmailParticipantRole::FROM)
-                ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address)
-                ->filter(fn (string $address): bool => $address !== '')
-                ->all()),
+            default => $email->replyRecipients(),
         };
 
         // Only prefill the original subject when the viewer is entitled to see it.
