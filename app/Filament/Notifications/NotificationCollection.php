@@ -12,6 +12,6 @@ final class NotificationCollection extends Collection
 {
     public static function fromLivewire(mixed $value): static
     {
-        return parent::fromLivewire(array_filter(is_array($value) ? $value : [], is_array(...)));
+        return parent::fromLivewire(is_array($value) ? array_filter($value, is_array(...)) : $value);
     }
 }
