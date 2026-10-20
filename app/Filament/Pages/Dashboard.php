@@ -143,7 +143,7 @@ final class Dashboard extends Page
         // field id written onto it. A row that no longer resolves (completed in
         // another tab, deleted meanwhile) is not an error: the desired end state
         // is already true, so just refresh instead of throwing a 404 over Home.
-        $task = Task::query()->where('workspace_id', Filament::getTenant()?->getKey())->find($taskId);
+        $task = $this->tenantTask($taskId);
 
         if ($task instanceof Task) {
             resolve(CompleteTask::class)->execute($user, $task);
@@ -162,10 +162,7 @@ final class Dashboard extends Page
     public function editTaskAction(): EditAction
     {
         return EditAction::make('editTask')
-            ->record(fn (array $arguments): ?Task => Task::query()
-                ->where('workspace_id', Filament::getTenant()?->getKey())
-                ->whereKey($arguments['task'] ?? null)
-                ->first())
+            ->record(fn (array $arguments): ?Task => $this->tenantTask($arguments['task'] ?? null))
             ->recordTitleAttribute('title')
             ->authorize(fn (?Task $record): bool => $record instanceof Task && Gate::allows('update', $record))
             ->slideOver()
@@ -179,6 +176,14 @@ final class Dashboard extends Page
             ->after(function (): void {
                 unset($this->myTasks);
             });
+    }
+
+    private function tenantTask(mixed $taskId): ?Task
+    {
+        return Task::query()
+            ->where('workspace_id', Filament::getTenant()?->getKey())
+            ->whereKey($taskId)
+            ->first();
     }
 
     public function createTaskAction(): CreateTaskAction
