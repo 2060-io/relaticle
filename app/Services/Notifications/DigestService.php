@@ -8,11 +8,12 @@ use App\Data\DigestPayload;
 use App\Data\DigestTaskItem;
 use App\Data\DigestWorkspaceSection;
 use App\Enums\CreationSource;
+use App\Enums\CrmEntity;
 use App\Enums\CustomFields\TaskField;
-use App\Filament\Resources\TaskResource;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Billing\HostedWorkspaceAccess;
+use App\Support\CanonicalRecordUrl;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -21,7 +22,10 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class DigestService
 {
-    public function __construct(private HostedWorkspaceAccess $hostedAccess) {}
+    public function __construct(
+        private HostedWorkspaceAccess $hostedAccess,
+        private CanonicalRecordUrl $urls,
+    ) {}
 
     public function forUser(User $user): DigestPayload
     {
@@ -81,8 +85,6 @@ final readonly class DigestService
             ->select(['t.id', 't.title', 'due.datetime_value as due_at'])
             ->get();
 
-        $tasksIndexUrl = TaskResource::getUrl(name: 'index', parameters: ['tenant' => $workspace], panel: 'app');
-
         $overdue = [];
         $upcoming = [];
 
@@ -92,10 +94,7 @@ final readonly class DigestService
             $item = new DigestTaskItem(
                 title: (string) $row->title,
                 dueAt: $dueAt,
-                editUrl: $tasksIndexUrl.'?'.http_build_query([
-                    'tableAction' => 'edit',
-                    'tableActionRecord' => (string) $row->id,
-                ]),
+                editUrl: $this->urls->buildOrFail(CrmEntity::Task, (string) $row->id, $workspace),
             );
 
             if ($dueAt->lt($startOfToday)) {

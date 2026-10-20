@@ -7,10 +7,12 @@ use App\Actions\Task\NotifyTaskAssignees;
 use App\Actions\Task\UpdateTask;
 use App\Features\OnboardSeed;
 use App\Filament\Pages\Dashboard;
+use App\Filament\Resources\TaskResource;
 use App\Mail\TaskAssignedMail;
 use App\Models\CustomFieldValue;
 use App\Models\Task;
 use App\Models\User;
+use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
@@ -112,6 +114,10 @@ it('leaves the task link to the tasks page for a viewer who cannot edit', functi
 
     livewire(Dashboard::class)
         ->assertSee('Ship the widget')
+        ->assertSeeHtml('href="'.e(TaskResource::getUrl('index', [
+            'tableAction' => EditAction::getDefaultName(),
+            'tableActionRecord' => $task->id,
+        ], panel: 'app', tenant: $workspace)).'"')
         ->assertDontSeeHtml("mountAction('editTask'")
         ->mountAction('editTask', ['task' => $task->id])
         ->assertActionNotMounted('editTask');
