@@ -105,6 +105,9 @@ return [
     'sync_error' => [
         'badge' => 'Sync issue',
         'heading' => 'Some items could not be synced',
+        'reasons' => [
+            'google_mail_disabled' => "Gmail isn't enabled for this Google Workspace account. Ask your Google admin to turn it on, then reconnect.",
+        ],
     ],
     'importing' => 'Syncing',
     'importing_percent' => ':percent%',

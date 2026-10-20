@@ -24,6 +24,7 @@ use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailProvider;
+use Relaticle\EmailIntegration\Enums\SyncErrorReason;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
 
@@ -372,6 +373,11 @@ final class ConnectedAccount extends Model
     {
         return filled($this->last_error)
             && ! $this->showsMailboxHistoryImportFailureSummary();
+    }
+
+    public function syncErrorReason(): ?string
+    {
+        return SyncErrorReason::tryFrom((string) $this->last_error)?->getLabel();
     }
 
     /**

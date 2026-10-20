@@ -131,7 +131,13 @@ final class FortifyServiceProvider extends ServiceProvider
             // populated for a route registered inside another provider's own
             // boot(). Matching each route's own getName() sidesteps that cache.
             foreach ($this->app->make(Router::class)->getRoutes()->getRoutes() as $route) {
-                $operation = $grantParametersByRouteName[$route->getName()] ?? null;
+                $name = $route->getName();
+
+                if ($name === null) {
+                    continue;
+                }
+
+                $operation = $grantParametersByRouteName[$name] ?? null;
 
                 if ($operation !== null) {
                     $route->middleware("require-operation:{$operation}");

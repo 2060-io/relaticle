@@ -25,6 +25,7 @@ use Filament\Actions\ForceDeleteAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
+use Filament\Actions\ViewAction;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\Column;
@@ -37,6 +38,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 use Relaticle\CustomFields\Contracts\ValueResolvers;
 
 final class TaskResource extends Resource
@@ -117,6 +119,8 @@ final class TaskResource extends Resource
                     RestoreAction::make(),
                     DeleteAction::make(),
                     ForceDeleteAction::make(),
+                    ViewAction::make()
+                        ->visible(fn (Task $record): bool => Gate::denies('update', $record)),
                 ]),
             ])
             ->toolbarActions([
