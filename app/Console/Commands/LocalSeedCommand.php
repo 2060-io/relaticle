@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsStringOptions;
 use Database\Seeders\LocalSeeder;
 use Database\Seeders\Personas\PersonaCatalog;
 use Illuminate\Console\Attributes\Description;
@@ -23,6 +24,8 @@ use Illuminate\Database\Seeder;
         {--only= : Comma-separated persona slugs to seed, e.g. owner,paused}')]
 final class LocalSeedCommand extends Command
 {
+    use ReadsStringOptions;
+
     public function handle(): int
     {
         if (! app()->isLocal()) {
@@ -58,11 +61,9 @@ final class LocalSeedCommand extends Command
      */
     private function slugs(): array
     {
-        $only = $this->option('only');
-
         return array_values(array_filter(array_map(
             trim(...),
-            explode(',', is_string($only) ? $only : ''),
+            explode(',', $this->stringOption('only') ?? ''),
         )));
     }
 }

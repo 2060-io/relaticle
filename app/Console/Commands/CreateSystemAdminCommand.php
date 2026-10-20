@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsStringOptions;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -22,6 +23,8 @@ use function Laravel\Prompts\text;
                             {--password= : The password for the system administrator}')]
 final class CreateSystemAdminCommand extends Command
 {
+    use ReadsStringOptions;
+
     /**
      * Execute the console command.
      */
@@ -159,12 +162,5 @@ final class CreateSystemAdminCommand extends Command
 
             return self::FAILURE;
         }
-    }
-
-    private function stringOption(string $key): ?string
-    {
-        $value = $this->option($key);
-
-        return is_string($value) ? $value : null;
     }
 }
