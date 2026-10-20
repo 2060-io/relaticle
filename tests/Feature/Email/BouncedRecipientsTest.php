@@ -31,7 +31,7 @@ mutates(ParksInactiveRecipientsTransport::class, DropBouncedRecipientsListener::
 function useMailcoachAnswering(MockHttpClient $client): void
 {
     Mail::mailer('array')->setSymfonyTransport(new ParksInactiveRecipientsTransport(
-        (new MailcoachApiTransport('token', $client))->setHost('relaticle.mailcoach.test'),
+        new MailcoachApiTransport('token', $client)->setHost('relaticle.mailcoach.test'),
     ));
 }
 
