@@ -13,9 +13,12 @@ use App\Models\Task;
 use Asmit\ResizedColumn\HasResizableColumn;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Actions\EditAction;
 use Filament\Actions\ExportAction;
+use Filament\Actions\ViewAction;
 use Filament\Resources\Pages\ManageRecords;
 use Filament\Support\Enums\Size;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\On;
 use Override;
 use Relaticle\ImportWizard\Filament\Pages\ImportTasks;
@@ -27,6 +30,27 @@ final class ManageTasks extends ManageRecords
     use HasViewSwitcher;
 
     protected static string $resource = TaskResource::class;
+
+    #[Override]
+    public function mount(): void
+    {
+        parent::mount();
+
+        if ($this->defaultTableAction !== EditAction::getDefaultName()) {
+            return;
+        }
+
+        if (! is_string($this->defaultTableActionRecord)) {
+            return;
+        }
+
+        $task = Task::query()->find($this->defaultTableActionRecord);
+
+        // A link to edit a task (a notification, the home page) still opens it for a member who may only view it.
+        if ($task instanceof Task && Gate::denies('update', $task)) {
+            $this->defaultTableAction = ViewAction::getDefaultName();
+        }
+    }
 
     #[Override]
     protected function getHeaderActions(): array

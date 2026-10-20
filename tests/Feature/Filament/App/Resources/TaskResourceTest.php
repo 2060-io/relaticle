@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Actions\Task\NotifyTaskAssignees;
+use App\Enums\WorkspaceRole;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Mail\TaskAssignedMail;
@@ -26,6 +27,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Livewire\Livewire;
 
 use function Filament\Support\generate_icon_html;
 
@@ -268,6 +270,44 @@ it('can edit a task', function (): void {
         ->assertHasNoActionErrors();
 
     expect($record->refresh()->title)->toBe('Updated Task');
+});
+
+it('opens a task read-only for a member who can view but not edit it', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Read me']);
+
+    $this->actingAs($viewer);
+
+    livewire(ManageTasks::class)
+        ->assertActionHidden(TestAction::make('edit')->table($record))
+        ->mountAction(TestAction::make('view')->table($record))
+        ->assertActionMounted(TestAction::make('view')->table($record))
+        ->assertSchemaStateSet(['title' => 'Read me']);
+});
+
+it('opens the read-only view when a viewer follows a link to edit a task', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $this->actingAs($viewer);
+
+    Livewire::withQueryParams(['tableAction' => 'edit', 'tableActionRecord' => $record->getKey()])
+        ->test(ManageTasks::class)
+        ->call('mountDefaultActions')
+        ->assertSet('mountedActions.0.name', 'view')
+        ->assertSet('mountedActions.0.context.recordKey', $record->getKey());
+});
+
+it('keeps a member who can edit on the edit action', function (): void {
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ManageTasks::class)
+        ->assertActionHidden(TestAction::make('view')->table($record))
+        ->assertActionVisible(TestAction::make('edit')->table($record));
 });
 
 it('notifies only the member newly assigned through the edit action', function (): void {
