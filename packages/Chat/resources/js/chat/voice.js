@@ -14,8 +14,9 @@ const RECORDING_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
 
 const MAX_RECORDING_MS = 120_000;
 
-// The provider rejects anything shorter as "too short", so it is not worth an upload.
-const MIN_RECORDING_MS = 1000;
+// Our own product choice, not a provider rule: a tap this short is an accidental
+// press of the mic, so it is not worth an upload.
+const MIN_RECORDING_MS = 500;
 
 // Set explicitly rather than inherited: Chrome defaults this codec to 128 kbps
 // (measured), which puts a full-length recording within a few percent of the
