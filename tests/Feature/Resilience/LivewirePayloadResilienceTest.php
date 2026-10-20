@@ -6,8 +6,16 @@ use App\Filament\Notifications\NotificationCollection;
 use App\Livewire\FilamentNotifications;
 use Filament\Livewire\Notifications;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Testing\TestResponse;
+use Livewire\Exceptions\MethodNotFoundException;
+use Livewire\Exceptions\PublicPropertyNotFoundException;
+use Livewire\Features\SupportLifecycleHooks\DirectlyCallingLifecycleHooksNotAllowedException;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\TestCase;
 
 it('filters non-array junk out of the notifications livewire payload', function (): void {
     $valid = Notification::make('valid-notification')->title('Hello')->toArray();
@@ -64,4 +72,69 @@ it('responds 419 instead of 500 to a tampered livewire snapshot', function (): v
         ],
     ], ['X-Livewire' => 'true'])
         ->assertStatus(419);
+});
+
+function postTamperedLivewireUpdate(TestCase $test, array $updates, array $calls = []): TestResponse
+{
+    $page = $test->get(route('filament.sysadmin.auth.login'))->assertOk()->getContent();
+    preg_match('/wire:snapshot="([^"]+)"/', $page, $matches);
+
+    return $test->postJson(route('default-livewire.update'), [
+        'components' => [
+            ['snapshot' => html_entity_decode($matches[1]), 'updates' => $updates, 'calls' => $calls],
+        ],
+    ], ['X-Livewire' => 'true']);
+}
+
+function postTamperedLockedProperty(TestCase $test): TestResponse
+{
+    return postTamperedLivewireUpdate($test, ['loadedDeferredSchemas' => ['x' => true]]);
+}
+
+it('responds 4xx instead of 500 to a tampered locked property', function (): void {
+    expect(postTamperedLockedProperty($this)->getStatusCode())->toBeBetween(400, 499);
+});
+
+it('does not report a tampered locked property', function (): void {
+    Exceptions::fake();
+
+    postTamperedLockedProperty($this);
+
+    Exceptions::assertNotReported(CannotUpdateLockedPropertyException::class);
+});
+
+it('responds 419 and does not report an update to an unknown property', function (): void {
+    Exceptions::fake();
+
+    postTamperedLivewireUpdate($this, ['noSuchProperty' => 'x'])->assertStatus(419);
+
+    Exceptions::assertNotReported(PublicPropertyNotFoundException::class);
+});
+
+it('responds 419 and does not report a direct call to a lifecycle hook', function (): void {
+    Exceptions::fake();
+
+    postTamperedLivewireUpdate($this, [], [['method' => 'mount', 'params' => [], 'metadata' => []]])->assertStatus(419);
+
+    Exceptions::assertNotReported(DirectlyCallingLifecycleHooksNotAllowedException::class);
+});
+
+it('responds 419 and does not report a call to a missing method', function (): void {
+    Exceptions::fake();
+
+    postTamperedLivewireUpdate($this, [], [['method' => 'noSuchMethod', 'params' => [], 'metadata' => []]])->assertStatus(419);
+
+    Exceptions::assertNotReported(MethodNotFoundException::class);
+});
+
+it('logs a tampered update at warning level with the class and the request ip', function (): void {
+    Log::spy();
+
+    postTamperedLivewireUpdate($this, ['noSuchProperty' => 'x']);
+
+    Log::shouldHaveReceived('warning')->withArgs(
+        fn (string $message, array $context): bool => ($context['exception'] ?? null) === PublicPropertyNotFoundException::class
+            && ($context['ip'] ?? null) === '127.0.0.1'
+            && isset($context['components']),
+    )->once();
 });

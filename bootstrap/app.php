@@ -33,11 +33,19 @@ use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Middleware\VerifyWebhookSignature;
 use Laravel\Pennant\Feature;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use Livewire\Exceptions\MethodNotFoundException;
 use Livewire\Exceptions\PayloadTooLargeException;
+use Livewire\Exceptions\PublicPropertyNotFoundException;
+use Livewire\Features\SupportComputed\CannotCallComputedDirectlyException;
+use Livewire\Features\SupportLifecycleHooks\DirectlyCallingLifecycleHooksNotAllowedException;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
+use Livewire\Features\SupportReactiveProps\CannotMutateReactivePropException;
 use Livewire\Mechanisms\HandleComponents\CorruptComponentPayloadException;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
@@ -248,6 +256,50 @@ return Application::configure(basePath: dirname(__DIR__))
         // They are user-state noise, not actionable errors, so keep them out of
         // Sentry (issue #125406836).
         $exceptions->dontReport(CorruptComponentPayloadException::class);
+
+        // Tampered updates are client noise, not bugs. Logging inside the dontReport check is the
+        // only point that runs before Sentry and before an exception's own report().
+        $livewireTamperExceptions = [
+            CannotUpdateLockedPropertyException::class,
+            PublicPropertyNotFoundException::class,
+            DirectlyCallingLifecycleHooksNotAllowedException::class,
+            MethodNotFoundException::class,
+            CannotCallComputedDirectlyException::class,
+            CannotMutateReactivePropException::class,
+        ];
+        $isLivewireTamper = fn (Throwable $e): bool => Arr::first(
+            $livewireTamperExceptions,
+            fn (string $class): bool => $e instanceof $class,
+        ) !== null;
+
+        $exceptions->dontReportWhen(function (Throwable $e) use ($isLivewireTamper): bool {
+            if (! $isLivewireTamper($e)) {
+                return false;
+            }
+
+            Log::warning('Livewire request rejected as tampered', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'components' => collect(request()->array('components'))
+                    ->map(fn (mixed $component): mixed => is_string($snapshot = data_get($component, 'snapshot'))
+                        ? data_get(json_decode($snapshot, true), 'memo.name')
+                        : null)
+                    ->filter()
+                    ->values()
+                    ->all(),
+                'ip' => request()->ip(),
+            ]);
+
+            return true;
+        });
+
+        $exceptions->render(function (Throwable $e, Request $request) use ($isLivewireTamper): ?Response {
+            if (! $request->hasHeader('X-Livewire') || ! $isLivewireTamper($e)) {
+                return null;
+            }
+
+            return response('', 419);
+        });
 
         // Passport reports every rejected bearer token; keep league's 5xx server errors visible.
         $exceptions->dontReportWhen(
