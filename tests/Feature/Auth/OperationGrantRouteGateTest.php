@@ -52,8 +52,7 @@ test('attaching operation grants raises no deprecation for unnamed routes', func
     }, E_DEPRECATED);
 
     try {
-        $provider = new FortifyServiceProvider($this->app);
-        new ReflectionMethod($provider, 'requireOperationGrantsOnVendorRoutes')->invoke($provider);
+        $this->app->getProvider(FortifyServiceProvider::class)->boot();
     } finally {
         restore_error_handler();
     }

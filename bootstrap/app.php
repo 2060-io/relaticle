@@ -45,7 +45,6 @@ use Livewire\Exceptions\PublicPropertyNotFoundException;
 use Livewire\Features\SupportComputed\CannotCallComputedDirectlyException;
 use Livewire\Features\SupportLifecycleHooks\DirectlyCallingLifecycleHooksNotAllowedException;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
-use Livewire\Features\SupportReactiveProps\CannotMutateReactivePropException;
 use Livewire\Mechanisms\HandleComponents\CorruptComponentPayloadException;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
@@ -265,7 +264,6 @@ return Application::configure(basePath: dirname(__DIR__))
             DirectlyCallingLifecycleHooksNotAllowedException::class,
             MethodNotFoundException::class,
             CannotCallComputedDirectlyException::class,
-            CannotMutateReactivePropException::class,
         ];
         $isLivewireTamper = fn (Throwable $e): bool => Arr::first(
             $livewireTamperExceptions,
@@ -273,7 +271,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ) !== null;
 
         $exceptions->dontReportWhen(function (Throwable $e) use ($isLivewireTamper): bool {
-            if (! $isLivewireTamper($e)) {
+            if (! request()->hasHeader('X-Livewire') || ! $isLivewireTamper($e)) {
                 return false;
             }
 

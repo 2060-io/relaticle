@@ -8,6 +8,7 @@ use Filament\Livewire\Notifications;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Livewire\Exceptions\MethodNotFoundException;
 use Livewire\Exceptions\PublicPropertyNotFoundException;
@@ -91,8 +92,8 @@ function postTamperedLockedProperty(TestCase $test): TestResponse
     return postTamperedLivewireUpdate($test, ['loadedDeferredSchemas' => ['x' => true]]);
 }
 
-it('responds 4xx instead of 500 to a tampered locked property', function (): void {
-    expect(postTamperedLockedProperty($this)->getStatusCode())->toBeBetween(400, 499);
+it('responds 419 instead of 500 to a tampered locked property', function (): void {
+    postTamperedLockedProperty($this)->assertStatus(419);
 });
 
 it('does not report a tampered locked property', function (): void {
@@ -119,12 +120,23 @@ it('responds 419 and does not report a direct call to a lifecycle hook', functio
     Exceptions::assertNotReported(DirectlyCallingLifecycleHooksNotAllowedException::class);
 });
 
-it('responds 419 and does not report a call to a missing method', function (): void {
-    Exceptions::fake();
+it('responds 419 and logs a warning once for a call to a missing method', function (): void {
+    Log::spy();
 
     postTamperedLivewireUpdate($this, [], [['method' => 'noSuchMethod', 'params' => [], 'metadata' => []]])->assertStatus(419);
 
-    Exceptions::assertNotReported(MethodNotFoundException::class);
+    Log::shouldHaveReceived('warning')->withArgs(
+        fn (string $message, array $context): bool => ($context['exception'] ?? null) === MethodNotFoundException::class,
+    )->once();
+});
+
+it('still reports a listed livewire exception raised outside a livewire update', function (): void {
+    Exceptions::fake();
+    Route::get('/tamper-probe', fn () => throw new PublicPropertyNotFoundException('probe', 'probe-component'));
+
+    $this->get('/tamper-probe')->assertStatus(500);
+
+    Exceptions::assertReported(PublicPropertyNotFoundException::class);
 });
 
 it('logs a tampered update at warning level with the class and the request ip', function (): void {
