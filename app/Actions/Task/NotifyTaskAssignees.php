@@ -63,13 +63,10 @@ final readonly class NotifyTaskAssignees
 
     private function resolveTaskUrl(Task $task): string
     {
-        try {
-            return TaskResource::getUrl('index', [
-                'tableAction' => EditAction::getDefaultName(),
-                'tableActionRecord' => $task,
-            ]);
-        } catch (\Throwable) {
-            return '#';
-        }
+        // MCP, API and queued writes bind no Filament panel or tenant, so both are named.
+        return TaskResource::getUrl('index', [
+            'tableAction' => EditAction::getDefaultName(),
+            'tableActionRecord' => $task,
+        ], panel: 'app', tenant: $task->workspace);
     }
 }

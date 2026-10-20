@@ -5,18 +5,21 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Actions\Task\CompleteTask;
+use App\Actions\Task\UpdateTask;
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Models\Task;
 use App\Models\User;
 use BackedEnum;
+use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Pages\Page;
 use Filament\Panel;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Relaticle\Chat\Data\MyTaskItem;
 use Relaticle\Chat\Queries\ConversationsQuery;
@@ -144,6 +147,28 @@ final class Dashboard extends Page
         return TaskResource::getUrl('index', [
             'tableFilters' => ['assigned_to_me' => ['isActive' => true]],
         ]);
+    }
+
+    public function editTaskAction(): EditAction
+    {
+        return EditAction::make('editTask')
+            ->record(fn (array $arguments): ?Task => Task::query()
+                ->where('workspace_id', Filament::getTenant()?->getKey())
+                ->whereKey($arguments['task'] ?? null)
+                ->first())
+            ->recordTitleAttribute('title')
+            ->authorize(fn (?Task $record): bool => $record instanceof Task && Gate::allows('update', $record))
+            ->slideOver()
+            ->schema(fn (Schema $schema): Schema => TaskForm::get($schema))
+            ->using(function (Task $record, array $data): Task {
+                /** @var User $user */
+                $user = Filament::auth()->user();
+
+                return resolve(UpdateTask::class)->execute($user, $record, $data);
+            })
+            ->after(function (): void {
+                unset($this->myTasks);
+            });
     }
 
     public function createTaskAction(): CreateTaskAction

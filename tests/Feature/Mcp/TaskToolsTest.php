@@ -585,3 +585,21 @@ describe('workspace scoping', function (): void {
             ->assertHasErrors(['not found']);
     });
 });
+
+it('links the in-app assignment notification of an MCP-created task to that task', function (): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool(CreateTaskTool::class, [
+            'title' => 'Follow Up',
+            'assignee_ids' => [$this->user->id],
+        ])
+        ->assertOk();
+
+    defer()->invoke();
+
+    $task = Task::query()->where('title', 'Follow Up')->firstOrFail();
+    $url = data_get($this->user->notifications()->sole()->data, 'actions.0.url');
+
+    expect($url)->toContain("/{$this->workspace->slug}/tasks")
+        ->and($url)->toContain('tableAction=edit')
+        ->and($url)->toContain('tableActionRecord='.$task->getKey());
+});
