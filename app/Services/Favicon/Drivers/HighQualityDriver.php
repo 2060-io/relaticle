@@ -14,6 +14,7 @@ use AshAllenDesign\FaviconFetcher\Contracts\Fetcher;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Exceptions\InvalidUrlException;
 use AshAllenDesign\FaviconFetcher\Favicon;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 
@@ -22,6 +23,16 @@ final class HighQualityDriver implements Fetcher
     use HasDefaultFunctionality;
     use MakesHttpRequests;
     use ValidatesUrls;
+
+    private const int BUDGET_SECONDS = 20;
+
+    private const int REQUEST_TIMEOUT_SECONDS = 5;
+
+    private const int CONNECT_TIMEOUT_SECONDS = 3;
+
+    private const int MINIMUM_SECONDS_PER_REQUEST = 1;
+
+    private CarbonImmutable $deadline;
 
     /**
      * Attempt to fetch high-quality favicon using a waterfall strategy.
@@ -33,6 +44,14 @@ final class HighQualityDriver implements Fetcher
      * 4. Fall back to DuckDuckGo
      */
     public function fetch(string $url): ?Favicon
+    {
+        $bounded = clone $this;
+        $bounded->deadline = now()->addSeconds(self::BUDGET_SECONDS);
+
+        return $bounded->search($url);
+    }
+
+    private function search(string $url): ?Favicon
     {
         throw_unless($this->urlIsValid($url), InvalidUrlException::class, $url.' is not a valid URL');
 
@@ -59,16 +78,29 @@ final class HighQualityDriver implements Fetcher
             return $favicon;
         }
 
-        $favicon = $this->tryGoogleHighRes($url);
+        $favicon = $this->hasTimeLeft() ? $this->tryGoogleHighRes($url) : null;
         if ($favicon instanceof Favicon && $this->faviconIsAccessible($favicon)) {
             return $favicon;
         }
 
-        $favicon = $this->tryDuckDuckGo($url);
+        $favicon = $this->hasTimeLeft() ? $this->tryDuckDuckGo($url) : null;
 
-        throw_if(! $favicon instanceof Favicon && $siteUnreachable instanceof ConnectionException, $siteUnreachable);
+        if (! $favicon instanceof Favicon) {
+            throw_if($siteUnreachable instanceof ConnectionException, $siteUnreachable);
+            throw_unless($this->hasTimeLeft(), ConnectionException::class, "Ran out of time looking for a favicon for {$url}");
+        }
 
         return $favicon;
+    }
+
+    private function secondsLeft(): float
+    {
+        return now()->diffInSeconds($this->deadline, false);
+    }
+
+    private function hasTimeLeft(): bool
+    {
+        return $this->secondsLeft() >= self::MINIMUM_SECONDS_PER_REQUEST;
     }
 
     private function hostDoesNotResolve(string $url): bool
@@ -100,7 +132,15 @@ final class HighQualityDriver implements Fetcher
 
     private function guardedHttpClient(): PendingRequest
     {
-        return SsrfGuard::guard($this->httpClient());
+        throw_unless($this->hasTimeLeft(), ConnectionException::class, 'Ran out of time looking for a favicon');
+
+        $secondsLeft = $this->secondsLeft();
+
+        return SsrfGuard::guard(
+            $this->httpClient()
+                ->timeout(min(self::REQUEST_TIMEOUT_SECONDS, $secondsLeft))
+                ->connectTimeout(min(self::CONNECT_TIMEOUT_SECONDS, $secondsLeft))
+        );
     }
 
     private function tryAppleTouchIcon(string $url): ?Favicon

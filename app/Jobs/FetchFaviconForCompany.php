@@ -10,12 +10,14 @@ use App\Models\Company;
 use App\Support\Http\SsrfGuard;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
+use Carbon\CarbonImmutable;
 use finfo;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
@@ -35,10 +37,18 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
     use Dispatchable;
     use Queueable;
 
+    private const int BUDGET_SECONDS = 25;
+
+    private const int DOWNLOAD_TIMEOUT_SECONDS = 15;
+
+    private const int CONNECT_TIMEOUT_SECONDS = 3;
+
     public function __construct(public readonly Company $company) {}
 
     public function handle(): void
     {
+        $deadline = now()->addSeconds(self::BUDGET_SECONDS);
+
         try {
             $sourceUrl = self::sourceUrl($this->company);
 
@@ -66,13 +76,12 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            $response = SsrfGuard::guard(Http::timeout(15))->get($url);
+            $body = $this->downloadIcon($url, $deadline);
 
-            if (! $response->successful()) {
+            if ($body === null) {
                 return;
             }
 
-            $body = $response->body();
             $extension = Company::LOGO_MIME_TYPES[new finfo(FILEINFO_MIME_TYPE)->buffer($body)] ?? null;
 
             if ($extension === null) {
@@ -97,9 +106,25 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
         }
     }
 
+    private function downloadIcon(string $url, CarbonImmutable $deadline): ?string
+    {
+        $secondsLeft = now()->diffInSeconds($deadline, false);
+
+        if ($secondsLeft < 1) {
+            return null;
+        }
+
+        $response = SsrfGuard::guard(
+            Http::timeout(min(self::DOWNLOAD_TIMEOUT_SECONDS, $secondsLeft))
+                ->connectTimeout(min(self::CONNECT_TIMEOUT_SECONDS, $secondsLeft))
+        )->get($url);
+
+        return $response->successful() ? $response->body() : null;
+    }
+
     private function isUnreachableSite(Throwable $exception): bool
     {
-        if ($exception instanceof ConnectionException) {
+        if ($exception instanceof ConnectionException || $exception instanceof HttpConnectionException) {
             return true;
         }
 

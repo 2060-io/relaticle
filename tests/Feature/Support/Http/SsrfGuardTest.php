@@ -207,7 +207,7 @@ test('refuses a host that does not resolve without reporting it', function (): v
     Exceptions::assertNothingReported();
 });
 
-test('reports a host that resolves to a non-public address', function (): void {
+test('reports a non-public address only when a request reaches it', function (): void {
     resolveHostsTo(['169.254.169.254']);
     Http::fake();
 
@@ -215,7 +215,7 @@ test('reports a host that resolves to a non-public address', function (): void {
         ->and(fn () => SsrfGuard::guard(Http::timeout(5))->get('https://metadata.example.com/icon.png'))
         ->toThrow(SsrfGuardException::class);
 
-    Exceptions::assertReportedCount(2);
+    Exceptions::assertReportedCount(1);
 });
 
 test('guard aborts a download larger than the upload limit', function (): void {

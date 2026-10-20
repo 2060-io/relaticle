@@ -12,6 +12,8 @@ use App\Support\Http\HostResolver;
 use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
 use Filament\Facades\Filament;
+use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
+use Illuminate\Http\Client\Request as HttpClientRequest;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
@@ -388,4 +390,95 @@ test('an unexpected failure while fetching a favicon is reported', function (): 
     (new FetchFaviconForCompany($company->fresh()))->handle();
 
     Exceptions::assertReported(TypeError::class);
+});
+
+test('a company domain that resolves to a private address is skipped without being reported', function (): void {
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['intranet.example']],
+    ]);
+
+    resolveHostsTo(['10.10.0.77']);
+    Http::fake();
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    Http::assertNothingSent();
+    Exceptions::assertNothingReported();
+});
+
+test('a favicon download that times out is not reported', function (): void {
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['example.com']],
+    ]);
+
+    $favicon = Mockery::mock(AshAllenDesign\FaviconFetcher\Favicon::class);
+    $favicon->shouldReceive('getFaviconUrl')->andReturn('https://1.1.1.1/favicon.png');
+
+    Favicon::shouldReceive('driver->fetch')->andReturn($favicon);
+    Http::fake(['https://1.1.1.1/favicon.png' => fn () => throw new HttpConnectionException('cURL error 28: SSL connection timeout')]);
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    Exceptions::assertNothingReported();
+    expect($company->fresh()->getMedia('logo'))->toBeEmpty();
+});
+
+test('stops trying further sources once the time budget has passed', function (): void {
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['slow.example']],
+    ]);
+
+    $company->addMediaFromString(onePixelPng())
+        ->usingFileName('logo.png')
+        ->withCustomProperties(['domain' => 'https://slow.example'])
+        ->toMediaCollection('logo');
+
+    resolveHostsTo(['93.184.216.34']);
+
+    $requested = [];
+
+    Http::fake(function (HttpClientRequest $request) use (&$requested) {
+        $requested[] = $request->url();
+        $this->travel(13)->seconds();
+
+        return Http::response('', 404);
+    });
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    expect($requested)->toBe(['https://slow.example', 'https://slow.example'])
+        ->and($company->fresh()->getMedia('logo'))->toHaveCount(1);
+
+    Exceptions::assertNothingReported();
+});
+
+test('still stores the logo when the first source answers in time', function (): void {
+    Storage::fake('public');
+
+    $company = Company::factory()->for($this->user->currentWorkspace)->create([
+        'custom_fields' => [CompanyField::DOMAINS->value => ['slow.example']],
+    ]);
+
+    resolveHostsTo(['93.184.216.34']);
+    $this->freezeTime();
+
+    $timeouts = [];
+
+    Http::fake(function (HttpClientRequest $request, array $options) use (&$timeouts) {
+        $timeouts[] = [$options['timeout'], $options['connect_timeout']];
+        $this->travel(9)->seconds();
+
+        return match ($request->url()) {
+            'https://slow.example' => Http::response('<link rel="apple-touch-icon" href="/touch.png">'),
+            'https://slow.example/touch.png' => Http::response(onePixelPng()),
+            default => Http::response('', 404),
+        };
+    });
+
+    (new FetchFaviconForCompany($company->fresh()))->handle();
+
+    expect($company->fresh()->getMedia('logo'))->toHaveCount(1)
+        ->and($timeouts)->toEqual([[5, 3], [5, 3], [7, 3]]);
+
+    Exceptions::assertNothingReported();
 });

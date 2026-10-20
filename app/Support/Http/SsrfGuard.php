@@ -45,9 +45,7 @@ final readonly class SsrfGuard
             self::assertPublicHost($url);
 
             return true;
-        } catch (SsrfGuardException $exception) {
-            report_unless($exception->hostUnresolved, $exception);
-
+        } catch (SsrfGuardException) {
             return false;
         }
     }
