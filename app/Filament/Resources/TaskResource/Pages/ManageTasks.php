@@ -36,19 +36,18 @@ final class ManageTasks extends ManageRecords
     {
         parent::mount();
 
-        $this->openReadOnlyWhenNotEditable();
-    }
+        if ($this->defaultTableAction !== EditAction::getDefaultName()) {
+            return;
+        }
 
-    // A link to edit a task (a notification, the home page) still opens it for a member who may only view it.
-    private function openReadOnlyWhenNotEditable(): void
-    {
-        if ($this->defaultTableAction !== EditAction::getDefaultName() || ! is_string($this->defaultTableActionRecord)) {
+        if (! is_string($this->defaultTableActionRecord)) {
             return;
         }
 
         $task = Task::query()->find($this->defaultTableActionRecord);
 
-        if ($task instanceof Task && Gate::denies('update', $task) && Gate::allows('view', $task)) {
+        // A link to edit a task (a notification, the home page) still opens it for a member who may only view it.
+        if ($task instanceof Task && Gate::denies('update', $task)) {
             $this->defaultTableAction = ViewAction::getDefaultName();
         }
     }
