@@ -8,6 +8,7 @@ use App\Console\Commands\MakeFilamentUserCommand;
 use App\Enums\CrmEntity;
 use App\Enums\EmailGrant;
 use App\Enums\Plan;
+use App\Events\InactiveRecipientsRejected;
 use App\Events\WorkspaceCreated;
 use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
@@ -19,6 +20,7 @@ use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
 use App\Listeners\CreateSetupConversationListener;
 use App\Listeners\Email\DropBouncedRecipientsListener;
 use App\Listeners\Email\NewSubscriberListener;
+use App\Listeners\Email\ParkInactiveRecipientsListener;
 use App\Listeners\Email\RecordLoginTimestampListener;
 use App\Listeners\Email\WorkspaceCreatedTagListener;
 use App\Listeners\Email\WorkspaceMemberAddedListener;
@@ -56,6 +58,7 @@ use App\Support\CustomFields\WorkspaceCustomFields;
 use App\Support\Http\RequestAbility;
 use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
+use App\Support\Mail\ParksInactiveRecipientsTransport;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
 use App\Support\Migrations\TenantMigration;
@@ -129,7 +132,11 @@ use SocialiteProviders\Microsoft\MicrosoftExtendSocialite;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\PendingActivityLog;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
+use Spatie\MailcoachMailer\Exceptions\InvalidMailerConfig;
+use Spatie\MailcoachMailer\MailcoachTransportFactory;
 use Spatie\Onboard\OnboardingSteps;
+use Symfony\Component\Mailer\Transport\Dsn;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 
 final class AppServiceProvider extends ServiceProvider
 {
@@ -228,11 +235,30 @@ final class AppServiceProvider extends ServiceProvider
         Passport::$deviceCodeGrantEnabled = false;
     }
 
+    private function registerParkingMailTransport(): void
+    {
+        $this->app->booted(fn () => Facades\Mail::extend('mailcoach', function (array $config): TransportInterface {
+            foreach (['domain', 'token'] as $key) {
+                throw_unless(array_key_exists($key, $config), InvalidMailerConfig::missingKey($key));
+                throw_if($config[$key] === null, InvalidMailerConfig::missingValue($key));
+            }
+
+            $inner = (new MailcoachTransportFactory)->create(new Dsn('mailcoach', $config['domain'], options: [
+                'token' => $config['token'],
+                'api_base_url' => $config['api_base_url'] ?? null,
+            ]));
+
+            return new ParksInactiveRecipientsTransport($inner);
+        }));
+    }
+
     /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
+        $this->registerParkingMailTransport();
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MakeFilamentUserCommand::class,
@@ -248,6 +274,7 @@ final class AppServiceProvider extends ServiceProvider
         Event::listen(Login::class, RecordLoginTimestampListener::class);
         Event::listen(Verified::class, NewSubscriberListener::class);
         Event::listen(MessageSending::class, DropBouncedRecipientsListener::class);
+        Event::listen(InactiveRecipientsRejected::class, ParkInactiveRecipientsListener::class);
         Event::listen(TeamMemberAdded::class, WorkspaceMemberAddedListener::class);
         Event::listen(WorkspaceCreated::class, WorkspaceCreatedTagListener::class);
         Event::listen(WorkspaceCreated::class, SeedWorkspaceCreditBalanceListener::class);
