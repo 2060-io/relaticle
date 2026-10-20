@@ -20,7 +20,6 @@ use Filament\Panel;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Relaticle\Chat\Data\MyTaskItem;
 use Relaticle\Chat\Queries\ConversationsQuery;
@@ -164,7 +163,7 @@ final class Dashboard extends Page
         return EditAction::make('editTask')
             ->record(fn (array $arguments): ?Task => $this->tenantTask($arguments['task'] ?? null))
             ->recordTitleAttribute('title')
-            ->authorize(fn (?Task $record): bool => $record instanceof Task && Gate::allows('update', $record))
+            ->authorize('update')
             ->slideOver()
             ->schema(fn (Schema $schema): Schema => TaskForm::get($schema))
             ->using(function (Task $record, array $data): Task {

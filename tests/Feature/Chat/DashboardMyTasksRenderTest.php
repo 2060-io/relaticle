@@ -112,7 +112,9 @@ it('leaves the task link to the tasks page for a viewer who cannot edit', functi
 
     livewire(Dashboard::class)
         ->assertSee('Ship the widget')
-        ->assertDontSeeHtml("mountAction('editTask'");
+        ->assertDontSeeHtml("mountAction('editTask'")
+        ->mountAction('editTask', ['task' => $task->id])
+        ->assertActionNotMounted('editTask');
 });
 
 it('does not open a task from another workspace for editing', function (): void {
