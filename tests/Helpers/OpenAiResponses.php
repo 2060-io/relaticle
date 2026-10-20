@@ -34,12 +34,7 @@ final class OpenAiResponses
         ]);
     }
 
-    /**
-     * Reasoning tokens count against `max_output_tokens`, and the answer is cut off once the
-     * budget runs out. The defaults are measured from gpt-5.6-luna titling a chat on 2026-10-20.
-     *
-     * @param  array<string, mixed>  $structured
-     */
+    /** @param array<string, mixed> $structured */
     public static function fakeStructuredWithinBudget(array $structured, int $reasoningTokens = 46, float $charactersPerToken = 1.8): void
     {
         Http::fake([
