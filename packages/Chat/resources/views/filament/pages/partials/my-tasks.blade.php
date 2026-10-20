@@ -3,6 +3,7 @@
     $myTasks = $this->myTasks;
     $count = $myTasks->count();
     $canComplete = $this->canCompleteTasks;
+    $canEdit = $this->canEditTasks;
 @endphp
 
 <div class="mt-14">
@@ -84,7 +85,9 @@
                         @endif
                         <a
                             href="{{ $task->editUrl }}"
-                            x-on:click="if (! ($event.metaKey || $event.ctrlKey || $event.shiftKey || $event.altKey)) { $event.preventDefault(); $wire.mountAction('editTask', { task: @js($task->id) }) }"
+                            @if($canEdit)
+                                x-on:click="if (! ($event.metaKey || $event.ctrlKey || $event.shiftKey || $event.altKey)) { $event.preventDefault(); $wire.mountAction('editTask', { task: @js($task->id) }) }"
+                            @endif
                             class="flex flex-1 items-center gap-3 py-3 pr-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500"
                         >
                             <span

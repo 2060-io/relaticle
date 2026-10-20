@@ -85,6 +85,7 @@ it('edits a task in place from the dashboard', function (): void {
     Filament::setTenant($workspace);
 
     livewire(Dashboard::class)
+        ->assertSeeHtml("mountAction('editTask', { task: '{$task->id}' })")
         ->mountAction('editTask', ['task' => $task->id])
         ->assertActionMounted('editTask')
         ->assertSchemaStateSet(['title' => 'Ship the widget', 'assignees' => [$user->id]])
@@ -95,6 +96,23 @@ it('edits a task in place from the dashboard', function (): void {
         ->assertDontSee('Ship the widget');
 
     expect($task->refresh()->title)->toBe('Ship the gadget');
+});
+
+it('leaves the task link to the tasks page for a viewer who cannot edit', function (): void {
+    $owner = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $viewer = User::factory()->create(['current_workspace_id' => $workspace->id]);
+    $workspace->users()->attach($viewer, ['role' => 'viewer']);
+
+    $task = Task::factory()->for($workspace)->create(['title' => 'Ship the widget']);
+    $task->assignees()->attach($viewer);
+
+    $this->actingAs($viewer);
+    Filament::setTenant($workspace);
+
+    livewire(Dashboard::class)
+        ->assertSee('Ship the widget')
+        ->assertDontSeeHtml("mountAction('editTask'");
 });
 
 it('does not open a task from another workspace for editing', function (): void {

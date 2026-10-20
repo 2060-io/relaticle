@@ -6,6 +6,7 @@ namespace App\Filament\Pages;
 
 use App\Actions\Task\CompleteTask;
 use App\Actions\Task\UpdateTask;
+use App\Enums\WorkspaceCapability;
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
@@ -121,6 +122,15 @@ final class Dashboard extends Page
         $workspace = $user->currentWorkspace;
 
         return $workspace !== null && resolve(MyTasksService::class)->hasDoneOption($workspace);
+    }
+
+    #[Computed]
+    public function canEditTasks(): bool
+    {
+        /** @var User $user */
+        $user = Filament::auth()->user();
+
+        return $user->hasWorkspaceCapability(Filament::getTenant()?->getKey(), WorkspaceCapability::RecordsUpdate);
     }
 
     public function completeTask(string $taskId): void
