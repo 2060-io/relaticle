@@ -10,12 +10,14 @@ use Illuminate\Queue\Jobs\SyncJob;
 use Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction;
 use Relaticle\EmailIntegration\Actions\StopCalendarPushChannelAction;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
+use Relaticle\EmailIntegration\Enums\SyncErrorReason;
 use Relaticle\EmailIntegration\Jobs\Concerns\DetectsAuthErrors;
 use Relaticle\EmailIntegration\Jobs\EnsureCalendarPushChannelJob;
 use Relaticle\EmailIntegration\Jobs\IncrementalCalendarSyncJob;
 use Relaticle\EmailIntegration\Jobs\IncrementalEmailSyncJob;
 use Relaticle\EmailIntegration\Jobs\InitialCalendarSyncJob;
 use Relaticle\EmailIntegration\Jobs\InitialEmailSyncJob;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Services\ProviderRateLimit;
 use Throwable;
@@ -96,13 +98,17 @@ final class HandlesProviderFailures
     private function disableCalendar(
         IncrementalEmailSyncJob|InitialEmailSyncJob|IncrementalCalendarSyncJob|InitialCalendarSyncJob|EnsureCalendarPushChannelJob $job,
     ): void {
-        $account = $job->connectedAccount;
+        $account = $job->connectedAccount->fresh();
 
-        resolve(StopCalendarPushChannelAction::class)->execute($account);
-        $account->disableCalendar();
+        if ($account instanceof ConnectedAccount) {
+            resolve(StopCalendarPushChannelAction::class)->execute($account);
+            $account->disableCalendar();
 
-        resolve(MailboxHistoryImportService::class)->completeCalendarImport($account, succeeded: false);
-        resolve(CompleteMailboxHistoryImportAction::class)->executeForAccount($account);
+            resolve(MailboxHistoryImportService::class)->completeCalendarImport($account, succeeded: false);
+            resolve(CompleteMailboxHistoryImportAction::class)->executeForAccount($account);
+
+            $account->fresh()?->update(['last_error' => SyncErrorReason::GoogleCalendarDisabled->value]);
+        }
 
         $job->delete();
     }
@@ -113,9 +119,9 @@ final class HandlesProviderFailures
     ): void {
         $job->fail($exception);
 
-        $job->connectedAccount->update([
+        $job->connectedAccount->fresh()?->update([
             'status' => EmailAccountStatus::ERROR,
-            'last_error' => __('filament/pages/email-accounts.sync_error.mail_disabled'),
+            'last_error' => SyncErrorReason::GoogleMailDisabled->value,
         ]);
     }
 }

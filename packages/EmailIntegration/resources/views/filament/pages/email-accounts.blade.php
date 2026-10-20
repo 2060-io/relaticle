@@ -45,12 +45,13 @@
                             @if ($account->showsSyncProgressOnAccountsPage())
                                 <x-email-integration::importing-badge :account="$account" :icon="$this->syncingIcon()" />
                             @elseif ($account->hasSyncError())
+                                @php($syncErrorReason = $account->syncErrorReason())
+                                @php($syncErrorLabel = $syncErrorReason ?? ($account->last_synced_at ? __('filament/pages/email-accounts.synced_at', ['time' => $account->last_synced_at->diffForHumans()]) : null))
                                 <x-filament::badge
                                     color="warning"
                                     icon="heroicon-m-exclamation-triangle"
-                                    :title="$account->last_error === __('filament/pages/email-accounts.sync_error.mail_disabled')
-                                        ? $account->last_error
-                                        : ($account->last_synced_at ? __('filament/pages/email-accounts.synced_at', ['time' => $account->last_synced_at->diffForHumans()]) : null)"
+                                    :tooltip="$syncErrorLabel"
+                                    :aria-label="$syncErrorReason"
                                 >
                                     {{ __('filament/pages/email-accounts.sync_error.badge') }}
                                 </x-filament::badge>
