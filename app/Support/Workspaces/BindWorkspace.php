@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Notifications\Middleware;
+namespace App\Support\Workspaces;
 
 use App\Support\CurrentWorkspace;
 use Closure;

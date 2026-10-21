@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\Notifications\NotificationReason;
+use Database\Factories\NotificationFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +22,9 @@ use Illuminate\Notifications\DatabaseNotification;
  */
 final class Notification extends DatabaseNotification
 {
+    /** @use HasFactory<NotificationFactory> */
+    use HasFactory;
+
     use MassPrunable;
 
     private const int READ_RETENTION_DAYS = 90;

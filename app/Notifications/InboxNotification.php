@@ -11,7 +11,7 @@ use App\Enums\Notifications\NotificationType;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Notifications\Middleware\BindWorkspace;
+use App\Support\Workspaces\BindWorkspace;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
