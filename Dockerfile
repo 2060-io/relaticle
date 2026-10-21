@@ -3,7 +3,7 @@
 ###########################################
 # Stage 1: Composer dependencies
 ###########################################
-FROM composer:2 AS composer
+FROM composer:2@sha256:d0c32820c62cc860fddd22adceed4eeda7698b093a7a88d503414172ce400626 AS composer
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN composer install \
 ###########################################
 # Stage 2: Build frontend assets
 ###########################################
-FROM node:26-alpine AS frontend
+FROM node:26-alpine@sha256:9bd229b644e391df00fb989efa732335aefc6170a05d8c163c5c8ca9870da401 AS frontend
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ RUN --mount=type=bind,from=composer,source=/app/vendor,target=/app/vendor \
 ###########################################
 # Stage 3: Production image
 ###########################################
-FROM serversideup/php:8.5-fpm-nginx AS production
+FROM serversideup/php:8.5-fpm-nginx@sha256:0b3d79815a1c8f06bb923a4cfdaf515ff9b466271c41428d61f08b29e6c4ac5a AS production
 
 LABEL org.opencontainers.image.title="Relaticle CRM"
 LABEL org.opencontainers.image.description="Modern, open-source CRM platform"
