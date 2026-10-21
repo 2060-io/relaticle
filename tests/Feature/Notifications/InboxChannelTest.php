@@ -6,6 +6,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Notifications\Channels\InboxChannel;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Helpers\GroupedInboxNotification;
@@ -57,4 +58,37 @@ it('collapses into the row a concurrent send inserted first', function (): void 
     $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second'));
 
     expect($this->user->notifications()->sole()->data)->toBe(['labels' => ['competitor', 'second']]);
+});
+
+it('locks the unread row it collapses into', function (): void {
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first'));
+
+    $statements = [];
+    DB::listen(function (QueryExecuted $query) use (&$statements): void {
+        $statements[] = $query->sql;
+    });
+
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second'));
+
+    $locked = collect($statements)->contains(fn (string $sql): bool => str_contains($sql, 'from "notifications"') && str_contains($sql, 'for update'));
+
+    expect($locked)->toBeTrue();
+});
+
+it('rethrows a unique violation that no collapse explains', function (): void {
+    $notification = new GroupedInboxNotification($this->task, 'task:1', 'first');
+    $notification->id = (string) Str::uuid();
+
+    DB::table('notifications')->insert([
+        'id' => $notification->id,
+        'type' => GroupedInboxNotification::class,
+        'notifiable_type' => $this->user->getMorphClass(),
+        'notifiable_id' => $this->user->getKey(),
+        'data' => json_encode(['labels' => ['taken']]),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => $this->user->notifyNow($notification))->toThrow(UniqueConstraintViolationException::class)
+        ->and($this->user->notifications()->count())->toBe(1);
 });

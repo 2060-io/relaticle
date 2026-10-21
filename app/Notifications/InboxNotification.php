@@ -11,12 +11,15 @@ use App\Enums\Notifications\NotificationType;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Notifications\Middleware\BindWorkspace;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 
+#[DeleteWhenMissingModels]
 abstract class InboxNotification extends Notification implements ShouldQueueAfterCommit
 {
     use Queueable;
@@ -54,6 +57,12 @@ abstract class InboxNotification extends Notification implements ShouldQueueAfte
     public function mergeFacts(array $existing): array
     {
         return $this->facts();
+    }
+
+    /** @return list<BindWorkspace> */
+    public function middleware(): array
+    {
+        return [new BindWorkspace((string) $this->workspace()->getKey())];
     }
 
     /** @return list<string> */

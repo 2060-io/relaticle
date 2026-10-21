@@ -66,9 +66,7 @@ final class TaskAssignedNotification extends InboxNotification
     public static function present(NotificationRow $row): FilamentNotification
     {
         $actorName = $row->actor?->name;
-        $url = $row->workspace === null
-            ? null
-            : resolve(CanonicalRecordUrl::class)->build(CrmEntity::Task, (string) $row->subject_id, $row->workspace);
+        $url = self::viewUrl($row);
 
         return FilamentNotification::make((string) $row->getKey())
             ->title($actorName === null
@@ -84,5 +82,14 @@ final class TaskAssignedNotification extends InboxNotification
                     ->url($url)
                     ->markAsRead(),
             ]);
+    }
+
+    private static function viewUrl(NotificationRow $row): ?string
+    {
+        if (! $row->subject instanceof Task || ! $row->workspace instanceof Workspace) {
+            return null;
+        }
+
+        return resolve(CanonicalRecordUrl::class)->build(CrmEntity::Task, (string) $row->subject_id, $row->workspace);
     }
 }

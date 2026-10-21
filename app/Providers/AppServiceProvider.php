@@ -39,7 +39,6 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Notifications\Channels\InboxChannel;
-use App\Notifications\Channels\InboxMailChannel;
 use App\Onboarding\ActivationSteps;
 use App\Services\Billing\HostedWorkspaceAccess;
 use App\Services\DiscordService;
@@ -97,7 +96,6 @@ use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Notifications\Channels\DatabaseChannel;
-use Illuminate\Notifications\Channels\MailChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades;
 use Illuminate\Support\Facades\Config;
@@ -232,7 +230,6 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->bind(ResetPassword::class, \App\Notifications\Auth\ResetPassword::class);
         $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
         $this->app->bind(DatabaseChannel::class, InboxChannel::class);
-        $this->app->bind(MailChannel::class, InboxMailChannel::class);
     }
 
     private function registerPassport(): void

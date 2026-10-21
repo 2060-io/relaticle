@@ -10,19 +10,26 @@ use App\Mail\TaskAssignedMail;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssignedNotification;
+use App\Support\CurrentWorkspace;
 use Filament\Notifications\Events\DatabaseNotificationsSent;
+use Illuminate\Notifications\Events\NotificationSending;
+use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Queue\Jobs\SyncJob;
+use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Pennant\Feature;
 
 mutates(NotifyTaskAssignees::class, TaskAssignedNotification::class);
 
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
-    Mail::fake();
 });
 
 it('emails a newly assigned user when their email channel is on', function (): void {
+    Notification::fake();
+
     $owner = User::factory()->withPersonalWorkspace()->create();
     $assignee = User::factory()->create();
     $owner->currentWorkspace->users()->attach($assignee, ['role' => 'member']);
@@ -33,10 +40,18 @@ it('emails a newly assigned user when their email channel is on', function (): v
 
     resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
 
-    Mail::assertQueued(TaskAssignedMail::class, fn (TaskAssignedMail $m): bool => $m->hasTo($assignee->email) && $m->workspaceName === $owner->currentWorkspace->name);
+    Notification::assertSentTo($assignee, TaskAssignedNotification::class, function (TaskAssignedNotification $notification, array $channels) use ($assignee, $owner): bool {
+        $mail = $notification->toMail($assignee);
+
+        return in_array('mail', $channels, true)
+            && $mail->hasTo($assignee->email)
+            && $mail->workspaceName === $owner->currentWorkspace->name;
+    });
 });
 
 it('does not email when the email channel is off (default)', function (): void {
+    Notification::fake();
+
     $owner = User::factory()->withPersonalWorkspace()->create();
     $assignee = User::factory()->create();
     $owner->currentWorkspace->users()->attach($assignee, ['role' => 'member']);
@@ -46,7 +61,7 @@ it('does not email when the email channel is off (default)', function (): void {
 
     resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
 
-    Mail::assertNothingQueued();
+    Notification::assertSentTo($assignee, TaskAssignedNotification::class, fn (TaskAssignedNotification $notification, array $channels): bool => $channels === ['database']);
 });
 
 it('skips the in-app notification when the in-app channel is off', function (): void {
@@ -83,6 +98,8 @@ it('stores the workspace, subject, actor and reason on the row', function (): vo
 });
 
 it('does not notify a member who assigns the task to themselves', function (): void {
+    Notification::fake();
+
     $owner = User::factory()->withPersonalWorkspace()->create();
     $owner->update(['notification_preferences' => ['task_assigned' => ['email' => true]]]);
 
@@ -91,11 +108,12 @@ it('does not notify a member who assigns the task to themselves', function (): v
 
     resolve(NotifyTaskAssignees::class)->execute($task, [$owner->id], $owner);
 
-    expect($owner->notifications()->count())->toBe(0);
-    Mail::assertNothingQueued();
+    Notification::assertNothingSent();
 });
 
 it('skips a recipient who is no longer a member of the workspace', function (): void {
+    Notification::fake();
+
     $owner = User::factory()->withPersonalWorkspace()->create();
     $assignee = User::factory()->create();
     $assignee->update(['notification_preferences' => ['task_assigned' => ['email' => true]]]);
@@ -107,8 +125,7 @@ it('skips a recipient who is no longer a member of the workspace', function (): 
 
     resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
 
-    expect($assignee->notifications()->count())->toBe(0);
-    Mail::assertNothingQueued();
+    Notification::assertNothingSent();
 });
 
 it('links to the task under the workspace slug at read time', function (): void {
@@ -124,10 +141,82 @@ it('links to the task under the workspace slug at read time', function (): void 
     resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
     resolve(UpdateWorkspaceName::class)->update($owner, $workspace, ['name' => $workspace->name, 'slug' => 'renamed-workspace']);
 
-    $url = TaskAssignedNotification::present($assignee->notifications()->sole())->getActions()[0]->getUrl();
+    $row = $assignee->notifications()->sole();
+    $url = resolve(CurrentWorkspace::class)
+        ->within($workspace, fn (): ?string => TaskAssignedNotification::present($row)->getActions()[0]->getUrl());
 
     expect($url)->toContain('/renamed-workspace/')
         ->and($url)->not->toContain("/{$oldSlug}/");
+});
+
+it('offers no link once the task is deleted', function (): void {
+    $owner = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $assignee = User::factory()->create();
+    $workspace->users()->attach($assignee, ['role' => 'member']);
+
+    $task = Task::factory()->for($workspace)->create(['title' => 'Follow up']);
+    $task->assignees()->attach($assignee);
+
+    resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
+    $row = $assignee->notifications()->sole();
+    $task->delete();
+
+    $actions = resolve(CurrentWorkspace::class)
+        ->within($workspace, fn (): array => TaskAssignedNotification::present($row)->getActions());
+
+    expect($actions)->toBe([]);
+});
+
+it('sends inside the workspace of the notification', function (): void {
+    $owner = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $assignee = User::factory()->create();
+    $workspace->users()->attach($assignee, ['role' => 'member']);
+
+    $task = Task::factory()->for($workspace)->create(['title' => 'Follow up']);
+    $task->assignees()->attach($assignee);
+
+    $boundWorkspaceIds = [];
+    Event::listen(NotificationSending::class, function () use (&$boundWorkspaceIds): void {
+        $boundWorkspaceIds[] = resolve(CurrentWorkspace::class)->get()?->getKey();
+    });
+    resolve(CurrentWorkspace::class)->forget();
+
+    resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
+
+    expect($boundWorkspaceIds)->toBe([$workspace->id])
+        ->and(resolve(CurrentWorkspace::class)->get())->toBeNull();
+});
+
+it('drops a queued send whose task was deleted before it ran', function (): void {
+    Queue::fake();
+
+    $owner = User::factory()->withPersonalWorkspace()->create();
+    $assignee = User::factory()->create();
+    $owner->currentWorkspace->users()->attach($assignee, ['role' => 'member']);
+
+    $task = Task::factory()->for($owner->currentWorkspace)->create(['title' => 'Follow up']);
+    $task->assignees()->attach($assignee);
+
+    resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $owner);
+
+    $queue = new class extends SyncQueue
+    {
+        public function payloadFor(object $job): string
+        {
+            return $this->createPayload($job, 'default');
+        }
+    };
+    $queue->setContainer(app());
+
+    $queuedJob = new SyncJob(app(), $queue->payloadFor(Queue::pushed(SendQueuedNotifications::class)->first()), 'sync', 'default');
+    $task->forceDelete();
+    $queuedJob->fire();
+
+    expect($queuedJob->isDeleted())->toBeTrue()
+        ->and($queuedJob->hasFailed())->toBeFalse()
+        ->and($assignee->notifications()->count())->toBe(0);
 });
 
 it('broadcasts a refresh to the assignee', function (): void {

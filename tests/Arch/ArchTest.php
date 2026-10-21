@@ -53,7 +53,8 @@ arch()->preset()
         'App\Http\Controllers\Mcp',
         'App\ActivityLog',
         'App\Models\ActivityLog\Scopes\WorkspaceScope',
-        'App\Notifications\Channels',
+        'App\Notifications\Channels\\',
+        'App\Notifications\Middleware\\',
         // Chat tools intentionally reuse App\Http\Resources (consistent
         // LLM-facing payloads); the preset forbids resources outside Http.
         'Relaticle\Chat',

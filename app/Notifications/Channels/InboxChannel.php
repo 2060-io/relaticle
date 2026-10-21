@@ -47,23 +47,26 @@ final class InboxChannel extends DatabaseChannel
             return null;
         }
 
-        $row = $notifiable->notifications()
-            ->where('group_key', $columns['group_key'])
-            ->whereNull('read_at')
-            ->whereNull('archived_at')
-            ->first();
+        return DB::transaction(function () use ($notifiable, $notification, $columns): ?NotificationRow {
+            $row = $notifiable->notifications()
+                ->where('group_key', $columns['group_key'])
+                ->whereNull('read_at')
+                ->whereNull('archived_at')
+                ->lockForUpdate()
+                ->first();
 
-        if (! $row instanceof NotificationRow) {
-            return null;
-        }
+            if (! $row instanceof NotificationRow) {
+                return null;
+            }
 
-        $row->forceFill([
-            ...$columns,
-            'data' => $notification->mergeFacts($row->data),
-            'updated_at' => now(),
-        ])->save();
+            $row->forceFill([
+                ...$columns,
+                'data' => $notification->mergeFacts($row->data),
+                'updated_at' => now(),
+            ])->save();
 
-        return $row;
+            return $row;
+        });
     }
 
     /** @param  array<string, mixed>  $columns */
