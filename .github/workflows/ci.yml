@@ -185,6 +185,14 @@ jobs:
           php artisan key:generate
           php artisan passport:keys --force --no-interaction
 
+      # The newest recording from the Shard Timings workflow. The committed file is the fallback.
+      - name: Restore shard timings
+        uses: actions/cache/restore@v6
+        with:
+          path: tests/.pest/shards.json
+          key: pest-shards-${{ github.run_id }}
+          restore-keys: pest-shards-
+
       - name: Tests
         run: composer test:pest:ci
         env:

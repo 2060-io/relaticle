@@ -85,6 +85,8 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
   a scoped run cannot, and for recording a TIA graph. TIA replays a cached pass whenever
   a test's edges are unchanged, so it cannot see time-dependent failures (`travelTo`,
   expiring tokens), `.env` edits, or dynamic dispatch it did not trace while recording.
-- After changing test timings materially, refresh the CI shard balance with
-  `composer test:update-shards` and commit `tests/.pest/shards.json`; a stale
-  file silently drops new test classes out of time-balancing.
+- The `Shard Timings` workflow records each test class's duration on main every night, and
+  every test shard restores that recording before Pest splits the suite. A class with no
+  recording yet counts at the median. `tests/.pest/shards.json` is only the fallback for a
+  run that finds no recording, so do not refresh it with a local `composer test:update-shards`:
+  a laptop's timings skew the split. Refresh it from the workflow's `pest-shards` artifact.
