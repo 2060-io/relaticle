@@ -31,7 +31,7 @@ return [
                 'App\Mcp\Tools\SearchTool::handle' => 77,
                 'App\Providers\AppServiceProvider::configureFilament' => 88,
                 'App\Providers\AppServiceProvider::configureRateLimiting' => 70,
-                'App\Providers\AppServiceProvider::register' => 80,
+                'App\Providers\AppServiceProvider::register' => 77,
                 'App\Providers\Filament\AppPanelProvider::boot' => 75,
                 'App\Providers\Filament\AppPanelProvider::panel' => 291,
                 'App\Providers\HealthServiceProvider::boot' => 65,

@@ -28,6 +28,7 @@ use App\Models\Company;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Notifications\TaskAssignedNotification;
 use App\Support\CurrentWorkspace;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\QueryException;
@@ -386,9 +387,10 @@ it('does not duplicate assignees or notifications when an attachment is repeated
 it('waits for a concurrent task row lock before attaching relationships', function (): void {
     Mail::fake();
 
-    $this->user->update([
+    $member = User::factory()->create([
         'notification_preferences' => ['task_assigned' => ['email' => true]],
     ]);
+    $this->workspace->users()->attach($member, ['role' => 'member']);
     $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
 
     $defaultConnectionName = DB::getDefaultConnection();
@@ -414,7 +416,7 @@ it('waits for a concurrent task row lock before attaching relationships', functi
         RelaticleServer::actingAs($writerUser)
             ->tool(AttachTaskToEntitiesTool::class, [
                 'id' => $task->id,
-                'assignee_ids' => [$writerUser->id],
+                'assignee_ids' => [$member->id],
             ])
             ->assertHasErrors();
         Exceptions::assertReported(
@@ -427,7 +429,7 @@ it('waits for a concurrent task row lock before attaching relationships', functi
         RelaticleServer::actingAs($writerUser)
             ->tool(AttachTaskToEntitiesTool::class, [
                 'id' => $task->id,
-                'assignee_ids' => [$writerUser->id],
+                'assignee_ids' => [$member->id],
             ])
             ->assertOk();
 
@@ -435,7 +437,7 @@ it('waits for a concurrent task row lock before attaching relationships', functi
 
         expect($writer->table('task_user')
             ->where('task_id', $task->id)
-            ->where('user_id', $writerUser->id)
+            ->where('user_id', $member->id)
             ->count())->toBe(1);
         Mail::assertQueued(TaskAssignedMail::class, 1);
     } finally {
@@ -446,11 +448,11 @@ it('waits for a concurrent task row lock before attaching relationships', functi
         DB::setDefaultConnection($defaultConnectionName);
         DB::connection($defaultConnectionName)
             ->table('notifications')
-            ->where('notifiable_id', $this->user->id)
+            ->whereIn('notifiable_id', [$this->user->id, $member->id])
             ->delete();
         DB::connection($defaultConnectionName)
             ->table('users')
-            ->where('id', $this->user->id)
+            ->whereIn('id', [$this->user->id, $member->id])
             ->delete();
         DB::purge('relationship_lock_holder');
         DB::purge('relationship_writer');
@@ -587,17 +589,18 @@ describe('workspace scoping', function (): void {
 });
 
 it('links the in-app assignment notification of an MCP-created task to that task', function (): void {
+    $assignee = User::factory()->create();
+    $this->workspace->users()->attach($assignee, ['role' => 'member']);
+
     RelaticleServer::actingAs($this->user)
         ->tool(CreateTaskTool::class, [
             'title' => 'Follow Up',
-            'assignee_ids' => [$this->user->id],
+            'assignee_ids' => [$assignee->id],
         ])
         ->assertOk();
 
-    defer()->invoke();
-
     $task = Task::query()->where('title', 'Follow Up')->firstOrFail();
-    $url = data_get($this->user->notifications()->sole()->data, 'actions.0.url');
+    $url = TaskAssignedNotification::present($assignee->notifications()->sole())->getActions()[0]->getUrl();
 
     expect($url)->toContain("/{$this->workspace->slug}/tasks")
         ->and($url)->toContain('tableAction=edit')

@@ -13,6 +13,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\TaskAssignedNotification;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
@@ -191,7 +192,7 @@ it('notifies a newly assigned member with a deep-link that opens the task edit m
         ->assertHasNoActionErrors();
 
     $task = Task::query()->where('title', 'Assigned Task')->sole();
-    $url = data_get($assignee->notifications()->sole()->data, 'actions.0.url');
+    $url = TaskAssignedNotification::present($assignee->notifications()->sole())->getActions()[0]->getUrl();
 
     expect($url)->toContain('/tasks')
         ->and($url)->toContain('tableAction=edit')

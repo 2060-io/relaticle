@@ -19,6 +19,7 @@ use App\Mcp\Tools\BaseRelationshipTool;
 use App\Mcp\Tools\BaseShowTool;
 use App\Mcp\Tools\BaseUpdateTool;
 use App\Models\PersonalAccessToken;
+use App\Notifications\InboxNotification;
 use App\Rules\ArrayExistsForWorkspace;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -52,6 +53,7 @@ arch()->preset()
         'App\Http\Controllers\Mcp',
         'App\ActivityLog',
         'App\Models\ActivityLog\Scopes\WorkspaceScope',
+        'App\Notifications\Channels',
         // Chat tools intentionally reuse App\Http\Resources (consistent
         // LLM-facing payloads); the preset forbids resources outside Http.
         'Relaticle\Chat',
@@ -82,6 +84,7 @@ arch('avoid open for extension')
         BaseRelationshipTool::class,
         BaseCrmEntityRequest::class,
         ImportPage::class,
+        InboxNotification::class,
         PersonalAccessToken::class,
     ]);
 
@@ -107,6 +110,7 @@ arch('ensure no extends')
         BaseRelationshipTool::class,
         BaseCrmEntityRequest::class,
         ImportPage::class,
+        InboxNotification::class,
     ]);
 
 arch('avoid mutation')

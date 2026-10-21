@@ -1,0 +1,60 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\Task;
+use App\Models\User;
+use App\Notifications\Channels\InboxChannel;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Tests\Helpers\GroupedInboxNotification;
+
+mutates(InboxChannel::class);
+
+beforeEach(function (): void {
+    $this->user = User::factory()->withPersonalWorkspace()->create();
+    $this->task = Task::factory()->for($this->user->currentWorkspace)->create();
+});
+
+it('collapses a send with the same group key into the unread row', function (): void {
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first'));
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second'));
+
+    expect($this->user->notifications()->sole()->data)->toBe(['labels' => ['first', 'second']]);
+});
+
+it('starts a new row once the earlier one with the group key is read', function (): void {
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first'));
+    $this->user->notifications()->sole()->markAsRead();
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second'));
+
+    expect($this->user->notifications()->count())->toBe(2);
+});
+
+it('collapses into the row a concurrent send inserted first', function (): void {
+    $raced = false;
+
+    DB::listen(function (QueryExecuted $query) use (&$raced): void {
+        if ($raced || ! str_contains($query->sql, 'select * from "notifications"')) {
+            return;
+        }
+
+        $raced = true;
+
+        DB::table('notifications')->insert([
+            'id' => (string) Str::uuid(),
+            'type' => GroupedInboxNotification::class,
+            'notifiable_type' => $this->user->getMorphClass(),
+            'notifiable_id' => $this->user->getKey(),
+            'data' => json_encode(['labels' => ['competitor']]),
+            'group_key' => 'task:1',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second'));
+
+    expect($this->user->notifications()->sole()->data)->toBe(['labels' => ['competitor', 'second']]);
+});
