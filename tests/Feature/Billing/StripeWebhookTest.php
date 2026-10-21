@@ -7,12 +7,15 @@ use App\Actions\Billing\NotifyWorkspaceOfPaymentFailure;
 use App\Actions\Billing\StartProTrial;
 use App\Actions\Billing\SyncWorkspacePlanFromSubscription;
 use App\Enums\BillingStatus;
+use App\Enums\Notifications\NotificationReason;
 use App\Enums\Plan;
+use App\Filament\Pages\Billing;
 use App\Http\Controllers\Billing\StripeWebhookController;
 use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
 use App\Mail\ProEndedMail;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Notifications\PaymentFailedNotification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -28,6 +31,7 @@ mutates(SyncWorkspacePlanFromSubscription::class);
 mutates(SyncPlanOnStripeSubscriptionChange::class);
 mutates(GrantPurchasedCredits::class);
 mutates(NotifyWorkspaceOfPaymentFailure::class);
+mutates(PaymentFailedNotification::class);
 
 beforeEach(function (): void {
     config()->set('cashier.webhook.secret', 'whsec_test_secret');
@@ -484,10 +488,11 @@ it('notifies the workspace owner when a renewal charge fails', function (): void
 
     sendStripeWebhook(invoicePaymentFailedEvent($workspace))->assertOk();
 
-    $notification = $workspace->owner->notifications()->sole();
+    $notification = PaymentFailedNotification::present($workspace->owner->notifications()->sole());
 
-    expect($notification->data['title'])->toContain($workspace->name)
-        ->and($notification->data['body'])->toBe(__('billing.payment_failed.notification_body'));
+    expect($notification->getTitle())->toContain($workspace->name)
+        ->and($notification->getBody())->toBe(__('billing.payment_failed.notification_body'))
+        ->and($notification->getActions()[0]->getUrl())->toBe(Billing::getUrl(panel: 'app', tenant: $workspace));
 });
 
 it('keeps Enterprise access clear in an older subscription payment notification', function (): void {
@@ -496,9 +501,9 @@ it('keeps Enterprise access clear in an older subscription payment notification'
 
     sendStripeWebhook(invoicePaymentFailedEvent($workspace))->assertOk();
 
-    $notification = $workspace->owner->notifications()->sole();
+    $notification = PaymentFailedNotification::present($workspace->owner->notifications()->sole());
 
-    expect($notification->data['body'])->toContain('Your Enterprise access is unchanged.')
+    expect($notification->getBody())->toContain('Your Enterprise access is unchanged.')
         ->not->toContain('to keep Pro');
 });
 
@@ -513,6 +518,30 @@ it('notifies once per invoice, not once per Stripe retry attempt', function (): 
     }
 
     expect($workspace->owner->notifications()->count())->toBe(1);
+});
+
+it('stores one payment failure row for the owner in the workspace', function (): void {
+    $workspace = stripeBillingWorkspace();
+
+    sendStripeWebhook(invoicePaymentFailedEvent($workspace))->assertOk();
+    sendStripeWebhook(invoicePaymentFailedEvent($workspace))->assertOk();
+
+    $owner = $workspace->owner;
+    $row = $owner->notifications()->first();
+
+    expect($owner->notifications()->count())->toBe(1)
+        ->and($row->workspace_id)->toBe($workspace->getKey())
+        ->and($row->reason)->toBe(NotificationReason::System);
+});
+
+it('offers no billing link once the notification has no workspace', function (): void {
+    $workspace = stripeBillingWorkspace();
+
+    sendStripeWebhook(invoicePaymentFailedEvent($workspace))->assertOk();
+
+    $row = $workspace->owner->notifications()->sole()->setRelation('workspace', null);
+
+    expect(PaymentFailedNotification::present($row)->getActions())->toBe([]);
 });
 
 it('alarms on a plan change that failed to bill', function (): void {
