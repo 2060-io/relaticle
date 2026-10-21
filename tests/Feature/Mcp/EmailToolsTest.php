@@ -12,12 +12,12 @@ use App\Mcp\Tools\Email\ListEmailAccountsTool;
 use App\Mcp\Tools\Email\ListEmailsTool;
 use App\Mcp\Tools\Email\SendEmailTool;
 use App\Models\CustomField;
+use App\Models\Notification;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -1648,7 +1648,7 @@ it('holds for at least a minute whatever the config says', function (int $config
 
 it('leaves no email behind when the notice cannot be stored', function (): void {
     config(['app.debug' => false]);
-    DatabaseNotification::creating(fn (): never => throw new RuntimeException('notifications down'));
+    Notification::creating(fn (): never => throw new RuntimeException('notifications down'));
 
     RelaticleServer::actingAs($this->viewer)
         ->tool(SendEmailTool::class, sendArguments($this->viewerAccount))
@@ -1657,7 +1657,7 @@ it('leaves no email behind when the notice cannot be stored', function (): void 
     expect(Email::query()->count())->toBe(0)
         ->and(EmailBody::query()->count())->toBe(0)
         ->and(EmailParticipant::query()->count())->toBe(0)
-        ->and(DatabaseNotification::query()->count())->toBe(0);
+        ->and(Notification::query()->count())->toBe(0);
 });
 
 it('stops an assistant from holding more than ten emails at once', function (): void {
