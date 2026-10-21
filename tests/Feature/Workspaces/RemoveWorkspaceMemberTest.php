@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Actions\Jetstream\RemoveWorkspaceMember;
 use App\Enums\WorkspaceRole;
+use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\WorkspaceMemberRemovedNotification;
@@ -266,4 +267,18 @@ test('removing a member cancels the mail they had queued and leaves a teammate m
 
     expect(Email::withoutGlobalScope(ActiveAccountScope::class)->findOrFail($membersMail->getKey())->status)->toBe(EmailStatus::CANCELLED)
         ->and($ownersMail->fresh()->status)->toBe(EmailStatus::QUEUED);
+});
+
+test('removing a member deletes their notifications from that workspace only', function () {
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $otherWorkspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $workspace->users()->attach($member = User::factory()->create(), ['role' => 'member']);
+
+    NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => $workspace->getKey()]);
+    $kept = NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => $otherWorkspace->getKey()]);
+
+    resolve(RemoveWorkspaceMember::class)->remove($owner, $workspace, $member);
+
+    expect($member->notifications()->pluck('id')->all())->toBe([$kept->getKey()]);
 });

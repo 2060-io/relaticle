@@ -29,6 +29,8 @@ final readonly class RemoveWorkspaceMember implements RemovesTeamMembers
 
         $workspace->removeUser($workspaceMember);
 
+        $workspaceMember->notifications()->where('workspace_id', $workspace->getKey())->delete();
+
         event(new TeamMemberRemoved($workspace, $workspaceMember));
 
         $workspaceMember->notify(new WorkspaceMemberRemovedNotification($workspace));
