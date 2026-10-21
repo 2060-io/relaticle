@@ -35,6 +35,17 @@
 - Demo/example content (names, companies, conversations) must read like real CRM
   data for the buyer persona. No placeholder-looking values.
 
+## Stylesheets
+
+- Each Tailwind entry lists its sources with `@source`, and `app.css` turns automatic detection off with
+  `source(none)`. Detection reads `.gitignore`, which the Docker build never sees, so the image once
+  scanned all of `vendor/` and shipped different CSS from production.
+- A class written in a directory no entry lists never reaches the CSS. Add the directory to the entry
+  whose pages render it.
+- `documentation.css` only `@reference`s `app.css`, because the docs shell loads both. It emits no utilities.
+- The Dockerfile frontend stage copies or mounts every `@source` path. `tests/Arch/ConventionsTest.php`
+  fails a path that does not exist or that the stage cannot see.
+
 ## Icons (Remix Icon)
 
 - **Brand/social icons** (GitHub, Discord, Twitter, LinkedIn) → always `fill` variant

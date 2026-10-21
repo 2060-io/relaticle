@@ -33,12 +33,12 @@ RUN npm install -g "$(node -p 'require("./package.json").packageManager')" \
 COPY vite.config.js ./
 COPY resources ./resources
 COPY public ./public
+COPY app ./app
 COPY packages ./packages
 
-# Copy vendor for Filament theme CSS
-COPY --from=composer /app/vendor ./vendor
-
-RUN pnpm run build
+# Filament themes import vendor CSS and scan vendor views
+RUN --mount=type=bind,from=composer,source=/app/vendor,target=/app/vendor \
+    pnpm run build
 
 ###########################################
 # Stage 3: Production image
