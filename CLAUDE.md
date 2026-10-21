@@ -434,7 +434,7 @@ months two copies of the same field vocabulary drifted apart.
 ## Quality Checks
 
 The local loop is scoped to the change. GitHub CI (`.github/workflows/ci.yml`) is the
-only full run: it executes lint, rector, PHPStan, type coverage, five test shards and
+only full run: it executes lint, rector, PHPStan, type coverage, six test shards and
 six Browser shards on every push to a pull request. A run takes about 4 minutes when
 runners are free, and longer when several runs queue for them.
 
