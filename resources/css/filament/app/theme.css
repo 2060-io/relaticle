@@ -956,6 +956,35 @@ a.fi-linked-records-chip {
     }
 }
 
+/* Notifications keep their unread count and actions on that one bar row, and the
+   list runs flush under it. */
+.fi-modal.fi-no-database.fi-modal-slide-over.fi-modal-has-sticky-header > .fi-modal-window-ctn > .fi-modal-window {
+    & > .fi-modal-header > div {
+        @apply flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 pe-10;
+    }
+
+    .fi-modal-heading {
+        @apply flex items-center gap-x-1.5;
+
+        .fi-badge {
+            @apply static ms-0;
+        }
+    }
+
+    .fi-modal-header .fi-ac {
+        @apply ms-auto mt-0;
+    }
+
+    .fi-modal-content {
+        @apply py-0;
+    }
+}
+
+/* The empty state's icon bleeds 8px above its header, past the bar's py-3. */
+.fi-modal.fi-no-database.fi-modal-slide-over:not(.fi-modal-has-sticky-header) > .fi-modal-window-ctn > .fi-modal-window > .fi-modal-header {
+    @apply pt-6;
+}
+
 .fi-modal.fi-modal-slide-over > .fi-modal-close-overlay {
     @apply bg-gray-950/20 dark:bg-gray-950/60;
 }
