@@ -988,6 +988,45 @@ it('leaves one completed notice after a transient failure', function (): void {
         ->and($notifications->first()->data['outcome'])->toBe('completed');
 });
 
+it('keeps the completed notice when the job fails after completing', function (): void {
+    ImportExecutionFixture::readyStore($this, ['Name'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+
+    (new ExecuteImportJob(
+        importId: $this->import->id,
+        workspaceId: (string) $this->workspace->id,
+    ))->failed(new RuntimeException('Worker killed after completion'));
+
+    $row = $this->user->notifications()->sole();
+    expect($row->data['outcome'])->toBe('completed')
+        ->and($row->data['created'])->toBe(1);
+});
+
+it('keeps the partial outcome when the job fails after completing with failed rows', function (): void {
+    ImportExecutionFixture::readyStore($this, ['Name'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+        ImportExecutionFixture::row(3, ['Name' => ''], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    ImportExecutionFixture::run($this);
+
+    (new ExecuteImportJob(
+        importId: $this->import->id,
+        workspaceId: (string) $this->workspace->id,
+    ))->failed(new RuntimeException('Worker killed after completion'));
+
+    $row = $this->user->notifications()->sole();
+    expect($row->data['outcome'])->toBe('completed_with_failures')
+        ->and($row->data['failed'])->toBe(1);
+});
+
 it('reports failed rows as a partial outcome', function (): void {
     ImportExecutionFixture::readyStore($this, ['Name'], [
         ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),

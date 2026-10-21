@@ -364,7 +364,7 @@ final class ExecuteImportJob implements ShouldQueue
         });
 
         try {
-            $this->notifyUser($import, $results, failed: true);
+            $this->notifyUser($import, $results, failed: $import->completed_at === null);
         } catch (\Throwable) {
         }
     }
