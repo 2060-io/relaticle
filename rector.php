@@ -49,6 +49,8 @@ return RectorConfig::configure()
             __DIR__.'/app/Filament/Imports/*',
             __DIR__.'/app/Filament/Pages/*',
             __DIR__.'/packages/EmailIntegration/src/Filament/Pages/*',
+            // The bell view calls presentNotification(), and PHPStan flags a private method only a view calls as unused.
+            __DIR__.'/app/Livewire/App/AppDatabaseNotifications.php',
         ],
         ArrayToFirstClassCallableRector::class => [
             // class_exists has optional bool param that conflicts with Collection::first signature
