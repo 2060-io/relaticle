@@ -182,19 +182,22 @@ it('searches the company tabs by name, title and assignee', function (string $re
 ]);
 
 it('notifies a member newly assigned from a record tasks tab', function (string $relationManager, Closure $setUp): void {
-    $assignee = User::factory()->create();
-    $this->workspace->users()->attach($assignee, ['role' => 'member']);
+    $kept = User::factory()->create();
+    $added = User::factory()->create();
+    $this->workspace->users()->attach([$kept->getKey(), $added->getKey()], ['role' => 'member']);
 
     [$ownerRecord, $pageClass, $task] = $setUp($this->user, $this->workspace);
+    $task->assignees()->attach($kept);
 
     livewire($relationManager, [
         'ownerRecord' => $ownerRecord,
         'pageClass' => $pageClass,
     ])
-        ->callAction(TestAction::make('edit')->table($task), data: ['assignees' => [$assignee->getKey()]])
+        ->callAction(TestAction::make('edit')->table($task), data: ['assignees' => [$kept->getKey(), $added->getKey()]])
         ->assertHasNoActionErrors();
 
-    expect($assignee->notifications()->where('subject_id', $task->getKey())->exists())->toBeTrue();
+    expect($added->notifications()->where('subject_id', $task->getKey())->count())->toBe(1)
+        ->and($kept->notifications()->count())->toBe(0);
 })->with([
     'company tasks' => [
         CompanyTasksRelationManager::class,
