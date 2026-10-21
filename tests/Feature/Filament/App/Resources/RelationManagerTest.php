@@ -180,3 +180,47 @@ it('searches the company tabs by name, title and assignee', function (string $re
         'pricing',
     ],
 ]);
+
+it('notifies a member newly assigned from a record tasks tab', function (string $relationManager, Closure $setUp): void {
+    $assignee = User::factory()->create();
+    $this->workspace->users()->attach($assignee, ['role' => 'member']);
+
+    [$ownerRecord, $pageClass, $task] = $setUp($this->user, $this->workspace);
+
+    livewire($relationManager, [
+        'ownerRecord' => $ownerRecord,
+        'pageClass' => $pageClass,
+    ])
+        ->callAction(TestAction::make('edit')->table($task), data: ['assignees' => [$assignee->getKey()]])
+        ->assertHasNoActionErrors();
+
+    expect($assignee->notifications()->where('subject_id', $task->getKey())->exists())->toBeTrue();
+})->with([
+    'company tasks' => [
+        CompanyTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $company = Company::factory()->recycle([$user, $workspace])->create();
+            $task = $company->tasks()->save(Task::factory()->recycle([$user, $workspace])->make());
+
+            return [$company, ViewCompany::class, $task];
+        },
+    ],
+    'opportunity tasks' => [
+        OpportunityTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $opportunity = Opportunity::factory()->recycle([$user, $workspace])->create();
+            $task = $opportunity->tasks()->save(Task::factory()->recycle([$user, $workspace])->make());
+
+            return [$opportunity, ViewOpportunity::class, $task];
+        },
+    ],
+    'people tasks' => [
+        PeopleTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $people = People::factory()->recycle([$user, $workspace])->create();
+            $task = $people->tasks()->save(Task::factory()->recycle([$user, $workspace])->make());
+
+            return [$people, ViewPeople::class, $task];
+        },
+    ],
+]);
