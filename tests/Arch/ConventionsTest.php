@@ -1161,8 +1161,11 @@ it('keeps every Tailwind source on disk and inside the Docker frontend stage', f
     $root = dirname(__DIR__, 2);
 
     preg_match('/^FROM \S+ AS frontend$(.*?)^FROM /ms', (string) file_get_contents($root.'/Dockerfile'), $stage);
-    preg_match_all('#^COPY \S+ \./(\S+)$|target=/app/(\S+?)[\s,]#m', $stage[1] ?? '', $copies);
-    $copied = array_values(array_filter([...$copies[1], ...$copies[2]]));
+    preg_match_all('#^COPY\s.*\s(\S+)$|target=(/app/[^\s,]+)#m', $stage[1] ?? '', $copies);
+    $copied = array_values(array_filter(array_map(
+        static fn (string $destination): string => trim((string) preg_replace('#^(/app/|\./)#', '', $destination), '/'),
+        [...$copies[1], ...$copies[2]],
+    )));
 
     $stylesheets = [];
 
@@ -1178,20 +1181,32 @@ it('keeps every Tailwind source on disk and inside the Docker frontend stage', f
     $problems = [];
 
     foreach ($stylesheets as $stylesheet) {
-        preg_match_all('/^@source\s+([\'"])(.+?)\1/m', (string) file_get_contents($stylesheet), $sources);
+        $css = (string) file_get_contents($stylesheet);
+        $name = str_replace($root.'/', '', $stylesheet);
+
+        preg_match_all('/^@import\s+([\'"])tailwindcss\1(.*)$/m', $css, $imports);
+
+        foreach ($imports[2] as $modifiers) {
+            if (! str_contains($modifiers, 'source(none)')) {
+                $problems[] = "{$name} imports tailwindcss without source(none)";
+            }
+        }
+
+        preg_match_all('/^@source\s+([\'"])(.+?)\1/m', $css, $sources);
 
         foreach ($sources[2] as $source) {
             $path = realpath(dirname($stylesheet).'/'.preg_replace('#/\*.*$#', '', $source));
-            $label = str_replace($root.'/', '', $stylesheet).": {$source}";
 
             if ($path === false) {
-                $problems[] = "{$label} does not exist";
+                $problems[] = "{$name}: {$source} does not exist";
 
                 continue;
             }
 
-            if (! in_array(explode('/', str_replace($root.'/', '', $path))[0], $copied, true)) {
-                $problems[] = "{$label} is not copied or mounted in the Dockerfile frontend stage";
+            $relative = str_replace($root.'/', '', $path);
+
+            if (! array_any($copied, static fn (string $directory): bool => $relative === $directory || str_starts_with($relative, $directory.'/'))) {
+                $problems[] = "{$name}: {$source} is not copied or mounted in the Dockerfile frontend stage";
             }
         }
     }
@@ -1199,6 +1214,6 @@ it('keeps every Tailwind source on disk and inside the Docker frontend stage', f
     expect($copied)->not->toBeEmpty()
         ->and($problems)->toBe(
             [],
-            'Self-hosted images would ship CSS missing these classes (.ai/guidelines/relaticle/ui.md): '.implode(', ', $problems),
+            'Self-hosted images would ship CSS that differs from production (.ai/guidelines/relaticle/ui.md): '.implode(', ', $problems),
         );
 });

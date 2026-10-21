@@ -6,17 +6,24 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+    # The image boots the app without dev dependencies (package:discover), the only
+    # check of that boot before merge, so what the boot loads is listed too.
     paths:
       - .dockerignore
       - .github/workflows/docker-publish.yml
       - Dockerfile
+      - app/Providers/**
+      - bootstrap/**
       - composer.json
       - composer.lock
+      - config/**
       - package.json
       - packages/*/resources/css/**
+      - packages/*/src/*Provider.php
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - resources/css/**
+      - routes/**
       - vite.config.js
 
 concurrency:
