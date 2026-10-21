@@ -82,6 +82,7 @@ final readonly class SyncEmailBatchCountersAction
             $batch->connectedAccount,
             $batch->failed_count,
             is_string($onlyFailedSubject) ? $onlyFailedSubject : null,
+            EmailSendFailedNotification::batchGroupKey((string) $batch->getKey()),
         ));
     }
 }

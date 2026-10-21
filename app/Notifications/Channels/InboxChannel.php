@@ -35,7 +35,9 @@ final class InboxChannel extends DatabaseChannel
         $row = $this->collapse($notifiable, $notification, $columns)
             ?? $this->insertOrCollapse($notifiable, $notification, $columns);
 
-        event(new DatabaseNotificationsSent($notifiable));
+        DB::afterCommit(static function () use ($notifiable): void {
+            event(new DatabaseNotificationsSent($notifiable));
+        });
 
         return $row;
     }

@@ -47,7 +47,23 @@ final readonly class MarkEmailsSendFailedAction
                     $first->connectedAccount,
                     $senderEmails->count(),
                     $senderEmails->count() === 1 ? $first->subject : null,
+                    $this->groupKey($senderEmails),
                 ));
             });
+    }
+
+    /**
+     * @param  Collection<int, Email>  $emails
+     */
+    private function groupKey(Collection $emails): string
+    {
+        $batchIds = $emails->pluck('batch_id')->unique();
+        $batchId = $batchIds->first();
+
+        if ($batchIds->count() === 1 && is_string($batchId)) {
+            return EmailSendFailedNotification::batchGroupKey($batchId);
+        }
+
+        return EmailSendFailedNotification::emailGroupKey((string) $emails->first()?->getKey());
     }
 }

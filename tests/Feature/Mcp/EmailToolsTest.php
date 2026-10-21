@@ -16,6 +16,7 @@ use App\Models\Notification;
 use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Bus;
@@ -50,6 +51,7 @@ use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailShare;
 use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Models\WorkspaceEmailBlocklist;
+use Relaticle\EmailIntegration\Notifications\EmailSendHeldNotification;
 use Relaticle\EmailIntegration\Policies\EmailPolicy;
 use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
 use Relaticle\EmailIntegration\Support\AgentEmailBody;
@@ -57,7 +59,7 @@ use Relaticle\EmailIntegration\Support\EmailForAgent;
 use Relaticle\EmailIntegration\Support\QueuedSendNotifier;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-mutates(ListEmailsTool::class, GetEmailTool::class, ListEmailAccountsTool::class, CreateEmailDraftTool::class, SendEmailTool::class, QueueAgentEmailAction::class, PrepareAgentEmail::class, PrepareAgentEmailDraft::class, SaveAgentEmailDraft::class, QueuedSendNotifier::class, AgentEmailBody::class, SignatureBlock::class, VisibleEmailsQuery::class, EmailForAgent::class, EmailPolicy::class);
+mutates(ListEmailsTool::class, GetEmailTool::class, ListEmailAccountsTool::class, CreateEmailDraftTool::class, SendEmailTool::class, QueueAgentEmailAction::class, PrepareAgentEmail::class, PrepareAgentEmailDraft::class, SaveAgentEmailDraft::class, QueuedSendNotifier::class, EmailSendHeldNotification::class, AgentEmailBody::class, SignatureBlock::class, VisibleEmailsQuery::class, EmailForAgent::class, EmailPolicy::class);
 
 beforeEach(function (): void {
     $this->viewer = User::factory()->withWorkspace()->create();
@@ -1294,11 +1296,11 @@ it('keeps a link whose address holds braces working in a sent body', function ()
 it('tells the user an email is held, with a way to cancel it', function (): void {
     $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    $notification = $this->viewer->notifications()->sole();
+    $notice = EmailSendHeldNotification::present($this->viewer->notifications()->sole());
 
-    expect($notification->data['body'])->toContain('Next steps')->toContain('client@acme.test')->toContain('5 minutes')
-        ->and(collect($notification->data['actions'])->pluck('name')->all())->toContain('cancelSend')
-        ->and(json_encode($notification->data['actions']))->toContain($data['id']);
+    expect($notice->getBody())->toContain('Next steps')->toContain('client@acme.test')->toContain('5 minutes')
+        ->and(collect($notice->getActions())->map(fn (Action $action): string => $action->getName())->all())->toContain('cancelSend')
+        ->and(collect($notice->getActions())->map(fn (Action $action): array => $action->getEventData())->all())->toBe([['emailId' => $data['id']]]);
 });
 
 it('stores the held notice at once, without waiting for the queue', function (): void {
@@ -1312,7 +1314,7 @@ it('stores the held notice at once, without waiting for the queue', function ():
 it('names the connection in the notice from the token name', function (): void {
     sendOverHttp($this->viewer, ['read', 'email:send'], 'Desk Agent', sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['title'])->toBe('Desk Agent queued an email');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getTitle())->toBe('Desk Agent queued an email');
 });
 
 it('names the connection in the notice from the oauth client', function (): void {
@@ -1330,13 +1332,13 @@ it('names the connection in the notice from the oauth client', function (): void
 
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['title'])->toBe('Claude Desktop queued an email');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getTitle())->toBe('Claude Desktop queued an email');
 });
 
 it('falls back to a generic name when the connection has none', function (): void {
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['title'])->toBe('An AI assistant queued an email');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getTitle())->toBe('An AI assistant queued an email');
 });
 
 it('cancels a held email from the notification', function (): void {
@@ -1580,16 +1582,16 @@ it('escapes the subject and the connection name in the notice', function (): voi
         'subject' => 'Lunch<span style="display:none">',
     ]));
 
-    $data = $this->viewer->notifications()->sole()->data;
+    $notice = EmailSendHeldNotification::present($this->viewer->notifications()->sole());
 
-    expect($data['title'])->toContain('&lt;b&gt;')->not->toContain('<b>')
-        ->and($data['body'])->toContain('&lt;span')->not->toContain('<span');
+    expect($notice->getTitle())->toContain('&lt;b&gt;')->not->toContain('<b>')
+        ->and($notice->getBody())->toContain('&lt;span')->not->toContain('<span');
 });
 
 it('escapes every recipient in the notice', function (): void {
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount, ['to' => ['"<i>x</i>"@acme.test']]));
 
-    expect($this->viewer->notifications()->sole()->data['body'])->toContain('&lt;i&gt;')->not->toContain('<i>');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())->toContain('&lt;i&gt;')->not->toContain('<i>');
 });
 
 it('names every recipient in the notice', function (): void {
@@ -1599,7 +1601,7 @@ it('names every recipient in the notice', function (): void {
         'bcc' => ['outsider@other.test'],
     ]));
 
-    expect($this->viewer->notifications()->sole()->data['body'])
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())
         ->toContain('self@acme.test')
         ->toContain('boss@acme.test')
         ->toContain('outsider@other.test');
@@ -1608,7 +1610,7 @@ it('names every recipient in the notice', function (): void {
 it('names the workspace in the notice', function (): void {
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['body'])->toContain(e($this->workspace->name));
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())->toContain(e($this->workspace->name));
 });
 
 it('says one minute for a hold of sixty seconds', function (): void {
@@ -1616,13 +1618,13 @@ it('says one minute for a hold of sixty seconds', function (): void {
 
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['body'])->toContain('in 1 minute.');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())->toContain('in 1 minute.');
 });
 
 it('says five minutes for the default hold', function (): void {
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['body'])->toContain('in 5 minutes.');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())->toContain('in 5 minutes.');
 });
 
 it('rounds the minutes in the notice down', function (): void {
@@ -1630,7 +1632,7 @@ it('rounds the minutes in the notice down', function (): void {
 
     emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
-    expect($this->viewer->notifications()->sole()->data['body'])->toContain('in 2 minutes.');
+    expect(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())->toContain('in 2 minutes.');
 });
 
 it('holds for at least a minute whatever the config says', function (int $configured): void {
@@ -1640,7 +1642,7 @@ it('holds for at least a minute whatever the config says', function (int $config
     $data = emailToolData($this->viewer, SendEmailTool::class, sendArguments($this->viewerAccount));
 
     expect(Email::query()->findOrFail($data['id'])->scheduled_for->equalTo(now()->addSeconds(60)))->toBeTrue()
-        ->and($this->viewer->notifications()->sole()->data['body'])->toContain('in 1 minute.');
+        ->and(EmailSendHeldNotification::present($this->viewer->notifications()->sole())->getBody())->toContain('in 1 minute.');
 })->with([
     'zero' => 0,
     'negative' => -5,

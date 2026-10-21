@@ -5,9 +5,11 @@ declare(strict_types=1);
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\Channels\InboxChannel;
+use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\Helpers\GroupedInboxNotification;
 
@@ -91,4 +93,32 @@ it('rethrows a unique violation that no collapse explains', function (): void {
 
     expect(fn () => $this->user->notifyNow($notification))->toThrow(UniqueConstraintViolationException::class)
         ->and($this->user->notifications()->count())->toBe(1);
+});
+
+it('broadcasts only after the surrounding transaction commits', function (): void {
+    Event::fake([DatabaseNotificationsSent::class]);
+
+    DB::transaction(function (): void {
+        $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first'));
+
+        Event::assertNotDispatched(DatabaseNotificationsSent::class);
+    });
+
+    Event::assertDispatchedTimes(DatabaseNotificationsSent::class, 1);
+});
+
+it('does not broadcast when the surrounding transaction rolls back', function (): void {
+    Event::fake([DatabaseNotificationsSent::class]);
+
+    try {
+        DB::transaction(function (): void {
+            $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first'));
+
+            throw new RuntimeException('rolled back');
+        });
+    } catch (RuntimeException) {
+    }
+
+    Event::assertNotDispatched(DatabaseNotificationsSent::class);
+    expect($this->user->notifications()->count())->toBe(0);
 });

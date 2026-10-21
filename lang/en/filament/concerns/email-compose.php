@@ -29,6 +29,7 @@ return [
         'held' => [
             'title' => ':via queued an email',
             'body' => '":subject" goes to :recipients in :minutes. Workspace: :workspace. Cancel it if you did not ask for it.',
+            'sent_body' => '":subject" was sent to :recipients. Workspace: :workspace.',
             'minutes' => ':count minute|:count minutes',
         ],
         'too_late' => [

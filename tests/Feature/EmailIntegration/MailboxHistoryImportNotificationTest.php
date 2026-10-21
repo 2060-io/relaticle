@@ -41,6 +41,7 @@ use Relaticle\EmailIntegration\Services\Contracts\MailServiceFactoryInterface;
 use Relaticle\EmailIntegration\Services\Contracts\MailServiceInterface;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Services\MailboxSyncTracker;
+use Tests\Helpers\PresentedMailboxImport;
 
 mutates(
     CompleteMailboxHistoryImportAction::class,
@@ -248,6 +249,47 @@ function assertMailboxImportMail(User $user, MailboxHistoryImportCompletedNotifi
         ->and($mail)->toBeInstanceOf(MailMessage::class);
 }
 
+it('stores the mailbox history notice once per import batch', function (): void {
+    $user = mailboxImportNotificationUser();
+    $account = mailboxImportNotificationAccount($user);
+
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-1', failedEmailCount: 2), ['database']);
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-1', afterFailedImportRetry: true), ['database']);
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-2'), ['database']);
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account), ['database']);
+
+    $rows = $user->notifications()->get()->keyBy('group_key');
+
+    expect($rows->keys()->sort()->values()->all())->toBe([
+        "mailbox-history:{$account->getKey()}:batch-1",
+        "mailbox-history:{$account->getKey()}:batch-2",
+        "mailbox-history:{$account->getKey()}:initial",
+    ])
+        ->and($rows["mailbox-history:{$account->getKey()}:batch-1"]->data['kind'])->toBe('retry_success')
+        ->and($rows->pluck('subject_type')->unique()->all())->toBe(['connected_account'])
+        ->and($rows->pluck('subject_id')->unique()->all())->toBe([$account->getKey()])
+        ->and($rows->pluck('workspace_id')->unique()->all())->toBe([$account->workspace_id]);
+});
+
+it('presents the mailbox history notice from its stored facts', function (): void {
+    $user = mailboxImportNotificationUser();
+    $account = mailboxImportNotificationAccount($user);
+    $notification = new MailboxHistoryImportCompletedNotification($account, 'batch-1', failedEmailCount: 2, importedEmailCount: 7, importedCalendarCount: 0, includesCalendar: false);
+    $notification->emailHistoryDidNotFinish = true;
+
+    $user->notifyNow($notification, ['database']);
+
+    $row = $user->notifications()->sole();
+    $presented = MailboxHistoryImportCompletedNotification::present($row);
+    $retry = $presented->getActions()[0];
+
+    expect($row->data['email_history_did_not_finish'])->toBeTrue()
+        ->and($presented->getStatus())->toBe('warning')
+        ->and($presented->getBody())->toContain('7 emails')->toContain(__('filament/notifications/mailbox-import-complete.email_history_did_not_finish'))
+        ->and($retry->getName())->toBe('retry')
+        ->and($retry->getEventData())->toBe(['accountId' => (string) $account->getKey(), 'batchId' => 'batch-1']);
+});
+
 it('notifies with persisted email counts when the import succeeds', function (): void {
     config()->set('queue.default', 'database');
     $user = mailboxImportNotificationUser();
@@ -269,16 +311,16 @@ it('notifies with persisted email counts when the import succeeds', function ():
     ]);
 
     expect($account->fresh()->emails()->count())->toBe(2)
-        ->and($notification->data['title'])->toBe(__('filament/notifications/mailbox-import-complete.title'))
-        ->and($notification->data['status'])->toBe('success')
-        ->and($notification->data['viewData']['kind'])->toBe('complete')
-        ->and($notification->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
+        ->and(PresentedMailboxImport::of($notification)['title'])->toBe(__('filament/notifications/mailbox-import-complete.title'))
+        ->and(PresentedMailboxImport::of($notification)['status'])->toBe('success')
+        ->and($notification->data['kind'])->toBe('complete')
+        ->and(PresentedMailboxImport::of($notification)['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
             'imported' => $imported,
             'email' => $account->email_address,
             'failures' => '',
         ]))
-        ->and($notification->data['body'])->not->toContain('calendar')
-        ->and($notification->data['actions'] ?? [])->toBe([]);
+        ->and(PresentedMailboxImport::of($notification)['body'])->not->toContain('calendar')
+        ->and(PresentedMailboxImport::of($notification)['actions'] ?? [])->toBe([]);
 
     assertMailboxImportMail(
         $user,
@@ -334,7 +376,7 @@ it('syncs new Microsoft mail after the recent pass and sends one summary after t
         ->and($account->fresh()->sync_cursor)->toBe('full-cursor')
         ->and($account->emails()->pluck('provider_message_id')->sort()->values()->all())->toBe(['old-1', 'recent-1', 'recent-2'])
         ->and($account->fresh()->isEmailHistoryImportRunning())->toBeFalse()
-        ->and($user->notifications()->sole()->data['status'])->toBe('success');
+        ->and(PresentedMailboxImport::of($user->notifications()->sole())['status'])->toBe('success');
 });
 
 it('notifies with issues when some store jobs permanently fail', function (): void {
@@ -365,16 +407,16 @@ it('notifies with issues when some store jobs permanently fail', function (): vo
 
     expect($account->emails()->count())->toBe(1)
         ->and($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeTrue()
-        ->and($notification->data['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'))
-        ->and($notification->data['status'])->toBe('warning')
-        ->and($notification->data['viewData']['kind'])->toBe('partial')
-        ->and($notification->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body_with_issues', [
+        ->and(PresentedMailboxImport::of($notification)['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'))
+        ->and(PresentedMailboxImport::of($notification)['status'])->toBe('warning')
+        ->and($notification->data['kind'])->toBe('partial')
+        ->and(PresentedMailboxImport::of($notification)['body'])->toBe(__('filament/notifications/mailbox-import-complete.body_with_issues', [
             'imported' => $imported,
             'failures' => $failures,
             'email' => $account->email_address,
         ]));
 
-    assertMailboxImportRetryAction($notification->data, $account, $batchId);
+    assertMailboxImportRetryAction(PresentedMailboxImport::of($notification), $account, $batchId);
 
     livewire(EmailAccountsPage::class)
         ->assertDontSee(__('filament/pages/email-accounts.actions.retry_failed_import.label'))
@@ -432,8 +474,8 @@ it('waits for calendar store work before sending the import summary', function (
     expect($sawEmailDoneWhileCalendarPending)->toBeTrue()
         ->and($account->fresh()->calendar_sync_cursor)->toBe('calendar-done')
         ->and($account->meetings()->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['title'])->toBe(__('filament/notifications/mailbox-import-complete.title'))
-        ->and($user->notifications()->sole()->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
+        ->and(PresentedMailboxImport::of($user->notifications()->sole())['title'])->toBe(__('filament/notifications/mailbox-import-complete.title'))
+        ->and(PresentedMailboxImport::of($user->notifications()->sole())['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
             'imported' => $imported,
             'email' => $account->email_address,
             'failures' => '',
@@ -465,14 +507,14 @@ it('reports calendar failures in the import summary', function (): void {
 
     expect($account->emails()->count())->toBe(1)
         ->and($account->meetings()->count())->toBe(0)
-        ->and($notification->data['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'))
-        ->and($notification->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body_with_issues', [
+        ->and(PresentedMailboxImport::of($notification)['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'))
+        ->and(PresentedMailboxImport::of($notification)['body'])->toBe(__('filament/notifications/mailbox-import-complete.body_with_issues', [
             'imported' => $imported,
             'failures' => __('filament/notifications/mailbox-import-complete.calendar_did_not_finish'),
             'email' => $account->email_address,
         ]));
 
-    assertMailboxImportRetryAction($notification->data, $account, $notification->data['viewData']['batch_id']);
+    assertMailboxImportRetryAction(PresentedMailboxImport::of($notification), $account, $notification->data['batch_id']);
 });
 
 it('does not send a retry-success notice while a retried job still fails', function (): void {
@@ -493,7 +535,7 @@ it('does not send a retry-success notice while a retried job still fails', funct
     workMailboxImportQueueOnce();
 
     expect($user->notifications()->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('partial');
 
     retryMailboxImportFromNotification($account->fresh());
 
@@ -501,7 +543,7 @@ it('does not send a retry-success notice while a retried job still fails', funct
 
     expect($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeTrue()
         ->and($user->notifications()->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('partial');
 });
 
 it('sends one recovery notice after every failed import job succeeds', function (): void {
@@ -529,16 +571,16 @@ it('sends one recovery notice after every failed import job succeeds', function 
     $notifications = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->get();
 
     $retrySuccess = $notifications->first(
-        fn ($notification): bool => ($notification->data['viewData']['kind'] ?? null) === 'retry_success',
+        fn ($notification): bool => ($notification->data['kind'] ?? null) === 'retry_success',
     );
 
     expect($account->emails()->count())->toBe(1)
         ->and($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeFalse()
-        ->and($notifications)->toHaveCount(2)
-        ->and($notifications->pluck('data.viewData.kind')->all())->toContain('partial', 'retry_success')
-        ->and($notifications->pluck('data.title')->all())->toContain(__('filament/notifications/mailbox-import-complete.retry_success.title'))
+        ->and($notifications)->toHaveCount(1)
+        ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success'])
         ->and($retrySuccess)->not->toBeNull()
-        ->and($retrySuccess->data['actions'] ?? [])->toBe([]);
+        ->and(PresentedMailboxImport::of($retrySuccess)['title'])->toBe(__('filament/notifications/mailbox-import-complete.retry_success.title'))
+        ->and(PresentedMailboxImport::of($retrySuccess)['actions'] ?? [])->toBe([]);
 
     $retryMail = (new MailboxHistoryImportCompletedNotification($account->fresh(), $batchId, afterFailedImportRetry: true))->toMail($user);
     expect($retryMail->subject)->toBe(__('filament/notifications/mailbox-import-complete.mail.retry_subject'));
@@ -576,13 +618,13 @@ it('counts persisted rows and ignores skipped store jobs', function (): void {
 
     expect($account->emails()->count())->toBe(2)
         ->and($account->meetings()->count())->toBe(2)
-        ->and($notification->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body_with_issues', [
+        ->and(PresentedMailboxImport::of($notification)['body'])->toBe(__('filament/notifications/mailbox-import-complete.body_with_issues', [
             'imported' => $imported,
             'failures' => $failures,
             'email' => $account->email_address,
         ]))
-        ->and($notification->data['body'])->not->toContain(trans_choice('filament/notifications/mailbox-import-complete.imported_emails', 3, ['count' => 3]))
-        ->and($notification->data['body'])->not->toContain(trans_choice('filament/notifications/mailbox-import-complete.imported_emails', 4, ['count' => 4]));
+        ->and(PresentedMailboxImport::of($notification)['body'])->not->toContain(trans_choice('filament/notifications/mailbox-import-complete.imported_emails', 3, ['count' => 3]))
+        ->and(PresentedMailboxImport::of($notification)['body'])->not->toContain(trans_choice('filament/notifications/mailbox-import-complete.imported_emails', 4, ['count' => 4]));
 });
 
 it('does not complete the import while retried store jobs are still running', function (): void {
@@ -653,7 +695,7 @@ it('does not send duplicate import notices from repeated completion callbacks or
 
     expect(resolve(RetryMailboxHistoryImportFailuresAction::class)->execute($user, $account->fresh(), $batchId))->toBeFalse()
         ->and($user->notifications()->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('partial');
 });
 
 it('does not repeat the import summary after the notice is dismissed', function (): void {
@@ -711,7 +753,7 @@ it('sends no import summary when a mailbox is imported again', function (): void
     expect($account->fresh()->history_import_batch_id)->not->toBe($firstBatchId)
         ->and($account->emails()->count())->toBe(2)
         ->and($user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['viewData']['batch_id'])->toBe($firstBatchId)
+        ->and($user->notifications()->sole()->data['batch_id'])->toBe($firstBatchId)
         ->and(queuedMailboxImportMailCount())->toBe(1);
 });
 
@@ -747,7 +789,7 @@ it('sends no recovery notice when a repeated import repairs its calendar failure
     $notification = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->sole();
 
     expect($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeFalse()
-        ->and($notification->data['viewData']['kind'])->toBe('complete')
+        ->and($notification->data['kind'])->toBe('complete')
         ->and(queuedMailboxImportMailCount())->toBe(1);
 });
 
@@ -777,13 +819,13 @@ it('does not carry calendar failures from a previous import into a new import su
     ]);
 
     expect($account->fresh()->history_import_batch_id)->not->toBeNull()
-        ->and($notification->data['viewData']['kind'])->toBe('complete')
-        ->and($notification->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
+        ->and($notification->data['kind'])->toBe('complete')
+        ->and(PresentedMailboxImport::of($notification)['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
             'imported' => $imported,
             'email' => $account->email_address,
             'failures' => '',
         ]))
-        ->and($notification->data['body'])->not->toContain(trans_choice(
+        ->and(PresentedMailboxImport::of($notification)['body'])->not->toContain(trans_choice(
             'filament/notifications/mailbox-import-complete.failed_calendar_events',
             5,
             ['count' => 5],
@@ -820,8 +862,8 @@ it('clears calendar failures after a later calendar sync stores the missing even
 
     $notification = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->sole();
 
-    expect($notification->data['viewData']['kind'])->toBe('complete')
-        ->and($notification->data['body'])->not->toContain(trans_choice(
+    expect($notification->data['kind'])->toBe('complete')
+        ->and(PresentedMailboxImport::of($notification)['body'])->not->toContain(trans_choice(
             'filament/notifications/mailbox-import-complete.failed_calendar_events',
             2,
             ['count' => 2],
@@ -846,7 +888,7 @@ it('sends a recovery notice when a worker finishes during the retry request', fu
     Bus::findBatch($batchId)->add([$job]);
     workMailboxImportQueueOnce();
 
-    expect($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial');
+    expect($user->notifications()->sole()->data['kind'])->toBe('partial');
 
     $workedDuringRetry = false;
     Event::listen(QueryExecuted::class, function (QueryExecuted $query) use (&$workedDuringRetry): void {
@@ -871,8 +913,8 @@ it('sends a recovery notice when a worker finishes during the retry request', fu
     $notifications = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->get();
 
     expect($account->emails()->count())->toBe(1)
-        ->and($notifications)->toHaveCount(2)
-        ->and($notifications->pluck('data.viewData.kind')->all())->toContain('partial', 'retry_success')
+        ->and($notifications)->toHaveCount(1)
+        ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success'])
         ->and(resolve(MailboxHistoryImportService::class)->hasAwaitingRetrySuccessNotice($batchId))->toBeFalse();
 });
 
@@ -914,7 +956,7 @@ it('does not send the import summary after the calendar progress marker expires'
     workMailboxImportQueueUntilEmpty();
 
     expect($account->fresh()->calendar_sync_cursor)->toBe('calendar-done')
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('complete');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('complete');
 });
 
 it('does not send the import summary while an expired calendar cursor rebuilds', function (): void {
@@ -964,7 +1006,7 @@ it('does not send the import summary while an expired calendar cursor rebuilds',
 
     expect($sawExpiredCursorHandoff)->toBeTrue()
         ->and($account->fresh()->calendar_sync_cursor)->toBe('calendar-done')
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('complete');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('complete');
 });
 
 it('sends one recovery notice after a calendar-only failure is repaired', function (): void {
@@ -984,7 +1026,7 @@ it('sends one recovery notice after a calendar-only failure is repaired', functi
     resolve(StartMailboxHistoryImportAction::class)->execute($account);
     workMailboxImportQueueUntilEmpty(tries: 1);
 
-    expect($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial')
+    expect($user->notifications()->sole()->data['kind'])->toBe('partial')
         ->and($account->fresh()->calendar_sync_cursor)->toBeNull()
         ->and($account->fresh()->status)->toBe(EmailAccountStatus::ACTIVE)
         ->and($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeTrue();
@@ -999,15 +1041,15 @@ it('sends one recovery notice after a calendar-only failure is repaired', functi
 
     $notifications = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->get();
     $retrySuccess = $notifications->first(
-        fn ($notification): bool => ($notification->data['viewData']['kind'] ?? null) === 'retry_success',
+        fn ($notification): bool => ($notification->data['kind'] ?? null) === 'retry_success',
     );
 
     expect($account->fresh()->calendar_sync_cursor)->toBe('calendar-done')
         ->and($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeFalse()
-        ->and($notifications)->toHaveCount(2)
-        ->and($notifications->pluck('data.viewData.kind')->all())->toContain('partial', 'retry_success')
+        ->and($notifications)->toHaveCount(1)
+        ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success'])
         ->and($retrySuccess)->not->toBeNull()
-        ->and($retrySuccess->data['actions'] ?? [])->toBe([]);
+        ->and(PresentedMailboxImport::of($retrySuccess)['actions'] ?? [])->toBe([]);
 });
 
 it('reports a calendar API failure on re-import when the mailbox already has a cursor', function (): void {
@@ -1030,8 +1072,8 @@ it('reports a calendar API failure on re-import when the mailbox already has a c
 
     $notification = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->sole();
 
-    expect($notification->data['viewData']['kind'])->toBe('partial')
-        ->and($notification->data['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'))
+    expect($notification->data['kind'])->toBe('partial')
+        ->and(PresentedMailboxImport::of($notification)['title'])->toBe(__('filament/notifications/mailbox-import-complete.title_with_issues'))
         ->and($account->fresh()->calendar_sync_cursor)->toBe('calendar-token')
         ->and($account->fresh()->status)->toBe(EmailAccountStatus::ACTIVE)
         ->and($account->fresh()->last_error)->toBe('Calendar API unavailable')
@@ -1070,8 +1112,8 @@ it('retries a calendar API failure from the notification without requeueing emai
 
     expect($account->fresh()->calendar_sync_cursor)->toBe('calendar-done')
         ->and($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeFalse()
-        ->and($notifications)->toHaveCount(2)
-        ->and($notifications->pluck('data.viewData.kind')->all())->toContain('partial', 'retry_success');
+        ->and($notifications)->toHaveCount(1)
+        ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success']);
 });
 
 it('queues calendar retry when the dispatched job is not in the database jobs table', function (): void {
@@ -1099,7 +1141,7 @@ it('queues calendar retry when the dispatched job is not in the database jobs ta
     expect(DB::table('jobs')->whereIn('queue', ['emails-import', 'emails-sync'])->count())->toBe(0)
         ->and($account->fresh()->calendar_sync_cursor)->toBeNull()
         ->and($user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('partial');
 });
 
 it('does not complete a history import retry from a concurrent incremental sync', function (): void {
@@ -1133,7 +1175,7 @@ it('does not complete a history import retry from a concurrent incremental sync'
         ->and(resolve(MailboxHistoryImportService::class)->isCalendarImportPending($batchId))->toBeTrue()
         ->and(mailboxImportQueueContains(InitialCalendarSyncJob::class))->toBeTrue()
         ->and($user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->count())->toBe(1)
-        ->and($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial');
+        ->and($user->notifications()->sole()->data['kind'])->toBe('partial');
 });
 
 it('retries email and calendar together then recovers only after both succeed', function (): void {
@@ -1155,7 +1197,7 @@ it('retries email and calendar together then recovers only after both succeed', 
     resolve(StartMailboxHistoryImportAction::class)->execute($account);
     workMailboxImportQueueUntilEmpty(tries: 1);
 
-    expect($user->notifications()->sole()->data['viewData']['kind'])->toBe('partial')
+    expect($user->notifications()->sole()->data['kind'])->toBe('partial')
         ->and($account->emails()->count())->toBe(1)
         ->and($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeTrue();
 
@@ -1189,8 +1231,8 @@ it('retries email and calendar together then recovers only after both succeed', 
     $notifications = $user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->get();
 
     expect($account->fresh()->showsMailboxHistoryImportFailureSummary())->toBeFalse()
-        ->and($notifications)->toHaveCount(2)
-        ->and($notifications->pluck('data.viewData.kind')->all())->toContain('partial', 'retry_success');
+        ->and($notifications)->toHaveCount(1)
+        ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success']);
 });
 
 it('keeps retry queued when Retry is clicked again while calendar recovery is in flight', function (): void {
@@ -1223,7 +1265,8 @@ it('keeps retry queued when Retry is clicked again while calendar recovery is in
 
     workMailboxImportQueueUntilEmpty(tries: 1);
 
-    expect($user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->count())->toBe(2);
+    expect($user->notifications()->where('type', MailboxHistoryImportCompletedNotification::class)->count())->toBe(1)
+        ->and($user->notifications()->sole()->data['kind'])->toBe('retry_success');
 });
 
 it('does not retry calendar work when the mailbox needs reconnection', function (): void {
@@ -1314,7 +1357,7 @@ it('keeps delayed mail counts at the snapshot taken when the import finished', f
     ]);
 
     expect($account->fresh()->emails()->count())->toBe(2)
-        ->and($databaseNotification->data['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
+        ->and(PresentedMailboxImport::of($databaseNotification)['body'])->toBe(__('filament/notifications/mailbox-import-complete.body', [
             'imported' => $imported,
             'email' => $account->email_address,
             'failures' => '',
