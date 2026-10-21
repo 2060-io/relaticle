@@ -6,7 +6,6 @@
     use Filament\Support\View\Components\BadgeComponent;
     use Illuminate\Contracts\Pagination\Paginator;
 
-    $notifications = $this->getNotifications();
     $unreadNotificationsCount = $this->getUnreadNotificationsCount();
     $hasNotifications = $notifications->count();
     $isPaginated = $notifications instanceof Paginator && $notifications->hasPages();
@@ -106,7 +105,7 @@
                             </span>
                         @endif
 
-                        {{ $this->presentNotification($notification)->inline() }}
+                        {{ $present($notification)->inline() }}
                     </div>
                 @endforeach
             </div>

@@ -10,9 +10,12 @@ use App\Notifications\InboxNotification;
 use App\Support\CurrentWorkspace;
 use Filament\Livewire\DatabaseNotifications;
 use Filament\Notifications\Notification as FilamentNotification;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Notifications\DatabaseNotificationCollection;
 
 /**
  * Notifications with a compact trigger sized for the sidebar's search row.
@@ -35,12 +38,22 @@ final class AppDatabaseNotifications extends DatabaseNotifications
 
         return $user->notifications()
             ->visibleIn(resolve(CurrentWorkspace::class)->get())
-            ->with(['actor', 'workspace', 'subject'])
-            ->reorder()
-            ->latest('updated_at');
+            ->orderByDesc('id');
     }
 
-    protected function presentNotification(DatabaseNotification $notification): FilamentNotification
+    public function render(): View
+    {
+        $notifications = $this->getNotifications();
+
+        $this->loadPresentedRelations($notifications);
+
+        return view('livewire.app.database-notifications', [
+            'notifications' => $notifications,
+            'present' => $this->presentNotification(...),
+        ]);
+    }
+
+    private function presentNotification(DatabaseNotification $notification): FilamentNotification
     {
         $type = $notification->type;
 
@@ -49,11 +62,16 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         }
 
         return $type::present($notification)
-            ->date($this->formatNotificationDate($notification->getAttributeValue('updated_at')));
+            ->date($this->formatNotificationDate($notification->getAttributeValue('created_at')));
     }
 
-    public function render(): View
+    /** @param  DatabaseNotificationCollection<int, NotificationRow>|Paginator<int, NotificationRow>  $notifications */
+    private function loadPresentedRelations(DatabaseNotificationCollection|Paginator $notifications): void
     {
-        return view('livewire.app.database-notifications');
+        $rows = $notifications instanceof Paginator
+            ? new EloquentCollection($notifications->items())
+            : $notifications;
+
+        $rows->load(['actor', 'workspace', 'subject']);
     }
 }

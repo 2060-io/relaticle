@@ -10,12 +10,14 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CurrentWorkspace;
+use Filament\Actions\Action;
 use Filament\Notifications\DatabaseNotification as FilamentDatabaseNotification;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
+use Tests\Helpers\GroupedInboxNotification;
 
 mutates(AppDatabaseNotifications::class);
 
@@ -30,7 +32,8 @@ function assignTaskNotification(User $assignee, Workspace $workspace, string $ti
     resolve(NotifyTaskAssignees::class)->execute($task, [$assignee->id], $actor);
 }
 
-function insertFilamentNotification(User $user, ?string $workspaceId, string $title): string
+/** @param  list<Action>  $actions */
+function insertFilamentNotification(User $user, ?string $workspaceId, string $title, array $actions = []): string
 {
     $id = (string) Str::uuid();
 
@@ -39,7 +42,7 @@ function insertFilamentNotification(User $user, ?string $workspaceId, string $ti
         'type' => FilamentDatabaseNotification::class,
         'notifiable_type' => $user->getMorphClass(),
         'notifiable_id' => $user->getKey(),
-        'data' => json_encode(FilamentNotification::make()->title($title)->getDatabaseMessage()),
+        'data' => json_encode(FilamentNotification::make()->title($title)->actions($actions)->getDatabaseMessage()),
         'workspace_id' => $workspaceId,
         'created_at' => now(),
         'updated_at' => now(),
@@ -69,6 +72,8 @@ function seedBellInbox(User $user, Workspace $current, Workspace $other): void
 
 it('lists only the current workspace and account-level notifications', function (): void {
     seedBellInbox($this->user, $this->workspaceA, $this->workspaceB);
+
+    expect($this->user->notifications()->where('workspace_id', $this->workspaceB->id)->exists())->toBeTrue();
 
     $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class);
 
@@ -109,24 +114,76 @@ it('hides archived notifications', function (): void {
     $component->assertDontSee('Task in A');
 });
 
-it('lists the most recently updated notification first', function (): void {
+it('keeps a notification in place when it is marked read', function (): void {
+    $this->travelTo(now()->subHour());
     assignTaskNotification($this->user, $this->workspaceA, 'Older task');
+    $this->travelTo(now()->addMinute());
     assignTaskNotification($this->user, $this->workspaceA, 'Newer task');
-    $this->user->notifications()->where('data->task_title', 'Older task')->update(['updated_at' => now()->addMinute()]);
+    $this->travelBack();
 
-    $titles = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+    $olderId = $this->user->notifications()->where('data->task_title', 'Older task')->value('id');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('markNotificationAsRead', $olderId)
+        ->assertSeeInOrder(['Newer task', 'Older task']);
+
+    expect(Notification::query()->findOrFail($olderId)->read_at)->not->toBeNull();
+});
+
+it('moves a collapsed notification to the top', function (): void {
+    $task = Task::factory()->for($this->workspaceA)->create();
+
+    $this->travelTo(now()->subHour());
+    $this->user->notifyNow(new GroupedInboxNotification($task, 'task:1', 'first'));
+    $this->travelTo(now()->addMinute());
+    assignTaskNotification($this->user, $this->workspaceA, 'Newer task');
+    $this->travelTo(now()->addMinute());
+    $this->user->notifyNow(new GroupedInboxNotification($task, 'task:1', 'second'));
+    $this->travelBack();
+
+    $groupedId = $this->user->notifications()->where('group_key', 'task:1')->value('id');
+
+    $listedIds = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
         ->instance()
         ->getNotifications()
-        ->map(fn (Notification $row): string => $row->data['task_title'])
+        ->pluck('id')
         ->all();
 
-    expect($titles)->toBe(['Older task', 'Newer task']);
+    expect($listedIds[0])->toBe($groupedId)
+        ->and($listedIds)->toHaveCount(2);
 });
 
 it('renders a notification stored before this change', function (): void {
-    insertFilamentNotification($this->user, $this->workspaceA->id, 'Legacy title');
+    insertFilamentNotification($this->user, $this->workspaceA->id, 'Legacy title', [
+        Action::make('open')->label('Open legacy')->url('/legacy')->markAsRead(),
+    ]);
 
-    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertSee('Legacy title');
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSee('Legacy title')
+        ->assertSee('Open legacy');
+});
+
+it('marks a notification stored before this change as read from its action', function (): void {
+    $id = insertFilamentNotification($this->user, $this->workspaceA->id, 'Legacy title', [
+        Action::make('open')->label('Open legacy')->url('/legacy')->markAsRead(),
+    ]);
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->dispatch('markedNotificationAsRead', id: $id);
+
+    expect(Notification::query()->findOrFail($id)->read_at)->not->toBeNull();
+});
+
+it('does not hand related records to the browser', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+
+    $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->call('getNotifications');
+    $returned = json_encode($component->effects['returns']);
+
+    expect($returned)->toContain('Task in A')
+        ->not->toContain('pm_last_four')
+        ->not->toContain('ai_preferences')
+        ->not->toContain('notification_preferences');
 });
 
 it('listens for live updates while the list is empty', function (): void {

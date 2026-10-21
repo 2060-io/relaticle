@@ -62,6 +62,7 @@ final class InboxChannel extends DatabaseChannel
             $row->forceFill([
                 ...$columns,
                 'data' => $notification->mergeFacts($row->data),
+                'created_at' => now(),
                 'updated_at' => now(),
             ])->save();
 

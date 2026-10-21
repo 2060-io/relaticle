@@ -13,7 +13,7 @@ return new class extends Migration
         'notifications_workspace_id_index' => 'create index concurrently if not exists notifications_workspace_id_index on notifications (workspace_id)',
         'notifications_actor_id_index' => 'create index concurrently if not exists notifications_actor_id_index on notifications (actor_id)',
         'notifications_subject_type_subject_id_index' => 'create index concurrently if not exists notifications_subject_type_subject_id_index on notifications (subject_type, subject_id)',
-        'notifications_list_idx' => 'create index concurrently if not exists notifications_list_idx on notifications (notifiable_id, workspace_id, archived_at, updated_at)',
+        'notifications_list_idx' => 'create index concurrently if not exists notifications_list_idx on notifications (notifiable_id, workspace_id, archived_at, created_at)',
         'notifications_unread_idx' => 'create index concurrently if not exists notifications_unread_idx on notifications (notifiable_id, workspace_id) where read_at is null and archived_at is null',
         'notifications_group_key_unique' => 'create unique index concurrently if not exists notifications_group_key_unique on notifications (notifiable_id, group_key) where group_key is not null and read_at is null and archived_at is null',
     ];
