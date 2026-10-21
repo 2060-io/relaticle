@@ -24,7 +24,7 @@ final class InboxChannel extends DatabaseChannel
 
         $columns = [
             'type' => $notification::class,
-            'workspace_id' => $notification->workspace()->getKey(),
+            'workspace_id' => $notification->visibleInEveryWorkspace() ? null : $notification->workspace()->getKey(),
             'actor_id' => $notification->actor()?->getKey(),
             'subject_type' => $notification->subject()->getMorphClass(),
             'subject_id' => $notification->subject()->getKey(),

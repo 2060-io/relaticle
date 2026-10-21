@@ -37,15 +37,23 @@ final class PaymentFailedNotification extends InboxNotification
         return "payment-failed:{$this->workspace->getKey()}";
     }
 
+    public function visibleInEveryWorkspace(): bool
+    {
+        return true;
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {
-        return ['enterprise' => $this->workspace->plan === Plan::Enterprise];
+        return [
+            'workspace_id' => $this->workspace->getKey(),
+            'enterprise' => $this->workspace->plan === Plan::Enterprise,
+        ];
     }
 
     public static function present(NotificationRow $row): FilamentNotification
     {
-        $workspace = $row->workspace;
+        $workspace = Workspace::query()->find(data_get($row->data, 'workspace_id'));
 
         return FilamentNotification::make((string) $row->getKey())
             ->title(__('billing.payment_failed.notification_title', ['workspace' => $workspace->name ?? '']))

@@ -50,6 +50,11 @@ abstract class InboxNotification extends Notification implements ShouldQueueAfte
         return null;
     }
 
+    public function visibleInEveryWorkspace(): bool
+    {
+        return false;
+    }
+
     /**
      * @param  array<string, mixed>  $existing
      * @return array<string, mixed>
