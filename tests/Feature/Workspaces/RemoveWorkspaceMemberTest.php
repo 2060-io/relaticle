@@ -8,7 +8,9 @@ use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\WorkspaceMemberRemovedNotification;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
@@ -276,9 +278,33 @@ test('removing a member deletes their notifications from that workspace only', f
     $workspace->users()->attach($member = User::factory()->create(), ['role' => 'member']);
 
     NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => $workspace->getKey()]);
-    $kept = NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => $otherWorkspace->getKey()]);
+    $otherWorkspaceRow = NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => $otherWorkspace->getKey()]);
+    $accountRow = NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => null]);
+    $teammateRow = NotificationRow::factory()->for($owner, 'notifiable')->create(['workspace_id' => $workspace->getKey()]);
 
     resolve(RemoveWorkspaceMember::class)->remove($owner, $workspace, $member);
 
-    expect($member->notifications()->pluck('id')->all())->toBe([$kept->getKey()]);
+    expect($member->notifications()->pluck('id')->all())->toEqualCanonicalizing([$otherWorkspaceRow->getKey(), $accountRow->getKey()])
+        ->and($owner->notifications()->pluck('id')->all())->toBe([$teammateRow->getKey()]);
+});
+
+test('removing a member keeps them in the workspace when the notification purge fails', function () {
+    Event::fake([TeamMemberRemoved::class]);
+
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $workspace->users()->attach($member = User::factory()->create(), ['role' => 'member']);
+    $row = NotificationRow::factory()->for($member, 'notifiable')->create(['workspace_id' => $workspace->getKey()]);
+
+    DB::listen(function (QueryExecuted $query): void {
+        throw_if(str_starts_with($query->sql, 'delete from "notifications"'), RuntimeException::class, 'The purge failed.');
+    });
+
+    expect(fn () => resolve(RemoveWorkspaceMember::class)->remove($owner, $workspace, $member))
+        ->toThrow(RuntimeException::class, 'The purge failed.');
+
+    expect($member->fresh()->belongsToWorkspace($workspace))->toBeTrue()
+        ->and(NotificationRow::query()->whereKey($row->getKey())->exists())->toBeTrue();
+
+    Event::assertNotDispatched(TeamMemberRemoved::class);
 });
