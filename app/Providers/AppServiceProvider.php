@@ -16,6 +16,7 @@ use App\Filament\CustomFields\DomainFieldType;
 use App\Filament\CustomFields\RichEditorFieldType;
 use App\Http\Middleware\ReadAcrossWorkspaces;
 use App\Http\Responses\LoginResponse;
+use App\Jobs\CompleteExport;
 use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
 use App\Listeners\CreateSetupConversationListener;
 use App\Listeners\Email\DropBouncedRecipientsListener;
@@ -68,6 +69,7 @@ use App\Support\Passport\WorkspaceBearerTokenResponse;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Actions\Exports\ExportColumn;
+use Filament\Actions\Exports\Jobs\ExportCompletion;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Auth\Notifications\NoticeOfEmailChangeRequest;
@@ -230,6 +232,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->bind(ResetPassword::class, \App\Notifications\Auth\ResetPassword::class);
         $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
         $this->app->bind(DatabaseChannel::class, InboxChannel::class);
+        $this->app->bind(ExportCompletion::class, CompleteExport::class);
     }
 
     private function registerPassport(): void

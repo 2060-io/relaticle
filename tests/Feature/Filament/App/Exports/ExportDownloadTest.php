@@ -3,14 +3,18 @@
 declare(strict_types=1);
 
 use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
+use App\Jobs\CompleteExport;
 use App\Models\Company;
 use App\Models\Export;
 use App\Models\User;
 use App\Policies\ExportPolicy;
+use App\Support\CurrentWorkspace;
+use Filament\Actions\Exports\Enums\ExportFormat;
+use Filament\Actions\Exports\Jobs\ExportCompletion;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Storage;
 
-mutates(ExportPolicy::class);
+mutates(ExportPolicy::class, CompleteExport::class);
 
 beforeEach(function (): void {
     Storage::fake('local');
@@ -59,4 +63,22 @@ it('keeps owner-only access for a legacy export without a workspace', function (
     $this->actingAs($this->user->fresh())
         ->get($this->downloadUrl)
         ->assertOk();
+});
+
+it('sends the completion notice to the workspace the export ran in', function (): void {
+    $otherWorkspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $otherWorkspace->users()->attach($this->user, ['role' => 'member']);
+    $this->user->switchWorkspace($otherWorkspace);
+    resolve(CurrentWorkspace::class)->set($otherWorkspace);
+
+    resolve(ExportCompletion::class, [
+        'export' => $this->export,
+        'columnMap' => ['name' => 'Name'],
+        'formats' => [ExportFormat::Csv],
+        'options' => [],
+        'authGuard' => 'web',
+    ])->onConnection('redis')->handle();
+
+    expect($this->user->notifications()->sole()->workspace_id)->toBe($this->workspace->getKey())
+        ->and(resolve(CurrentWorkspace::class)->get()?->getKey())->toBe($otherWorkspace->getKey());
 });
