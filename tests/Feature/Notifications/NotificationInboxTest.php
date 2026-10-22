@@ -186,6 +186,21 @@ it('does not hand related records to the browser', function (): void {
         ->not->toContain('notification_preferences');
 });
 
+it('does not hand the workspace billing details to the browser', function (): void {
+    $this->workspaceB->forceFill(['stripe_id' => 'cus_secret123', 'pm_type' => 'visa', 'pm_last_four' => '4242'])->save();
+    $this->user->switchWorkspace($this->workspaceB);
+
+    $component = Livewire::actingAs($this->user->refresh()->load('currentWorkspace'))
+        ->test(AppDatabaseNotifications::class)
+        ->call('getUser');
+    $returned = json_encode($component->effects['returns']);
+
+    expect($returned)->toContain($this->workspaceB->name)
+        ->not->toContain('cus_secret123')
+        ->not->toContain('4242')
+        ->not->toContain('visa');
+});
+
 it('listens for live updates while the list is empty', function (): void {
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertSeeHtml('database-notifications.sent');
 });
