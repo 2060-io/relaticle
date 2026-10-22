@@ -57,28 +57,28 @@ describe('EmailAccessRequestedNotification', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $payload = (new EmailAccessRequestedNotification($request))->toDatabase($this->owner);
+        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $notification = $this->owner->unreadNotifications()->latest()->first();
+
+        $payload = EmailAccessRequestedNotification::present($notification)->getDatabaseMessage();
         $actions = collect($payload['actions'] ?? [])->keyBy('name');
 
         expect($actions->keys()->all())->toBe(['viewEmail', 'accept', 'decline'])
             ->and($payload['body'])->toBe('Q4 pipeline review')
-            ->and($payload['viewData']['request_id'])->toBe((string) $request->getKey())
+            ->and($payload['title'])->toBe(__('filament/notifications/email-access-requested.title', ['name' => e($this->requester->name)]))
             ->and($actions['viewEmail']['label'])->toBe('View')
             ->and($actions['viewEmail']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($actions['viewEmail']['shouldClose'] ?? false)->toBeFalse()
             ->and($actions['viewEmail']['event'])->toBe('open-email-from-access-request')
             ->and($actions['viewEmail']['eventData'])->toBe(['emailId' => $this->email->getKey()])
             ->and($actions['accept']['event'])->toBe('approve-email-access-request')
+            ->and($actions['accept']['eventData'])->toBe(['requestId' => $request->getKey()])
             ->and($actions['accept']['shouldClose'] ?? false)->toBeFalse()
             ->and($actions['accept']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($actions['decline']['event'])->toBe('deny-email-access-request')
+            ->and($actions['decline']['eventData'])->toBe(['requestId' => $request->getKey()])
             ->and($actions['decline']['shouldClose'] ?? false)->toBeFalse()
-            ->and($actions['decline']['shouldMarkAsRead'] ?? false)->toBeFalse();
-
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
-        $notification = $this->owner->unreadNotifications()->latest()->first();
-
-        expect($notification)->not->toBeNull()
+            ->and($actions['decline']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($notification->read_at)->toBeNull();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -86,6 +86,18 @@ describe('EmailAccessRequestedNotification', function (): void {
 
         expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1)
             ->and($notification->fresh()->read_at)->toBeNull();
+    });
+
+    it('shows the access request in the bell with its actions', function (): void {
+        $this->requester->update(['name' => 'Dana Whitfield']);
+        resolve(CurrentWorkspace::class)->set($this->workspace);
+        app(RequestEmailAccessAction::class)->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+
+        Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
+            ->assertSee('Dana Whitfield requested email access')
+            ->assertSee('Q4 pipeline review')
+            ->assertSee(__('filament/notifications/email-access-requested.actions.accept'))
+            ->assertSee(__('filament/notifications/email-access-requested.actions.decline'));
     });
 
     it('is sent when a teammate requests access', function (): void {

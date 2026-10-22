@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Enums\Notifications\NotificationReason;
+use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
@@ -20,7 +22,7 @@ use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRespondedNotification;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-mutates(ApproveEmailAccessRequestAction::class, CancelEmailAccessRequestAction::class, DenyEmailAccessRequestAction::class, RequestEmailAccessAction::class, EmailAccessRequestedNotification::class);
+mutates(ApproveEmailAccessRequestAction::class, CancelEmailAccessRequestAction::class, DenyEmailAccessRequestAction::class, RequestEmailAccessAction::class, EmailAccessRequestedNotification::class, EmailAccessRespondedNotification::class);
 
 beforeEach(function (): void {
     $this->owner = User::factory()->withWorkspace()->create();
@@ -120,7 +122,7 @@ describe('ApproveEmailAccessRequestAction', function (): void {
         $remaining = $this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->get();
 
         expect($remaining)->toHaveCount(1)
-            ->and($remaining->first()->data['viewData']['request_id'])->toBe((string) $otherRequest->getKey());
+            ->and($remaining->first()->subject_id)->toBe($otherRequest->getKey());
     });
 
     it('sends a notification to the requester', function (): void {
@@ -287,7 +289,7 @@ describe('DenyEmailAccessRequestAction', function (): void {
         $remaining = $this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->get();
 
         expect($remaining)->toHaveCount(1)
-            ->and($remaining->first()->data['viewData']['request_id'])->toBe((string) $otherRequest->getKey());
+            ->and($remaining->first()->subject_id)->toBe($otherRequest->getKey());
     });
 
     it('sends a notification to the requester', function (): void {
@@ -478,5 +480,92 @@ describe('RequestEmailAccessAction', function (): void {
             ->toThrow(HttpException::class);
 
         expect(EmailAccessRequest::query()->where('email_id', $this->email->getKey())->count())->toBe(0);
+    });
+});
+
+describe('EmailAccessRequestedNotification', function (): void {
+    it('stores the access request notice in the email\'s workspace', function (): void {
+        $request = app(RequestEmailAccessAction::class)
+            ->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+
+        $row = $this->owner->notifications()->sole();
+
+        expect($row->type)->toBe(EmailAccessRequestedNotification::class)
+            ->and($row->workspace_id)->toBe($this->workspace->getKey())
+            ->and($row->actor_id)->toBe($this->requester->getKey())
+            ->and($row->subject_type)->toBe('email_access_request')
+            ->and($row->subject_id)->toBe($request->getKey())
+            ->and($row->reason)->toBe(NotificationReason::Requested)
+            ->and($row->data)->toEqual([
+                'email_subject' => 'Confidential Thread',
+                'email_id' => $this->email->getKey(),
+            ]);
+    });
+
+    it('dismisses an access request notice written before this change', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        $legacyNoticeFor = fn (EmailAccessRequest $for): NotificationRow => NotificationRow::factory()->create([
+            'type' => EmailAccessRequestedNotification::class,
+            'notifiable_type' => $this->owner->getMorphClass(),
+            'notifiable_id' => $this->owner->getKey(),
+            'data' => [
+                'title' => 'Requester requested email access',
+                'viewData' => ['request_id' => (string) $for->getKey()],
+            ],
+        ]);
+
+        $legacyNoticeFor($request);
+        $other = $legacyNoticeFor(EmailAccessRequest::factory()->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]));
+
+        app(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        expect($this->owner->notifications()->pluck('id')->all())->toBe([$other->getKey()]);
+    });
+});
+
+describe('EmailAccessRespondedNotification', function (): void {
+    it('translates the response notice', function (string $status): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        $action = $status === 'approved' ? ApproveEmailAccessRequestAction::class : DenyEmailAccessRequestAction::class;
+        app($action)->execute($request, $this->owner);
+
+        $row = $this->requester->notifications()->sole();
+        $presented = EmailAccessRespondedNotification::present($row);
+
+        expect($row->workspace_id)->toBe($this->workspace->getKey())
+            ->and($row->actor_id)->toBe($this->owner->getKey())
+            ->and($row->subject_id)->toBe($request->getKey())
+            ->and($row->reason)->toBe(NotificationReason::Requested)
+            ->and($presented->getTitle())->toBe(__("filament/notifications/email-access-responded.{$status}.title"))
+            ->and($presented->getBody())->toBe(__("filament/notifications/email-access-responded.{$status}.body", ['owner' => e($this->owner->name)]));
+    })->with(['approved', 'denied']);
+
+    it('sends no response notice when the email is gone', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        $this->email->delete();
+
+        app(DenyEmailAccessRequestAction::class)->execute($request->fresh(), $this->owner);
+
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
+            ->and($this->requester->notifications()->count())->toBe(0);
     });
 });
