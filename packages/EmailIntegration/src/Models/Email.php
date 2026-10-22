@@ -414,6 +414,7 @@ final class Email extends Model
         return $this->accessRequests()
             ->where('requester_id', $viewer->getKey())
             ->where('status', EmailAccessRequestStatus::PENDING)
+            ->where('expires_at', '>', now())
             ->exists();
     }
 

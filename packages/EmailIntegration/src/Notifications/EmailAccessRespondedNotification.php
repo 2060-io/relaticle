@@ -43,12 +43,16 @@ final class EmailAccessRespondedNotification extends InboxNotification
     /** @return array<string, mixed> */
     public function facts(): array
     {
-        return ['approved' => $this->request->status === EmailAccessRequestStatus::APPROVED];
+        return ['outcome' => match ($this->request->status) {
+            EmailAccessRequestStatus::APPROVED => 'approved',
+            EmailAccessRequestStatus::EXPIRED => 'expired',
+            default => 'denied',
+        }];
     }
 
     public static function present(NotificationRow $row): FilamentNotification
     {
-        $outcome = data_get($row->data, 'approved') === true ? 'approved' : 'denied';
+        $outcome = self::outcomeOf($row);
         $ownerName = $row->actor?->name;
 
         $notification = FilamentNotification::make((string) $row->getKey())
@@ -57,8 +61,21 @@ final class EmailAccessRespondedNotification extends InboxNotification
                 ? __(self::LANG.".{$outcome}.body_without_owner")
                 : __(self::LANG.".{$outcome}.body", ['owner' => e($ownerName)]));
 
-        return $outcome === 'approved'
-            ? $notification->success()->icon(Heroicon::OutlinedCheckCircle)
-            : $notification->danger()->icon(Heroicon::OutlinedXCircle);
+        return match ($outcome) {
+            'approved' => $notification->success()->icon(Heroicon::OutlinedCheckCircle),
+            'expired' => $notification->color('gray')->icon(Heroicon::OutlinedClock),
+            default => $notification->danger()->icon(Heroicon::OutlinedXCircle),
+        };
+    }
+
+    private static function outcomeOf(NotificationRow $row): string
+    {
+        $outcome = data_get($row->data, 'outcome');
+
+        if (in_array($outcome, ['approved', 'denied', 'expired'], true)) {
+            return $outcome;
+        }
+
+        return data_get($row->data, 'approved') === true ? 'approved' : 'denied';
     }
 }

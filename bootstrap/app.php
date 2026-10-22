@@ -361,6 +361,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->name('email:dispatch-outbox')
                 ->withoutOverlapping()
                 ->onOneServer();
+
+            $schedule->command('email:expire-access-requests')
+                ->hourly()
+                ->name('email:expire-access-requests')
+                ->withoutOverlapping()
+                ->onOneServer();
         }
 
         if (config('app.health_checks_enabled')) {

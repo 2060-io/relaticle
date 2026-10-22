@@ -249,7 +249,7 @@ describe('denyAccessRequest action', function (): void {
 });
 
 describe('cancelAccessRequest action', function (): void {
-    it('deletes a pending outgoing request', function (): void {
+    it('cancels a pending outgoing request', function (): void {
         $owner = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
         $ownerAccount = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
@@ -277,7 +277,7 @@ describe('cancelAccessRequest action', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified('Access request cancelled.');
 
-        expect(EmailAccessRequest::query()->whereKey($request->id)->exists())->toBeFalse()
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::CANCELLED)
             ->and($owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
     });
 

@@ -26,6 +26,7 @@ use Relaticle\EmailIntegration\Actions\PurgeStoredMailboxData;
 use Relaticle\EmailIntegration\Console\Commands\BackfillEmailThreadsCommand;
 use Relaticle\EmailIntegration\Console\Commands\DisconnectFormerMemberMailboxesCommand;
 use Relaticle\EmailIntegration\Console\Commands\DispatchOutboxCommand;
+use Relaticle\EmailIntegration\Console\Commands\ExpireEmailAccessRequestsCommand;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalCalendarSyncCommand;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalEmailSyncCommand;
 use Relaticle\EmailIntegration\Console\Commands\RemoveOwnDomainRecordsCommand;
@@ -165,20 +166,28 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
             },
         );
 
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                BackfillEmailThreadsCommand::class,
-                DispatchOutboxCommand::class,
-                IncrementalCalendarSyncCommand::class,
-                IncrementalEmailSyncCommand::class,
-                RenewCalendarPushChannelsCommand::class,
-            ]);
-        }
+        $this->registerCommands();
     }
 
     public static function enabled(): bool
     {
         return Feature::for(null)->active(EmailIntegration::class);
+    }
+
+    private function registerCommands(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([
+            BackfillEmailThreadsCommand::class,
+            DispatchOutboxCommand::class,
+            ExpireEmailAccessRequestsCommand::class,
+            IncrementalCalendarSyncCommand::class,
+            IncrementalEmailSyncCommand::class,
+            RenewCalendarPushChannelsCommand::class,
+        ]);
     }
 
     private function registerCleanupThatIgnoresTheFeatureFlag(): void

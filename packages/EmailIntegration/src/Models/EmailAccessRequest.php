@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Models;
 
 use App\Models\User;
+use App\Models\Workspace;
 use Database\Factories\EmailAccessRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -28,6 +29,10 @@ use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
     'emailable_id',
     'tier_requested',
     'status',
+    'workspace_id',
+    'decided_at',
+    'decided_by',
+    'expires_at',
 ])]
 final class EmailAccessRequest extends Model
 {
@@ -35,6 +40,8 @@ final class EmailAccessRequest extends Model
      * @use HasFactory<EmailAccessRequestFactory>
      */
     use HasFactory, HasUlids;
+
+    public const int EXPIRES_AFTER_DAYS = 30;
 
     protected static function newFactory(): EmailAccessRequestFactory
     {
@@ -45,6 +52,8 @@ final class EmailAccessRequest extends Model
     {
         return [
             'status' => EmailAccessRequestStatus::class,
+            'decided_at' => 'datetime',
+            'expires_at' => 'datetime',
         ];
     }
 
@@ -58,7 +67,35 @@ final class EmailAccessRequest extends Model
         return $query
             ->where('owner_id', $owner->getKey())
             ->where('status', EmailAccessRequestStatus::PENDING)
+            ->where('expires_at', '>', now())
             ->whereHas('email', fn (Builder $email): Builder => $email->where('workspace_id', $owner->current_workspace_id));
+    }
+
+    public function decide(EmailAccessRequestStatus $status, User $actor): bool
+    {
+        $decidedAt = now();
+
+        $decided = self::query()
+            ->whereKey($this->getKey())
+            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->where('expires_at', '>', $decidedAt)
+            ->update([
+                'status' => $status->value,
+                'decided_at' => $decidedAt,
+                'decided_by' => $actor->getKey(),
+            ]);
+
+        if ($decided === 0) {
+            return false;
+        }
+
+        $this->forceFill([
+            'status' => $status,
+            'decided_at' => $decidedAt,
+            'decided_by' => $actor->getKey(),
+        ])->syncOriginal();
+
+        return true;
     }
 
     /**
@@ -75,6 +112,22 @@ final class EmailAccessRequest extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    /**
+     * @return BelongsTo<Workspace, $this>
+     */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function decidedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'decided_by');
     }
 
     /**

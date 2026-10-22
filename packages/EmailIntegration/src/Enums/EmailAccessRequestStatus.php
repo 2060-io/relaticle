@@ -12,6 +12,8 @@ enum EmailAccessRequestStatus: string implements HasColor, HasLabel
     case PENDING = 'pending';
     case APPROVED = 'approved';
     case DENIED = 'denied';
+    case CANCELLED = 'cancelled';
+    case EXPIRED = 'expired';
 
     public function getLabel(): string
     {
@@ -19,6 +21,8 @@ enum EmailAccessRequestStatus: string implements HasColor, HasLabel
             self::PENDING => 'Pending',
             self::APPROVED => 'Approved',
             self::DENIED => 'Denied',
+            self::CANCELLED => 'Cancelled',
+            self::EXPIRED => 'Expired',
         };
     }
 
@@ -28,6 +32,7 @@ enum EmailAccessRequestStatus: string implements HasColor, HasLabel
             self::PENDING => 'warning',
             self::APPROVED => 'success',
             self::DENIED => 'danger',
+            self::CANCELLED, self::EXPIRED => 'gray',
         };
     }
 }

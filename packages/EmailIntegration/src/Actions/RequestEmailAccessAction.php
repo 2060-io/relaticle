@@ -31,6 +31,8 @@ final readonly class RequestEmailAccessAction
             'owner_id' => $email->user_id,
             'tier_requested' => $tierRequested->value,
             'status' => EmailAccessRequestStatus::PENDING,
+            'workspace_id' => $email->workspace_id,
+            'expires_at' => now()->addDays(EmailAccessRequest::EXPIRES_AFTER_DAYS),
         ]);
 
         $email->user?->notify(new EmailAccessRequestedNotification($request));

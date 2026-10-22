@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
@@ -37,9 +38,21 @@ final readonly class ApproveEmailAccessRequestAction
 
         $tier = EmailPrivacyTier::from($accessRequest->tier_requested);
 
-        $this->sharingService->shareEmail($email, $owner, $requester, $tier);
+        $approved = DB::transaction(function () use ($accessRequest, $actor, $email, $owner, $requester, $tier): bool {
+            if (! $accessRequest->decide(EmailAccessRequestStatus::APPROVED, $actor)) {
+                return false;
+            }
 
-        $accessRequest->update(['status' => EmailAccessRequestStatus::APPROVED]);
+            $this->sharingService->shareEmail($email, $owner, $requester, $tier);
+
+            activity()->performedOn($accessRequest)->causedBy($actor)->event('approved')->log('approved');
+
+            return true;
+        });
+
+        if (! $approved) {
+            return;
+        }
 
         EmailAccessRequestedNotification::dismissFor($accessRequest);
 
