@@ -7,7 +7,9 @@
     $presented = $present($row);
     $actions = collect($presented->getActions());
     $primary = $actions->first(fn (mixed $action): bool => $action instanceof Action && filled($action->getUrl()));
-    $secondary = $actions->reject(fn (mixed $action): bool => $action === $primary);
+    $showsHint = $primary !== null && $actions->count() === 1;
+    $barActions = $showsHint ? collect() : $actions;
+    $opensInNewTab = $primary?->shouldOpenUrlInNewTab() ?? false;
     $unread = $row->unread();
     $actor = $row->actor ?? null;
     $icon = $presented->getIcon();
@@ -17,20 +19,23 @@
 
 <li
     wire:key="inbox-notification-{{ $rowId }}"
+    data-inbox-key="notification-{{ $rowId }}"
     x-data="{
-        markAsRead() { this.$wire.markNotificationAsRead(@js($rowId)) },
-        markAsUnread() { this.$wire.markNotificationAsUnread(@js($rowId)) },
+        markAsRead() { return this.$wire.markNotificationAsRead(@js($rowId)) },
+        markAsUnread() { return this.$wire.markNotificationAsUnread(@js($rowId)) },
         close() {},
     }"
     class="group relative"
 >
     <{{ $control }}
         @if ($primary)
-            {{ \Filament\Support\generate_href_html($primary->getUrl(), $primary->shouldOpenUrlInNewTab()) }}
-            x-on:click="{{ $unread ? 'markAsRead(); ' : '' }}hide(false)"
+            data-inbox-main
+            {{ \Filament\Support\generate_href_html($primary->getUrl(), $opensInNewTab) }}
+            x-on:click="{{ $unread ? 'markAsRead(); ' : '' }}{{ $opensInNewTab ? '' : 'hide(false)' }}"
         @elseif ($unread)
             type="button"
-            x-on:click="markAsRead()"
+            data-inbox-main
+            x-on:click="act(() => markAsRead(), $el, '[data-inbox-main]')"
         @endif
         @class([
             'fi-inbox-row flex w-full gap-3 px-4 py-3 text-start',
@@ -73,8 +78,8 @@
             <span class="mt-1 flex items-center gap-x-2 text-xs text-gray-500 dark:text-gray-400">
                 <time datetime="{{ $row->created_at?->toIso8601String() }}">{{ $presented->getDate() }}</time>
 
-                @if ($primary)
-                    <span class="font-medium text-primary-600 dark:text-primary-400">{{ $primary->getLabel() }}</span>
+                @if ($showsHint)
+                    <span data-inbox-hint class="font-medium text-primary-600 dark:text-primary-400">{{ $primary->getLabel() }}</span>
                 @endif
             </span>
         </span>
@@ -86,9 +91,9 @@
         @endif
     </{{ $control }}>
 
-    @if ($secondary->isNotEmpty())
+    @if ($barActions->isNotEmpty())
         <div class="fi-ac flex flex-wrap gap-3 pb-3 ps-[3.75rem] pe-4">
-            @foreach ($secondary as $action)
+            @foreach ($barActions as $action)
                 {{ $action }}
             @endforeach
         </div>
@@ -108,7 +113,7 @@
         <button
             type="button"
             class="fi-inbox-icon-btn"
-            wire:click="archiveNotification(@js($rowId))"
+            x-on:click="act(() => $wire.archiveNotification(@js($rowId)), $el, '[data-inbox-main]')"
             aria-label="{{ __('notifications.panel.row.archive') }}"
             title="{{ __('notifications.panel.row.archive') }}"
         >

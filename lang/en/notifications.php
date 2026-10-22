@@ -55,6 +55,13 @@ return [
         'close' => 'Close inbox',
         'settings' => 'Notification settings',
         'announce' => ':count new notification|:count new notifications',
+        'announcements' => [
+            'archived' => 'Archived: :title',
+            'approved' => 'Approved: :title',
+            'denied' => 'Denied: :title',
+            'already_decided' => 'This request was already decided: :title',
+        ],
+        'footer' => 'Showing the latest :count notifications.',
         'tabs' => [
             'label' => 'Inbox sections',
             'notifications' => 'Notifications',
@@ -84,11 +91,11 @@ return [
         'empty' => [
             'notifications' => [
                 'heading' => 'You are all caught up',
-                'description' => 'Assignments, mentions and updates on records you follow land here.',
+                'description' => 'Task assignments, shared emails, imports and exports, and email sends land here.',
             ],
             'requests' => [
                 'heading' => 'No requests waiting',
-                'description' => 'When a teammate asks for access to something you own, you decide here.',
+                'description' => 'When a teammate asks to read an email you own, you decide here.',
             ],
             'settings' => 'Settings',
         ],

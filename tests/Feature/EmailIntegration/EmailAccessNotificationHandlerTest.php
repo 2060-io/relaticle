@@ -128,7 +128,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertSee(__('filament/pages/email-inbox.reader.heading'))
             ->assertSee('Q4 pipeline review')
             ->assertSee('fi-email-reader-panel')
-            ->assertDispatched('close-modal', id: 'database-notifications');
+            ->assertDispatched('inbox:close');
     });
 
     it('opens the reader from the email query parameter for a viewer with full access', function (): void {
@@ -190,7 +190,7 @@ describe('EmailAccessNotificationHandler', function (): void {
         Livewire::test(EmailAccessNotificationHandler::class)
             ->dispatch('approve-email-access-request', requestId: $request->getKey())
             ->assertSet('selectedEmailId', null)
-            ->assertDispatched('close-modal', id: 'database-notifications')
+            ->assertDispatched('inbox:close')
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
 
@@ -211,7 +211,7 @@ describe('EmailAccessNotificationHandler', function (): void {
         Livewire::test(EmailAccessNotificationHandler::class)
             ->dispatch('deny-email-access-request', requestId: $request->getKey())
             ->assertSet('selectedEmailId', null)
-            ->assertDispatched('close-modal', id: 'database-notifications')
+            ->assertDispatched('inbox:close')
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
 

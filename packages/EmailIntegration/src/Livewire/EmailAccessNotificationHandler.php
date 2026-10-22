@@ -12,7 +12,6 @@ use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Js;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
@@ -42,8 +41,6 @@ final class EmailAccessNotificationHandler extends Component implements HasActio
     use InteractsWithSchemas;
 
     public const string LIVEWIRE_ALIAS = 'email-integration.access-request-handler';
-
-    private const string DATABASE_NOTIFICATIONS_MODAL_ID = 'database-notifications';
 
     #[Url(as: 'email')]
     public ?string $selectedEmailId = null;
@@ -201,13 +198,7 @@ final class EmailAccessNotificationHandler extends Component implements HasActio
 
     private function closeNotificationsPanel(): void
     {
-        $this->dispatch('close-modal', id: self::DATABASE_NOTIFICATIONS_MODAL_ID);
-
-        // Livewire's default dispatch targets this component's element. Filament's
-        // slide-over listens on window, so close it there as well.
-        $this->js(
-            'window.dispatchEvent(new CustomEvent("close-modal", { bubbles: true, detail: '.Js::from(['id' => self::DATABASE_NOTIFICATIONS_MODAL_ID]).' }))',
-        );
+        $this->dispatch('inbox:close');
     }
 
     private function notifyCancelled(): void

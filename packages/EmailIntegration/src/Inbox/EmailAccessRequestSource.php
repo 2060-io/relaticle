@@ -68,14 +68,13 @@ final readonly class EmailAccessRequestSource implements RequestSource
     {
         return EmailAccessRequest::query()
             ->where('owner_id', $user->getKey())
-            ->where('workspace_id', $workspace->getKey())
-            ->whereHas('email');
+            ->where('workspace_id', $workspace->getKey());
     }
 
     /** @return Builder<EmailAccessRequest> */
     private function pending(User $user, Workspace $workspace): Builder
     {
-        return $this->owned($user, $workspace)->open();
+        return $this->owned($user, $workspace)->open()->whereHas('email');
     }
 
     private function find(User $user, Workspace $workspace, string $requestId): EmailAccessRequest

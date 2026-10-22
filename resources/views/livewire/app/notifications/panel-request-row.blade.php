@@ -2,9 +2,15 @@
     $requestId = $request['id'];
     $kind = $request['kind'];
     $outcome = $request['outcome'];
+    $outcomeLabel = match ($outcome) {
+        'approved' => __('notifications.panel.requests.approved'),
+        'denied' => __('notifications.panel.requests.denied'),
+        'already_decided' => __('notifications.panel.requests.already_decided'),
+        default => null,
+    };
 @endphp
 
-<li wire:key="inbox-request-{{ $requestId }}" class="flex gap-3 px-4 py-3">
+<li wire:key="inbox-request-{{ $requestId }}" data-inbox-key="request-{{ $requestId }}" class="flex gap-3 px-4 py-3">
     @if ($request['avatar'])
         <img src="{{ $request['avatar'] }}" alt="" class="size-8 shrink-0 rounded-full object-cover" />
     @else
@@ -30,9 +36,8 @@
         </p>
 
         <div class="mt-2 flex flex-wrap items-center gap-2">
-            @if ($outcome)
+            @if ($outcomeLabel)
                 <span
-                    role="status"
                     @class([
                         'inline-flex items-center gap-1 text-xs font-medium',
                         'text-success-600 dark:text-success-400' => $outcome === 'approved',
@@ -40,12 +45,13 @@
                     ])
                 >
                     <x-filament::icon :icon="match ($outcome) { 'approved' => 'ri-check-line', 'denied' => 'ri-close-line', default => 'ri-information-line' }" class="size-4" />
-                    {{ __('notifications.panel.requests.'.$outcome) }}
+                    {{ $outcomeLabel }}
                 </span>
             @else
                 <x-filament::button
                     size="xs"
-                    wire:click="approveRequest(@js($kind), @js($requestId))"
+                    data-inbox-approve
+                    x-on:click="act(() => $wire.approveRequest(@js($kind), @js($requestId)), $el, '[data-inbox-approve]')"
                     wire:loading.attr="disabled"
                     wire:target="approveRequest, denyRequest"
                 >
@@ -55,7 +61,7 @@
                 <x-filament::button
                     size="xs"
                     color="gray"
-                    wire:click="denyRequest(@js($kind), @js($requestId))"
+                    x-on:click="act(() => $wire.denyRequest(@js($kind), @js($requestId)), $el, '[data-inbox-approve]')"
                     wire:loading.attr="disabled"
                     wire:target="approveRequest, denyRequest"
                 >

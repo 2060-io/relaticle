@@ -24,6 +24,8 @@ use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\DatabaseNotificationCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 
 /**
  * The inbox panel: notifications and requests, opened beside the sidebar.
@@ -38,13 +40,17 @@ final class AppDatabaseNotifications extends DatabaseNotifications
     private const string ALREADY_DECIDED = 'already_decided';
 
     /** @var array<string, array{outcome: string, title: string, body: ?string, avatar: ?string, created_at: string}> */
+    #[Locked]
     public array $decidedRequests = [];
 
-    public int $announcedUnread = 0;
+    #[Locked]
+    public ?string $announcedThrough = null;
+
+    private ?string $announcement = null;
 
     public function mount(): void
     {
-        $this->announcedUnread = $this->getUnreadNotificationsCount();
+        $this->announcedThrough = $this->newestCreatedAt();
     }
 
     public function getTrigger(): View
@@ -79,7 +85,41 @@ final class AppDatabaseNotifications extends DatabaseNotifications
     {
         abort_unless(Str::isUuid($id), 404);
 
-        resolve(ArchiveNotification::class)->execute($this->requireUser(), $this->getNotificationsQuery()->findOrFail($id));
+        $row = $this->getNotificationsQuery()->findOrFail($id);
+
+        resolve(ArchiveNotification::class)->execute($this->requireUser(), $row);
+
+        $this->announcement = __('notifications.panel.announcements.archived', ['title' => $this->plainTitle($row)]);
+    }
+
+    public function clearNotifications(): void
+    {
+        $archive = resolve(ArchiveNotification::class);
+        $user = $this->requireUser();
+
+        foreach ($this->getNotificationsQuery()->get() as $row) {
+            $archive->execute($user, $row);
+        }
+    }
+
+    #[On('notificationClosed')]
+    public function removeNotification(string $id): void
+    {
+        if (! Str::isUuid($id)) {
+            return;
+        }
+
+        $archive = resolve(ArchiveNotification::class);
+        $user = $this->requireUser();
+
+        foreach ($this->getNotificationsQuery()->where('id', $id)->get() as $row) {
+            $archive->execute($user, $row);
+        }
+    }
+
+    public function forgetDecidedRequests(): void
+    {
+        $this->decidedRequests = [];
     }
 
     public function approveRequest(string $kind, string $id): void
@@ -108,7 +148,9 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             'requests' => $this->requestRows($pending),
             'unreadCount' => $unreadCount,
             'pendingCount' => $pending->count(),
-            'newCount' => $this->takeNewCount($unreadCount),
+            'announcement' => $this->announcementText($this->takeNewCount()),
+            'hasOlderNotifications' => $notifications instanceof Paginator && $notifications->hasMorePages(),
+            'pageSize' => $notifications instanceof Paginator ? $notifications->perPage() : null,
             'settingsUrl' => $workspace instanceof Workspace ? NotificationPreferences::getUrl(tenant: $workspace) : null,
         ]);
     }
@@ -132,8 +174,12 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             return;
         }
 
+        $recorded = $decided ? $outcome : self::ALREADY_DECIDED;
+
+        $this->announcement = __("notifications.panel.announcements.{$recorded}", ['title' => $request->title]);
+
         $this->decidedRequests[$id] = [
-            'outcome' => $decided ? $outcome : self::ALREADY_DECIDED,
+            'outcome' => $recorded,
             'title' => $request->title,
             'body' => $request->body,
             'avatar' => $request->requester instanceof User ? filament()->getUserAvatarUrl($request->requester) : null,
@@ -150,13 +196,37 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         return $user;
     }
 
-    private function takeNewCount(int $unreadCount): int
+    private function takeNewCount(): int
     {
-        $new = max(0, $unreadCount - $this->announcedUnread);
+        $new = $this->announcedThrough === null
+            ? $this->getUnreadNotificationsCount()
+            : $this->getUnreadNotificationsQuery()->where('created_at', '>', $this->announcedThrough)->count();
 
-        $this->announcedUnread = $unreadCount;
+        $this->announcedThrough = $this->newestCreatedAt();
 
         return $new;
+    }
+
+    private function newestCreatedAt(): ?string
+    {
+        $newest = $this->getNotificationsQuery()->reorder()->max('created_at');
+
+        return is_string($newest) ? $newest : null;
+    }
+
+    private function announcementText(int $newCount): ?string
+    {
+        $text = collect([
+            $this->announcement,
+            $newCount > 0 ? trans_choice('notifications.panel.announce', $newCount, ['count' => $newCount]) : null,
+        ])->filter()->implode(' ');
+
+        return $text === '' ? null : $text;
+    }
+
+    private function plainTitle(NotificationRow $row): string
+    {
+        return strip_tags((string) $this->presentNotification($row)->getTitle());
     }
 
     /**
@@ -239,9 +309,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             return $this->getNotification($notification);
         }
 
-        // A non-persistent notice closes itself in the open bell, and closing deletes its row.
         return $type::present($notification)
-            ->persistent()
             ->date($this->formatNotificationDate($notification->getAttributeValue('created_at')));
     }
 

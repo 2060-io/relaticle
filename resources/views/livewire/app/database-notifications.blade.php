@@ -16,6 +16,7 @@
         show() {
             this.measure()
             this.open = true
+            this.$nextTick(() => this.$refs['tab-' + this.tab]?.focus())
         },
         hide(returnFocus = true) {
             if (! this.open) {
@@ -25,7 +26,7 @@
             this.open = false
 
             if (Object.keys(this.$wire.decidedRequests).length) {
-                this.$wire.$set('decidedRequests', {})
+                this.$wire.forgetDecidedRequests()
             }
 
             if (returnFocus) {
@@ -37,26 +38,45 @@
 
             this.left = sidebar ? Math.round(sidebar.getBoundingClientRect().right) + 8 : 8
         },
+        async act(call, el, selector) {
+            const key = this.neighbourKey(el, selector)
+
+            await call()
+
+            this.$nextTick(() => {
+                const target = key && this.$refs.panel.querySelector(`li[data-inbox-key='${key}'] ${selector}`)
+
+                ;(target ?? this.$refs['tab-' + this.tab])?.focus()
+            })
+        },
+        neighbourKey(el, selector) {
+            const row = el.closest('li')
+            const rows = [...el.closest('[role=tabpanel]').querySelectorAll('li[data-inbox-key]')]
+            const index = rows.indexOf(row)
+            const candidates = [...rows.slice(index + 1), ...rows.slice(0, index).reverse()]
+
+            return candidates.find((candidate) => candidate.querySelector(selector))?.dataset.inboxKey
+        },
         focusTab(name) {
             this.tab = name
             this.$nextTick(() => this.$refs['tab-' + name]?.focus())
         },
     }"
     x-on:resize.window.debounce.150ms="open && measure()"
+    x-on:inbox:close.window="hide(false)"
 >
     {{ $this->getTrigger()->with(['unreadNotificationsCount' => $unreadCount, 'pendingRequestsCount' => $pendingCount]) }}
 
     <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        @if ($newCount)
-            {{ trans_choice('notifications.panel.announce', $newCount, ['count' => $newCount]) }}
-        @endif
+        {{ $announcement }}
     </div>
 
     <template x-teleport="body">
         <div
             x-show="open"
             x-cloak
-            x-trap.noreturn="open"
+            x-ref="panel"
+            x-trap.noreturn.noautofocus="open"
             x-bind:style="{ '--inbox-left': left + 'px' }"
             x-on:click.outside="if (! $refs.trigger.contains($event.target)) hide(false)"
             x-on:keydown.escape.window="hide()"
@@ -67,6 +87,7 @@
             x-transition:leave-start="motion-safe:opacity-100"
             x-transition:leave-end="motion-safe:opacity-0"
             role="dialog"
+            aria-modal="true"
             aria-labelledby="inbox-heading"
             tabindex="-1"
             class="fi-inbox-panel"
@@ -168,6 +189,11 @@
                                 </ul>
                             </section>
                         @endforeach
+                        @if ($hasOlderNotifications)
+                            <p class="px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400">
+                                {{ __('notifications.panel.footer', ['count' => $pageSize]) }}
+                            </p>
+                        @endif
                     @else
                         @include('livewire.app.notifications.panel-empty-state', [
                             'icon' => 'ri-notification-3-line',

@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
@@ -133,12 +134,32 @@ it('marks all as read only in the current workspace', function (): void {
     expect($unreadWorkspaceIds)->toBe([$this->workspaceB->id]);
 });
 
-it('clears only the current workspace', function (): void {
+it('archives rather than deletes when clearing, only in the current workspace', function (): void {
     seedBellInbox($this->user, $this->workspaceA, $this->workspaceB);
 
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->call('clearNotifications');
 
-    expect($this->user->notifications()->pluck('workspace_id')->all())->toBe([$this->workspaceB->id]);
+    expect($this->user->notifications()->count())->toBe(3)
+        ->and($this->user->notifications()->whereNotNull('archived_at')->count())->toBe(2)
+        ->and($this->user->notifications()->whereNull('archived_at')->pluck('workspace_id')->all())->toBe([$this->workspaceB->id]);
+});
+
+it('archives a notification a closed toast names instead of deleting it', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+    $row = $this->user->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->dispatch('notificationClosed', id: $row->id);
+
+    expect($row->fresh()->archived_at)->not->toBeNull();
+});
+
+it('leaves another workspace\'s notification alone when a toast closes', function (): void {
+    assignTaskNotification($this->user, $this->workspaceB, 'Task in B');
+    $row = $this->user->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->dispatch('notificationClosed', id: $row->id);
+
+    expect($row->fresh()->archived_at)->toBeNull();
 });
 
 it('hides archived notifications', function (): void {
@@ -328,7 +349,7 @@ it('approves a request from the panel and shows the outcome in place', function 
     expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
         ->and($component->get('decidedRequests'))->toHaveKey($request->getKey());
 
-    $component->set('decidedRequests', [])->assertDontSee('Dana Whitfield requested email access');
+    $component->call('forgetDecidedRequests')->assertDontSee('Dana Whitfield requested email access');
 });
 
 it('denies a request from the panel and shows the outcome in place', function (): void {
@@ -440,4 +461,91 @@ it('does not announce notifications that were there before the panel loaded', fu
     assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
 
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertDontSee('new notification');
+});
+
+it('announces a notification that arrives after the panel loaded, not one marked unread again', function (): void {
+    $this->travelTo(now()->subHour());
+    assignTaskNotification($this->user, $this->workspaceA, 'Old task');
+    $this->travelBack();
+    $old = $this->user->notifications()->firstOrFail();
+    $old->markAsRead();
+
+    $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('markNotificationAsUnread', $old->id)
+        ->assertDontSee('new notification');
+
+    $this->travelTo(now()->addMinute());
+    assignTaskNotification($this->user, $this->workspaceA, 'Fresh task');
+
+    $component->call('$refresh')->assertSee('1 new notification');
+});
+
+it('announces an archive through the live region', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+    $row = $this->user->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('archiveNotification', $row->id)
+        ->assertSeeHtml('aria-live="polite"')
+        ->assertSee('Archived: ')
+        ->assertSee('assigned you a task');
+});
+
+it('announces a decision through the live region', function (): void {
+    NotificationFacade::fake();
+    $request = pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('approveRequest', 'email_access', $request->getKey())
+        ->assertSee('Approved: Dana Whitfield requested email access');
+});
+
+it('shows a notice with two link actions the same way for both', function (): void {
+    insertFilamentNotification($this->user, $this->workspaceA->id, 'Export ready', [
+        Action::make('csv')->label('Download CSV')->url('/exports/1.csv'),
+        Action::make('xlsx')->label('Download XLSX')->url('/exports/1.xlsx'),
+    ]);
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSee('Download CSV')
+        ->assertSee('Download XLSX')
+        ->assertDontSeeHtml('data-inbox-hint');
+});
+
+it('shows a notice with one link action as an inline hint', function (): void {
+    insertFilamentNotification($this->user, $this->workspaceA->id, 'Legacy title', [
+        Action::make('open')->label('Open legacy')->url('/legacy'),
+    ]);
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertSeeHtml('data-inbox-hint');
+});
+
+it('says when older notifications are not shown', function (): void {
+    Notification::factory()->count(51)->create([
+        'notifiable_type' => $this->user->getMorphClass(),
+        'notifiable_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspaceA->id,
+    ]);
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSee('Showing the latest 50 notifications.');
+});
+
+it('shows no cap note when everything fits', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertDontSee('Showing the latest');
+});
+
+it('refuses a browser write to the decided requests', function (): void {
+    $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class);
+
+    expect(fn () => $component->set('decidedRequests', []))->toThrow(CannotUpdateLockedPropertyException::class);
+});
+
+it('describes only what lands in the inbox today', function (): void {
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertDontSee('mention')
+        ->assertDontSee('follow')
+        ->assertSeeHtml('aria-modal="true"');
 });

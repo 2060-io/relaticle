@@ -194,6 +194,24 @@ it('reads the same number of queries for one pending request as for three', func
     expect($countQueries())->toBe($one);
 });
 
+it('reports false instead of 404 when approving a request whose email was deleted', function (): void {
+    $request = ($this->requestFor)($this->email);
+    $this->email->delete();
+
+    expect($this->requests->for($this->owner, $this->workspace))->toBeEmpty()
+        ->and($this->requests->approve($this->owner, $this->workspace, 'email_access', $request->getKey()))->toBeFalse()
+        ->and($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING);
+});
+
+it('still denies a request whose email was deleted', function (): void {
+    Notification::fake();
+    $request = ($this->requestFor)($this->email);
+    $this->email->delete();
+
+    expect($this->requests->deny($this->owner, $this->workspace, 'email_access', $request->getKey()))->toBeTrue()
+        ->and($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
+});
+
 it('answers 404 for a request id from another workspace', function (string $decision): void {
     $elsewhere = Workspace::factory()->create();
     $elsewhere->users()->attach($this->owner, ['role' => 'admin']);
