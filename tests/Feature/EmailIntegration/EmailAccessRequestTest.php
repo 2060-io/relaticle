@@ -8,7 +8,12 @@ use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
+use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Notifications\ChannelManager;
+use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Relaticle\EmailIntegration\Actions\ApproveEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\CancelEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\DecideEmailAccessRequest;
@@ -90,7 +95,7 @@ describe('ApproveEmailAccessRequestAction', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
 
         expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1);
 
@@ -118,8 +123,8 @@ describe('ApproveEmailAccessRequestAction', function (): void {
             'email_id' => $otherEmail->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
-        legacyAccessRequestNotice($this->owner, $otherRequest);
+        inboxAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $otherRequest);
 
         resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
 
@@ -150,7 +155,7 @@ describe('ApproveEmailAccessRequestAction', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
         $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
 
         Notification::fake();
@@ -186,7 +191,7 @@ describe('ApproveEmailAccessRequestAction', function (): void {
 
         $intruder = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
 
         Notification::fake();
 
@@ -337,7 +342,7 @@ describe('DenyEmailAccessRequestAction', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
 
         expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1);
 
@@ -365,8 +370,8 @@ describe('DenyEmailAccessRequestAction', function (): void {
             'email_id' => $otherEmail->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
-        legacyAccessRequestNotice($this->owner, $otherRequest);
+        inboxAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $otherRequest);
 
         resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
 
@@ -426,7 +431,7 @@ describe('DenyEmailAccessRequestAction', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
         $request->update(['status' => EmailAccessRequestStatus::DENIED]);
 
         Notification::fake();
@@ -527,7 +532,7 @@ describe('CancelEmailAccessRequestAction', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
 
         resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
 
@@ -541,7 +546,7 @@ describe('CancelEmailAccessRequestAction', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
         $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
 
         resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
@@ -757,15 +762,15 @@ describe('EmailAccessRequestedNotification', function (): void {
         expect(new EmailAccessRequestedNotification($request)->shouldSend($this->owner, 'mail'))->toBeFalse();
     });
 
-    it('dismisses an access request notice written before this change', function (): void {
+    it('dismisses a bell notice written before the inbox, found by its payload', function (): void {
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
-        $other = legacyAccessRequestNotice($this->owner, EmailAccessRequest::factory()->create([
+        bellAccessRequestNotice($this->owner, $request);
+        $other = bellAccessRequestNotice($this->owner, EmailAccessRequest::factory()->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
@@ -774,6 +779,71 @@ describe('EmailAccessRequestedNotification', function (): void {
         resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
 
         expect($this->owner->notifications()->pluck('id')->all())->toBe([$other->getKey()]);
+    });
+
+    it('dismisses an inbox notice written before this change, found by its subject', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        inboxAccessRequestNotice($this->owner, $request);
+        $other = inboxAccessRequestNotice($this->owner, EmailAccessRequest::factory()->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]));
+
+        resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
+
+        expect($this->owner->notifications()->pluck('id')->all())->toBe([$other->getKey()]);
+    });
+
+    it('mails only while the request is still pending when the queued job runs', function (): void {
+        Queue::fake();
+        $sent = 0;
+        Event::listen(MessageSent::class, function () use (&$sent): void {
+            $sent++;
+        });
+
+        $request = resolve(RequestEmailAccessAction::class)
+            ->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+
+        $queued = Queue::pushed(
+            SendQueuedNotifications::class,
+            fn (SendQueuedNotifications $job): bool => $job->notification instanceof EmailAccessRequestedNotification,
+        )->sole();
+
+        unserialize(serialize($queued))->handle(resolve(ChannelManager::class));
+
+        expect($sent)->toBe(1);
+
+        resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        unserialize(serialize($queued))->handle(resolve(ChannelManager::class));
+
+        expect($sent)->toBe(1)
+            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+    });
+
+    it('keeps quotes and ampersands readable in the mail', function (): void {
+        $this->requester->update(['name' => "Dana O'Brien"]);
+        $this->email->update(['subject' => "Let's meet about Q&A <draft>"]);
+
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        $html = (string) new EmailAccessRequestedNotification($request->fresh())->toMail($this->owner)->render();
+
+        expect($html)->toContain("Dana O'Brien")
+            ->toContain("Let's meet about Q&amp;A &lt;draft&gt;")
+            ->not->toContain('&amp;#039;')
+            ->not->toContain('&amp;amp;')
+            ->not->toContain('&amp;lt;');
     });
 });
 
@@ -1011,7 +1081,7 @@ describe('email:expire-access-requests', function (): void {
             'email_id' => $this->email->getKey(),
             'expires_at' => null,
         ]);
-        legacyAccessRequestNotice($this->owner, $overdue);
+        inboxAccessRequestNotice($this->owner, $overdue);
 
         $this->artisan('email:expire-access-requests')
             ->expectsOutputToContain("Expiring access request `{$overdue->getKey()}`")

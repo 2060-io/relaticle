@@ -38,7 +38,7 @@ final readonly class EmailAccessRequestSource implements RequestSource
         }
 
         return $this->pending($user, $workspace)
-            ->with(['requester', 'email.workspace'])
+            ->with(['requester', 'email.workspace', 'email.participants'])
             ->latest()
             ->get()
             ->map(fn (EmailAccessRequest $request): InboxRequest => $this->present($request, $user));
@@ -53,31 +53,36 @@ final readonly class EmailAccessRequestSource implements RequestSource
         return $this->pending($user, $workspace)->count();
     }
 
-    public function approve(User $user, Workspace $workspace, string $requestId): void
+    public function approve(User $user, Workspace $workspace, string $requestId): bool
     {
-        $this->approve->execute($this->findPending($user, $workspace, $requestId), $user);
+        return $this->approve->execute($this->find($user, $workspace, $requestId), $user);
     }
 
-    public function deny(User $user, Workspace $workspace, string $requestId): void
+    public function deny(User $user, Workspace $workspace, string $requestId): bool
     {
-        $this->deny->execute($this->findPending($user, $workspace, $requestId), $user);
+        return $this->deny->execute($this->find($user, $workspace, $requestId), $user);
+    }
+
+    /** @return Builder<EmailAccessRequest> */
+    private function owned(User $user, Workspace $workspace): Builder
+    {
+        return EmailAccessRequest::query()
+            ->where('owner_id', $user->getKey())
+            ->where('workspace_id', $workspace->getKey())
+            ->whereHas('email');
     }
 
     /** @return Builder<EmailAccessRequest> */
     private function pending(User $user, Workspace $workspace): Builder
     {
-        return EmailAccessRequest::query()
-            ->where('owner_id', $user->getKey())
-            ->where('workspace_id', $workspace->getKey())
-            ->open()
-            ->whereHas('email');
+        return $this->owned($user, $workspace)->open();
     }
 
-    private function findPending(User $user, Workspace $workspace, string $requestId): EmailAccessRequest
+    private function find(User $user, Workspace $workspace, string $requestId): EmailAccessRequest
     {
         abort_unless(EmailIntegrationServiceProvider::enabled(), 404);
 
-        return $this->pending($user, $workspace)->whereKey($requestId)->firstOrFail();
+        return $this->owned($user, $workspace)->whereKey($requestId)->firstOrFail();
     }
 
     private function present(EmailAccessRequest $request, User $owner): InboxRequest
@@ -94,7 +99,7 @@ final readonly class EmailAccessRequestSource implements RequestSource
             body: filled($email?->subject) ? $email->subject : __('filament/pages/email-inbox.subject.none'),
             requester: $requester,
             createdAt: CarbonImmutable::instance($request->created_at),
-            expiresAt: $request->expires_at,
+            expiresAt: $request->deadline(),
             url: $email?->appUrlFor($owner),
         );
     }

@@ -104,12 +104,17 @@ final class EmailAccessRequest extends Model
             ->whereHas('email', fn (Builder $email): Builder => $email->where('workspace_id', $owner->current_workspace_id));
     }
 
+    public function deadline(): ?CarbonImmutable
+    {
+        return $this->expires_at ?? $this->created_at?->addDays(self::EXPIRES_AFTER_DAYS);
+    }
+
     public function isOpen(): bool
     {
-        $deadline = $this->expires_at ?? $this->created_at?->addDays(self::EXPIRES_AFTER_DAYS);
+        $deadline = $this->deadline();
 
         return $this->status === EmailAccessRequestStatus::PENDING
-            && ($deadline === null || $deadline->isFuture());
+            && (! $deadline instanceof CarbonImmutable || $deadline->isFuture());
     }
 
     /**

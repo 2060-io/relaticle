@@ -31,14 +31,14 @@ final readonly class InboxRequests
             ->sum(fn (RequestSource $source): int => $source->countPendingFor($user, $workspace));
     }
 
-    public function approve(User $user, Workspace $workspace, string $kind, string $id): void
+    public function approve(User $user, Workspace $workspace, string $kind, string $id): bool
     {
-        $this->source($kind)->approve($user, $workspace, $id);
+        return $this->source($kind)->approve($user, $workspace, $id);
     }
 
-    public function deny(User $user, Workspace $workspace, string $kind, string $id): void
+    public function deny(User $user, Workspace $workspace, string $kind, string $id): bool
     {
-        $this->source($kind)->deny($user, $workspace, $id);
+        return $this->source($kind)->deny($user, $workspace, $id);
     }
 
     private function source(string $kind): RequestSource

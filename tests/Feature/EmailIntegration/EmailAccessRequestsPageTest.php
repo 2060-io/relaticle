@@ -225,7 +225,7 @@ describe('approveAccessRequest action', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->user, $request);
+        inboxAccessRequestNotice($this->user, $request);
 
         livewire(AccessRequestsTable::class)
             ->callTableAction('approveAccessRequest', $request)
@@ -292,7 +292,7 @@ describe('denyAccessRequest action', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        legacyAccessRequestNotice($this->user, $request);
+        inboxAccessRequestNotice($this->user, $request);
 
         livewire(AccessRequestsTable::class)
             ->callTableAction('denyAccessRequest', $request)
@@ -368,7 +368,7 @@ describe('cancelAccessRequest action', function (): void {
             'email_id' => $otherEmail->getKey(),
         ]);
 
-        legacyAccessRequestNotice($owner, $request);
+        inboxAccessRequestNotice($owner, $request);
 
         livewire(AccessRequestsTable::class)
             ->call('setTab', 'outgoing')

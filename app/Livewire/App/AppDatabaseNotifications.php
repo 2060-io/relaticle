@@ -35,6 +35,8 @@ final class AppDatabaseNotifications extends DatabaseNotifications
 
     private const string DENIED = 'denied';
 
+    private const string ALREADY_DECIDED = 'already_decided';
+
     /** @var array<string, array{outcome: string, title: string, body: ?string, avatar: ?string, created_at: string}> */
     public array $decidedRequests = [];
 
@@ -122,14 +124,16 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         $request = $requests->for($user, $workspace)
             ->first(fn (InboxRequest $pending): bool => $pending->kind === $kind && $pending->id === $id);
 
-        abort_unless($request instanceof InboxRequest, 404);
-
-        $outcome === self::APPROVED
+        $decided = $outcome === self::APPROVED
             ? $requests->approve($user, $workspace, $kind, $id)
             : $requests->deny($user, $workspace, $kind, $id);
 
+        if (! $request instanceof InboxRequest) {
+            return;
+        }
+
         $this->decidedRequests[$id] = [
-            'outcome' => $outcome,
+            'outcome' => $decided ? $outcome : self::ALREADY_DECIDED,
             'title' => $request->title,
             'body' => $request->body,
             'avatar' => $request->requester instanceof User ? filament()->getUserAvatarUrl($request->requester) : null,

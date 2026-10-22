@@ -39,8 +39,8 @@
                         'text-gray-500 dark:text-gray-400' => $outcome !== 'approved',
                     ])
                 >
-                    <x-filament::icon :icon="$outcome === 'approved' ? 'ri-check-line' : 'ri-close-line'" class="size-4" />
-                    {{ $outcome === 'approved' ? __('notifications.panel.requests.approved') : __('notifications.panel.requests.denied') }}
+                    <x-filament::icon :icon="match ($outcome) { 'approved' => 'ri-check-line', 'denied' => 'ri-close-line', default => 'ri-information-line' }" class="size-4" />
+                    {{ __('notifications.panel.requests.'.$outcome) }}
                 </span>
             @else
                 <x-filament::button

@@ -51,6 +51,7 @@ final readonly class RequestEmailAccessAction
     private function expireOverdueRequests(Email $email, User $requester): void
     {
         $email->accessRequests()
+            ->with('owner')
             ->where('requester_id', $requester->getKey())
             ->overdue()
             ->each(function (EmailAccessRequest $overdue): void {

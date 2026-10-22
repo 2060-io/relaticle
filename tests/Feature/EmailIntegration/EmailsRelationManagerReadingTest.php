@@ -443,7 +443,7 @@ describe('access request approve and deny from the reader overlay', function ():
             'owner_id' => $this->owner->id,
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
 
         livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,
@@ -478,7 +478,7 @@ describe('access request approve and deny from the reader overlay', function ():
             'owner_id' => $this->owner->id,
         ]);
 
-        legacyAccessRequestNotice($this->owner, $request);
+        inboxAccessRequestNotice($this->owner, $request);
 
         livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,

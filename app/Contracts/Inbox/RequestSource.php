@@ -18,7 +18,7 @@ interface RequestSource
 
     public function countPendingFor(User $user, Workspace $workspace): int;
 
-    public function approve(User $user, Workspace $workspace, string $requestId): void;
+    public function approve(User $user, Workspace $workspace, string $requestId): bool;
 
-    public function deny(User $user, Workspace $workspace, string $requestId): void;
+    public function deny(User $user, Workspace $workspace, string $requestId): bool;
 }

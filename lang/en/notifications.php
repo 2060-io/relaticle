@@ -78,6 +78,7 @@ return [
             'deny' => 'Deny',
             'approved' => 'Approved',
             'denied' => 'Denied',
+            'already_decided' => 'This request was already decided.',
             'expires' => 'Expires :when',
         ],
         'empty' => [

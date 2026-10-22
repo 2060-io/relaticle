@@ -205,7 +205,21 @@ function bindMailboxOAuthWorkspace(User $user, ?Workspace $workspace = null): vo
     session()->put(RedirectController::WORKSPACE_SESSION_KEY, $workspace->getKey());
 }
 
-function legacyAccessRequestNotice(User $owner, EmailAccessRequest $request): NotificationRow
+function bellAccessRequestNotice(User $owner, EmailAccessRequest $request): NotificationRow
+{
+    return NotificationRow::factory()->create([
+        'type' => EmailAccessRequestedNotification::class,
+        'notifiable_type' => $owner->getMorphClass(),
+        'notifiable_id' => $owner->getKey(),
+        'data' => [
+            'title' => 'Requester requested email access',
+            'body' => $request->email?->subject,
+            'viewData' => ['request_id' => (string) $request->getKey()],
+        ],
+    ]);
+}
+
+function inboxAccessRequestNotice(User $owner, EmailAccessRequest $request): NotificationRow
 {
     return NotificationRow::factory()->create([
         'type' => EmailAccessRequestedNotification::class,
@@ -219,7 +233,6 @@ function legacyAccessRequestNotice(User $owner, EmailAccessRequest $request): No
         'data' => [
             'email_subject' => $request->email?->subject,
             'email_id' => $request->email_id,
-            'viewData' => ['request_id' => (string) $request->getKey()],
         ],
     ]);
 }

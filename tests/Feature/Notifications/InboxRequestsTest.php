@@ -9,6 +9,7 @@ use App\Support\Inbox\InboxRequests;
 use Filament\Facades\Filament;
 use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Pennant\Feature;
@@ -132,9 +133,10 @@ it('approves through the source and shares the email', function (): void {
     Notification::fake();
     $request = ($this->requestFor)($this->email);
 
-    $this->requests->approve($this->owner, $this->workspace, 'email_access', $request->getKey());
+    $decided = $this->requests->approve($this->owner, $this->workspace, 'email_access', $request->getKey());
 
-    expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
+    expect($decided)->toBeTrue()
+        ->and($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
         ->and(EmailShare::query()->where('email_id', $this->email->getKey())->where('shared_with', $this->requester->id)->exists())->toBeTrue()
         ->and($this->requests->for($this->owner, $this->workspace))->toBeEmpty();
 });
@@ -143,10 +145,53 @@ it('denies through the source without sharing', function (): void {
     Notification::fake();
     $request = ($this->requestFor)($this->email);
 
-    $this->requests->deny($this->owner, $this->workspace, 'email_access', $request->getKey());
+    $decided = $this->requests->deny($this->owner, $this->workspace, 'email_access', $request->getKey());
 
-    expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
+    expect($decided)->toBeTrue()
+        ->and($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
         ->and(EmailShare::query()->where('email_id', $this->email->getKey())->exists())->toBeFalse();
+});
+
+it('returns false when the request was already decided or expired', function (string $decision): void {
+    Notification::fake();
+    $decidedElsewhere = ($this->requestFor)($this->email);
+    $decidedElsewhere->update(['status' => EmailAccessRequestStatus::DENIED]);
+    $overdue = ($this->requestFor)(($this->emailIn)($this->workspace, 'Older'));
+    $overdue->update(['expires_at' => now()->subMinute()]);
+
+    expect($this->requests->{$decision}($this->owner, $this->workspace, 'email_access', $decidedElsewhere->getKey()))->toBeFalse()
+        ->and($this->requests->{$decision}($this->owner, $this->workspace, 'email_access', $overdue->getKey()))->toBeFalse()
+        ->and($decidedElsewhere->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
+        ->and($overdue->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
+        ->and(EmailShare::query()->exists())->toBeFalse();
+})->with(['approve', 'deny']);
+
+it('reports the thirty day deadline of an undated open request', function (): void {
+    $request = ($this->requestFor)($this->email);
+    $request->forceFill(['expires_at' => null])->save();
+
+    $listed = $this->requests->for($this->owner, $this->workspace)->sole();
+
+    expect($listed->expiresAt?->equalTo($request->fresh()->created_at->addDays(EmailAccessRequest::EXPIRES_AFTER_DAYS)))->toBeTrue();
+});
+
+it('reads the same number of queries for one pending request as for three', function (): void {
+    $countQueries = function (): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->requests->for($this->owner->fresh(), $this->workspace);
+        DB::disableQueryLog();
+
+        return count(DB::getQueryLog());
+    };
+
+    ($this->requestFor)($this->email);
+    $one = $countQueries();
+
+    ($this->requestFor)(($this->emailIn)($this->workspace, 'Second'));
+    ($this->requestFor)(($this->emailIn)($this->workspace, 'Third'));
+
+    expect($countQueries())->toBe($one);
 });
 
 it('answers 404 for a request id from another workspace', function (string $decision): void {
