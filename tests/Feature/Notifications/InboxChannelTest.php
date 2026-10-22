@@ -5,9 +5,13 @@ declare(strict_types=1);
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\Channels\InboxChannel;
+use App\Support\CurrentWorkspace;
 use Filament\Notifications\Events\DatabaseNotificationsSent;
+use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -143,4 +147,69 @@ it('does not broadcast when the surrounding transaction rolls back', function ()
 
     Event::assertNotDispatched(DatabaseNotificationsSent::class);
     expect($this->user->notifications()->count())->toBe(0);
+});
+
+it('stamps a Filament notice with the workspace bound when it is sent', function (): void {
+    resolve(CurrentWorkspace::class)->within($this->user->currentWorkspace, function (): void {
+        FilamentNotification::make()->title('Export ready')->sendToDatabase($this->user);
+    });
+
+    $row = $this->user->notifications()->sole();
+
+    expect($row->workspace_id)->toBe($this->user->currentWorkspace->getKey())
+        ->and($row->reason)->toBeNull()
+        ->and($row->data['title'])->toBe('Export ready');
+});
+
+it('leaves a Filament notice account-level when no workspace is bound', function (): void {
+    FilamentNotification::make()->title('Export ready')->sendToDatabase($this->user);
+
+    expect($this->user->notifications()->sole()->workspace_id)->toBeNull();
+});
+
+it('stamps a Filament notice sent from a job with the workspace bound at dispatch', function (): void {
+    $dehydrated = resolve(CurrentWorkspace::class)->within(
+        $this->user->currentWorkspace,
+        fn (): ?array => Context::dehydrate(),
+    );
+    Context::flush();
+    app()->forgetScopedInstances();
+    Context::hydrate($dehydrated);
+
+    FilamentNotification::make()->title('Export ready')->sendToDatabase($this->user);
+
+    expect($this->user->notifications()->sole()->workspace_id)->toBe($this->user->currentWorkspace->getKey());
+});
+
+it('broadcasts a Filament notice only after the surrounding transaction commits', function (): void {
+    Event::fake([DatabaseNotificationsSent::class]);
+
+    DB::transaction(function (): void {
+        FilamentNotification::make()->title('Export ready')->sendToDatabase($this->user);
+
+        Event::assertNotDispatched(DatabaseNotificationsSent::class);
+    });
+
+    Event::assertDispatchedTimes(DatabaseNotificationsSent::class, 1);
+});
+
+it('rejects a database notification that does not extend the inbox base', function (): void {
+    $notification = new class extends Notification
+    {
+        /** @return list<string> */
+        public function via(object $notifiable): array
+        {
+            return ['database'];
+        }
+
+        /** @return array<string, mixed> */
+        public function toArray(object $notifiable): array
+        {
+            return ['title' => 'unowned'];
+        }
+    };
+
+    expect(fn () => $this->user->notifyNow($notification))
+        ->toThrow(LogicException::class, $notification::class)
+        ->and($this->user->notifications()->count())->toBe(0);
 });

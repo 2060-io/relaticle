@@ -7,22 +7,37 @@ namespace App\Notifications\Channels;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Notifications\InboxNotification;
+use App\Support\CurrentWorkspace;
+use Filament\Notifications\DatabaseNotification as FilamentDatabaseNotification;
 use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Notifications\Channels\DatabaseChannel;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 final class InboxChannel extends DatabaseChannel
 {
-    public function send(mixed $notifiable, Notification $notification): Model
+    public function send(mixed $notifiable, Notification $notification): NotificationRow
     {
-        if (! $notification instanceof InboxNotification || ! $notifiable instanceof User) {
-            return parent::send($notifiable, $notification);
+        if ($notification instanceof InboxNotification && $notifiable instanceof User) {
+            return $this->sendInboxNotice($notifiable, $notification);
         }
 
+        if ($notification instanceof FilamentDatabaseNotification && $notifiable instanceof User) {
+            return $this->sendFilamentNotice($notifiable, $notification);
+        }
+
+        throw new LogicException(sprintf(
+            '%s reached the database channel. In-app notices must extend %s.',
+            $notification::class,
+            InboxNotification::class,
+        ));
+    }
+
+    private function sendInboxNotice(User $notifiable, InboxNotification $notification): NotificationRow
+    {
         $columns = [
             'type' => $notification::class,
             'workspace_id' => $notification->visibleInEveryWorkspace() ? null : $notification->workspace()->getKey(),
@@ -36,11 +51,28 @@ final class InboxChannel extends DatabaseChannel
         $row = $this->collapse($notifiable, $notification, $columns)
             ?? $this->insertOrCollapse($notifiable, $notification, $columns);
 
+        $this->broadcastAfterCommit($notifiable);
+
+        return $row;
+    }
+
+    private function sendFilamentNotice(User $notifiable, FilamentDatabaseNotification $notification): NotificationRow
+    {
+        $row = $notifiable->notifications()->create([
+            ...$this->buildPayload($notifiable, $notification),
+            'workspace_id' => resolve(CurrentWorkspace::class)->get()?->getKey(),
+        ]);
+
+        $this->broadcastAfterCommit($notifiable);
+
+        return $row;
+    }
+
+    private function broadcastAfterCommit(User $notifiable): void
+    {
         DB::afterCommit(static function () use ($notifiable): void {
             event(new DatabaseNotificationsSent($notifiable));
         });
-
-        return $row;
     }
 
     /** @param  array<string, mixed>  $columns */

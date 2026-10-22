@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    private const string PAYMENT_FAILURE_ACTION = 'billing';
+    private const array ACCOUNT_LEVEL_ACTIONS = ['billing', 'download_csv', 'download_xlsx'];
 
     public function up(): void
     {
@@ -32,8 +32,9 @@ return new class extends Migration
 
         foreach ($rows as $row) {
             $data = json_decode((string) $row->data, true);
+            $data = is_array($data) ? $data : [];
 
-            if (! is_array($data) || data_get($data, 'actions.0.name') === self::PAYMENT_FAILURE_ACTION) {
+            if (in_array(data_get($data, 'actions.0.name'), self::ACCOUNT_LEVEL_ACTIONS, true)) {
                 continue;
             }
 
