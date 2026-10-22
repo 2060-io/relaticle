@@ -9,6 +9,7 @@ use App\Jobs\PurgeWorkspace;
 use App\Models\Note;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Notifications\PaymentFailedNotification;
 use App\Notifications\UserDeletionReminderNotification;
 use App\Notifications\WorkspaceDeletionReminderNotification;
 use Illuminate\Support\Facades\DB;
@@ -155,6 +156,20 @@ test('expired workspaces are permanently deleted', function () {
         ->assertExitCode(0);
 
     expect(Workspace::query()->find($workspaceId))->toBeNull();
+});
+
+it('removes the payment failure notice of a purged workspace and keeps the owner\'s other notices', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+    $doomed = $owner->currentWorkspace;
+    $kept = Workspace::factory()->for($owner, 'owner')->create();
+    $owner->notify(new PaymentFailedNotification($doomed));
+    $owner->notify(new PaymentFailedNotification($kept));
+    $doomed->update(['scheduled_deletion_at' => now()->subDay()]);
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    expect($owner->notifications()->pluck('data')->pluck('workspace_id')->all())->toBe([$kept->getKey()]);
 });
 
 it('removes a purged workspace\'s custom fields, options and values, and leaves other workspaces alone', function (): void {

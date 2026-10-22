@@ -38,6 +38,7 @@ use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
+use App\Notifications\Channels\InboxChannel;
 use App\Onboarding\ActivationSteps;
 use App\Services\Billing\HostedWorkspaceAccess;
 use App\Services\DiscordService;
@@ -94,6 +95,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
 use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Notifications\Channels\DatabaseChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades;
 use Illuminate\Support\Facades\Config;
@@ -149,10 +151,7 @@ final class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(\Filament\Auth\Http\Responses\Contracts\LoginResponse::class, LoginResponse::class);
         $this->app->bind(\Filament\Actions\Exports\Models\Export::class, Export::class);
-        $this->app->bind(VerifyEmail::class, \App\Notifications\Auth\VerifyEmail::class);
-        $this->app->bind(VerifyEmailChange::class, \App\Notifications\Auth\VerifyEmailChange::class);
-        $this->app->bind(ResetPassword::class, \App\Notifications\Auth\ResetPassword::class);
-        $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
+        $this->registerNotificationBindings();
 
         // Ink registers its public routes from packageBooted(), which runs after every
         // provider's register(). Read the config key App\Features\Blog resolves from
@@ -222,6 +221,15 @@ final class AppServiceProvider extends ServiceProvider
                 renderAnchors: false,
                 extensions: [TableExtension::class],
             ));
+    }
+
+    private function registerNotificationBindings(): void
+    {
+        $this->app->bind(VerifyEmail::class, \App\Notifications\Auth\VerifyEmail::class);
+        $this->app->bind(VerifyEmailChange::class, \App\Notifications\Auth\VerifyEmailChange::class);
+        $this->app->bind(ResetPassword::class, \App\Notifications\Auth\ResetPassword::class);
+        $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
+        $this->app->bind(DatabaseChannel::class, InboxChannel::class);
     }
 
     private function registerPassport(): void

@@ -180,3 +180,50 @@ it('searches the company tabs by name, title and assignee', function (string $re
         'pricing',
     ],
 ]);
+
+it('notifies a member newly assigned from a record tasks tab', function (string $relationManager, Closure $setUp): void {
+    $kept = User::factory()->create();
+    $added = User::factory()->create();
+    $this->workspace->users()->attach([$kept->getKey(), $added->getKey()], ['role' => 'member']);
+
+    [$ownerRecord, $pageClass, $task] = $setUp($this->user, $this->workspace);
+    $task->assignees()->attach($kept);
+
+    livewire($relationManager, [
+        'ownerRecord' => $ownerRecord,
+        'pageClass' => $pageClass,
+    ])
+        ->callAction(TestAction::make('edit')->table($task), data: ['assignees' => [$kept->getKey(), $added->getKey()]])
+        ->assertHasNoActionErrors();
+
+    expect($added->notifications()->where('subject_id', $task->getKey())->count())->toBe(1)
+        ->and($kept->notifications()->count())->toBe(0);
+})->with([
+    'company tasks' => [
+        CompanyTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $company = Company::factory()->recycle([$user, $workspace])->create();
+            $task = $company->tasks()->save(Task::factory()->recycle([$user, $workspace])->make());
+
+            return [$company, ViewCompany::class, $task];
+        },
+    ],
+    'opportunity tasks' => [
+        OpportunityTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $opportunity = Opportunity::factory()->recycle([$user, $workspace])->create();
+            $task = $opportunity->tasks()->save(Task::factory()->recycle([$user, $workspace])->make());
+
+            return [$opportunity, ViewOpportunity::class, $task];
+        },
+    ],
+    'people tasks' => [
+        PeopleTasksRelationManager::class,
+        function (User $user, $workspace): array {
+            $people = People::factory()->recycle([$user, $workspace])->create();
+            $task = $people->tasks()->save(Task::factory()->recycle([$user, $workspace])->make());
+
+            return [$people, ViewPeople::class, $task];
+        },
+    ],
+]);

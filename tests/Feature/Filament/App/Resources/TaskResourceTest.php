@@ -6,13 +6,13 @@ use App\Actions\Task\NotifyTaskAssignees;
 use App\Enums\WorkspaceRole;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
-use App\Mail\TaskAssignedMail;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\TaskAssignedNotification;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 use function Filament\Support\generate_icon_html;
@@ -162,8 +162,6 @@ it('can create a task', function (): void {
 // user from another workspace. The option query is what rejects it, because Filament
 // builds the field's `in` rule from that same query.
 it('rejects a create payload naming an assignee outside the workspace', function (): void {
-    $this->withoutDefer();
-
     $outsider = User::factory()->withWorkspace()->create();
 
     livewire(ManageTasks::class)
@@ -178,8 +176,6 @@ it('rejects a create payload naming an assignee outside the workspace', function
 });
 
 it('notifies a newly assigned member with a deep-link that opens the task edit modal', function (): void {
-    $this->withoutDefer();
-
     $assignee = User::factory()->create();
     $this->workspace->users()->attach($assignee, ['role' => 'admin']);
 
@@ -191,7 +187,7 @@ it('notifies a newly assigned member with a deep-link that opens the task edit m
         ->assertHasNoActionErrors();
 
     $task = Task::query()->where('title', 'Assigned Task')->sole();
-    $url = data_get($assignee->notifications()->sole()->data, 'actions.0.url');
+    $url = TaskAssignedNotification::present($assignee->notifications()->sole())->getActions()[0]->getUrl();
 
     expect($url)->toContain('/tasks')
         ->and($url)->toContain('tableAction=edit')
@@ -199,7 +195,7 @@ it('notifies a newly assigned member with a deep-link that opens the task edit m
 });
 
 it('notifies only the assignees submitted through the create action', function (): void {
-    Mail::fake();
+    Notification::fake();
 
     $intendedAssignee = User::factory()->create([
         'notification_preferences' => ['task_assigned' => ['email' => true]],
@@ -235,10 +231,8 @@ it('notifies only the assignees submitted through the create action', function (
         ])
         ->assertHasNoActionErrors();
 
-    defer()->invoke();
-
-    Mail::assertQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($intendedAssignee->email));
-    Mail::assertNotQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($concurrentAssignee->email));
+    Notification::assertSentTo($intendedAssignee, TaskAssignedNotification::class, fn (TaskAssignedNotification $notification, array $channels): bool => in_array('mail', $channels, true));
+    Notification::assertNotSentTo($concurrentAssignee, TaskAssignedNotification::class);
 });
 
 it('links companies, people and opportunities to a task from the relations picker', function (): void {
@@ -311,8 +305,6 @@ it('keeps a member who can edit on the edit action', function (): void {
 });
 
 it('notifies only the member newly assigned through the edit action', function (): void {
-    $this->withoutDefer();
-
     $kept = User::factory()->create();
     $added = User::factory()->create();
     $this->workspace->users()->attach([$kept->id, $added->id], ['role' => 'member']);

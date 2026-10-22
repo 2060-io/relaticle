@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'title' => '{1}Email not sent|[2,*]:count emails not sent',
+    'partial_title' => ':sent sent, :failed not sent',
     'retry' => [
         'body_one' => '":subject" was not sent. Review it on the Failed tab and try again.',
         'body_many' => 'Review them on the Failed tab and try again.',

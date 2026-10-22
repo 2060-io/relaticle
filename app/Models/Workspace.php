@@ -541,6 +541,9 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
             $model::query()->withoutGlobalScopes()->where('tenant_id', $this->getKey())->delete();
         }
 
+        // An account-level notice about this workspace has no workspace_id to cascade on.
+        Notification::query()->whereMorphedTo('subject', $this)->delete();
+
         $this->delete();
     }
 

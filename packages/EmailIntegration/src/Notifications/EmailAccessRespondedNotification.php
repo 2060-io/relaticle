@@ -4,48 +4,61 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Notifications;
 
+use App\Enums\Notifications\NotificationReason;
+use App\Models\Notification as NotificationRow;
 use App\Models\User;
+use App\Models\Workspace;
+use App\Notifications\InboxNotification;
 use Filament\Notifications\Notification as FilamentNotification;
-use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Notification;
+use Filament\Support\Icons\Heroicon;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 
-final class EmailAccessRespondedNotification extends Notification
+final class EmailAccessRespondedNotification extends InboxNotification
 {
-    use Queueable;
+    private const string LANG = 'filament/notifications/email-access-responded';
 
     public function __construct(public readonly EmailAccessRequest $request) {}
 
-    /**
-     * @return list<string>
-     */
-    public function via(object $notifiable): array
+    public function workspace(): Workspace
     {
-        return ['database'];
+        return $this->request->emailIncludingHidden->workspace;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    public function toDatabase(User $notifiable): array
+    public function subject(): EmailAccessRequest
     {
-        $ownerName = $this->request->owner->name;
-        $isApproved = $this->request->status === EmailAccessRequestStatus::APPROVED;
+        return $this->request;
+    }
 
-        $notification = FilamentNotification::make()
-            ->title($isApproved ? 'Email access approved' : 'Email access denied')
-            ->body($isApproved
-                ? "{$ownerName} approved your request."
-                : "{$ownerName} denied your request."
-            );
+    public function actor(): User
+    {
+        return $this->request->owner;
+    }
 
-        if ($isApproved) {
-            $notification->success()->icon('heroicon-o-check-circle');
-        } else {
-            $notification->danger()->icon('heroicon-o-x-circle');
-        }
+    public function reason(): NotificationReason
+    {
+        return NotificationReason::Requested;
+    }
 
-        return $notification->getDatabaseMessage();
+    /** @return array<string, mixed> */
+    public function facts(): array
+    {
+        return ['approved' => $this->request->status === EmailAccessRequestStatus::APPROVED];
+    }
+
+    public static function present(NotificationRow $row): FilamentNotification
+    {
+        $outcome = data_get($row->data, 'approved') === true ? 'approved' : 'denied';
+        $ownerName = $row->actor?->name;
+
+        $notification = FilamentNotification::make((string) $row->getKey())
+            ->title(__(self::LANG.".{$outcome}.title"))
+            ->body($ownerName === null
+                ? __(self::LANG.".{$outcome}.body_without_owner")
+                : __(self::LANG.".{$outcome}.body", ['owner' => e($ownerName)]));
+
+        return $outcome === 'approved'
+            ? $notification->success()->icon(Heroicon::OutlinedCheckCircle)
+            : $notification->danger()->icon(Heroicon::OutlinedXCircle);
     }
 }

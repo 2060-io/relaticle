@@ -48,7 +48,10 @@ final class EditTaskAction extends EditAction
         if ($task instanceof Task && is_array($submittedAssignees)) {
             $submittedIds = array_values(array_filter($submittedAssignees, is_string(...)));
 
-            resolve(NotifyTaskAssignees::class)->execute($task, array_values(array_diff($submittedIds, $this->previousAssigneeIds)));
+            /** @var ?User $actor */
+            $actor = Filament::auth()->user();
+
+            resolve(NotifyTaskAssignees::class)->execute($task, array_values(array_diff($submittedIds, $this->previousAssigneeIds)), $actor);
         }
 
         return parent::callAfter();
