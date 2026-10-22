@@ -1203,3 +1203,64 @@ it('keeps each negated arch expectation to one layer', function (): void {
         '(.ai/guidelines/relaticle/testing.md). Write one arch() per layer in a foreach: '.implode(', ', $offenders),
     );
 });
+
+it('keeps every Tailwind source on disk and inside the Docker frontend stage', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    preg_match('/^FROM \S+ AS frontend$(.*?)^FROM /ms', (string) file_get_contents($root.'/Dockerfile'), $stage);
+    preg_match_all('#^COPY\s.*\s(\S+)$|target=(/app/[^\s,]+)#m', $stage[1] ?? '', $copies);
+    $copied = array_values(array_filter(array_map(
+        static fn (string $destination): string => trim((string) preg_replace('#^(/app/|\./)#', '', $destination), '/'),
+        [...$copies[1], ...$copies[2]],
+    )));
+
+    $stylesheets = [];
+
+    foreach ([$root.'/resources/css', ...glob($root.'/packages/*/resources/css', GLOB_ONLYDIR) ?: []] as $directory) {
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getExtension() === 'css') {
+                $stylesheets[] = $file->getPathname();
+            }
+        }
+    }
+
+    $problems = [];
+
+    foreach ($stylesheets as $stylesheet) {
+        $css = (string) file_get_contents($stylesheet);
+        $name = str_replace($root.'/', '', $stylesheet);
+
+        preg_match_all('/^@import\s+([\'"])tailwindcss\1(.*)$/m', $css, $imports);
+
+        foreach ($imports[2] as $modifiers) {
+            if (! str_contains($modifiers, 'source(none)')) {
+                $problems[] = "{$name} imports tailwindcss without source(none)";
+            }
+        }
+
+        preg_match_all('/^@source\s+([\'"])(.+?)\1/m', $css, $sources);
+
+        foreach ($sources[2] as $source) {
+            $path = realpath(dirname($stylesheet).'/'.preg_replace('#/\*.*$#', '', $source));
+
+            if ($path === false) {
+                $problems[] = "{$name}: {$source} does not exist";
+
+                continue;
+            }
+
+            $relative = str_replace($root.'/', '', $path);
+
+            if (! array_any($copied, static fn (string $directory): bool => $relative === $directory || str_starts_with($relative, $directory.'/'))) {
+                $problems[] = "{$name}: {$source} is not copied or mounted in the Dockerfile frontend stage";
+            }
+        }
+    }
+
+    expect($copied)->not->toBeEmpty()
+        ->and($problems)->toBe(
+            [],
+            'Self-hosted images would ship CSS that differs from production (.ai/guidelines/relaticle/ui.md): '.implode(', ', $problems),
+        );
+});
