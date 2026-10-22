@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Models;
 
+use App\Filament\Pages\Dashboard;
 use App\Models\Company;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\Opportunity;
@@ -406,6 +407,15 @@ final class Email extends Model
     public function accessRequests(): HasMany
     {
         return $this->hasMany(EmailAccessRequest::class);
+    }
+
+    public function appUrlFor(User $viewer): string
+    {
+        return Dashboard::getUrl(
+            $viewer->can('viewBody', $this) ? ['email' => $this->getKey()] : [],
+            panel: 'app',
+            tenant: $this->workspace,
+        );
     }
 
     public function hasPendingAccessRequestFrom(User $viewer): bool

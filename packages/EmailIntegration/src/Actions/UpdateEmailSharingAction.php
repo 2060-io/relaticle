@@ -25,23 +25,23 @@ final readonly class UpdateEmailSharingAction
         // Defense in depth: only the email owner may change its sharing, regardless of caller.
         abort_unless($email->user_id === $sharer->getKey(), 403);
 
-        $this->sharingService->setEmailTier($email, $tier);
+        $newlyGranted = DB::transaction(function () use ($email, $sharer, $tier, $shares): Collection {
+            Email::query()->withoutGlobalScopes()->whereKey($email->getKey())->lockForUpdate()->first(['id']);
 
-        $previouslySharedWith = $email->shares()
-            ->where('shared_by', $sharer->getKey())
-            ->pluck('shared_with')
-            ->all();
+            $this->sharingService->setEmailTier($email, $tier);
 
-        $granted = DB::transaction(function () use ($email, $sharer, $shares): Collection {
+            $alreadyHadAccess = $email->shares()->pluck('shared_with')->all();
+
             $email->shares()->where('shared_by', $sharer->getKey())->delete();
 
-            return $this->recreateShares($email, $sharer, $shares);
+            return $this->recreateShares($email, $sharer, $shares)
+                ->reject(fn (array $grant, string $userId): bool => $userId === (string) $sharer->getKey()
+                    || in_array($userId, $alreadyHadAccess, true));
         });
 
-        $granted
-            ->reject(fn (array $grant): bool => $grant['user']->is($sharer)
-                || in_array($grant['user']->getKey(), $previouslySharedWith, true))
-            ->each(fn (array $grant) => $grant['user']->notify(new EmailSharedNotification($email, $sharer, $grant['tier'])));
+        $newlyGranted->each(fn (array $grant) => $grant['user']->notify(
+            new EmailSharedNotification($email, $sharer, $grant['user'], $grant['tier']),
+        ));
     }
 
     /**

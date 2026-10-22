@@ -12,7 +12,9 @@ return [
 
     'mail' => [
         'subject' => ':name shared an email with you',
-        'line' => 'Subject: :subject',
-        'action' => 'Open Relaticle',
+        'line' => ':name shared an email with you.',
+        'subject_line' => 'Subject: :subject',
+        'action_view' => 'View email',
+        'action_open' => 'Open Relaticle',
     ],
 ];

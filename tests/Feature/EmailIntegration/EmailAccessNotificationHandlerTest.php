@@ -127,6 +127,38 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('close-modal', id: 'database-notifications');
     });
 
+    it('opens the reader from the email query parameter for a viewer with full access', function (): void {
+        Livewire::withQueryParams(['email' => $this->email->getKey()])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', $this->email->getKey())
+            ->assertSee('Q4 pipeline review');
+    });
+
+    it('opens nothing from the email query parameter for a member who cannot read the email', function (): void {
+        $this->actingAs($this->requester);
+
+        Livewire::withQueryParams(['email' => $this->email->getKey()])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', null)
+            ->assertDontSee('Q4 pipeline review');
+    });
+
+    it('opens nothing from the email query parameter for an outsider', function (): void {
+        $outsider = User::factory()->withWorkspace()->create();
+        $this->actingAs($outsider);
+
+        Livewire::withQueryParams(['email' => $this->email->getKey()])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', null)
+            ->assertDontSee('Q4 pipeline review');
+    });
+
+    it('ignores an unknown email query parameter', function (): void {
+        Livewire::withQueryParams(['email' => 'not-an-email'])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', null);
+    });
+
     it('shows approve and deny controls in the overlay for a pending request', function (): void {
         EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,

@@ -15,15 +15,17 @@ use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Notifications\Messages\MailMessage;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
-use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
-use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Support\MarkdownText;
 
 final class EmailSharedNotification extends InboxNotification
 {
+    private const string LANG = 'filament/notifications/email-shared';
+
     public function __construct(
         public readonly Email $email,
         public readonly User $sharer,
+        public readonly User $recipient,
         public readonly EmailPrivacyTier $tier,
     ) {}
 
@@ -52,46 +54,79 @@ final class EmailSharedNotification extends InboxNotification
         return NotificationType::EmailShared;
     }
 
+    public function shouldSend(User $notifiable, string $channel): bool
+    {
+        // The model may carry shares cached before a revoke; the check must read the current ones.
+        $this->email->unsetRelation('shares');
+
+        if (! $notifiable->can('view', $this->email)) {
+            return false;
+        }
+
+        return parent::shouldSend($notifiable, $channel);
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {
         return [
-            'email_subject' => $this->email->subject,
+            'email_subject' => $this->recipient->can('viewSubject', $this->email) ? $this->email->subject : null,
             'tier' => $this->tier->value,
         ];
     }
 
     public function toMail(User $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject(__('filament/notifications/email-shared.mail.subject', ['name' => $this->sharer->name]))
-            ->line(__('filament/notifications/email-shared.mail.line', [
-                'subject' => filled($this->email->subject) ? $this->email->subject : __('filament/pages/email-inbox.subject.none'),
-            ]))
-            ->action(
-                __('filament/notifications/email-shared.mail.action'),
-                EmailInboxPage::getUrl(panel: 'app', tenant: $this->email->workspace),
-            );
+        $canRead = $notifiable->can('viewBody', $this->email);
+
+        $mail = (new MailMessage)
+            ->subject(__(self::LANG.'.mail.subject', ['name' => $this->sharer->name]))
+            ->line(__(self::LANG.'.mail.line', ['name' => MarkdownText::escape($this->sharer->name)]));
+
+        if ($notifiable->can('viewSubject', $this->email)) {
+            $mail->line(__(self::LANG.'.mail.subject_line', [
+                'subject' => MarkdownText::escape(filled($this->email->subject) ? $this->email->subject : __('filament/pages/email-inbox.subject.none')),
+            ]));
+        }
+
+        return $mail->action(
+            __(self::LANG.($canRead ? '.mail.action_view' : '.mail.action_open')),
+            $this->email->appUrlFor($notifiable),
+        );
     }
 
     public static function present(NotificationRow $row): FilamentNotification
     {
-        $emailSubject = data_get($row->data, 'email_subject');
         $sharerName = $row->actor?->name;
+        $email = $row->subject;
+        $viewer = auth()->user();
+        $emailSubject = data_get($row->data, 'email_subject');
 
-        return FilamentNotification::make((string) $row->getKey())
+        $notification = FilamentNotification::make((string) $row->getKey())
             ->title($sharerName === null
-                ? __('filament/notifications/email-shared.title_without_actor')
-                : __('filament/notifications/email-shared.title', ['name' => e($sharerName)]))
-            ->body(is_string($emailSubject) && $emailSubject !== '' ? e($emailSubject) : __('filament/pages/email-inbox.subject.none'))
+                ? __(self::LANG.'.title_without_actor')
+                : __(self::LANG.'.title', ['name' => e($sharerName)]))
             ->icon(Heroicon::OutlinedEnvelope)
-            ->iconColor('primary')
-            ->actions([
+            ->iconColor('primary');
+
+        if (! $email instanceof Email || ! $viewer instanceof User) {
+            return $notification;
+        }
+
+        if ($viewer->can('viewSubject', $email) && is_string($emailSubject) && $emailSubject !== '') {
+            $notification->body(e($emailSubject));
+        }
+
+        if ($viewer->can('viewBody', $email)) {
+            $notification->actions([
                 Action::make('viewEmail')
                     ->button()
-                    ->label(__('filament/notifications/email-shared.actions.view'))
-                    ->dispatchTo(EmailAccessNotificationHandler::LIVEWIRE_ALIAS, 'open-email-from-access-request')
-                    ->eventData(['emailId' => (string) $row->subject_id]),
+                    ->label(__(self::LANG.'.actions.view'))
+                    ->url($email->appUrlFor($viewer))
+                    ->markAsRead(),
             ]);
+        }
+
+        return $notification;
     }
 }

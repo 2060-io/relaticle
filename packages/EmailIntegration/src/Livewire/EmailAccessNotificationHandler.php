@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Js;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Relaticle\EmailIntegration\Actions\CancelQueuedEmailAction;
 use Relaticle\EmailIntegration\Actions\RetryMailboxHistoryImportFailuresAction;
@@ -44,7 +45,15 @@ final class EmailAccessNotificationHandler extends Component implements HasActio
 
     private const string DATABASE_NOTIFICATIONS_MODAL_ID = 'database-notifications';
 
+    #[Url(as: 'email')]
     public ?string $selectedEmailId = null;
+
+    public function mount(): void
+    {
+        if ($this->selectedEmailId !== null) {
+            $this->openEmailReader($this->selectedEmailId);
+        }
+    }
 
     #[On('open-email-from-access-request')]
     public function selectEmail(string $emailId): void

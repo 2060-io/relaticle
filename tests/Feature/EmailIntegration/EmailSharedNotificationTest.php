@@ -3,16 +3,17 @@
 declare(strict_types=1);
 
 use App\Enums\Notifications\NotificationReason;
+use App\Filament\Pages\Dashboard;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Notification;
 use Relaticle\EmailIntegration\Actions\UpdateEmailSharingAction;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
-use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Notifications\EmailSharedNotification;
+use Relaticle\EmailIntegration\Services\EmailSharingService;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 mutates(UpdateEmailSharingAction::class, EmailSharedNotification::class);
@@ -147,16 +148,89 @@ it('turning off the email channel leaves the in-app row', function (): void {
     Notification::assertSentTo($this->alice, EmailSharedNotification::class, fn (EmailSharedNotification $notification, array $channels): bool => $channels === ['database']);
 });
 
-it('mails a button to the app and renders the row for the recipient', function (): void {
-    saveSharing([$this->alice]);
+it('sends a Participants-only share without the subject in the bell or the mail', function (): void {
+    saveSharing([$this->alice], EmailPrivacyTier::METADATA_ONLY);
 
     $row = $this->alice->notifications()->where('type', EmailSharedNotification::class)->sole();
-    $notification = EmailSharedNotification::present($row);
 
-    $mail = new EmailSharedNotification($this->email, $this->owner, EmailPrivacyTier::FULL)->toMail($this->alice);
+    $this->actingAs($this->alice);
+    $presented = EmailSharedNotification::present($row);
+    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice, EmailPrivacyTier::METADATA_ONLY)->toMail($this->alice);
 
-    expect($notification->getTitle())->toContain($this->owner->name)
-        ->and($notification->getBody())->toBe('Renewal terms')
+    expect($row->data['email_subject'])->toBeNull()
+        ->and($presented->getTitle())->toBe($this->owner->name.' shared an email with you')
+        ->and($presented->getBody())->toBeEmpty()
+        ->and($presented->getActions())->toBeEmpty()
+        ->and((string) $mail->render())->not->toContain('Renewal terms')
         ->and($mail->actionText)->toBe('Open Relaticle')
-        ->and($mail->actionUrl)->toBe(EmailInboxPage::getUrl(panel: 'app', tenant: $this->workspace));
+        ->and($mail->actionUrl)->not->toContain('email=');
+});
+
+it('sends nothing for a Private share', function (): void {
+    Notification::fake();
+
+    saveSharing([$this->alice], EmailPrivacyTier::PRIVATE);
+
+    Notification::assertNothingSent();
+});
+
+it('sends nothing when the share is revoked before the notice goes out', function (): void {
+    $notification = new EmailSharedNotification($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL);
+    $sharing = resolve(EmailSharingService::class);
+
+    $sharing->shareEmail($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL);
+    expect($notification->shouldSend($this->alice, 'mail'))->toBeTrue();
+
+    $sharing->revokeShare($this->email, $this->alice);
+
+    expect($notification->shouldSend($this->alice, 'mail'))->toBeFalse()
+        ->and($notification->shouldSend($this->alice, 'database'))->toBeFalse();
+});
+
+it('gives a Full share a reader link in the bell and the mail', function (): void {
+    saveSharing([$this->alice], EmailPrivacyTier::FULL);
+
+    $row = $this->alice->notifications()->where('type', EmailSharedNotification::class)->sole();
+
+    $this->actingAs($this->alice);
+    $presented = EmailSharedNotification::present($row);
+    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice);
+    $link = Dashboard::getUrl(['email' => $this->email->getKey()], panel: 'app', tenant: $this->workspace);
+
+    expect($presented->getBody())->toBe('Renewal terms')
+        ->and($presented->getActions())->toHaveCount(1)
+        ->and($presented->getActions()[0]->getUrl())->toBe($link)
+        ->and($mail->actionText)->toBe('View email')
+        ->and($mail->actionUrl)->toBe($link);
+});
+
+it('renders Markdown in the subject and the sharer name as text', function (): void {
+    $this->owner->update(['name' => '[Boss](https://evil.example/name)']);
+    $this->email->update(['subject' => '[x](https://evil.example) and www.evil.example and bad@evil.example']);
+    saveSharing([$this->alice], EmailPrivacyTier::FULL);
+
+    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice)->render();
+
+    expect($html)->not->toContain('<a href="https://evil.example')
+        ->not->toContain('<a href="http://www.evil.example')
+        ->not->toContain('<a href="mailto:bad@evil.example')
+        ->toContain('[x](https://evil.example)');
+});
+
+it('leaves the email tier unchanged when a member is rejected', function (): void {
+    $outsider = User::factory()->withWorkspace()->create();
+
+    expect(fn () => saveSharing([$outsider]))->toThrow(HttpException::class);
+
+    expect($this->email->fresh()->privacy_tier)->toBe(EmailPrivacyTier::PRIVATE);
+});
+
+it('does not notify a member who already had access through another share', function (): void {
+    resolve(EmailSharingService::class)->shareEmail($this->email, $this->bob, $this->alice, EmailPrivacyTier::FULL);
+
+    Notification::fake();
+
+    saveSharing([$this->alice]);
+
+    Notification::assertNothingSent();
 });

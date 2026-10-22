@@ -12,8 +12,10 @@ use App\Models\Workspace;
 use App\Notifications\InboxNotification;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Notifications\Messages\MailMessage;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Support\MarkdownText;
 
 final class EmailAccessRespondedNotification extends InboxNotification
 {
@@ -54,6 +56,28 @@ final class EmailAccessRespondedNotification extends InboxNotification
             EmailAccessRequestStatus::EXPIRED => 'expired',
             default => 'denied',
         }];
+    }
+
+    public function toMail(User $notifiable): MailMessage
+    {
+        $outcome = $this->facts()['outcome'];
+        $email = $this->request->emailIncludingHidden;
+        $ownerName = $this->request->owner->name;
+
+        $mail = (new MailMessage)
+            ->subject(__(self::LANG.".{$outcome}.title"))
+            ->line(__(self::LANG.".{$outcome}.body", ['owner' => MarkdownText::escape($ownerName)]));
+
+        if ($notifiable->can('viewSubject', $email)) {
+            $mail->line(__(self::LANG.'.mail.subject_line', [
+                'subject' => MarkdownText::escape(filled($email->subject) ? $email->subject : __('filament/pages/email-inbox.subject.none')),
+            ]));
+        }
+
+        return $mail->action(
+            __(self::LANG.($notifiable->can('viewBody', $email) ? '.mail.action_view' : '.mail.action_open')),
+            $email->appUrlFor($notifiable),
+        );
     }
 
     public static function present(NotificationRow $row): FilamentNotification

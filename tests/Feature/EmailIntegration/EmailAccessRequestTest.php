@@ -784,6 +784,82 @@ describe('EmailAccessRespondedNotification', function (): void {
         'denied' => ['denied', 'Email access denied', 'Mira Okafor denied your request.'],
     ]);
 
+    it('mails the outcome with the subject and a reader link once the requester can read the email', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        Notification::fake();
+
+        resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        Notification::assertSentTo($this->requester, EmailAccessRespondedNotification::class, function (EmailAccessRespondedNotification $notification, array $channels): bool {
+            $mail = $notification->toMail($this->requester);
+            $html = (string) $mail->render();
+
+            return in_array('mail', $channels, true)
+                && $mail->subject === 'Email access approved'
+                && str_contains($html, 'Confidential Thread')
+                && $mail->actionText === 'View email'
+                && str_contains($mail->actionUrl, 'email='.$this->email->getKey());
+        });
+    });
+
+    it('mails a denial without the subject and links to the app home', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        Notification::fake();
+
+        resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        Notification::assertSentTo($this->requester, EmailAccessRespondedNotification::class, function (EmailAccessRespondedNotification $notification): bool {
+            $mail = $notification->toMail($this->requester);
+
+            return $mail->subject === 'Email access denied'
+                && ! str_contains((string) $mail->render(), 'Confidential Thread')
+                && $mail->actionText === 'Open Relaticle'
+                && ! str_contains($mail->actionUrl, 'email=');
+        });
+    });
+
+    it('escapes Markdown in the owner name', function (): void {
+        $this->owner->update(['name' => '[x](https://evil.example)']);
+
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        Notification::fake();
+
+        resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        Notification::assertSentTo($this->requester, EmailAccessRespondedNotification::class, fn (EmailAccessRespondedNotification $notification): bool => ! str_contains((string) $notification->toMail($this->requester)->render(), '<a href="https://evil.example'));
+    });
+
+    it('sends the outcome mail only while the Email channel of Email access is on', function (): void {
+        $this->requester->update(['notification_preferences' => ['email_access' => ['email' => false]]]);
+
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        Notification::fake();
+
+        resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        Notification::assertSentTo($this->requester, EmailAccessRespondedNotification::class, fn (EmailAccessRespondedNotification $notification, array $channels): bool => array_values($channels) === ['database']);
+    });
+
     it('presents an expired request in gray', function (): void {
         $this->owner->update(['name' => 'Mira Okafor']);
 

@@ -20,4 +20,10 @@ return [
         'body' => ':owner did not respond in time.',
         'body_without_owner' => 'Your request expired without a response.',
     ],
+
+    'mail' => [
+        'subject_line' => 'Subject: :subject',
+        'action_view' => 'View email',
+        'action_open' => 'Open Relaticle',
+    ],
 ];
