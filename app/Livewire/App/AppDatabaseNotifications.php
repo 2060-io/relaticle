@@ -89,7 +89,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
 
         resolve(ArchiveNotification::class)->execute($this->requireUser(), $row);
 
-        $this->announcement = __('notifications.panel.announcements.archived', ['title' => $this->plainTitle($row)]);
+        $this->announcement = __('notifications.panel.announcements.archived', ['title' => $this->plainText($row)]);
     }
 
     public function clearNotifications(): void
@@ -224,9 +224,14 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         return $text === '' ? null : $text;
     }
 
-    private function plainTitle(NotificationRow $row): string
+    private function plainText(NotificationRow $row): string
     {
-        return strip_tags((string) $this->presentNotification($row)->getTitle());
+        $presented = $this->presentNotification($row);
+
+        return collect([$presented->getTitle(), $presented->getBody()])
+            ->filter()
+            ->map(fn (string $text): string => html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5))
+            ->implode('. ');
     }
 
     /**

@@ -39,14 +39,22 @@
             this.left = sidebar ? Math.round(sidebar.getBoundingClientRect().right) + 8 : 8
         },
         async act(call, el, selector) {
+            const panel = el.closest('.fi-inbox-panel')
             const key = this.neighbourKey(el, selector)
 
-            await call()
+            try {
+                await call()
+            } catch {
+                return
+            }
 
-            this.$nextTick(() => {
-                const target = key && this.$refs.panel.querySelector(`li[data-inbox-key='${key}'] ${selector}`)
+            requestAnimationFrame(() => {
+                const row = key && panel.querySelector(`li[data-inbox-key='${key}']`)
+                const target = row?.querySelector(selector)
+                    ?? row?.querySelector('a[href], button:not([disabled])')
+                    ?? panel.querySelector('[role=tab][aria-selected=true]')
 
-                ;(target ?? this.$refs['tab-' + this.tab])?.focus()
+                target?.focus()
             })
         },
         neighbourKey(el, selector) {
@@ -55,7 +63,7 @@
             const index = rows.indexOf(row)
             const candidates = [...rows.slice(index + 1), ...rows.slice(0, index).reverse()]
 
-            return candidates.find((candidate) => candidate.querySelector(selector))?.dataset.inboxKey
+            return (candidates.find((candidate) => candidate.querySelector(selector)) ?? candidates[0])?.dataset.inboxKey
         },
         focusTab(name) {
             this.tab = name

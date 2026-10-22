@@ -259,12 +259,31 @@ it('archives a notification and hides it', function (): void {
 
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
         ->call('archiveNotification', $row->id)
-        ->assertDontSee('Task in A');
+        ->assertDontSeeHtml("data-inbox-key=\"notification-{$row->id}\"");
 
     $row->refresh();
 
     expect($row->archived_at)->not->toBeNull()
         ->and($row->read_at)->not->toBeNull();
+});
+
+it('announces an archived notification by its sentence and record', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Q&A prep');
+    $row = $this->user->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('archiveNotification', $row->id)
+        ->assertSeeHtml('assigned you a task. Q&amp;A prep');
+});
+
+it('announces an escaped title as plain text', function (): void {
+    $id = insertFilamentNotification($this->user, $this->workspaceA->id, 'Olivia O&#039;Brien shared Q&amp;A');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('archiveNotification', $id)
+        ->assertSeeHtml('Archived: Olivia O&#039;Brien shared Q&amp;A')
+        ->assertDontSeeHtml('&amp;#039;')
+        ->assertDontSeeHtml('&amp;amp;');
 });
 
 it('keeps the original read time when archiving a read notification', function (): void {
