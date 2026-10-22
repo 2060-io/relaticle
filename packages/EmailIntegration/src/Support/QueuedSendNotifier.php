@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Support;
 
 use App\Models\User;
-use App\Models\Workspace;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Config;
@@ -41,9 +40,9 @@ final readonly class QueuedSendNotifier
         $notification->send();
     }
 
-    public function sendHeld(Email $email, User $user, Workspace $workspace, string $via, int $holdSeconds): void
+    public function sendHeld(Email $email, User $user, string $via, int $holdSeconds): void
     {
         // The queued channel could deliver this after the hold has passed.
-        $user->notifyNow(new EmailSendHeldNotification($email, $workspace, $via, $holdSeconds));
+        $user->notifyNow(new EmailSendHeldNotification($email, $via, $holdSeconds));
     }
 }

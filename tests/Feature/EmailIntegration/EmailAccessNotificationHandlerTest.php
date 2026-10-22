@@ -416,7 +416,7 @@ describe('EmailSendHeldNotification', function (): void {
             'scheduled_for' => now()->addSeconds(300),
         ]);
 
-        resolve(QueuedSendNotifier::class)->sendHeld($held, $this->owner, $elsewhere, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($held, $this->owner, 'Claude', 300);
 
         $row = $this->owner->notifications()->sole();
 
@@ -434,24 +434,24 @@ describe('EmailSendHeldNotification', function (): void {
     it('takes the deadline from the time the email is scheduled for', function (): void {
         $this->held->update(['scheduled_for' => now()->addSeconds(200)]);
 
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held->fresh(), $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held->fresh(), $this->owner, 'Claude', 300);
 
         expect($this->owner->notifications()->sole()->data['deadline'])->toBe($this->held->fresh()->scheduled_for->toIso8601ZuluString());
     });
 
-    it('stops offering cancel once the hold has passed', function (): void {
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+    it('offers cancel while the hold lasts and stops once the email is sent', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
 
-        $row = $this->owner->notifications()->sole();
-        $held = EmailSendHeldNotification::present($row);
+        $held = EmailSendHeldNotification::present($this->owner->notifications()->sole());
 
         expect($held->getActions())->toHaveCount(1)
             ->and($held->getActions()[0]->getName())->toBe('cancelSend')
             ->and($held->getBody())->toContain('goes to');
 
+        $this->held->update(['status' => EmailStatus::SENT]);
         $this->travelTo(now()->addSeconds(301));
 
-        $sent = EmailSendHeldNotification::present($row);
+        $sent = EmailSendHeldNotification::present($this->owner->notifications()->sole());
 
         expect($sent->getActions())->toBe([])
             ->and($sent->getBody())->toBe(__('filament/concerns/email-compose.notifications.held.sent_body', [
@@ -461,8 +461,20 @@ describe('EmailSendHeldNotification', function (): void {
             ]));
     });
 
+    it('keeps offering cancel for a held email still waiting to send after its hold', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        $this->travelTo(now()->addSeconds(301));
+
+        $waiting = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($waiting->getActions())->toHaveCount(1)
+            ->and($waiting->getActions()[0]->getName())->toBe('cancelSend')
+            ->and($waiting->getBody())->toBe('"Next steps" to  is waiting to send. Workspace: '.e($this->workspace->name).'. Cancel it if you did not ask for it.');
+    });
+
     it('says a cancelled held email was cancelled, also after the hold has passed', function (): void {
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
 
         Livewire::test(EmailAccessNotificationHandler::class)
             ->dispatch('undo-queued-send', emailId: (string) $this->held->getKey());
@@ -481,7 +493,7 @@ describe('EmailSendHeldNotification', function (): void {
     });
 
     it('says a held email that failed to send was not sent', function (): void {
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
         $this->held->update(['status' => EmailStatus::FAILED]);
 
         $this->travelTo(now()->addSeconds(301));
@@ -497,7 +509,7 @@ describe('EmailSendHeldNotification', function (): void {
     });
 
     it('says a held email was sent once it is sent', function (): void {
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
         $this->held->update(['status' => EmailStatus::SENT]);
 
         $notice = EmailSendHeldNotification::present($this->owner->notifications()->sole());
@@ -511,7 +523,7 @@ describe('EmailSendHeldNotification', function (): void {
     });
 
     it('follows the clock when the held email can no longer be loaded', function (): void {
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
 
         $row = $this->owner->notifications()->sole()->setRelation('subject', null);
 
@@ -522,14 +534,15 @@ describe('EmailSendHeldNotification', function (): void {
         expect(EmailSendHeldNotification::present($row)->getActions())->toBe([]);
     });
 
-    it('shows the held notice in the bell until the hold passes', function (): void {
+    it('shows the held notice in the bell with cancel until the email is sent', function (): void {
         resolve(CurrentWorkspace::class)->set($this->workspace);
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
 
         Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
             ->assertSee('Claude queued an email')
             ->assertSee(__('filament/concerns/email-compose.actions.cancel_send.label'));
 
+        $this->held->update(['status' => EmailStatus::SENT]);
         $this->travelTo(now()->addSeconds(301));
 
         Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
@@ -540,7 +553,7 @@ describe('EmailSendHeldNotification', function (): void {
     it('stores the notice at once instead of queueing it', function (): void {
         Queue::fake();
 
-        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, $this->workspace, 'Claude', 300);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
 
         expect($this->owner->notifications()->count())->toBe(1);
         Queue::assertNotPushed(SendQueuedNotifications::class);

@@ -24,7 +24,6 @@ final class EmailSendHeldNotification extends InboxNotification
 
     public function __construct(
         private readonly Email $email,
-        private readonly Workspace $workspace,
         private readonly string $via,
         private readonly int $holdSeconds,
     ) {
@@ -33,7 +32,7 @@ final class EmailSendHeldNotification extends InboxNotification
 
     public function workspace(): Workspace
     {
-        return $this->workspace;
+        return $this->email->workspace;
     }
 
     public function subject(): Email
@@ -67,12 +66,12 @@ final class EmailSendHeldNotification extends InboxNotification
     {
         $subject = $row->subject;
         $status = $subject instanceof Email ? $subject->status : null;
-        $holding = ! in_array($status, [EmailStatus::SENT, EmailStatus::CANCELLED, EmailStatus::FAILED], true)
-            && now()->isBefore(Date::parse((string) data_get($row->data, 'deadline')));
+        $holdLasts = now()->isBefore(Date::parse((string) data_get($row->data, 'deadline')));
+        $cancellable = $status === EmailStatus::QUEUED || ($status === null && $holdLasts);
 
         $notification = FilamentNotification::make((string) $row->getKey())
             ->title(__('filament/concerns/email-compose.notifications.held.title', ['via' => e((string) data_get($row->data, 'via'))]))
-            ->body(__(self::bodyKey($status, $holding), [
+            ->body(__(self::bodyKey($status, $holdLasts), [
                 'subject' => e((string) data_get($row->data, 'email_subject')),
                 'recipients' => e(implode(', ', (array) data_get($row->data, 'recipients'))),
                 'minutes' => trans_choice('filament/concerns/email-compose.notifications.held.minutes', (int) data_get($row->data, 'minutes')),
@@ -80,16 +79,18 @@ final class EmailSendHeldNotification extends InboxNotification
             ]))
             ->warning();
 
-        return $holding ? $notification->actions([self::cancelAction($row)]) : $notification;
+        return $cancellable ? $notification->actions([self::cancelAction($row)]) : $notification;
     }
 
-    private static function bodyKey(?EmailStatus $status, bool $holding): string
+    private static function bodyKey(?EmailStatus $status, bool $holdLasts): string
     {
         $key = match (true) {
-            $holding => 'body',
             $status === EmailStatus::CANCELLED => 'cancelled_body',
             $status === EmailStatus::FAILED => 'failed_body',
-            default => 'sent_body',
+            $status === EmailStatus::SENDING => 'sending_body',
+            $status === EmailStatus::SENT, ! $holdLasts && ! $status instanceof EmailStatus => 'sent_body',
+            $holdLasts => 'body',
+            default => 'waiting_body',
         };
 
         return "filament/concerns/email-compose.notifications.held.{$key}";
