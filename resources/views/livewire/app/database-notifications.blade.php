@@ -16,7 +16,7 @@
         show() {
             this.measure()
             this.open = true
-            this.$nextTick(() => this.$refs['tab-' + this.tab]?.focus())
+            this.$nextTick(() => this.open && this.$refs['tab-' + this.tab]?.focus())
         },
         hide(returnFocus = true) {
             if (! this.open) {
