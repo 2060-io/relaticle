@@ -61,7 +61,9 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             return $this->getNotification($notification);
         }
 
+        // A non-persistent notice closes itself in the open bell, and closing deletes its row.
         return $type::present($notification)
+            ->persistent()
             ->date($this->formatNotificationDate($notification->getAttributeValue('created_at')));
     }
 
