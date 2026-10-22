@@ -30,8 +30,6 @@ final readonly class DenyEmailAccessRequestAction
 
         EmailAccessRequestedNotification::dismissFor($accessRequest);
 
-        if ($accessRequest->email !== null) {
-            $requester->notify(new EmailAccessRespondedNotification($accessRequest));
-        }
+        $requester->notify(new EmailAccessRespondedNotification($accessRequest));
     }
 }

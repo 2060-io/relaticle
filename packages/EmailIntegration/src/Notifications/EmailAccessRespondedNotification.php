@@ -22,7 +22,7 @@ final class EmailAccessRespondedNotification extends InboxNotification
 
     public function workspace(): Workspace
     {
-        return $this->request->email->workspace;
+        return $this->request->emailIncludingHidden->workspace;
     }
 
     public function subject(): EmailAccessRequest

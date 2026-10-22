@@ -6,8 +6,12 @@ use App\Enums\Notifications\NotificationReason;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\CurrentWorkspace;
 use Filament\Facades\Filament;
+use Illuminate\Notifications\ChannelManager;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Relaticle\EmailIntegration\Actions\ApproveEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\CancelEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
@@ -140,13 +144,14 @@ describe('ApproveEmailAccessRequestAction', function (): void {
     });
 
     it('does nothing when request is already approved', function (): void {
-        $request = EmailAccessRequest::factory()->approved()->forTier(EmailPrivacyTier::FULL)->create([
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
         $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
 
         Notification::fake();
 
@@ -336,13 +341,14 @@ describe('DenyEmailAccessRequestAction', function (): void {
     });
 
     it('does nothing when request is already denied', function (): void {
-        $request = EmailAccessRequest::factory()->denied()->forTier(EmailPrivacyTier::FULL)->create([
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
         $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $request->update(['status' => EmailAccessRequestStatus::DENIED]);
 
         Notification::fake();
 
@@ -399,13 +405,14 @@ describe('CancelEmailAccessRequestAction', function (): void {
     });
 
     it('does nothing when request is already approved', function (): void {
-        $request = EmailAccessRequest::factory()->approved()->forTier(EmailPrivacyTier::FULL)->create([
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
         $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
 
         app(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
 
@@ -485,8 +492,18 @@ describe('RequestEmailAccessAction', function (): void {
 
 describe('EmailAccessRequestedNotification', function (): void {
     it('stores the access request notice in the email\'s workspace', function (): void {
-        $request = app(RequestEmailAccessAction::class)
-            ->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+        $elsewhere = Workspace::factory()->create();
+        $this->owner->forceFill(['current_workspace_id' => $elsewhere->getKey()])->save();
+        $this->requester->forceFill(['current_workspace_id' => $elsewhere->getKey()])->save();
+        resolve(CurrentWorkspace::class)->set($elsewhere);
+
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        $this->owner->notify(new EmailAccessRequestedNotification($request));
 
         $row = $this->owner->notifications()->sole();
 
@@ -500,6 +517,23 @@ describe('EmailAccessRequestedNotification', function (): void {
                 'email_subject' => 'Confidential Thread',
                 'email_id' => $this->email->getKey(),
             ]);
+    });
+
+    it('stores no access request notice once the request is decided before the job runs', function (): void {
+        Queue::fake();
+
+        $request = app(RequestEmailAccessAction::class)
+            ->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+        app(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+        $queued = Queue::pushed(
+            SendQueuedNotifications::class,
+            fn (SendQueuedNotifications $job): bool => $job->notification instanceof EmailAccessRequestedNotification,
+        )->sole();
+
+        unserialize(serialize($queued))->handle(app(ChannelManager::class));
+
+        expect($this->owner->notifications()->count())->toBe(0);
     });
 
     it('dismisses an access request notice written before this change', function (): void {
@@ -533,7 +567,9 @@ describe('EmailAccessRequestedNotification', function (): void {
 });
 
 describe('EmailAccessRespondedNotification', function (): void {
-    it('translates the response notice', function (string $status): void {
+    it('translates the response notice', function (string $status, string $title, string $body): void {
+        $this->owner->update(['name' => 'Mira Okafor']);
+
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
@@ -550,22 +586,30 @@ describe('EmailAccessRespondedNotification', function (): void {
             ->and($row->actor_id)->toBe($this->owner->getKey())
             ->and($row->subject_id)->toBe($request->getKey())
             ->and($row->reason)->toBe(NotificationReason::Requested)
-            ->and($presented->getTitle())->toBe(__("filament/notifications/email-access-responded.{$status}.title"))
-            ->and($presented->getBody())->toBe(__("filament/notifications/email-access-responded.{$status}.body", ['owner' => e($this->owner->name)]));
-    })->with(['approved', 'denied']);
+            ->and($presented->getTitle())->toBe($title)
+            ->and($presented->getBody())->toBe($body);
+    })->with([
+        'approved' => ['approved', 'Email access approved', 'Mira Okafor approved your request.'],
+        'denied' => ['denied', 'Email access denied', 'Mira Okafor denied your request.'],
+    ]);
 
-    it('sends no response notice when the email is gone', function (): void {
+    it('still sends the denial notice after the mailbox is disconnected', function (): void {
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->email->delete();
+        $this->account->delete();
+
+        expect($request->fresh()->email)->toBeNull();
 
         app(DenyEmailAccessRequestAction::class)->execute($request->fresh(), $this->owner);
 
+        $row = $this->requester->notifications()->sole();
+
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->requester->notifications()->count())->toBe(0);
+            ->and($row->type)->toBe(EmailAccessRespondedNotification::class)
+            ->and($row->workspace_id)->toBe($this->workspace->getKey());
     });
 });

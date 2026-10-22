@@ -52,6 +52,8 @@ beforeEach(function (): void {
 
 describe('EmailAccessRequestedNotification', function (): void {
     it('opens the emails-tab reader overlay from view without dismissing the notification', function (): void {
+        $this->requester->update(['name' => 'Dana Whitfield']);
+
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
@@ -66,7 +68,7 @@ describe('EmailAccessRequestedNotification', function (): void {
 
         expect($actions->keys()->all())->toBe(['viewEmail', 'accept', 'decline'])
             ->and($payload['body'])->toBe('Q4 pipeline review')
-            ->and($payload['title'])->toBe(__('filament/notifications/email-access-requested.title', ['name' => e($this->requester->name)]))
+            ->and($payload['title'])->toBe('Dana Whitfield requested email access')
             ->and($actions['viewEmail']['label'])->toBe('View')
             ->and($actions['viewEmail']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($actions['viewEmail']['shouldClose'] ?? false)->toBeFalse()
@@ -272,13 +274,14 @@ describe('EmailAccessNotificationHandler', function (): void {
     });
 
     it('does not claim success when accepting a request that is no longer pending', function (): void {
-        $request = EmailAccessRequest::factory()->approved()->forTier(EmailPrivacyTier::FULL)->create([
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
         $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)

@@ -13,6 +13,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
+use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 
@@ -22,7 +23,7 @@ final class EmailAccessRequestedNotification extends InboxNotification
 
     public function workspace(): Workspace
     {
-        return $this->request->email->workspace;
+        return $this->request->emailIncludingHidden->workspace;
     }
 
     public function subject(): EmailAccessRequest
@@ -40,11 +41,20 @@ final class EmailAccessRequestedNotification extends InboxNotification
         return NotificationReason::Requested;
     }
 
+    public function shouldSend(User $notifiable, string $channel): bool
+    {
+        if ($this->request->status !== EmailAccessRequestStatus::PENDING) {
+            return false;
+        }
+
+        return parent::shouldSend($notifiable, $channel);
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {
         return [
-            'email_subject' => $this->request->email->subject,
+            'email_subject' => $this->request->emailIncludingHidden->subject,
             'email_id' => $this->request->email_id,
         ];
     }

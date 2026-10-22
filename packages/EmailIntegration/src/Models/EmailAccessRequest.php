@@ -85,6 +85,14 @@ final class EmailAccessRequest extends Model
     }
 
     /**
+     * @return BelongsTo<Email, $this>
+     */
+    public function emailIncludingHidden(): BelongsTo
+    {
+        return $this->email()->withoutGlobalScopes();
+    }
+
+    /**
      * @return MorphTo<Model, $this>
      */
     public function emailable(): MorphTo
