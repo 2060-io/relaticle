@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use App\Models\User;
+use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 
@@ -39,6 +41,21 @@ final readonly class DecideEmailAccessRequest
             'decided_by' => $decidedBy,
         ])->syncOriginal();
 
+        $this->refreshOwnerBadge($request);
+
         return true;
+    }
+
+    private function refreshOwnerBadge(EmailAccessRequest $request): void
+    {
+        $owner = $request->owner;
+
+        if ($owner === null) {
+            return;
+        }
+
+        DB::afterCommit(static function () use ($owner): void {
+            event(new DatabaseNotificationsSent($owner));
+        });
     }
 }

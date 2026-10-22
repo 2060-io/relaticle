@@ -11,4 +11,11 @@ return [
         'accept' => 'Accept',
         'decline' => 'Decline',
     ],
+
+    'mail' => [
+        'subject' => ':name requested email access',
+        'line' => ':name asked for access to one of your emails.',
+        'subject_line' => 'Subject: :subject',
+        'action' => 'Review request',
+    ],
 ];

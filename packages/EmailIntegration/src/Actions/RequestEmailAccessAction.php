@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use App\Models\User;
+use Filament\Notifications\Events\DatabaseNotificationsSent;
+use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
@@ -41,6 +43,8 @@ final readonly class RequestEmailAccessAction
 
         $email->user?->notify(new EmailAccessRequestedNotification($request));
 
+        $this->refreshOwnerBadge($email->user);
+
         return $request;
     }
 
@@ -54,5 +58,16 @@ final readonly class RequestEmailAccessAction
                     EmailAccessRequestedNotification::dismissFor($overdue);
                 }
             });
+    }
+
+    private function refreshOwnerBadge(?User $owner): void
+    {
+        if (! $owner instanceof User) {
+            return;
+        }
+
+        DB::afterCommit(static function () use ($owner): void {
+            event(new DatabaseNotificationsSent($owner));
+        });
     }
 }

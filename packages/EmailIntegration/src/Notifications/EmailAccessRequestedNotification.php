@@ -14,12 +14,17 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Notifications\Messages\MailMessage;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
+use Relaticle\EmailIntegration\Filament\Pages\EmailAccessRequestsPage;
 use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Support\MarkdownText;
 
 final class EmailAccessRequestedNotification extends InboxNotification
 {
+    private const string LANG = 'filament/notifications/email-access-requested';
+
     public function __construct(public readonly EmailAccessRequest $request) {}
 
     public function workspace(): Workspace
@@ -63,6 +68,29 @@ final class EmailAccessRequestedNotification extends InboxNotification
             'email_subject' => $this->request->emailIncludingHidden->subject,
             'email_id' => $this->request->email_id,
         ];
+    }
+
+    /** @return list<string> */
+    public function via(object $notifiable): array
+    {
+        return ['mail'];
+    }
+
+    public function toMail(User $notifiable): MailMessage
+    {
+        $email = $this->request->emailIncludingHidden;
+        $requesterName = $this->request->requester->name;
+
+        return (new MailMessage)
+            ->subject(__(self::LANG.'.mail.subject', ['name' => $requesterName]))
+            ->line(__(self::LANG.'.mail.line', ['name' => MarkdownText::escape($requesterName)]))
+            ->line(__(self::LANG.'.mail.subject_line', [
+                'subject' => MarkdownText::escape(filled($email->subject) ? $email->subject : __('filament/pages/email-inbox.subject.none')),
+            ]))
+            ->action(
+                __(self::LANG.'.mail.action'),
+                EmailAccessRequestsPage::getUrl(panel: 'app', tenant: $email->workspace),
+            );
     }
 
     public static function present(NotificationRow $row): FilamentNotification

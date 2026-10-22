@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration;
 
+use App\Contracts\Inbox\RequestSource;
 use App\Features\EmailIntegration;
 use App\Filament\Pages\Dashboard;
 use App\Models\CustomFieldValue;
@@ -32,6 +33,7 @@ use Relaticle\EmailIntegration\Console\Commands\IncrementalEmailSyncCommand;
 use Relaticle\EmailIntegration\Console\Commands\RemoveOwnDomainRecordsCommand;
 use Relaticle\EmailIntegration\Console\Commands\RenewCalendarPushChannelsCommand;
 use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource\Pages\ManageEmailTemplates;
+use Relaticle\EmailIntegration\Inbox\EmailAccessRequestSource;
 use Relaticle\EmailIntegration\Listeners\DisconnectRemovedMemberMailboxesListener;
 use Relaticle\EmailIntegration\Livewire\AccessRequestsTable;
 use Relaticle\EmailIntegration\Livewire\DraftsTable;
@@ -76,6 +78,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         $this->app->scoped(MailboxDisplayNameDirectory::class);
         $this->app->scoped(EmailVisibilityService::class);
         $this->app->scoped(QueueRecordHistoryRelink::class);
+        $this->app->tag([EmailAccessRequestSource::class], RequestSource::class);
 
         // Not gated by the feature flag: these are inert while the feature is off, and
         // static analysis (which runs with it off) can only resolve

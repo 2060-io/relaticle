@@ -60,7 +60,7 @@ describe('EmailAccessRequestedNotification', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
         $notification = $this->owner->unreadNotifications()->latest()->first();
 
         $payload = EmailAccessRequestedNotification::present($notification)->getDatabaseMessage();
@@ -91,10 +91,14 @@ describe('EmailAccessRequestedNotification', function (): void {
             ->and($notification->fresh()->read_at)->toBeNull();
     });
 
-    it('shows the access request in the bell with its actions', function (): void {
+    it('shows an access request notice written before this change in the bell with its actions', function (): void {
         $this->requester->update(['name' => 'Dana Whitfield']);
         resolve(CurrentWorkspace::class)->set($this->workspace);
-        resolve(RequestEmailAccessAction::class)->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+        legacyAccessRequestNotice($this->owner, EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]));
 
         Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
             ->assertSee('Dana Whitfield requested email access')
@@ -180,7 +184,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -201,7 +205,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -222,7 +226,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -245,7 +249,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -268,7 +272,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
 
         $intruder = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
         $this->actingAs($intruder);
@@ -290,7 +294,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
 
         $intruder = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
         $this->actingAs($intruder);
@@ -312,7 +316,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        legacyAccessRequestNotice($this->owner, $request);
         $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
         NotificationFacade::fake();
 
