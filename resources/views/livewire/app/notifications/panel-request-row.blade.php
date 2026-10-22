@@ -10,7 +10,12 @@
     };
 @endphp
 
-<li wire:key="inbox-request-{{ $requestId }}" data-inbox-key="request-{{ $requestId }}" class="flex gap-3 px-4 py-3">
+<li
+    wire:key="inbox-request-{{ $requestId }}"
+    data-inbox-key="request-{{ $requestId }}"
+    x-data="{ kind: @js($kind), requestId: @js($requestId) }"
+    class="flex gap-3 px-4 py-3"
+>
     @if ($request['avatar'])
         <img src="{{ $request['avatar'] }}" alt="" class="size-8 shrink-0 rounded-full object-cover" />
     @else
@@ -51,7 +56,7 @@
                 <x-filament::button
                     size="xs"
                     data-inbox-approve
-                    x-on:click="act(() => $wire.approveRequest(@js($kind), @js($requestId)), $el, '[data-inbox-approve]')"
+                    x-on:click="act(() => $wire.approveRequest(kind, requestId), $el, '[data-inbox-approve]')"
                     wire:loading.attr="disabled"
                     wire:target="approveRequest, denyRequest"
                 >
@@ -61,7 +66,7 @@
                 <x-filament::button
                     size="xs"
                     color="gray"
-                    x-on:click="act(() => $wire.denyRequest(@js($kind), @js($requestId)), $el, '[data-inbox-approve]')"
+                    x-on:click="act(() => $wire.denyRequest(kind, requestId), $el, '[data-inbox-approve]')"
                     wire:loading.attr="disabled"
                     wire:target="approveRequest, denyRequest"
                 >
