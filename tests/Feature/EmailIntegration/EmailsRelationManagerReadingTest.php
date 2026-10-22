@@ -136,7 +136,7 @@ describe('requestAccess action', function (): void {
 
         $row = collect($component->instance()->emails()->items())->firstWhere('id', $email->getKey());
 
-        expect((bool) $row->viewer_has_pending_access_request)->toBeFalse();
+        expect($row->viewer_has_pending_access_request)->toBeFalsy();
     });
 
     it('is hidden when the authenticated user is the email owner', function (): void {
