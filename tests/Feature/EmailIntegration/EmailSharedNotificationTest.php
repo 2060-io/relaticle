@@ -217,6 +217,20 @@ it('renders Markdown in the subject and the sharer name as text', function (): v
         ->toContain('[x](https://evil.example)');
 });
 
+it('keeps quotes and ampersands readable in the mail', function (): void {
+    $this->owner->update(['name' => "Olivia O'Brien"]);
+    $this->email->update(['subject' => "Let's meet about Q&A <draft>"]);
+    saveSharing([$this->alice], EmailPrivacyTier::FULL);
+
+    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice)->render();
+
+    expect($html)->toContain("Olivia O'Brien")
+        ->toContain("Let's meet about Q&amp;A &lt;draft&gt;")
+        ->not->toContain('&amp;#039;')
+        ->not->toContain('&amp;amp;')
+        ->not->toContain('&amp;lt;');
+});
+
 it('leaves the email tier unchanged when a member is rejected', function (): void {
     $outsider = User::factory()->withWorkspace()->create();
 
