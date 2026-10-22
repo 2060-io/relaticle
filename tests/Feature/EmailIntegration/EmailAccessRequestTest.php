@@ -679,6 +679,24 @@ describe('RequestEmailAccessAction', function (): void {
         expect($second)->not->toBeNull()
             ->and($second->getKey())->not->toBe($first->getKey());
     })->with(['cancelled', 'denied', 'expired']);
+
+    it('closes an overdue request without telling the requester when they ask again', function (): void {
+        Notification::fake();
+
+        $first = resolve(RequestEmailAccessAction::class)
+            ->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+
+        $this->travelTo(now()->addDays(EmailAccessRequest::EXPIRES_AFTER_DAYS)->addMinute());
+
+        resolve(RequestEmailAccessAction::class)
+            ->execute($this->email, $this->requester, EmailPrivacyTier::SUBJECT);
+
+        $this->artisan('email:expire-access-requests')->expectsOutputToContain('Expired 0 access request(s).');
+
+        expect($first->fresh()->status)->toBe(EmailAccessRequestStatus::EXPIRED);
+
+        Notification::assertNotSentTo($this->requester, EmailAccessRespondedNotification::class);
+    });
 });
 
 describe('EmailAccessRequestedNotification', function (): void {
@@ -949,6 +967,25 @@ describe('open requests', function (): void {
 });
 
 describe('email:expire-access-requests', function (): void {
+    it('expires a request without a deadline thirty days after it was made', function (): void {
+        $undated = EmailAccessRequest::factory()->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+            'expires_at' => null,
+        ]);
+
+        $this->travelTo(now()->addDays(EmailAccessRequest::EXPIRES_AFTER_DAYS - 1));
+        $this->artisan('email:expire-access-requests')->expectsOutputToContain('Expired 0 access request(s).');
+
+        expect($undated->fresh()->isOpen())->toBeTrue();
+
+        $this->travelTo(now()->addDays(2));
+        $this->artisan('email:expire-access-requests')->expectsOutputToContain('Expired 1 access request(s).');
+
+        expect($undated->fresh()->status)->toBe(EmailAccessRequestStatus::EXPIRED);
+    });
+
     it('expires only overdue pending requests and tells the requester once', function (): void {
         $overdue = EmailAccessRequest::factory()->overdue()->create([
             'requester_id' => $this->requester->id,

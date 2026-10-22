@@ -23,8 +23,7 @@ final class ExpireEmailAccessRequestsCommand extends Command
 
         $overdue = EmailAccessRequest::query()
             ->with(['requester', 'owner'])
-            ->where('status', EmailAccessRequestStatus::PENDING)
-            ->where('expires_at', '<=', now())
+            ->overdue()
             ->lazyById();
 
         foreach ($overdue as $request) {

@@ -20,9 +20,7 @@ final readonly class DecideEmailAccessRequest
             ->whereKey($request->getKey())
             ->when(
                 $outcome === EmailAccessRequestStatus::EXPIRED,
-                fn (Builder $pending): Builder => $pending
-                    ->where('status', EmailAccessRequestStatus::PENDING)
-                    ->where('expires_at', '<=', $decidedAt),
+                fn (Builder $pending): Builder => $pending->overdue(),
                 fn (Builder $pending): Builder => $pending->open(),
             )
             ->update([

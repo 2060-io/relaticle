@@ -69,8 +69,26 @@ final class EmailAccessRequest extends Model
         return $query
             ->where('status', EmailAccessRequestStatus::PENDING)
             ->where(fn (Builder $deadline): Builder => $deadline
-                ->whereNull('expires_at')
-                ->orWhere('expires_at', '>', now()));
+                ->where('expires_at', '>', now())
+                ->orWhere(fn (Builder $undated): Builder => $undated
+                    ->whereNull('expires_at')
+                    ->where('created_at', '>', now()->subDays(self::EXPIRES_AFTER_DAYS))));
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    #[Scope]
+    protected function overdue(Builder $query): Builder
+    {
+        return $query
+            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->where(fn (Builder $deadline): Builder => $deadline
+                ->where('expires_at', '<=', now())
+                ->orWhere(fn (Builder $undated): Builder => $undated
+                    ->whereNull('expires_at')
+                    ->where('created_at', '<=', now()->subDays(self::EXPIRES_AFTER_DAYS))));
     }
 
     /**
@@ -88,8 +106,10 @@ final class EmailAccessRequest extends Model
 
     public function isOpen(): bool
     {
+        $deadline = $this->expires_at ?? $this->created_at?->addDays(self::EXPIRES_AFTER_DAYS);
+
         return $this->status === EmailAccessRequestStatus::PENDING
-            && ($this->expires_at === null || $this->expires_at->isFuture());
+            && ($deadline === null || $deadline->isFuture());
     }
 
     /**

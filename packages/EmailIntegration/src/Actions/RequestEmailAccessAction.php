@@ -13,12 +13,16 @@ use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 
 final readonly class RequestEmailAccessAction
 {
+    public function __construct(private DecideEmailAccessRequest $decide) {}
+
     public function execute(Email $email, User $requester, EmailPrivacyTier $tierRequested): ?EmailAccessRequest
     {
         // Access requests are only valid within the email's own workspace. Never
         // let a user from another workspace open a cross-workspace request (mirrors the workspace
         // check already enforced on the approval path).
         abort_unless($requester->current_workspace_id === $email->workspace_id, 403);
+
+        $this->expireOverdueRequests($email, $requester);
 
         if ($email->hasPendingAccessRequestFrom($requester)) {
             return null;
@@ -38,5 +42,17 @@ final readonly class RequestEmailAccessAction
         $email->user?->notify(new EmailAccessRequestedNotification($request));
 
         return $request;
+    }
+
+    private function expireOverdueRequests(Email $email, User $requester): void
+    {
+        $email->accessRequests()
+            ->where('requester_id', $requester->getKey())
+            ->overdue()
+            ->each(function (EmailAccessRequest $overdue): void {
+                if ($this->decide->execute($overdue, EmailAccessRequestStatus::EXPIRED, null)) {
+                    EmailAccessRequestedNotification::dismissFor($overdue);
+                }
+            });
     }
 }
