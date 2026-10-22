@@ -46,14 +46,14 @@ final readonly class QueueAgentEmailAction
 
         $holdSeconds = $this->holdSeconds();
 
-        return DB::transaction(function () use ($user, $workspace, $payload, $via, $holdSeconds): Email {
+        return DB::transaction(function () use ($user, $payload, $via, $holdSeconds): Email {
             $this->lockOutboxOf($user);
 
             $this->assertUnderAgentLimit($user);
 
             $email = $this->sendEmail->execute($user, [...$payload, 'scheduled_for' => now()->addSeconds($holdSeconds)]);
 
-            $this->notifier->sendHeld($email, $user, $workspace, $via, $holdSeconds);
+            $this->notifier->sendHeld($email, $user, $via, $holdSeconds);
 
             return $email;
         });

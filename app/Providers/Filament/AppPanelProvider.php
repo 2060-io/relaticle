@@ -357,6 +357,16 @@ final class AppPanelProvider extends PanelProvider
         );
     }
 
+    private function registerNotifications(Panel $panel): void
+    {
+        $panel
+            ->databaseNotifications(
+                livewireComponent: AppDatabaseNotifications::class,
+                position: DatabaseNotificationsPosition::Sidebar,
+            )
+            ->databaseNotificationsPolling('120s');
+    }
+
     private function registerInvitationHooks(Panel $panel): void
     {
         $panel
@@ -437,18 +447,14 @@ final class AppPanelProvider extends PanelProvider
             ->strictAuthorization()
             /**
              * Search and notifications share one row at the top of the sidebar,
-             * above the navigation. Both are placed in the sidebar here; AppSidebar
-             * is what puts them on the same row rather than in separate slots.
+             * above the navigation. AppSidebar is what puts them on the same row
+             * rather than in separate slots.
              */
             ->sidebarLivewireComponent(AppSidebar::class)
             ->globalSearch(position: GlobalSearchPosition::Sidebar)
             ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
             /** Filament's own suffix helper renders "⌘+K"; the key cap reads better without the plus. */
             ->globalSearchFieldSuffix(fn (): string => Platform::detect() === Platform::Mac ? '⌘K' : 'Ctrl K')
-            ->databaseNotifications(
-                livewireComponent: AppDatabaseNotifications::class,
-                position: DatabaseNotificationsPosition::Sidebar,
-            )
             ->colors($this->panelColors())
             ->viteTheme('resources/css/filament/app/theme.css')
             ->icons(OutlinedIcons::aliases())
@@ -657,6 +663,7 @@ final class AppPanelProvider extends PanelProvider
 
         $this->registerBanners($panel);
         $this->registerInvitationHooks($panel);
+        $this->registerNotifications($panel);
 
         // Hidden without a bound tenant: the old panel-root fallback sent these
         // to the dashboard, silently abandoning the create-workspace wizard.

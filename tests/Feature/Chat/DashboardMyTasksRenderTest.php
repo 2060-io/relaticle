@@ -8,15 +8,15 @@ use App\Actions\Task\UpdateTask;
 use App\Features\OnboardSeed;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Resources\TaskResource;
-use App\Mail\TaskAssignedMail;
 use App\Models\CustomFieldValue;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\TaskAssignedNotification;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 
@@ -124,8 +124,6 @@ it('leaves the task link to the tasks page for a viewer who cannot edit', functi
 });
 
 it('notifies only the member newly assigned from the dashboard edit', function (): void {
-    $this->withoutDefer();
-
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $added = User::factory()->create();
@@ -163,7 +161,7 @@ it('does not open a task from another workspace for editing', function (): void 
 });
 
 it('notifies only the assignees submitted through the dashboard create action', function (): void {
-    Mail::fake();
+    Notification::fake();
 
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
@@ -204,10 +202,8 @@ it('notifies only the assignees submitted through the dashboard create action', 
         ])
         ->assertHasNoActionErrors();
 
-    defer()->invoke();
-
-    Mail::assertQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($intendedAssignee->email));
-    Mail::assertNotQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($concurrentAssignee->email));
+    Notification::assertSentTo($intendedAssignee, TaskAssignedNotification::class, fn (TaskAssignedNotification $notification, array $channels): bool => in_array('mail', $channels, true));
+    Notification::assertNotSentTo($concurrentAssignee, TaskAssignedNotification::class);
 });
 
 it('completes a task from the dashboard and drops it from the list', function (): void {

@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
+use App\Enums\Notifications\NotificationReason;
+use App\Livewire\App\AppDatabaseNotifications;
 use App\Models\User;
+use App\Models\Workspace;
+use App\Support\CurrentWorkspace;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Relaticle\EmailIntegration\Actions\CancelQueuedEmailAction;
 use Relaticle\EmailIntegration\Actions\RequestEmailAccessAction;
@@ -17,8 +23,10 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
+use Relaticle\EmailIntegration\Notifications\EmailSendHeldNotification;
+use Relaticle\EmailIntegration\Support\QueuedSendNotifier;
 
-mutates(EmailAccessNotificationHandler::class, EmailAccessRequestedNotification::class, RequestEmailAccessAction::class, CancelQueuedEmailAction::class);
+mutates(EmailAccessNotificationHandler::class, EmailAccessRequestedNotification::class, EmailSendHeldNotification::class, QueuedSendNotifier::class, RequestEmailAccessAction::class, CancelQueuedEmailAction::class);
 
 beforeEach(function (): void {
     $this->owner = User::factory()->withWorkspace()->create();
@@ -44,34 +52,36 @@ beforeEach(function (): void {
 
 describe('EmailAccessRequestedNotification', function (): void {
     it('opens the emails-tab reader overlay from view without dismissing the notification', function (): void {
+        $this->requester->update(['name' => 'Dana Whitfield']);
+
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
-        $payload = (new EmailAccessRequestedNotification($request))->toDatabase($this->owner);
+        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $notification = $this->owner->unreadNotifications()->latest()->first();
+
+        $payload = EmailAccessRequestedNotification::present($notification)->getDatabaseMessage();
         $actions = collect($payload['actions'] ?? [])->keyBy('name');
 
         expect($actions->keys()->all())->toBe(['viewEmail', 'accept', 'decline'])
             ->and($payload['body'])->toBe('Q4 pipeline review')
-            ->and($payload['viewData']['request_id'])->toBe((string) $request->getKey())
+            ->and($payload['title'])->toBe('Dana Whitfield requested email access')
             ->and($actions['viewEmail']['label'])->toBe('View')
             ->and($actions['viewEmail']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($actions['viewEmail']['shouldClose'] ?? false)->toBeFalse()
             ->and($actions['viewEmail']['event'])->toBe('open-email-from-access-request')
             ->and($actions['viewEmail']['eventData'])->toBe(['emailId' => $this->email->getKey()])
             ->and($actions['accept']['event'])->toBe('approve-email-access-request')
+            ->and($actions['accept']['eventData'])->toBe(['requestId' => $request->getKey()])
             ->and($actions['accept']['shouldClose'] ?? false)->toBeFalse()
             ->and($actions['accept']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($actions['decline']['event'])->toBe('deny-email-access-request')
+            ->and($actions['decline']['eventData'])->toBe(['requestId' => $request->getKey()])
             ->and($actions['decline']['shouldClose'] ?? false)->toBeFalse()
-            ->and($actions['decline']['shouldMarkAsRead'] ?? false)->toBeFalse();
-
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
-        $notification = $this->owner->unreadNotifications()->latest()->first();
-
-        expect($notification)->not->toBeNull()
+            ->and($actions['decline']['shouldMarkAsRead'] ?? false)->toBeFalse()
             ->and($notification->read_at)->toBeNull();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -79,6 +89,18 @@ describe('EmailAccessRequestedNotification', function (): void {
 
         expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1)
             ->and($notification->fresh()->read_at)->toBeNull();
+    });
+
+    it('shows the access request in the bell with its actions', function (): void {
+        $this->requester->update(['name' => 'Dana Whitfield']);
+        resolve(CurrentWorkspace::class)->set($this->workspace);
+        app(RequestEmailAccessAction::class)->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+
+        Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
+            ->assertSee('Dana Whitfield requested email access')
+            ->assertSee('Q4 pipeline review')
+            ->assertSee(__('filament/notifications/email-access-requested.actions.accept'))
+            ->assertSee(__('filament/notifications/email-access-requested.actions.decline'));
     });
 
     it('is sent when a teammate requests access', function (): void {
@@ -252,13 +274,14 @@ describe('EmailAccessNotificationHandler', function (): void {
     });
 
     it('does not claim success when accepting a request that is no longer pending', function (): void {
-        $request = EmailAccessRequest::factory()->approved()->forTier(EmailPrivacyTier::FULL)->create([
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
 
         $this->owner->notify(new EmailAccessRequestedNotification($request));
+        $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -367,5 +390,172 @@ describe('undo queued send', function (): void {
             ->assertNotified(__('filament/concerns/email-compose.notifications.too_late.title'));
 
         expect($email->refresh()->status)->toBe(EmailStatus::SENDING);
+    });
+});
+
+describe('EmailSendHeldNotification', function (): void {
+    beforeEach(function (): void {
+        $this->held = Email::factory()->outbound()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->owner->id,
+            'connected_account_id' => $this->account->getKey(),
+            'subject' => 'Next steps',
+            'status' => EmailStatus::QUEUED,
+            'scheduled_for' => now()->addSeconds(300),
+        ]);
+    });
+
+    it('stores the held notice in the email\'s workspace', function (): void {
+        $elsewhere = Workspace::factory()->create();
+        $elsewhere->users()->attach($this->owner, ['role' => 'member']);
+        $held = Email::factory()->outbound()->create([
+            'workspace_id' => $elsewhere->id,
+            'user_id' => $this->owner->id,
+            'subject' => 'Next steps',
+            'status' => EmailStatus::QUEUED,
+            'scheduled_for' => now()->addSeconds(300),
+        ]);
+
+        resolve(QueuedSendNotifier::class)->sendHeld($held, $this->owner, 'Claude', 300);
+
+        $row = $this->owner->notifications()->sole();
+
+        expect($this->owner->current_workspace_id)->toBe($this->workspace->getKey())
+            ->and($row->type)->toBe(EmailSendHeldNotification::class)
+            ->and($row->workspace_id)->toBe($elsewhere->getKey())
+            ->and($row->subject_type)->toBe('email')
+            ->and($row->subject_id)->toBe($held->getKey())
+            ->and($row->reason)->toBe(NotificationReason::System)
+            ->and($row->group_key)->toBe("send-held:{$held->getKey()}")
+            ->and($row->data['minutes'])->toBe(5)
+            ->and($row->data['via'])->toBe('Claude');
+    });
+
+    it('takes the deadline from the time the email is scheduled for', function (): void {
+        $this->held->update(['scheduled_for' => now()->addSeconds(200)]);
+
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held->fresh(), $this->owner, 'Claude', 300);
+
+        expect($this->owner->notifications()->sole()->data['deadline'])->toBe($this->held->fresh()->scheduled_for->toIso8601ZuluString());
+    });
+
+    it('offers cancel while the hold lasts and stops once the email is sent', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        $held = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($held->getActions())->toHaveCount(1)
+            ->and($held->getActions()[0]->getName())->toBe('cancelSend')
+            ->and($held->getBody())->toContain('goes to');
+
+        $this->held->update(['status' => EmailStatus::SENT]);
+        $this->travelTo(now()->addSeconds(301));
+
+        $sent = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($sent->getActions())->toBe([])
+            ->and($sent->getBody())->toBe(__('filament/concerns/email-compose.notifications.held.sent_body', [
+                'subject' => 'Next steps',
+                'recipients' => '',
+                'workspace' => e($this->workspace->name),
+            ]));
+    });
+
+    it('keeps offering cancel for a held email still waiting to send after its hold', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        $this->travelTo(now()->addSeconds(301));
+
+        $waiting = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($waiting->getActions())->toHaveCount(1)
+            ->and($waiting->getActions()[0]->getName())->toBe('cancelSend')
+            ->and($waiting->getBody())->toBe('"Next steps" to  is waiting to send. Workspace: '.e($this->workspace->name).'. Cancel it if you did not ask for it.');
+    });
+
+    it('says a cancelled held email was cancelled, also after the hold has passed', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        Livewire::test(EmailAccessNotificationHandler::class)
+            ->dispatch('undo-queued-send', emailId: (string) $this->held->getKey());
+
+        $this->travelTo(now()->addSeconds(301));
+
+        $notice = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($this->held->fresh()->status)->toBe(EmailStatus::CANCELLED)
+            ->and($notice->getActions())->toBe([])
+            ->and($notice->getBody())->toBe(__('filament/concerns/email-compose.notifications.held.cancelled_body', [
+                'subject' => 'Next steps',
+                'recipients' => '',
+                'workspace' => e($this->workspace->name),
+            ]));
+    });
+
+    it('says a held email that failed to send was not sent', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+        $this->held->update(['status' => EmailStatus::FAILED]);
+
+        $this->travelTo(now()->addSeconds(301));
+
+        $notice = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($notice->getActions())->toBe([])
+            ->and($notice->getBody())->toBe(__('filament/concerns/email-compose.notifications.held.failed_body', [
+                'subject' => 'Next steps',
+                'recipients' => '',
+                'workspace' => e($this->workspace->name),
+            ]));
+    });
+
+    it('says a held email was sent once it is sent', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+        $this->held->update(['status' => EmailStatus::SENT]);
+
+        $notice = EmailSendHeldNotification::present($this->owner->notifications()->sole());
+
+        expect($notice->getActions())->toBe([])
+            ->and($notice->getBody())->toBe(__('filament/concerns/email-compose.notifications.held.sent_body', [
+                'subject' => 'Next steps',
+                'recipients' => '',
+                'workspace' => e($this->workspace->name),
+            ]));
+    });
+
+    it('follows the clock when the held email can no longer be loaded', function (): void {
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        $row = $this->owner->notifications()->sole()->setRelation('subject', null);
+
+        expect(EmailSendHeldNotification::present($row)->getActions())->toHaveCount(1);
+
+        $this->travelTo(now()->addSeconds(301));
+
+        expect(EmailSendHeldNotification::present($row)->getActions())->toBe([]);
+    });
+
+    it('shows the held notice in the bell with cancel until the email is sent', function (): void {
+        resolve(CurrentWorkspace::class)->set($this->workspace);
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
+            ->assertSee('Claude queued an email')
+            ->assertSee(__('filament/concerns/email-compose.actions.cancel_send.label'));
+
+        $this->held->update(['status' => EmailStatus::SENT]);
+        $this->travelTo(now()->addSeconds(301));
+
+        Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
+            ->assertSee('Claude queued an email')
+            ->assertDontSee(__('filament/concerns/email-compose.actions.cancel_send.label'));
+    });
+
+    it('stores the notice at once instead of queueing it', function (): void {
+        Queue::fake();
+
+        resolve(QueuedSendNotifier::class)->sendHeld($this->held, $this->owner, 'Claude', 300);
+
+        expect($this->owner->notifications()->count())->toBe(1);
+        Queue::assertNotPushed(SendQueuedNotifications::class);
     });
 });

@@ -4,65 +4,114 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Notifications;
 
-use App\Models\User;
+use App\Enums\Notifications\NotificationReason;
+use App\Models\Notification as NotificationRow;
 use App\Models\Workspace;
+use App\Notifications\InboxNotification;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
-use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Notification;
+use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Model;
 use Relaticle\EmailIntegration\Enums\SendFailureRemedy;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
-final class EmailSendFailedNotification extends Notification
+final class EmailSendFailedNotification extends InboxNotification
 {
-    use Queueable;
-
     public function __construct(
-        public readonly Workspace $workspace,
-        public readonly int $count,
-        public readonly ?string $subject,
-        public readonly SendFailureRemedy $remedy,
+        private readonly Workspace $workspace,
+        private readonly ?ConnectedAccount $account,
+        private readonly int $count,
+        private readonly ?string $emailSubject,
+        private readonly SendFailureRemedy $remedy,
+        private readonly string $groupKey,
+        private readonly int $sentCount,
     ) {}
 
-    public static function forMailbox(Workspace $workspace, ?ConnectedAccount $account, int $count, ?string $subject): self
+    public static function forMailbox(Workspace $workspace, ?ConnectedAccount $account, int $count, ?string $subject, string $groupKey, int $sentCount = 0): self
     {
-        return new self($workspace, $count, $subject, SendFailureRemedy::for($workspace, $account));
+        return new self($workspace, $account, $count, $subject, SendFailureRemedy::for($workspace, $account), $groupKey, $sentCount);
     }
 
-    /**
-     * @return list<string>
-     */
-    public function via(object $notifiable): array
+    public static function batchGroupKey(string $batchId): string
     {
-        return ['database'];
+        return "send-failed:batch:{$batchId}";
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    public function toDatabase(User $notifiable): array
+    public static function emailGroupKey(string $emailId): string
     {
-        $copy = $this->remedy->value;
+        return "send-failed:email:{$emailId}";
+    }
 
-        $parameters = ['workspace' => $this->workspace->name];
+    public function workspace(): Workspace
+    {
+        return $this->workspace;
+    }
 
-        $body = $this->count === 1
-            ? __("filament/notifications/email-send-failed.{$copy}.body_one", [
-                ...$parameters,
-                'subject' => filled($this->subject) ? $this->subject : __('filament/pages/email-inbox.subject.none'),
-            ])
-            : __("filament/notifications/email-send-failed.{$copy}.body_many", $parameters);
+    public function subject(): Model
+    {
+        return $this->account ?? $this->workspace;
+    }
 
-        return FilamentNotification::make()
-            ->danger()
-            ->icon('heroicon-o-exclamation-triangle')
-            ->title(trans_choice('filament/notifications/email-send-failed.title', $this->count, ['count' => $this->count]))
-            ->body($body)
-            ->actions([
+    public function reason(): NotificationReason
+    {
+        return NotificationReason::System;
+    }
+
+    public function groupKey(): string
+    {
+        return $this->groupKey;
+    }
+
+    public function collapsesReadRows(): bool
+    {
+        return true;
+    }
+
+    /** @return array<string, mixed> */
+    public function facts(): array
+    {
+        return [
+            'count' => $this->count,
+            'sent' => $this->sentCount,
+            'email_subject' => $this->emailSubject,
+            'remedy' => $this->remedy->value,
+        ];
+    }
+
+    public static function present(NotificationRow $row): FilamentNotification
+    {
+        $remedy = SendFailureRemedy::from((string) data_get($row->data, 'remedy'));
+        $count = (int) data_get($row->data, 'count');
+        $sent = (int) data_get($row->data, 'sent');
+        $workspace = $row->workspace;
+
+        $notification = FilamentNotification::make((string) $row->getKey())
+            ->icon(Heroicon::OutlinedExclamationTriangle)
+            ->title($sent > 0
+                ? __('filament/notifications/email-send-failed.partial_title', ['sent' => $sent, 'failed' => $count])
+                : trans_choice('filament/notifications/email-send-failed.title', $count, ['count' => $count]))
+            ->body(self::body($remedy, $count, data_get($row->data, 'email_subject'), $workspace?->name))
+            ->actions($workspace instanceof Workspace ? [
                 Action::make('viewFailed')
-                    ->label(__("filament/notifications/email-send-failed.{$copy}.action"))
-                    ->url($this->remedy->url($this->workspace)),
-            ])
-            ->getDatabaseMessage();
+                    ->label(__("filament/notifications/email-send-failed.{$remedy->value}.action"))
+                    ->url($remedy->url($workspace))
+                    ->markAsRead(),
+            ] : []);
+
+        return $sent > 0 ? $notification->warning() : $notification->danger();
+    }
+
+    private static function body(SendFailureRemedy $remedy, int $count, mixed $emailSubject, ?string $workspaceName): string
+    {
+        $parameters = ['workspace' => e($workspaceName ?? '')];
+
+        if ($count !== 1) {
+            return __("filament/notifications/email-send-failed.{$remedy->value}.body_many", $parameters);
+        }
+
+        return __("filament/notifications/email-send-failed.{$remedy->value}.body_one", [
+            ...$parameters,
+            'subject' => is_string($emailSubject) && $emailSubject !== '' ? e($emailSubject) : __('filament/pages/email-inbox.subject.none'),
+        ]);
     }
 }

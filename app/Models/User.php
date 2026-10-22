@@ -397,6 +397,14 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
         return $this->morphMany(Passport::clientModel(), 'owner');
     }
 
+    /**
+     * @return MorphMany<Notification, $this>
+     */
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(Notification::class, 'notifiable')->latest();
+    }
+
     public function getProviderName(): string
     {
         return 'users';

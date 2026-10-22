@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\WorkspaceRole;
 use App\Mcp\Servers\RelaticleServer;
+use App\Notifications\InboxNotification;
 use Illuminate\Contracts\Database\Eloquent\Builder as EloquentBuilderContract;
 use Illuminate\Contracts\Database\Query\Builder as QueryBuilderContract;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -1125,6 +1126,52 @@ it('guards every Queries folder against writes in phpstan.neon', function (): vo
     expect($unguarded)->toBe(
         [],
         'List each under guardedNamespaces of EloquentWriteOutsideActionRule (.ai/rules/queries.md): '.implode(', ', $unguarded),
+    );
+});
+
+it('sends in-app notifications only through the inbox base', function (): void {
+    $root = dirname(__DIR__, 2);
+    $inboxBase = 'app/Notifications/InboxNotification.php';
+
+    $sourceFiles = phpFilesUnder([$root.'/app', ...glob($root.'/packages/*/src', GLOB_ONLYDIR) ?: []]);
+
+    $outsideTheBase = [];
+    $declaringToDatabase = [];
+
+    foreach ($sourceFiles as $path) {
+        if ($path === $inboxBase) {
+            continue;
+        }
+
+        $source = (string) file_get_contents($root.'/'.$path);
+
+        if (preg_match('/->\s*(sendToDatabase\s*\(|toDatabase\s*\(\s*\))/', $source) === 1) {
+            $outsideTheBase[] = $path;
+        }
+
+        if (preg_match('/function\s+toDatabase\s*\(/', $source) !== 1) {
+            continue;
+        }
+
+        preg_match('/^namespace\s+([^;]+);/m', $source, $namespace);
+        preg_match('/^(?:final\s+|abstract\s+|readonly\s+)*class\s+(\w+)/m', $source, $class);
+
+        $name = isset($class[1]) ? ($namespace[1] ?? '').'\\'.$class[1] : null;
+
+        if ($name === null || ! is_subclass_of($name, InboxNotification::class)) {
+            $declaringToDatabase[] = $path;
+        }
+    }
+
+    expect($declaringToDatabase)->toBe(
+        [],
+        'A notification written to the database extends InboxNotification, which owns toDatabase(). Fix: '.implode(', ', $declaringToDatabase),
+    );
+
+    expect($outsideTheBase)->toBe(
+        [],
+        'A bell row always carries its workspace, subject and reason, so it is written by InboxChannel for an InboxNotification. '.
+        'Send an InboxNotification instead of calling sendToDatabase() or toDatabase(): '.implode(', ', $outsideTheBase),
     );
 });
 

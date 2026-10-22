@@ -32,5 +32,13 @@ return [
         ],
     ],
 
+    'events' => [
+        'task_assigned' => [
+            'title' => ':actor assigned you a task',
+            'title_without_actor' => 'You have a new task',
+            'action' => 'View task',
+        ],
+    ],
+
     'saved' => 'Notification preferences updated.',
 ];

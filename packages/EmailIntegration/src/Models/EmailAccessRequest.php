@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
+use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 
 /**
  * @property EmailAccessRequestStatus $status
@@ -82,6 +83,14 @@ final class EmailAccessRequest extends Model
     public function email(): BelongsTo
     {
         return $this->belongsTo(Email::class);
+    }
+
+    /**
+     * @return BelongsTo<Email, $this>
+     */
+    public function emailIncludingHidden(): BelongsTo
+    {
+        return $this->email()->withTrashed()->withoutGlobalScope(ActiveAccountScope::class);
     }
 
     /**
