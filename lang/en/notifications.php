@@ -26,6 +26,14 @@ return [
             'label' => 'Task Assignments',
             'description' => 'Notify me when I\'m assigned a task.',
         ],
+        'email_access' => [
+            'label' => 'Email access',
+            'description' => 'Notify me when someone asks to read an email I own, and when my own request is approved or denied.',
+        ],
+        'email_shared' => [
+            'label' => 'Shared emails',
+            'description' => 'Notify me when someone shares an email with me.',
+        ],
         'task_digest' => [
             'label' => 'Daily Digest',
             'description' => 'Notify me every morning about tasks overdue and due today.',

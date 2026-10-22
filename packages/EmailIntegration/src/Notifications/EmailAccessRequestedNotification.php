@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Notifications;
 
 use App\Enums\Notifications\NotificationReason;
+use App\Enums\Notifications\NotificationType;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
@@ -39,6 +40,11 @@ final class EmailAccessRequestedNotification extends InboxNotification
     public function reason(): NotificationReason
     {
         return NotificationReason::Requested;
+    }
+
+    public function preference(): NotificationType
+    {
+        return NotificationType::EmailAccess;
     }
 
     public function shouldSend(User $notifiable, string $channel): bool

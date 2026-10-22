@@ -6,8 +6,11 @@ namespace Relaticle\EmailIntegration\Actions;
 
 use App\Models\User;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Notifications\EmailSharedNotification;
 use Relaticle\EmailIntegration\Services\EmailSharingService;
 
 final readonly class UpdateEmailSharingAction
@@ -24,7 +27,30 @@ final readonly class UpdateEmailSharingAction
 
         $this->sharingService->setEmailTier($email, $tier);
 
-        $email->shares()->where('shared_by', $sharer->getKey())->delete();
+        $previouslySharedWith = $email->shares()
+            ->where('shared_by', $sharer->getKey())
+            ->pluck('shared_with')
+            ->all();
+
+        $granted = DB::transaction(function () use ($email, $sharer, $shares): Collection {
+            $email->shares()->where('shared_by', $sharer->getKey())->delete();
+
+            return $this->recreateShares($email, $sharer, $shares);
+        });
+
+        $granted
+            ->reject(fn (array $grant): bool => $grant['user']->is($sharer)
+                || in_array($grant['user']->getKey(), $previouslySharedWith, true))
+            ->each(fn (array $grant) => $grant['user']->notify(new EmailSharedNotification($email, $sharer, $grant['tier'])));
+    }
+
+    /**
+     * @param  array<int, array{shared_with: string|int|array<int, string|int>, tier: string|EmailPrivacyTier}>  $shares
+     * @return Collection<string, array{user: User, tier: EmailPrivacyTier}>
+     */
+    private function recreateShares(Email $email, User $sharer, array $shares): Collection
+    {
+        $granted = collect();
 
         foreach ($shares as $share) {
             $tierForShare = $share['tier'] instanceof EmailPrivacyTier
@@ -40,7 +66,11 @@ final readonly class UpdateEmailSharingAction
                 abort_if($sharedWithUser === null, 403);
 
                 $this->sharingService->shareEmail($email, $sharer, $sharedWithUser, $tierForShare);
+
+                $granted->put((string) $sharedWithUser->getKey(), ['user' => $sharedWithUser, 'tier' => $tierForShare]);
             }
         }
+
+        return $granted;
     }
 }

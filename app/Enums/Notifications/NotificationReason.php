@@ -8,5 +8,6 @@ enum NotificationReason: string
 {
     case Assigned = 'assigned';
     case Requested = 'requested';
+    case Shared = 'shared';
     case System = 'system';
 }
