@@ -35,6 +35,28 @@ it('starts a new row once the earlier one with the group key is read', function 
     expect($this->user->notifications()->count())->toBe(2);
 });
 
+it('collapses into a read row and unreads it when the notice replaces read rows', function (): void {
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first', collapsesReadRows: true));
+    $this->user->notifications()->sole()->markAsRead();
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second', collapsesReadRows: true));
+
+    $row = $this->user->notifications()->sole();
+
+    expect($row->read_at)->toBeNull()
+        ->and($row->data)->toBe(['labels' => ['first', 'second']]);
+});
+
+it('collapses into the newest read row that is not archived', function (): void {
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'first', collapsesReadRows: true));
+    $this->user->notifications()->sole()->forceFill(['read_at' => now(), 'archived_at' => now()])->save();
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'second', collapsesReadRows: true));
+    $this->user->notifications()->whereNull('archived_at')->sole()->markAsRead();
+    $this->user->notifyNow(new GroupedInboxNotification($this->task, 'task:1', 'third', collapsesReadRows: true));
+
+    expect($this->user->notifications()->count())->toBe(2)
+        ->and($this->user->notifications()->whereNull('archived_at')->sole()->data)->toBe(['labels' => ['second', 'third']]);
+});
+
 it('collapses into the row a concurrent send inserted first', function (): void {
     $raced = false;
 

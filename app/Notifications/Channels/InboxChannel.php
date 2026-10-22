@@ -8,6 +8,7 @@ use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Notifications\InboxNotification;
 use Filament\Notifications\Events\DatabaseNotificationsSent;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Notifications\Channels\DatabaseChannel;
@@ -52,8 +53,9 @@ final class InboxChannel extends DatabaseChannel
         return DB::transaction(function () use ($notifiable, $notification, $columns): ?NotificationRow {
             $row = $notifiable->notifications()
                 ->where('group_key', $columns['group_key'])
-                ->whereNull('read_at')
                 ->whereNull('archived_at')
+                ->unless($notification->collapsesReadRows(), fn (Builder $query): Builder => $query->whereNull('read_at'))
+                ->latest()
                 ->lockForUpdate()
                 ->first();
 
@@ -64,6 +66,7 @@ final class InboxChannel extends DatabaseChannel
             $row->forceFill([
                 ...$columns,
                 'data' => $notification->mergeFacts($row->data),
+                'read_at' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ])->save();

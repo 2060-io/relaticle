@@ -17,8 +17,6 @@ use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
 final class EmailSendFailedNotification extends InboxNotification
 {
-    private const string BATCH_KEY_PREFIX = 'send-failed:batch:';
-
     public function __construct(
         private readonly Workspace $workspace,
         private readonly ?ConnectedAccount $account,
@@ -26,16 +24,17 @@ final class EmailSendFailedNotification extends InboxNotification
         private readonly ?string $emailSubject,
         private readonly SendFailureRemedy $remedy,
         private readonly string $groupKey,
+        private readonly int $sentCount,
     ) {}
 
-    public static function forMailbox(Workspace $workspace, ?ConnectedAccount $account, int $count, ?string $subject, string $groupKey): self
+    public static function forMailbox(Workspace $workspace, ?ConnectedAccount $account, int $count, ?string $subject, string $groupKey, int $sentCount = 0): self
     {
-        return new self($workspace, $account, $count, $subject, SendFailureRemedy::for($workspace, $account), $groupKey);
+        return new self($workspace, $account, $count, $subject, SendFailureRemedy::for($workspace, $account), $groupKey, $sentCount);
     }
 
     public static function batchGroupKey(string $batchId): string
     {
-        return self::BATCH_KEY_PREFIX.$batchId;
+        return "send-failed:batch:{$batchId}";
     }
 
     public static function emailGroupKey(string $emailId): string
@@ -63,30 +62,19 @@ final class EmailSendFailedNotification extends InboxNotification
         return $this->groupKey;
     }
 
+    public function collapsesReadRows(): bool
+    {
+        return true;
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {
         return [
             'count' => $this->count,
+            'sent' => $this->sentCount,
             'email_subject' => $this->emailSubject,
             'remedy' => $this->remedy->value,
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $existing
-     * @return array<string, mixed>
-     */
-    public function mergeFacts(array $existing): array
-    {
-        if (! str_starts_with($this->groupKey, self::BATCH_KEY_PREFIX)) {
-            return $this->facts();
-        }
-
-        return [
-            ...$this->facts(),
-            'count' => (int) ($existing['count'] ?? 0) + $this->count,
-            'email_subject' => null,
         ];
     }
 
@@ -94,12 +82,14 @@ final class EmailSendFailedNotification extends InboxNotification
     {
         $remedy = SendFailureRemedy::from((string) data_get($row->data, 'remedy'));
         $count = (int) data_get($row->data, 'count');
+        $sent = (int) data_get($row->data, 'sent');
         $workspace = $row->workspace;
 
-        return FilamentNotification::make((string) $row->getKey())
-            ->danger()
+        $notification = FilamentNotification::make((string) $row->getKey())
             ->icon(Heroicon::OutlinedExclamationTriangle)
-            ->title(trans_choice('filament/notifications/email-send-failed.title', $count, ['count' => $count]))
+            ->title($sent > 0
+                ? __('filament/notifications/email-send-failed.partial_title', ['sent' => $sent, 'failed' => $count])
+                : trans_choice('filament/notifications/email-send-failed.title', $count, ['count' => $count]))
             ->body(self::body($remedy, $count, data_get($row->data, 'email_subject'), $workspace?->name))
             ->actions($workspace instanceof Workspace ? [
                 Action::make('viewFailed')
@@ -107,11 +97,13 @@ final class EmailSendFailedNotification extends InboxNotification
                     ->url($remedy->url($workspace))
                     ->markAsRead(),
             ] : []);
+
+        return $sent > 0 ? $notification->warning() : $notification->danger();
     }
 
     private static function body(SendFailureRemedy $remedy, int $count, mixed $emailSubject, ?string $workspaceName): string
     {
-        $parameters = ['workspace' => $workspaceName ?? ''];
+        $parameters = ['workspace' => e($workspaceName ?? '')];
 
         if ($count !== 1) {
             return __("filament/notifications/email-send-failed.{$remedy->value}.body_many", $parameters);
@@ -119,7 +111,7 @@ final class EmailSendFailedNotification extends InboxNotification
 
         return __("filament/notifications/email-send-failed.{$remedy->value}.body_one", [
             ...$parameters,
-            'subject' => is_string($emailSubject) && $emailSubject !== '' ? $emailSubject : __('filament/pages/email-inbox.subject.none'),
+            'subject' => is_string($emailSubject) && $emailSubject !== '' ? e($emailSubject) : __('filament/pages/email-inbox.subject.none'),
         ]);
     }
 }

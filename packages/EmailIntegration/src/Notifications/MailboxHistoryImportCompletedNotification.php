@@ -13,6 +13,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Notifications\Messages\MailMessage;
+use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 
@@ -71,6 +72,11 @@ final class MailboxHistoryImportCompletedNotification extends InboxNotification
         return "mailbox-history:{$this->account->getKey()}:".($this->batchId ?? 'initial');
     }
 
+    public function collapsesReadRows(): bool
+    {
+        return true;
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {
@@ -110,7 +116,10 @@ final class MailboxHistoryImportCompletedNotification extends InboxNotification
             ->body(__(self::copy($kind, 'body'), self::replacements($row->data)));
 
         if ($kind !== 'partial') {
-            return $notification->success()->icon(Heroicon::OutlinedCheckCircle);
+            return $notification
+                ->success()
+                ->icon(Heroicon::OutlinedCheckCircle)
+                ->actions(self::inboxActions($row->workspace));
         }
 
         return $notification
@@ -137,6 +146,22 @@ final class MailboxHistoryImportCompletedNotification extends InboxNotification
     private static function copy(string $kind, string $part): string
     {
         return self::LANG.'.'.self::COPY[$kind][$part];
+    }
+
+    /** @return list<Action> */
+    private static function inboxActions(?Workspace $workspace): array
+    {
+        if (! $workspace instanceof Workspace) {
+            return [];
+        }
+
+        return [
+            Action::make('openInbox')
+                ->button()
+                ->label(__(self::LANG.'.actions.open_inbox'))
+                ->url(EmailInboxPage::getUrl(panel: 'app', tenant: $workspace))
+                ->markAsRead(),
+        ];
     }
 
     /**

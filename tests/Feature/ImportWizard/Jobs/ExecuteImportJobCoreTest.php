@@ -988,6 +988,28 @@ it('leaves one completed notice after a transient failure', function (): void {
         ->and($notifications->first()->data['outcome'])->toBe('completed');
 });
 
+it('replaces a read failed notice when a later run completes', function (): void {
+    ImportExecutionFixture::readyStore($this, ['Name'], [
+        ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    (new ExecuteImportJob(
+        importId: $this->import->id,
+        workspaceId: (string) $this->workspace->id,
+    ))->failed(new RuntimeException('Queue worker gave up'));
+    $this->user->notifications()->sole()->markAsRead();
+
+    ImportExecutionFixture::run($this);
+
+    $row = $this->user->notifications()->sole();
+
+    expect($row->read_at)->toBeNull()
+        ->and($row->data['outcome'])->toBe('completed')
+        ->and($row->data['created'])->toBe(1);
+});
+
 it('keeps the completed notice when the job fails after completing', function (): void {
     ImportExecutionFixture::readyStore($this, ['Name'], [
         ImportExecutionFixture::row(2, ['Name' => 'Ada Lovelace'], ['match_action' => RowMatchAction::Create->value]),

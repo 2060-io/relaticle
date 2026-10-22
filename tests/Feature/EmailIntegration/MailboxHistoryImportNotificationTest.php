@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use App\Models\Workspace;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Google\Service\Exception as GoogleServiceException;
 use Illuminate\Database\Events\QueryExecuted;
@@ -27,6 +29,7 @@ use Relaticle\EmailIntegration\Enums\EmailFolder;
 use Relaticle\EmailIntegration\Enums\EmailProvider;
 use Relaticle\EmailIntegration\Exceptions\CalendarSyncTokenExpired;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
+use Relaticle\EmailIntegration\Filament\Pages\EmailInboxPage;
 use Relaticle\EmailIntegration\Jobs\IncrementalCalendarSyncJob;
 use Relaticle\EmailIntegration\Jobs\InitialCalendarSyncJob;
 use Relaticle\EmailIntegration\Jobs\InitialEmailSyncJob;
@@ -271,6 +274,76 @@ it('stores the mailbox history notice once per import batch', function (): void 
         ->and($rows->pluck('workspace_id')->unique()->all())->toBe([$account->workspace_id]);
 });
 
+it('replaces a read partial notice when the retry succeeds', function (): void {
+    $user = mailboxImportNotificationUser();
+    $account = mailboxImportNotificationAccount($user);
+
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-1', failedEmailCount: 2), ['database']);
+    $user->notifications()->sole()->markAsRead();
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-1', afterFailedImportRetry: true), ['database']);
+
+    $row = $user->notifications()->sole();
+
+    expect($row->read_at)->toBeNull()
+        ->and($row->data['kind'])->toBe('retry_success')
+        ->and(collect(PresentedMailboxImport::of($row)['actions'])->pluck('name')->all())->toBe(['openInbox']);
+});
+
+it('opens the inbox from a complete and a retry-success notice', function (string $kind): void {
+    $user = mailboxImportNotificationUser();
+    $account = mailboxImportNotificationAccount($user);
+
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-1', afterFailedImportRetry: $kind === 'retry_success'), ['database']);
+
+    $actions = MailboxHistoryImportCompletedNotification::present($user->notifications()->sole())->getActions();
+
+    expect($actions)->toHaveCount(1)
+        ->and($actions[0]->getName())->toBe('openInbox')
+        ->and($actions[0]->getLabel())->toBe(__('filament/notifications/mailbox-import-complete.actions.open_inbox'))
+        ->and($actions[0]->getUrl())->toBe(EmailInboxPage::getUrl(panel: 'app', tenant: $user->currentWorkspace));
+})->with(['complete' => 'complete', 'retry success' => 'retry_success']);
+
+it('offers only retry on a notice with issues', function (): void {
+    $user = mailboxImportNotificationUser();
+    $account = mailboxImportNotificationAccount($user);
+
+    $user->notifyNow(new MailboxHistoryImportCompletedNotification($account, 'batch-1', failedEmailCount: 1), ['database']);
+
+    $actions = MailboxHistoryImportCompletedNotification::present($user->notifications()->sole())->getActions();
+
+    expect(collect($actions)->map(fn (Action $action): string => $action->getName())->all())->toBe(['retry']);
+});
+
+it('retries the import from a notification while another workspace is current', function (): void {
+    config()->set('queue.default', 'database');
+    $user = mailboxImportNotificationUser();
+    $this->actingAs($user);
+    Filament::setTenant($user->currentWorkspace);
+    $account = mailboxImportNotificationAccount($user, ['sync_cursor' => 'history-done']);
+    $batchId = attachHistoryImportBatch($account);
+
+    bindMailboxImportMailService([], function (MailServiceInterface $service): void {
+        $service->shouldReceive('fetchMessage')->once()->ordered()->andThrow(new RuntimeException('Provider unavailable'));
+        $service->shouldReceive('fetchMessage')->once()->ordered()->andReturn(mailboxImportFetchedEmail('fail-1'));
+    });
+
+    $job = new StoreEmailJob($account, 'fail-1');
+    $job->maxExceptions = 1;
+    Bus::findBatch($batchId)->add([$job]);
+    workMailboxImportQueueOnce();
+
+    $elsewhere = Workspace::factory()->create();
+    $elsewhere->users()->attach($user, ['role' => 'member']);
+    $user->switchWorkspace($elsewhere);
+
+    retryMailboxImportFromNotification($account->fresh());
+
+    workMailboxImportQueueOnce();
+
+    expect($account->emails()->count())->toBe(1)
+        ->and($user->notifications()->sole()->data['kind'])->toBe('retry_success');
+});
+
 it('presents the mailbox history notice from its stored facts', function (): void {
     $user = mailboxImportNotificationUser();
     $account = mailboxImportNotificationAccount($user);
@@ -320,7 +393,7 @@ it('notifies with persisted email counts when the import succeeds', function ():
             'failures' => '',
         ]))
         ->and(PresentedMailboxImport::of($notification)['body'])->not->toContain('calendar')
-        ->and(PresentedMailboxImport::of($notification)['actions'] ?? [])->toBe([]);
+        ->and(collect(PresentedMailboxImport::of($notification)['actions'])->pluck('name')->all())->toBe(['openInbox']);
 
     assertMailboxImportMail(
         $user,
@@ -580,7 +653,7 @@ it('sends one recovery notice after every failed import job succeeds', function 
         ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success'])
         ->and($retrySuccess)->not->toBeNull()
         ->and(PresentedMailboxImport::of($retrySuccess)['title'])->toBe(__('filament/notifications/mailbox-import-complete.retry_success.title'))
-        ->and(PresentedMailboxImport::of($retrySuccess)['actions'] ?? [])->toBe([]);
+        ->and(collect(PresentedMailboxImport::of($retrySuccess)['actions'])->pluck('name')->all())->toBe(['openInbox']);
 
     $retryMail = (new MailboxHistoryImportCompletedNotification($account->fresh(), $batchId, afterFailedImportRetry: true))->toMail($user);
     expect($retryMail->subject)->toBe(__('filament/notifications/mailbox-import-complete.mail.retry_subject'));
@@ -1049,7 +1122,7 @@ it('sends one recovery notice after a calendar-only failure is repaired', functi
         ->and($notifications)->toHaveCount(1)
         ->and($notifications->pluck('data.kind')->all())->toBe(['retry_success'])
         ->and($retrySuccess)->not->toBeNull()
-        ->and(PresentedMailboxImport::of($retrySuccess)['actions'] ?? [])->toBe([]);
+        ->and(collect(PresentedMailboxImport::of($retrySuccess)['actions'])->pluck('name')->all())->toBe(['openInbox']);
 });
 
 it('reports a calendar API failure on re-import when the mailbox already has a cursor', function (): void {

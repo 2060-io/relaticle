@@ -178,9 +178,10 @@ it('fails due mail in a paused workspace and sends the sender to billing', funct
     Bus::assertNotDispatched(SendEmailJob::class);
     Notification::assertSentTo($this->user, EmailSendFailedNotification::class, function (EmailSendFailedNotification $notification) use ($due): bool {
         $presented = presentedSendFailure($notification, $this->user, $this->workspace);
+        $workspaceName = e($this->workspace->name);
 
         return $notification->facts()['remedy'] === SendFailureRemedy::Subscribe->value
-            && $presented->getBody() === "\"{$due->subject}\" was not sent because {$this->workspace->name} is paused. Once the workspace is reopened, retry the email from the Failed tab."
+            && $presented->getBody() === "\"{$due->subject}\" was not sent because {$workspaceName} is paused. Once the workspace is reopened, retry the email from the Failed tab."
             && $presented->getActions()[0]->getUrl() === BillingPage::getUrl(panel: 'app', tenant: $this->workspace);
     });
 });

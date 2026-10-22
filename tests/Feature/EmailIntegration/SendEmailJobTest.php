@@ -123,64 +123,64 @@ it('tells the sender once when several emails in one mass send fail', function (
     Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->facts()['count'] === 3);
 });
 
-it('tells the sender again when a retried mass-send email fails again', function (): void {
-    Notification::fake();
-
-    $batch = EmailBatch::factory()->create([
-        'workspace_id' => $this->workspace->id,
-        'user_id' => $this->user->id,
-        'connected_account_id' => $this->account->id,
-        'total_recipients' => 1,
-    ]);
-
-    $email = Email::create([
-        'workspace_id' => $this->workspace->id,
-        'user_id' => $this->user->id,
-        'connected_account_id' => $this->account->id,
-        'batch_id' => $batch->getKey(),
+function sendingEmail(array $attributes = []): Email
+{
+    return Email::create([
+        'workspace_id' => test()->workspace->id,
+        'user_id' => test()->user->id,
+        'connected_account_id' => test()->account->id,
         'subject' => 'Mass send',
         'direction' => EmailDirection::OUTBOUND,
         'status' => EmailStatus::SENDING,
         'privacy_tier' => EmailPrivacyTier::FULL,
         'creation_source' => EmailCreationSource::COMPOSE,
+        ...$attributes,
     ]);
+}
 
+function failSend(Email $email): void
+{
     (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom'));
+}
+
+function sendBatch(int $totalRecipients): EmailBatch
+{
+    return EmailBatch::factory()->create([
+        'workspace_id' => test()->workspace->id,
+        'user_id' => test()->user->id,
+        'connected_account_id' => test()->account->id,
+        'total_recipients' => $totalRecipients,
+    ]);
+}
+
+it('tells the sender again when a retried mass-send email fails again', function (): void {
+    $batch = sendBatch(1);
+    $email = sendingEmail(['batch_id' => $batch->getKey()]);
+
+    failSend($email);
+    $this->user->notifications()->sole()->markAsRead();
     resolve(RetryFailedEmailAction::class)->execute($email);
 
     expect($batch->fresh()->status)->toBe(EmailBatchStatus::Sending);
 
-    (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom again'));
+    failSend($email);
 
-    Notification::assertSentToTimes($this->user, EmailSendFailedNotification::class, 2);
-    Notification::assertSentTo($this->user, EmailSendFailedNotification::class, fn (EmailSendFailedNotification $notification): bool => $notification->facts()['count'] === 1
-        && $notification->facts()['email_subject'] === 'Mass send');
+    $row = $this->user->notifications()->sole();
+
+    expect($row->read_at)->toBeNull()
+        ->and($row->data['count'])->toBe(1)
+        ->and($row->data['email_subject'])->toBe('Mass send');
 });
 
 it('stores one failed send notice per batch', function (): void {
-    $batch = EmailBatch::factory()->create([
-        'workspace_id' => $this->workspace->id,
-        'user_id' => $this->user->id,
-        'connected_account_id' => $this->account->id,
-        'status' => EmailBatchStatus::Sending,
-        'total_recipients' => 2,
-    ]);
+    $batch = sendBatch(2);
+    $first = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 1']);
+    $second = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 2']);
 
-    foreach (range(1, 2) as $index) {
-        $email = Email::create([
-            'workspace_id' => $this->workspace->id,
-            'user_id' => $this->user->id,
-            'connected_account_id' => $this->account->id,
-            'batch_id' => $batch->getKey(),
-            'subject' => "Retried send {$index}",
-            'direction' => EmailDirection::OUTBOUND,
-            'status' => EmailStatus::SENDING,
-            'privacy_tier' => EmailPrivacyTier::FULL,
-            'creation_source' => EmailCreationSource::COMPOSE,
-        ]);
-
-        (new SendEmailJob($email->getKey()))->failed(new RuntimeException('boom'));
-    }
+    failSend($first);
+    failSend($second);
+    resolve(RetryFailedEmailAction::class)->execute($first);
+    failSend($first);
 
     $row = $this->user->notifications()->sole();
 
@@ -194,7 +194,58 @@ it('stores one failed send notice per batch', function (): void {
     $presented = EmailSendFailedNotification::present($row);
 
     expect($presented->getTitle())->toBe('2 emails not sent')
+        ->and($presented->getStatus())->toBe('danger')
         ->and($presented->getActions()[0]->getUrl())->toBe(SendFailureRemedy::Retry->url($this->workspace));
+});
+
+it('counts the failures from before a retry flipped the batch to sending', function (): void {
+    $batch = sendBatch(3);
+    $first = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 1']);
+    $second = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 2']);
+    sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 3']);
+
+    failSend($first);
+    failSend($second);
+    resolve(RetryFailedEmailAction::class)->execute($first);
+    failSend($first);
+
+    expect($this->user->notifications()->sole()->data['count'])->toBe(2);
+});
+
+it('states how many emails of a batch were sent and how many were not', function (): void {
+    $batch = sendBatch(3);
+    $sent = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 1']);
+    $first = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 2']);
+    $second = sendingEmail(['batch_id' => $batch->getKey(), 'subject' => 'Mass send 3']);
+
+    $sent->update(['status' => EmailStatus::SENT]);
+    failSend($first);
+    failSend($second);
+
+    $presented = EmailSendFailedNotification::present($this->user->notifications()->sole());
+
+    expect($presented->getStatus())->toBe('warning')
+        ->and($presented->getTitle())->toBe('1 sent, 2 not sent');
+});
+
+it('keeps the danger color when every email of a batch failed', function (): void {
+    $batch = sendBatch(2);
+
+    failSend(sendingEmail(['batch_id' => $batch->getKey()]));
+    failSend(sendingEmail(['batch_id' => $batch->getKey()]));
+
+    $presented = EmailSendFailedNotification::present($this->user->notifications()->sole());
+
+    expect($presented->getStatus())->toBe('danger')
+        ->and($presented->getTitle())->toBe('2 emails not sent');
+});
+
+it('escapes the email subject in the failed send notice', function (): void {
+    failSend(sendingEmail(['subject' => 'Re: <b>Proposal</b>']));
+
+    $body = EmailSendFailedNotification::present($this->user->notifications()->sole())->getBody();
+
+    expect($body)->toContain('&lt;b&gt;Proposal&lt;/b&gt;')->not->toContain('<b>');
 });
 
 it('counts one email that fails twice as a single failed send', function (): void {

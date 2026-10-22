@@ -45,6 +45,11 @@ final class ImportFinishedNotification extends InboxNotification
         return "import:{$this->import->getKey()}";
     }
 
+    public function collapsesReadRows(): bool
+    {
+        return true;
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {

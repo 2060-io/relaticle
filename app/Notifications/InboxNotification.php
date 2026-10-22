@@ -55,6 +55,11 @@ abstract class InboxNotification extends Notification implements ShouldQueueAfte
         return false;
     }
 
+    public function collapsesReadRows(): bool
+    {
+        return false;
+    }
+
     /**
      * @param  array<string, mixed>  $existing
      * @return array<string, mixed>

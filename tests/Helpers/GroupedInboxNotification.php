@@ -18,6 +18,7 @@ final class GroupedInboxNotification extends InboxNotification
         private readonly Task $task,
         private readonly string $groupKey,
         private readonly string $label,
+        private readonly bool $collapsesReadRows = false,
     ) {}
 
     public function workspace(): Workspace
@@ -38,6 +39,11 @@ final class GroupedInboxNotification extends InboxNotification
     public function groupKey(): string
     {
         return $this->groupKey;
+    }
+
+    public function collapsesReadRows(): bool
+    {
+        return $this->collapsesReadRows;
     }
 
     /** @return array<string, mixed> */
