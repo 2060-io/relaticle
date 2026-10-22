@@ -94,7 +94,7 @@ describe('EmailAccessRequestedNotification', function (): void {
     it('shows the access request in the bell with its actions', function (): void {
         $this->requester->update(['name' => 'Dana Whitfield']);
         resolve(CurrentWorkspace::class)->set($this->workspace);
-        app(RequestEmailAccessAction::class)->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+        resolve(RequestEmailAccessAction::class)->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
 
         Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
             ->assertSee('Dana Whitfield requested email access')
@@ -106,7 +106,7 @@ describe('EmailAccessRequestedNotification', function (): void {
     it('is sent when a teammate requests access', function (): void {
         NotificationFacade::fake();
 
-        app(RequestEmailAccessAction::class)->execute(
+        resolve(RequestEmailAccessAction::class)->execute(
             $this->email,
             $this->requester,
             EmailPrivacyTier::FULL,
@@ -292,6 +292,24 @@ describe('EmailAccessNotificationHandler', function (): void {
 
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
             ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1);
+    });
+
+    it('offers no overdue request to approve', function (): void {
+        $request = EmailAccessRequest::factory()->overdue()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        NotificationFacade::fake();
+
+        $component = Livewire::test(EmailAccessNotificationHandler::class)
+            ->dispatch('open-email-from-access-request', emailId: $this->email->getKey())
+            ->dispatch('approve-email-access-request', requestId: $request->getKey())
+            ->assertNotNotified();
+
+        expect($component->instance()->pendingAccessRequests)->toHaveCount(0)
+            ->and($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING);
     });
 
     it('dismisses the inline composer when selectedEmailId is cleared', function (): void {

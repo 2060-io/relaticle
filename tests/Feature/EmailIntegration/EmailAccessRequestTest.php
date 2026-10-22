@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Relaticle\EmailIntegration\Actions\ApproveEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\CancelEmailAccessRequestAction;
+use Relaticle\EmailIntegration\Actions\DecideEmailAccessRequest;
 use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\RequestEmailAccessAction;
 use Relaticle\EmailIntegration\Console\Commands\ExpireEmailAccessRequestsCommand;
@@ -28,7 +29,7 @@ use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRespondedNotification;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-mutates(ApproveEmailAccessRequestAction::class, CancelEmailAccessRequestAction::class, DenyEmailAccessRequestAction::class, RequestEmailAccessAction::class, EmailAccessRequestedNotification::class, EmailAccessRespondedNotification::class, ExpireEmailAccessRequestsCommand::class);
+mutates(ApproveEmailAccessRequestAction::class, DecideEmailAccessRequest::class, CancelEmailAccessRequestAction::class, DenyEmailAccessRequestAction::class, RequestEmailAccessAction::class, EmailAccessRequestedNotification::class, EmailAccessRespondedNotification::class, ExpireEmailAccessRequestsCommand::class);
 
 beforeEach(function (): void {
     $this->owner = User::factory()->withWorkspace()->create();
@@ -265,10 +266,13 @@ describe('ApproveEmailAccessRequestAction', function (): void {
 
         Notification::fake();
 
-        resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
-        resolve(ApproveEmailAccessRequestAction::class)->execute($staleCopy, $this->owner);
-        resolve(DenyEmailAccessRequestAction::class)->execute($staleCopy, $this->owner);
+        $outcomes = [
+            resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner),
+            resolve(ApproveEmailAccessRequestAction::class)->execute($staleCopy, $this->owner),
+            resolve(DenyEmailAccessRequestAction::class)->execute($staleCopy, $this->owner),
+        ];
 
+        expect($outcomes)->toBe([true, false, false]);
         Notification::assertSentToTimes($this->requester, EmailAccessRespondedNotification::class, 1);
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
             ->and(EmailShare::query()->where('email_id', $this->email->getKey())->count())->toBe(1);
@@ -287,6 +291,30 @@ describe('ApproveEmailAccessRequestAction', function (): void {
         Notification::assertNothingSent();
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
             ->and(EmailShare::query()->where('email_id', $this->email->getKey())->count())->toBe(0);
+    });
+
+    it('still approves a pending request that has no deadline', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+            'expires_at' => null,
+        ]);
+
+        Notification::fake();
+
+        expect(resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner))->toBeTrue();
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
+    });
+
+    it('reports that an overdue request was not approved', function (): void {
+        $request = EmailAccessRequest::factory()->overdue()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        expect(resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner))->toBeFalse();
     });
 });
 
@@ -462,6 +490,20 @@ describe('DenyEmailAccessRequestAction', function (): void {
         Notification::assertNothingSent();
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING);
     });
+
+    it('reports whether it decided', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+        $staleCopy = EmailAccessRequest::query()->findOrFail($request->getKey());
+
+        Notification::fake();
+
+        expect(resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner))->toBeTrue()
+            ->and(resolve(DenyEmailAccessRequestAction::class)->execute($staleCopy, $this->owner))->toBeFalse();
+    });
 });
 
 describe('CancelEmailAccessRequestAction', function (): void {
@@ -552,6 +594,17 @@ describe('CancelEmailAccessRequestAction', function (): void {
         resolve(CancelEmailAccessRequestAction::class)->execute($staleCopy, $this->requester);
 
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
+    });
+
+    it('reports whether it cancelled', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        expect(resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester))->toBeTrue()
+            ->and(resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester))->toBeFalse();
     });
 });
 
@@ -798,6 +851,27 @@ describe('EmailAccessRespondedNotification', function (): void {
     });
 });
 
+describe('open requests', function (): void {
+    it('counts a pending request until its deadline and one without a deadline', function (): void {
+        $make = fn (array $state): EmailAccessRequest => EmailAccessRequest::factory()->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+            ...$state,
+        ]);
+
+        $current = $make([]);
+        $noDeadline = $make(['expires_at' => null]);
+        $overdue = $make(['expires_at' => now()->subMinute()]);
+        $denied = $make(['status' => EmailAccessRequestStatus::DENIED]);
+
+        expect(EmailAccessRequest::query()->open()->pluck('id')->sort()->values()->all())
+            ->toBe(collect([$current, $noDeadline])->pluck('id')->sort()->values()->all())
+            ->and(EmailAccessRequest::query()->pendingIncomingFor($this->owner)->count())->toBe(2)
+            ->and([$current->isOpen(), $noDeadline->isOpen(), $overdue->isOpen(), $denied->isOpen()])->toBe([true, true, false, false]);
+    });
+});
+
 describe('email:expire-access-requests', function (): void {
     it('expires only overdue pending requests and tells the requester once', function (): void {
         $overdue = EmailAccessRequest::factory()->overdue()->create([
@@ -816,6 +890,12 @@ describe('email:expire-access-requests', function (): void {
             'email_id' => $this->email->getKey(),
             'expires_at' => now()->subDay(),
         ]);
+        $noDeadline = EmailAccessRequest::factory()->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+            'expires_at' => null,
+        ]);
         $this->owner->notify(new EmailAccessRequestedNotification($overdue));
 
         $this->artisan('email:expire-access-requests')
@@ -829,6 +909,7 @@ describe('email:expire-access-requests', function (): void {
             ->and($overdue->decided_at)->not->toBeNull()
             ->and($overdue->decided_by)->toBeNull()
             ->and($current->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
+            ->and($noDeadline->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
             ->and($denied->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
             ->and($this->requester->notifications()->where('type', EmailAccessRespondedNotification::class)->count())->toBe(1)
             ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);

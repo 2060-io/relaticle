@@ -6,6 +6,7 @@ namespace Relaticle\EmailIntegration\Models;
 
 use App\Models\User;
 use App\Models\Workspace;
+use Carbon\CarbonImmutable;
 use Database\Factories\EmailAccessRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -20,6 +21,7 @@ use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 
 /**
  * @property EmailAccessRequestStatus $status
+ * @property CarbonImmutable|null $expires_at
  */
 #[Fillable([
     'requester_id',
@@ -62,40 +64,32 @@ final class EmailAccessRequest extends Model
      * @return Builder<self>
      */
     #[Scope]
+    protected function open(Builder $query): Builder
+    {
+        return $query
+            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->where(fn (Builder $deadline): Builder => $deadline
+                ->whereNull('expires_at')
+                ->orWhere('expires_at', '>', now()));
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    #[Scope]
     protected function pendingIncomingFor(Builder $query, User $owner): Builder
     {
         return $query
             ->where('owner_id', $owner->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
-            ->where('expires_at', '>', now())
+            ->open()
             ->whereHas('email', fn (Builder $email): Builder => $email->where('workspace_id', $owner->current_workspace_id));
     }
 
-    public function decide(EmailAccessRequestStatus $status, User $actor): bool
+    public function isOpen(): bool
     {
-        $decidedAt = now();
-
-        $decided = self::query()
-            ->whereKey($this->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
-            ->where('expires_at', '>', $decidedAt)
-            ->update([
-                'status' => $status->value,
-                'decided_at' => $decidedAt,
-                'decided_by' => $actor->getKey(),
-            ]);
-
-        if ($decided === 0) {
-            return false;
-        }
-
-        $this->forceFill([
-            'status' => $status,
-            'decided_at' => $decidedAt,
-            'decided_by' => $actor->getKey(),
-        ])->syncOriginal();
-
-        return true;
+        return $this->status === EmailAccessRequestStatus::PENDING
+            && ($this->expires_at === null || $this->expires_at->isFuture());
     }
 
     /**

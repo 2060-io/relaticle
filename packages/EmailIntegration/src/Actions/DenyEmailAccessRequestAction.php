@@ -13,22 +13,24 @@ use Relaticle\EmailIntegration\Notifications\EmailAccessRespondedNotification;
 
 final readonly class DenyEmailAccessRequestAction
 {
-    public function execute(EmailAccessRequest $accessRequest, User $actor): void
+    public function __construct(private DecideEmailAccessRequest $decide) {}
+
+    public function execute(EmailAccessRequest $accessRequest, User $actor): bool
     {
         abort_unless($accessRequest->owner_id === $actor->getKey(), 403);
 
-        if ($accessRequest->status !== EmailAccessRequestStatus::PENDING) {
-            return;
+        if (! $accessRequest->isOpen()) {
+            return false;
         }
 
         $requester = $accessRequest->requester;
 
         if ($requester === null) {
-            return;
+            return false;
         }
 
         $denied = DB::transaction(function () use ($accessRequest, $actor): bool {
-            if (! $accessRequest->decide(EmailAccessRequestStatus::DENIED, $actor)) {
+            if (! $this->decide->execute($accessRequest, EmailAccessRequestStatus::DENIED, $actor)) {
                 return false;
             }
 
@@ -38,11 +40,13 @@ final readonly class DenyEmailAccessRequestAction
         });
 
         if (! $denied) {
-            return;
+            return false;
         }
 
         EmailAccessRequestedNotification::dismissFor($accessRequest);
 
         $requester->notify(new EmailAccessRespondedNotification($accessRequest));
+
+        return true;
     }
 }

@@ -18,7 +18,6 @@ use Livewire\Attributes\On;
 use Livewire\Component;
 use Relaticle\EmailIntegration\Actions\CancelQueuedEmailAction;
 use Relaticle\EmailIntegration\Actions\RetryMailboxHistoryImportFailuresAction;
-use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Filament\Concerns\HasEmailReaderActions;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -101,7 +100,7 @@ final class EmailAccessNotificationHandler extends Component implements HasActio
         return EmailAccessRequest::query()
             ->with('requester')
             ->where('email_id', $email->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->open()
             ->get();
     }
 

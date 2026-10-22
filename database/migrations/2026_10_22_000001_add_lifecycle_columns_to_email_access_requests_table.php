@@ -23,7 +23,9 @@ return new class extends Migration
             $table->index(['owner_id', 'workspace_id', 'status']);
         });
 
-        DB::table('email_access_requests')->eachById(function (object $request): void {
+        $expiresAt = Date::now()->addDays(self::EXPIRES_AFTER_DAYS);
+
+        DB::table('email_access_requests')->eachById(function (object $request) use ($expiresAt): void {
             $workspaceId = $request->email_id === null
                 ? null
                 : DB::table('emails')->where('id', $request->email_id)->value('workspace_id');
@@ -31,7 +33,7 @@ return new class extends Migration
             $update = ['workspace_id' => $workspaceId];
 
             if ($request->status === 'pending') {
-                $update['expires_at'] = Date::parse($request->created_at)->addDays(self::EXPIRES_AFTER_DAYS);
+                $update['expires_at'] = $expiresAt;
             }
 
             if ($request->status === 'pending' && $workspaceId === null) {

@@ -18,11 +18,11 @@ enum EmailAccessRequestStatus: string implements HasColor, HasLabel
     public function getLabel(): string
     {
         return match ($this) {
-            self::PENDING => 'Pending',
-            self::APPROVED => 'Approved',
-            self::DENIED => 'Denied',
-            self::CANCELLED => 'Cancelled',
-            self::EXPIRED => 'Expired',
+            self::PENDING => __('filament/pages/email-access-requests.statuses.pending'),
+            self::APPROVED => __('filament/pages/email-access-requests.statuses.approved'),
+            self::DENIED => __('filament/pages/email-access-requests.statuses.denied'),
+            self::CANCELLED => __('filament/pages/email-access-requests.statuses.cancelled'),
+            self::EXPIRED => __('filament/pages/email-access-requests.statuses.expired'),
         };
     }
 

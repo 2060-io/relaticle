@@ -7,6 +7,7 @@ namespace Relaticle\EmailIntegration\Console\Commands;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Relaticle\EmailIntegration\Actions\DecideEmailAccessRequest;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
@@ -16,7 +17,7 @@ use Relaticle\EmailIntegration\Notifications\EmailAccessRespondedNotification;
 #[Signature('email:expire-access-requests')]
 final class ExpireEmailAccessRequestsCommand extends Command
 {
-    public function handle(): int
+    public function handle(DecideEmailAccessRequest $decide): int
     {
         $expired = 0;
 
@@ -29,7 +30,7 @@ final class ExpireEmailAccessRequestsCommand extends Command
         foreach ($overdue as $request) {
             $this->info("Expiring access request `{$request->getKey()}`...");
 
-            if (! $this->expire($request)) {
+            if (! $decide->execute($request, EmailAccessRequestStatus::EXPIRED, null)) {
                 continue;
             }
 
@@ -42,30 +43,5 @@ final class ExpireEmailAccessRequestsCommand extends Command
         $this->comment("Expired {$expired} access request(s).");
 
         return self::SUCCESS;
-    }
-
-    private function expire(EmailAccessRequest $request): bool
-    {
-        $decidedAt = now();
-
-        $expired = EmailAccessRequest::query()
-            ->whereKey($request->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
-            ->where('expires_at', '<=', $decidedAt)
-            ->update([
-                'status' => EmailAccessRequestStatus::EXPIRED->value,
-                'decided_at' => $decidedAt,
-            ]);
-
-        if ($expired === 0) {
-            return false;
-        }
-
-        $request->forceFill([
-            'status' => EmailAccessRequestStatus::EXPIRED,
-            'decided_at' => $decidedAt,
-        ])->syncOriginal();
-
-        return true;
     }
 }

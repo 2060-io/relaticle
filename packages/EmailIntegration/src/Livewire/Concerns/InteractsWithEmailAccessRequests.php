@@ -126,6 +126,9 @@ trait InteractsWithEmailAccessRequests
         return EmailAccessRequest::query()
             ->with(['email.shares', 'requester', 'owner'])
             ->whereHas('email', fn (Builder $query): Builder => $query->where('workspace_id', $user->current_workspace_id))
+            ->where(fn (Builder $listed): Builder => $listed
+                ->open()
+                ->orWhere('status', '!=', EmailAccessRequestStatus::PENDING))
             ->when(
                 $this->tab === 'incoming',
                 fn (Builder $query): Builder => $query->where('owner_id', $user->getKey()),
@@ -188,7 +191,7 @@ trait InteractsWithEmailAccessRequests
             ->icon('heroicon-m-check')
             ->iconButton()
             ->color('success')
-            ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'incoming' && $request->status === EmailAccessRequestStatus::PENDING)
+            ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'incoming' && $request->isOpen())
             ->requiresConfirmation()
             ->modalIcon('heroicon-o-check-circle')
             ->modalIconColor('success')
@@ -202,13 +205,13 @@ trait InteractsWithEmailAccessRequests
                     return;
                 }
 
-                resolve(ApproveEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
+                $decided = resolve(ApproveEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
                 unset($this->pendingIncomingCount);
                 $this->resetTable();
                 $this->dispatch('access-requests:changed');
                 $this->dispatch('databaseNotificationsSent');
 
-                Notification::make()->success()->title(__('filament/pages/email-access-requests.notifications.approved'))->send();
+                $this->notifyDecision($decided, 'approved');
             });
     }
 
@@ -221,7 +224,7 @@ trait InteractsWithEmailAccessRequests
             ->icon('heroicon-m-x-mark')
             ->iconButton()
             ->color('danger')
-            ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'incoming' && $request->status === EmailAccessRequestStatus::PENDING)
+            ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'incoming' && $request->isOpen())
             ->requiresConfirmation()
             ->modalHeading(__('filament/pages/email-access-requests.actions.deny.modal_heading'))
             ->modalDescription(fn (EmailAccessRequest $request): string => __('filament/pages/email-access-requests.actions.deny.modal_description', ['name' => $request->requester->name ?? __('filament/pages/email-access-requests.actions.fallback_user')]))
@@ -233,13 +236,13 @@ trait InteractsWithEmailAccessRequests
                     return;
                 }
 
-                resolve(DenyEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
+                $decided = resolve(DenyEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
                 unset($this->pendingIncomingCount);
                 $this->resetTable();
                 $this->dispatch('access-requests:changed');
                 $this->dispatch('databaseNotificationsSent');
 
-                Notification::make()->success()->title(__('filament/pages/email-access-requests.notifications.denied'))->send();
+                $this->notifyDecision($decided, 'denied');
             });
     }
 
@@ -252,7 +255,7 @@ trait InteractsWithEmailAccessRequests
             ->icon('heroicon-m-x-mark')
             ->iconButton()
             ->color('danger')
-            ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'outgoing' && $request->status === EmailAccessRequestStatus::PENDING)
+            ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'outgoing' && $request->isOpen())
             ->requiresConfirmation()
             ->modalHeading(__('filament/pages/email-access-requests.actions.cancel.modal_heading'))
             ->modalDescription(fn (EmailAccessRequest $request): string => __('filament/pages/email-access-requests.actions.cancel.modal_description', ['name' => $request->owner->name ?? __('filament/pages/email-access-requests.actions.fallback_user')]))
@@ -264,13 +267,26 @@ trait InteractsWithEmailAccessRequests
                     return;
                 }
 
-                resolve(CancelEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
+                $decided = resolve(CancelEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
                 $this->resetTable();
                 $this->dispatch('access-requests:changed');
                 $this->dispatch('databaseNotificationsSent');
 
-                Notification::make()->success()->title(__('filament/pages/email-access-requests.notifications.cancelled'))->send();
+                $this->notifyDecision($decided, 'cancelled');
             });
+    }
+
+    private function notifyDecision(bool $decided, string $outcome): void
+    {
+        $notification = Notification::make();
+
+        if ($decided) {
+            $notification->success()->title(__("filament/pages/email-access-requests.notifications.{$outcome}"));
+        } else {
+            $notification->warning()->title(__('filament/pages/email-access-requests.notifications.no_longer_pending'));
+        }
+
+        $notification->send();
     }
 
     private function authUser(): User
