@@ -48,5 +48,50 @@ return [
         ],
     ],
 
+    'panel' => [
+        'heading' => 'Inbox',
+        'open' => 'Open inbox',
+        'open_with_count' => 'Open inbox, :count item needs your attention|Open inbox, :count items need your attention',
+        'close' => 'Close inbox',
+        'settings' => 'Notification settings',
+        'announce' => ':count new notification|:count new notifications',
+        'tabs' => [
+            'label' => 'Inbox sections',
+            'notifications' => 'Notifications',
+            'requests' => 'Requests',
+        ],
+        'mark_all_read' => 'Mark all as read',
+        'groups' => [
+            'today' => 'Today',
+            'yesterday' => 'Yesterday',
+            'earlier' => 'Earlier',
+        ],
+        'row' => [
+            'unread' => 'Unread',
+            'mark_read' => 'Mark as read',
+            'mark_unread' => 'Mark as unread',
+            'archive' => 'Archive',
+        ],
+        'requests' => [
+            'view' => 'View',
+            'approve' => 'Approve',
+            'deny' => 'Deny',
+            'approved' => 'Approved',
+            'denied' => 'Denied',
+            'expires' => 'Expires :when',
+        ],
+        'empty' => [
+            'notifications' => [
+                'heading' => 'You are all caught up',
+                'description' => 'Assignments, mentions and updates on records you follow land here.',
+            ],
+            'requests' => [
+                'heading' => 'No requests waiting',
+                'description' => 'When a teammate asks for access to something you own, you decide here.',
+            ],
+            'settings' => 'Settings',
+        ],
+    ],
+
     'saved' => 'Notification preferences updated.',
 ];

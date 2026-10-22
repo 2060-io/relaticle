@@ -2,24 +2,34 @@
 
 declare(strict_types=1);
 
+use App\Actions\Notifications\ArchiveNotification;
 use App\Actions\Task\NotifyTaskAssignees;
+use App\Features\EmailIntegration;
 use App\Features\OnboardSeed;
+use App\Filament\Pages\NotificationPreferences;
 use App\Livewire\App\AppDatabaseNotifications;
 use App\Models\Notification;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CurrentWorkspace;
+use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Notifications\DatabaseNotification as FilamentDatabaseNotification;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
+use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
+use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Tests\Helpers\GroupedInboxNotification;
 
-mutates(AppDatabaseNotifications::class);
+mutates(AppDatabaseNotifications::class, ArchiveNotification::class);
 
 function assignTaskNotification(User $assignee, Workspace $workspace, string $title): void
 {
@@ -51,8 +61,35 @@ function insertFilamentNotification(User $user, ?string $workspaceId, string $ti
     return $id;
 }
 
+function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $subject, string $requesterName): EmailAccessRequest
+{
+    $requester = User::factory()->create(['name' => $requesterName]);
+    $workspace->users()->attach($requester, ['role' => 'member']);
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $owner->id,
+    ]));
+
+    $email = Email::factory()->private()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $owner->id,
+        'connected_account_id' => $account->getKey(),
+        'subject' => $subject,
+    ]);
+
+    return EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+        'requester_id' => $requester->id,
+        'owner_id' => $owner->id,
+        'email_id' => $email->getKey(),
+        'workspace_id' => $workspace->id,
+        'expires_at' => now()->addDays(30),
+    ]);
+}
+
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
+    Feature::for(null)->activate(EmailIntegration::class);
 
     $this->user = User::factory()->withPersonalWorkspace()->create();
     $this->workspaceA = $this->user->currentWorkspace;
@@ -192,4 +229,172 @@ it('listens for live updates while the list is empty', function (): void {
 
 it('polls every 120 seconds as a fallback to live updates', function (): void {
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertSeeHtml('wire:poll.120s');
+});
+
+it('archives a notification and hides it', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+    $row = $this->user->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('archiveNotification', $row->id)
+        ->assertDontSee('Task in A');
+
+    $row->refresh();
+
+    expect($row->archived_at)->not->toBeNull()
+        ->and($row->read_at)->not->toBeNull();
+});
+
+it('keeps the original read time when archiving a read notification', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+    $row = $this->user->notifications()->firstOrFail();
+    $this->travelTo(now()->subDay());
+    $row->markAsRead();
+    $readAt = $row->fresh()->read_at;
+    $this->travelBack();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->call('archiveNotification', $row->id);
+
+    expect($row->fresh()->read_at->equalTo($readAt))->toBeTrue();
+});
+
+it('does not find another workspace\'s notification to archive', function (): void {
+    assignTaskNotification($this->user, $this->workspaceB, 'Task in B');
+    $row = $this->user->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('archiveNotification', $row->id)
+        ->assertNotFound();
+
+    expect($row->fresh()->archived_at)->toBeNull();
+});
+
+it('does not find another member\'s notification to archive', function (): void {
+    $other = User::factory()->create();
+    $this->workspaceA->users()->attach($other, ['role' => 'member']);
+    assignTaskNotification($other, $this->workspaceA, 'Their task');
+    $row = $other->notifications()->firstOrFail();
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('archiveNotification', $row->id)
+        ->assertNotFound();
+
+    expect($row->fresh()->archived_at)->toBeNull();
+});
+
+it('groups notifications into today, yesterday and earlier by the reader\'s timezone', function (): void {
+    $this->user->forceFill(['timezone' => 'Pacific/Kiritimati'])->save();
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-21 05:00:00', 'UTC'));
+    assignTaskNotification($this->user, $this->workspaceA, 'Task three days');
+    $this->travelTo(CarbonImmutable::parse('2026-10-22 05:00:00', 'UTC'));
+    assignTaskNotification($this->user, $this->workspaceA, 'Task yesterday');
+    $this->travelTo(CarbonImmutable::parse('2026-10-22 11:00:00', 'UTC'));
+    assignTaskNotification($this->user, $this->workspaceA, 'Task today');
+    $this->travelTo(CarbonImmutable::parse('2026-10-22 12:00:00', 'UTC'));
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSeeInOrder(['Today', 'Task today', 'Yesterday', 'Task yesterday', 'Earlier', 'Task three days']);
+
+    $this->user->forceFill(['timezone' => 'UTC'])->save();
+
+    Livewire::actingAs($this->user->refresh())->test(AppDatabaseNotifications::class)
+        ->assertSeeInOrder(['Today', 'Task today', 'Task yesterday', 'Yesterday', 'Task three days'])
+        ->assertDontSee('Earlier');
+});
+
+it('lists the pending email access requests of the current workspace only', function (): void {
+    pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
+    pendingEmailAccessRequest($this->user, $this->workspaceB, 'Elsewhere Thread', 'Priya Natarajan');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSee('Dana Whitfield requested email access')
+        ->assertSee('Confidential Thread')
+        ->assertDontSee('Priya Natarajan')
+        ->assertDontSee('Elsewhere Thread');
+});
+
+it('approves a request from the panel and shows the outcome in place', function (): void {
+    NotificationFacade::fake();
+    $request = pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
+
+    $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('approveRequest', 'email_access', $request->getKey())
+        ->assertSee('Dana Whitfield requested email access')
+        ->assertSee('Approved')
+        ->assertDontSee('Expires');
+
+    expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
+        ->and($component->get('decidedRequests'))->toHaveKey($request->getKey());
+
+    $component->set('decidedRequests', [])->assertDontSee('Dana Whitfield requested email access');
+});
+
+it('denies a request from the panel and shows the outcome in place', function (): void {
+    NotificationFacade::fake();
+    $request = pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call('denyRequest', 'email_access', $request->getKey())
+        ->assertSee('Dana Whitfield requested email access')
+        ->assertSee('Denied');
+
+    expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
+});
+
+it('does not decide a request from another workspace', function (string $method): void {
+    $request = pendingEmailAccessRequest($this->user, $this->workspaceB, 'Elsewhere Thread', 'Priya Natarajan');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->call($method, 'email_access', $request->getKey())
+        ->assertNotFound();
+
+    expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING);
+})->with(['approveRequest', 'denyRequest']);
+
+it('counts unread notifications and pending requests in the trigger label', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+    pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSeeHtml('aria-label="Open inbox, 2 items need your attention"');
+});
+
+it('labels the trigger plainly when nothing needs attention', function (): void {
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSeeHtml('aria-label="Open inbox"');
+});
+
+it('explains both empty tabs and links to settings', function (): void {
+    $settingsUrl = NotificationPreferences::getUrl(tenant: $this->workspaceA);
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSee(__('notifications.panel.empty.notifications.description'))
+        ->assertSee(__('notifications.panel.empty.requests.description'))
+        ->assertSee(__('notifications.panel.empty.settings'))
+        ->assertSeeHtml('href="'.$settingsUrl.'"');
+});
+
+it('drops the clear action', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertDontSee(__('filament-notifications::database.modal.actions.clear.label'));
+});
+
+it('announces new notifications once after a refresh', function (): void {
+    $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSeeHtml('aria-live="polite"')
+        ->assertDontSee('new notification');
+
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+
+    $component->call('$refresh')->assertSee('1 new notification');
+    $component->call('$refresh')->assertDontSee('1 new notification');
+});
+
+it('does not announce notifications that were there before the panel loaded', function (): void {
+    assignTaskNotification($this->user, $this->workspaceA, 'Task in A');
+
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)->assertDontSee('new notification');
 });

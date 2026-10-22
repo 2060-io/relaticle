@@ -1,122 +1,206 @@
 @php
-    use Filament\Notifications\View\NotificationsIconAlias;
-    use Filament\Support\Enums\Alignment;
-    use Filament\Support\Icons\Heroicon;
-    use Filament\Support\View\ComponentAttributeBag as FilamentComponentAttributeBag;
-    use Filament\Support\View\Components\BadgeComponent;
-    use Illuminate\Contracts\Pagination\Paginator;
-
-    $unreadNotificationsCount = $this->getUnreadNotificationsCount();
-    $hasNotifications = $notifications->count();
-    $isPaginated = $notifications instanceof Paginator && $notifications->hasPages();
     $pollingInterval = $this->getPollingInterval();
+    $hasNotifications = collect($groups)->flatten(1)->isNotEmpty();
 @endphp
 
-<div class="fi-no-database">
-    {{-- The focus trap autofocuses the modal window itself when the slide-over opens, since the first tabbable element is the `Mark all as read` header action, which `Enter` would otherwise immediately (and irreversibly) trigger. The window must carry the `autofocus` attribute because the focus trap resolves it once, when the modal first initializes, and the window is always rendered. --}}
-    <x-filament::modal
-        :alignment="$hasNotifications ? null : Alignment::Center"
-        aria-labelledby="database-notifications.heading"
-        close-button
-        :description="$hasNotifications ? null : __('filament-notifications::database.modal.empty.description')"
-        :extra-modal-window-attribute-bag="
-            new FilamentComponentAttributeBag([
-                'autofocus' => true,
-                'tabindex' => '-1',
-            ])
-        "
-        :heading="$hasNotifications ? null : __('filament-notifications::database.modal.empty.heading')"
-        :icon="$hasNotifications ? null : Heroicon::OutlinedBellSlash"
-        :icon-alias="
-            $hasNotifications
-            ? null
-            : NotificationsIconAlias::DATABASE_MODAL_EMPTY_STATE
-        "
-        :icon-color="$hasNotifications ? null : 'gray'"
-        id="database-notifications"
-        slide-over
-        :sticky-header="$hasNotifications"
-        teleport="body"
-        width="md"
-        class="fi-no-database"
-        :attributes="
-            new FilamentComponentAttributeBag([
-                'wire:poll.' . $pollingInterval => $pollingInterval ? '' : false,
-            ])
-        "
-    >
-        @if ($trigger = $this->getTrigger())
-            <x-slot name="trigger">
-                {{ $trigger->with(['unreadNotificationsCount' => $unreadNotificationsCount]) }}
-            </x-slot>
+<div
+    class="fi-inbox"
+    @if ($pollingInterval) wire:poll.{{ $pollingInterval }} @endif
+    x-data="{
+        open: false,
+        tab: 'notifications',
+        left: 8,
+        toggle() {
+            this.open ? this.hide() : this.show()
+        },
+        show() {
+            this.measure()
+            this.open = true
+        },
+        hide(returnFocus = true) {
+            if (! this.open) {
+                return
+            }
+
+            this.open = false
+
+            if (Object.keys(this.$wire.decidedRequests).length) {
+                this.$wire.$set('decidedRequests', {})
+            }
+
+            if (returnFocus) {
+                this.$nextTick(() => this.$refs.trigger?.focus())
+            }
+        },
+        measure() {
+            const sidebar = document.querySelector('.fi-sidebar')
+
+            this.left = sidebar ? Math.round(sidebar.getBoundingClientRect().right) + 8 : 8
+        },
+        focusTab(name) {
+            this.tab = name
+            this.$nextTick(() => this.$refs['tab-' + name]?.focus())
+        },
+    }"
+    x-on:resize.window.debounce.150ms="open && measure()"
+>
+    {{ $this->getTrigger()->with(['unreadNotificationsCount' => $unreadCount, 'pendingRequestsCount' => $pendingCount]) }}
+
+    <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        @if ($newCount)
+            {{ trans_choice('notifications.panel.announce', $newCount, ['count' => $newCount]) }}
         @endif
+    </div>
 
-        @if ($hasNotifications)
-            <x-slot name="header">
-                <div>
-                    <h2
-                        id="database-notifications.heading"
-                        class="fi-modal-heading"
-                    >
-                        {{ __('filament-notifications::database.modal.heading') }}
-
-                        @if ($unreadNotificationsCount)
-                            <span
-                                {{
-                                    (new FilamentComponentAttributeBag)->color(BadgeComponent::class, 'primary')->class([
-                                        'fi-badge fi-size-xs',
-                                    ])
-                                }}
-                            >
-                                {{ $unreadNotificationsCount }}
-                            </span>
-                        @endif
+    <template x-teleport="body">
+        <div
+            x-show="open"
+            x-cloak
+            x-trap.noreturn="open"
+            x-bind:style="{ '--inbox-left': left + 'px' }"
+            x-on:click.outside="if (! $refs.trigger.contains($event.target)) hide(false)"
+            x-on:keydown.escape.window="hide()"
+            x-transition:enter="motion-safe:transition motion-safe:duration-150 motion-safe:ease-out"
+            x-transition:enter-start="motion-safe:opacity-0 motion-safe:scale-95"
+            x-transition:enter-end="motion-safe:opacity-100 motion-safe:scale-100"
+            x-transition:leave="motion-safe:transition motion-safe:duration-100 motion-safe:ease-in"
+            x-transition:leave-start="motion-safe:opacity-100"
+            x-transition:leave-end="motion-safe:opacity-0"
+            role="dialog"
+            aria-labelledby="inbox-heading"
+            tabindex="-1"
+            class="fi-inbox-panel"
+        >
+            <div class="fi-inbox-header">
+                <div class="flex items-center gap-2 px-4 pt-3">
+                    <h2 id="inbox-heading" class="text-sm font-semibold text-gray-950 dark:text-white">
+                        {{ __('notifications.panel.heading') }}
                     </h2>
 
-                    <div class="fi-ac">
-                        @if ($unreadNotificationsCount && $this->markAllNotificationsAsReadAction?->isVisible())
-                            {{ $this->markAllNotificationsAsReadAction }}
+                    <div class="ms-auto flex items-center gap-1">
+                        @if ($settingsUrl)
+                            <a
+                                {{ \Filament\Support\generate_href_html($settingsUrl) }}
+                                x-on:click="hide(false)"
+                                class="fi-inbox-icon-btn"
+                                aria-label="{{ __('notifications.panel.settings') }}"
+                                title="{{ __('notifications.panel.settings') }}"
+                            >
+                                <x-filament::icon icon="ri-settings-3-line" class="size-4" />
+                            </a>
                         @endif
 
-                        @if ($this->clearNotificationsAction?->isVisible())
-                            {{ $this->clearNotificationsAction }}
-                        @endif
+                        <button
+                            type="button"
+                            x-on:click="hide()"
+                            class="fi-inbox-icon-btn lg:hidden"
+                            aria-label="{{ __('notifications.panel.close') }}"
+                            title="{{ __('notifications.panel.close') }}"
+                        >
+                            <x-filament::icon icon="ri-close-line" class="size-4" />
+                        </button>
                     </div>
                 </div>
-            </x-slot>
 
-            <div
-                aria-label="{{ __('filament-notifications::database.modal.heading') }}"
-                role="list"
-                class="fi-no-notifications"
-            >
-                @foreach ($notifications as $notification)
+                <div class="mt-2 flex items-end justify-between gap-3 px-4">
                     <div
-                        role="listitem"
-                        wire:key="{{ $notification->getKey() }}.database-notifications.ctn"
-                        @class([
-                            'fi-no-notification-read-ctn' => ! $notification->unread(),
-                            'fi-no-notification-unread-ctn' => $notification->unread(),
-                        ])
+                        role="tablist"
+                        aria-label="{{ __('notifications.panel.tabs.label') }}"
+                        class="-mb-px flex gap-4"
+                        x-on:keydown.arrow-right.prevent="focusTab(tab === 'notifications' ? 'requests' : 'notifications')"
+                        x-on:keydown.arrow-left.prevent="focusTab(tab === 'notifications' ? 'requests' : 'notifications')"
                     >
-                        @if ($notification->unread())
-                            <span class="fi-sr-only">
-                                {{ __('filament-notifications::database.modal.unread_label') }}
-                            </span>
-                        @endif
+                        @foreach (['notifications' => $unreadCount, 'requests' => $pendingCount] as $name => $count)
+                            <button
+                                type="button"
+                                role="tab"
+                                id="inbox-tab-{{ $name }}"
+                                x-ref="tab-{{ $name }}"
+                                aria-controls="inbox-tabpanel-{{ $name }}"
+                                x-bind:aria-selected="tab === '{{ $name }}'"
+                                x-bind:tabindex="tab === '{{ $name }}' ? 0 : -1"
+                                x-on:click="tab = '{{ $name }}'"
+                                class="fi-inbox-tab"
+                                x-bind:class="tab === '{{ $name }}' && 'fi-inbox-tab-active'"
+                            >
+                                {{ __("notifications.panel.tabs.{$name}") }}
 
-                        {{ $present($notification)->inline() }}
+                                @if ($count)
+                                    <span class="fi-inbox-tab-count">{{ $count }}</span>
+                                @endif
+                            </button>
+                        @endforeach
                     </div>
-                @endforeach
+
+                    @if ($unreadCount)
+                        <button
+                            type="button"
+                            x-show="tab === 'notifications'"
+                            wire:click="markAllNotificationsAsRead"
+                            class="mb-2 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+                        >
+                            {{ __('notifications.panel.mark_all_read') }}
+                        </button>
+                    @endif
+                </div>
             </div>
 
-            @if ($isPaginated)
-                <x-slot name="footer">
-                    <x-filament::pagination :paginator="$notifications" />
-                </x-slot>
-            @endif
-        @endif
-    </x-filament::modal>
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                <div
+                    role="tabpanel"
+                    id="inbox-tabpanel-notifications"
+                    aria-labelledby="inbox-tab-notifications"
+                    x-show="tab === 'notifications'"
+                >
+                    @if ($hasNotifications)
+                        @foreach ($groups as $group => $rows)
+                            @continue($rows === [])
+
+                            <section aria-labelledby="inbox-group-{{ $group }}">
+                                <h3 id="inbox-group-{{ $group }}" class="fi-inbox-group-heading">
+                                    {{ __("notifications.panel.groups.{$group}") }}
+                                </h3>
+
+                                <ul role="list">
+                                    @foreach ($rows as $row)
+                                        @include('livewire.app.notifications.panel-notification-row')
+                                    @endforeach
+                                </ul>
+                            </section>
+                        @endforeach
+                    @else
+                        @include('livewire.app.notifications.panel-empty-state', [
+                            'icon' => 'ri-notification-3-line',
+                            'heading' => __('notifications.panel.empty.notifications.heading'),
+                            'description' => __('notifications.panel.empty.notifications.description'),
+                        ])
+                    @endif
+                </div>
+
+                <div
+                    role="tabpanel"
+                    id="inbox-tabpanel-requests"
+                    aria-labelledby="inbox-tab-requests"
+                    x-show="tab === 'requests'"
+                    x-cloak
+                >
+                    @if ($requests !== [])
+                        <ul role="list">
+                            @foreach ($requests as $request)
+                                @include('livewire.app.notifications.panel-request-row')
+                            @endforeach
+                        </ul>
+                    @else
+                        @include('livewire.app.notifications.panel-empty-state', [
+                            'icon' => 'ri-inbox-line',
+                            'heading' => __('notifications.panel.empty.requests.heading'),
+                            'description' => __('notifications.panel.empty.requests.description'),
+                        ])
+                    @endif
+                </div>
+            </div>
+        </div>
+    </template>
 
     @if ($broadcastChannel = $this->getBroadcastChannel())
         @script

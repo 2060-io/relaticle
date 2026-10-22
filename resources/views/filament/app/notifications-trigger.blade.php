@@ -1,20 +1,27 @@
 @php
-    $label = $unreadNotificationsCount
-        ? trans_choice('filament-panels::layout.actions.open_database_notifications.label_with_unread_count', $unreadNotificationsCount, ['count' => \Illuminate\Support\Number::format($unreadNotificationsCount, locale: app()->getLocale())])
-        : __('filament-panels::layout.actions.open_database_notifications.label');
+    $attentionCount = $unreadNotificationsCount + ($pendingRequestsCount ?? 0);
+    $label = $attentionCount
+        ? trans_choice('notifications.panel.open_with_count', $attentionCount, ['count' => \Illuminate\Support\Number::format($attentionCount, locale: app()->getLocale())])
+        : __('notifications.panel.open');
 @endphp
 
 <button
     type="button"
     aria-label="{{ $label }}"
     title="{{ $label }}"
+    @unless ($isPlaceholder ?? false)
+        x-ref="trigger"
+        x-on:click="toggle()"
+        aria-haspopup="dialog"
+        x-bind:aria-expanded="open"
+    @endunless
     class="fi-sidebar-notifications-btn"
 >
     {{ \Filament\Support\generate_icon_html('ri-inbox-line', size: \Filament\Support\Enums\IconSize::Medium) }}
 
-    @if ($unreadNotificationsCount)
+    @if ($attentionCount)
         <span class="fi-sidebar-notifications-btn-badge">
-            {{ \Illuminate\Support\Number::format($unreadNotificationsCount, locale: app()->getLocale()) }}
+            {{ \Illuminate\Support\Number::format($attentionCount, locale: app()->getLocale()) }}
         </span>
     @endif
 </button>
