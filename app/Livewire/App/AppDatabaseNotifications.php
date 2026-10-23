@@ -41,7 +41,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
 
     public function mount(): void
     {
-        $this->announcedThrough = $this->newestCreatedAt();
+        $this->announcedThrough = $this->inboxStats()['newest'];
     }
 
     public function getTrigger(): View
@@ -125,7 +125,8 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         $user = $this->requireUser();
         $workspace = resolve(CurrentWorkspace::class)->get();
         $notifications = $this->getNotifications();
-        $unreadCount = $this->getUnreadNotificationsCount();
+        $stats = $this->inboxStats();
+        $unreadCount = $stats['unread'];
         $pending = $workspace instanceof Workspace ? resolve(InboxRequests::class)->for($user, $workspace) : new Collection;
 
         $this->loadPresentedRelations($notifications);
@@ -136,7 +137,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             'requests' => $this->requestRows($pending),
             'unreadCount' => $unreadCount,
             'pendingCount' => $pending->count(),
-            'announcement' => $this->announcementText($this->takeNewCount()),
+            'announcement' => $this->announcementText($this->takeNewCount($stats)),
             'hasOlderNotifications' => $notifications instanceof Paginator && $notifications->hasMorePages(),
             'pageSize' => $notifications instanceof Paginator ? $notifications->perPage() : null,
             'settingsUrl' => $workspace instanceof Workspace ? NotificationPreferences::getUrl(tenant: $workspace) : null,
@@ -183,22 +184,33 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         return $user;
     }
 
-    private function takeNewCount(): int
+    /** @param  array{unread: int, fresh: int, newest: ?string}  $stats */
+    private function takeNewCount(array $stats): int
     {
-        $new = $this->announcedThrough === null
-            ? $this->getUnreadNotificationsCount()
-            : $this->getUnreadNotificationsQuery()->where('created_at', '>', $this->announcedThrough)->count();
+        $new = $this->announcedThrough === null ? $stats['unread'] : $stats['fresh'];
 
-        $this->announcedThrough = $this->newestCreatedAt();
+        $this->announcedThrough = $stats['newest'];
 
         return $new;
     }
 
-    private function newestCreatedAt(): ?string
+    /** @return array{unread: int, fresh: int, newest: ?string} */
+    private function inboxStats(): array
     {
-        $newest = $this->getNotificationsQuery()->reorder()->max('created_at');
+        $stats = $this->getNotificationsQuery()
+            ->reorder()
+            ->toBase()
+            ->selectRaw(
+                'count(*) filter (where read_at is null) as unread, count(*) filter (where read_at is null and created_at > ?) as fresh, max(created_at) as newest',
+                [$this->announcedThrough],
+            )
+            ->first();
 
-        return is_string($newest) ? $newest : null;
+        return [
+            'unread' => (int) $stats?->unread,
+            'fresh' => (int) $stats?->fresh,
+            'newest' => is_string($stats?->newest) ? $stats->newest : null,
+        ];
     }
 
     private function announcementText(int $newCount): ?string
