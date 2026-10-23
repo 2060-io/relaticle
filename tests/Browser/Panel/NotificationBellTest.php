@@ -111,6 +111,21 @@ it('falls back to the active tab when the last notification is archived', functi
         ->assertNoJavaScriptErrors();
 });
 
+it('moves focus to the active tab after marking all notifications as read', function (): void {
+    $this->withVite();
+
+    [$user, $workspace] = notifiedOwner('Send the renewal quote');
+
+    openInbox($user, $workspace)
+        ->click(INBOX_PANEL.' button:has-text("Mark all as read")')
+        ->wait(1)
+        ->assertMissing(INBOX_PANEL.' button:has-text("Mark all as read")')
+        ->assertScript('document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true"', true)
+        ->assertNoJavaScriptErrors();
+
+    expect($user->notifications()->whereNull('read_at')->count())->toBe(0);
+});
+
 it('approves an email access request from the Requests tab and shows the outcome', function (): void {
     $this->withVite();
     Feature::for(null)->activate(EmailIntegration::class);

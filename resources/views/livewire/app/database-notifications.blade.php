@@ -65,6 +65,17 @@
 
             return (candidates.find((candidate) => candidate.querySelector(selector)) ?? candidates[0])?.dataset.inboxKey
         },
+        async markAllRead() {
+            const tab = this.$refs['tab-' + this.tab]
+
+            try {
+                await this.$wire.markAllNotificationsAsRead()
+            } catch {
+                return
+            }
+
+            requestAnimationFrame(() => tab.focus())
+        },
         focusTab(name) {
             this.tab = name
             this.$nextTick(() => this.$refs['tab-' + name]?.focus())
@@ -165,7 +176,7 @@
                         <button
                             type="button"
                             x-show="tab === 'notifications'"
-                            wire:click="markAllNotificationsAsRead"
+                            x-on:click="markAllRead()"
                             class="mb-2 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
                         >
                             {{ __('notifications.panel.mark_all_read') }}
