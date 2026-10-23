@@ -5,6 +5,7 @@
         : __('notifications.panel.open');
 @endphp
 
+{{-- A bare `open` resolves to window.open once navigation has torn down the scope, so read it from $data. --}}
 <button
     type="button"
     aria-label="{{ $label }}"
@@ -13,7 +14,7 @@
         x-ref="trigger"
         x-on:click="toggle()"
         aria-haspopup="dialog"
-        x-bind:aria-expanded="open"
+        x-bind:aria-expanded="$data.open"
     @endunless
     class="fi-sidebar-notifications-btn"
 >
