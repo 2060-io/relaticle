@@ -67,11 +67,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
     /** @return MorphMany<NotificationRow, User> */
     public function getNotificationsQuery(): MorphMany
     {
-        $user = $this->getUser();
-
-        abort_unless($user instanceof User, 401);
-
-        return $user->notifications()
+        return $this->requireUser()->notifications()
             ->visibleIn(resolve(CurrentWorkspace::class)->get())
             ->orderByDesc('id');
     }
@@ -104,12 +100,13 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             return;
         }
 
-        $archive = resolve(ArchiveNotification::class);
-        $user = $this->requireUser();
+        $row = $this->getNotificationsQuery()->whereKey($id)->first();
 
-        foreach ($this->getNotificationsQuery()->where('id', $id)->get() as $row) {
-            $archive->execute($user, $row);
+        if (! $row instanceof NotificationRow) {
+            return;
         }
+
+        resolve(ArchiveNotification::class)->execute($this->requireUser(), $row);
     }
 
     public function forgetDecidedRequests(): void
