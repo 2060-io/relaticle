@@ -7,7 +7,6 @@ namespace Relaticle\EmailIntegration\Actions;
 use App\Models\User;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
-use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 
 final readonly class CancelEmailAccessRequestAction
 {
@@ -22,12 +21,6 @@ final readonly class CancelEmailAccessRequestAction
             return false;
         }
 
-        $cancelled = $this->decide->execute($accessRequest, EmailAccessRequestStatus::CANCELLED, $actor);
-
-        if ($cancelled) {
-            EmailAccessRequestedNotification::dismissFor($accessRequest);
-        }
-
-        return $cancelled;
+        return $this->decide->execute($accessRequest, EmailAccessRequestStatus::CANCELLED, $actor);
     }
 }

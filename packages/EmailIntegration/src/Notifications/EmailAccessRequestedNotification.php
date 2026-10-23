@@ -13,7 +13,6 @@ use App\Notifications\InboxNotification;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Notifications\Messages\MailMessage;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccessRequestsPage;
@@ -110,28 +109,6 @@ final class EmailAccessRequestedNotification extends InboxNotification
                 self::action('accept', 'accept', 'success', 'approve-email-access-request', ['requestId' => $row->subject_id]),
                 self::action('decline', 'decline', 'warning', 'deny-email-access-request', ['requestId' => $row->subject_id]),
             ]);
-    }
-
-    /**
-     * Delete the owner's bell row for this request. Same outcome as the
-     * notification close (X) action: the row is removed, not marked read.
-     */
-    public static function dismissFor(EmailAccessRequest $request): void
-    {
-        $owner = $request->owner ?? User::query()->whereKey($request->owner_id)->first();
-
-        if (! $owner instanceof User) {
-            return;
-        }
-
-        $owner->notifications()
-            ->where('type', self::class)
-            ->where(fn (Builder $rows): Builder => $rows
-                ->where(fn (Builder $current): Builder => $current
-                    ->where('subject_type', $request->getMorphClass())
-                    ->where('subject_id', $request->getKey()))
-                ->orWhere('data->viewData->request_id', (string) $request->getKey()))
-            ->delete();
     }
 
     /** @param  array<string, mixed>  $eventData */

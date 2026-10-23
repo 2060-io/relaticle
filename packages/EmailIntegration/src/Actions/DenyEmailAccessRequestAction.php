@@ -7,7 +7,6 @@ namespace Relaticle\EmailIntegration\Actions;
 use App\Models\User;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
-use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRespondedNotification;
 
 final readonly class DenyEmailAccessRequestAction
@@ -33,8 +32,6 @@ final readonly class DenyEmailAccessRequestAction
         if (! $denied) {
             return false;
         }
-
-        EmailAccessRequestedNotification::dismissFor($accessRequest);
 
         $requester->notify(new EmailAccessRespondedNotification($accessRequest));
 

@@ -443,8 +443,6 @@ describe('access request approve and deny from the reader overlay', function ():
             'owner_id' => $this->owner->id,
         ]);
 
-        inboxAccessRequestNotice($this->owner, $request);
-
         livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,
             'pageClass' => ViewPeople::class,
@@ -458,8 +456,7 @@ describe('access request approve and deny from the reader overlay', function ():
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
     });
 
     it('denies a pending request from the relation manager overlay', function (): void {
@@ -478,8 +475,6 @@ describe('access request approve and deny from the reader overlay', function ():
             'owner_id' => $this->owner->id,
         ]);
 
-        inboxAccessRequestNotice($this->owner, $request);
-
         livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,
             'pageClass' => ViewPeople::class,
@@ -491,8 +486,7 @@ describe('access request approve and deny from the reader overlay', function ():
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
     });
 });
 

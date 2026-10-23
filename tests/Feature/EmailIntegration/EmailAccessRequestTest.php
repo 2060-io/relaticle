@@ -88,50 +88,20 @@ describe('ApproveEmailAccessRequestAction', function (): void {
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
     });
 
-    it('removes the owner access-request notification when approved', function (): void {
+    it('keeps an archived legacy request notice when approved', function (): void {
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
-
-        inboxAccessRequestNotice($this->owner, $request);
-
-        expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1);
-
-        resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
-
-        expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
-    });
-
-    it('leaves other pending access-request notifications in place', function (): void {
-        $otherEmail = Email::factory()->private()->create([
-            'workspace_id' => $this->workspace->id,
-            'user_id' => $this->owner->id,
-            'connected_account_id' => $this->account->getKey(),
-        ]);
-
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        $otherRequest = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $otherEmail->getKey(),
-        ]);
-
-        inboxAccessRequestNotice($this->owner, $request);
-        inboxAccessRequestNotice($this->owner, $otherRequest);
+        $inbox = inboxAccessRequestNotice($this->owner, $request);
+        $bell = bellAccessRequestNotice($this->owner, $request);
+        $inbox->update(['archived_at' => now()]);
+        $bell->update(['archived_at' => now()]);
 
         resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
 
-        $remaining = $this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->get();
-
-        expect($remaining)->toHaveCount(1)
-            ->and($remaining->first()->subject_id)->toBe($otherRequest->getKey());
+        expect($this->owner->notifications()->pluck('id')->all())->toEqualCanonicalizing([$inbox->getKey(), $bell->getKey()]);
     });
 
     it('sends a notification to the requester', function (): void {
@@ -335,52 +305,6 @@ describe('DenyEmailAccessRequestAction', function (): void {
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
     });
 
-    it('removes the owner access-request notification when denied', function (): void {
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        inboxAccessRequestNotice($this->owner, $request);
-
-        expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1);
-
-        resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
-
-        expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
-    });
-
-    it('leaves other pending access-request notifications in place', function (): void {
-        $otherEmail = Email::factory()->private()->create([
-            'workspace_id' => $this->workspace->id,
-            'user_id' => $this->owner->id,
-            'connected_account_id' => $this->account->getKey(),
-        ]);
-
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        $otherRequest = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $otherEmail->getKey(),
-        ]);
-
-        inboxAccessRequestNotice($this->owner, $request);
-        inboxAccessRequestNotice($this->owner, $otherRequest);
-
-        resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
-
-        $remaining = $this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->get();
-
-        expect($remaining)->toHaveCount(1)
-            ->and($remaining->first()->subject_id)->toBe($otherRequest->getKey());
-    });
-
     it('sends a notification to the requester', function (): void {
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
@@ -538,20 +462,6 @@ describe('CancelEmailAccessRequestAction', function (): void {
 
         expect($logged)->toHaveCount(1)
             ->and($logged->first()->causer_id)->toBe($this->requester->getKey());
-    });
-
-    it('removes the owner access-request notification when cancelled', function (): void {
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        inboxAccessRequestNotice($this->owner, $request);
-
-        resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
-
-        expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
     });
 
     it('does nothing when request is already approved', function (): void {
@@ -775,44 +685,6 @@ describe('EmailAccessRequestedNotification', function (): void {
         ]);
 
         expect(new EmailAccessRequestedNotification($request)->shouldSend($this->owner, 'mail'))->toBeFalse();
-    });
-
-    it('dismisses a bell notice written before the inbox, found by its payload', function (): void {
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        bellAccessRequestNotice($this->owner, $request);
-        $other = bellAccessRequestNotice($this->owner, EmailAccessRequest::factory()->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]));
-
-        resolve(ApproveEmailAccessRequestAction::class)->execute($request, $this->owner);
-
-        expect($this->owner->notifications()->pluck('id')->all())->toBe([$other->getKey()]);
-    });
-
-    it('dismisses an inbox notice written before this change, found by its subject', function (): void {
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        inboxAccessRequestNotice($this->owner, $request);
-        $other = inboxAccessRequestNotice($this->owner, EmailAccessRequest::factory()->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]));
-
-        resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
-
-        expect($this->owner->notifications()->pluck('id')->all())->toBe([$other->getKey()]);
     });
 
     it('mails only while the request is still pending when the queued job runs', function (): void {
@@ -1096,8 +968,6 @@ describe('email:expire-access-requests', function (): void {
             'email_id' => $this->email->getKey(),
             'expires_at' => null,
         ]);
-        inboxAccessRequestNotice($this->owner, $overdue);
-
         $this->artisan('email:expire-access-requests')
             ->expectsOutputToContain("Expiring access request `{$overdue->getKey()}`")
             ->expectsOutputToContain('Expired 1 access request(s).')
@@ -1111,8 +981,7 @@ describe('email:expire-access-requests', function (): void {
             ->and($current->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
             ->and($noDeadline->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
             ->and($denied->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->requester->notifications()->where('type', EmailAccessRespondedNotification::class)->count())->toBe(1)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+            ->and($this->requester->notifications()->where('type', EmailAccessRespondedNotification::class)->count())->toBe(1);
 
         $this->artisan('email:expire-access-requests')
             ->expectsOutputToContain('Expired 0 access request(s).')

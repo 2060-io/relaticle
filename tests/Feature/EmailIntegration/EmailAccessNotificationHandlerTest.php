@@ -184,7 +184,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        inboxAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -194,8 +193,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
     });
 
     it('denies a pending request from the notification event', function (): void {
@@ -205,7 +203,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        inboxAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -215,8 +212,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
     });
 
     it('closes the overlay after approving from the reader bar', function (): void {
@@ -226,7 +222,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        inboxAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -238,8 +233,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
     });
 
     it('closes the overlay after denying from the reader bar', function (): void {
@@ -249,7 +243,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        inboxAccessRequestNotice($this->owner, $request);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -261,8 +254,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
     });
 
     it('ignores approve for requests the viewer does not own', function (): void {

@@ -10,7 +10,6 @@ use Illuminate\Console\Command;
 use Relaticle\EmailIntegration\Actions\DecideEmailAccessRequest;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
-use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRespondedNotification;
 
 #[Description('Expire pending email access requests that passed their deadline')]
@@ -33,7 +32,6 @@ final class ExpireEmailAccessRequestsCommand extends Command
                 continue;
             }
 
-            EmailAccessRequestedNotification::dismissFor($request);
             $request->requester->notify(new EmailAccessRespondedNotification($request));
 
             $expired++;

@@ -54,11 +54,7 @@ final readonly class RequestEmailAccessAction
             ->with('owner')
             ->where('requester_id', $requester->getKey())
             ->overdue()
-            ->each(function (EmailAccessRequest $overdue): void {
-                if ($this->decide->execute($overdue, EmailAccessRequestStatus::EXPIRED, null)) {
-                    EmailAccessRequestedNotification::dismissFor($overdue);
-                }
-            });
+            ->each(fn (EmailAccessRequest $overdue): bool => $this->decide->execute($overdue, EmailAccessRequestStatus::EXPIRED, null));
     }
 
     private function refreshOwnerBadge(?User $owner): void
