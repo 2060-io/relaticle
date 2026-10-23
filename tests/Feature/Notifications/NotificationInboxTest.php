@@ -29,7 +29,6 @@ use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
-use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Notifications\EmailSharedNotification;
 use Relaticle\EmailIntegration\Services\EmailSharingService;
 use Tests\Helpers\GroupedInboxNotification;
@@ -97,31 +96,6 @@ function sharedEmailNotices(User $viewer, Workspace $workspace, int $count): voi
             'data' => ['email_subject' => $email->subject],
         ]);
     }
-}
-
-function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $subject, string $requesterName, EmailAccessRequestStatus $status = EmailAccessRequestStatus::PENDING): EmailAccessRequest
-{
-    $requester = User::factory()->create(['name' => $requesterName]);
-    $workspace->users()->attach($requester, ['role' => 'member']);
-
-    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
-        'workspace_id' => $workspace->id,
-        'user_id' => $owner->id,
-    ]));
-
-    $email = Email::factory()->private()->create([
-        'workspace_id' => $workspace->id,
-        'user_id' => $owner->id,
-        'connected_account_id' => $account->getKey(),
-        'subject' => $subject,
-    ]);
-
-    return EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-        'requester_id' => $requester->id,
-        'owner_id' => $owner->id,
-        'email_id' => $email->getKey(),
-        'status' => $status,
-    ]);
 }
 
 beforeEach(function (): void {

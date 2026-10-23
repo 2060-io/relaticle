@@ -44,8 +44,10 @@ use Pest\Browser\Api\AwaitableWebpage;
 use Pest\Browser\Playwright\Playwright;
 use Relaticle\EmailIntegration\Controllers\RedirectController;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
+use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Jobs\StoreEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
@@ -205,6 +207,33 @@ function bindMailboxOAuthWorkspace(User $user, ?Workspace $workspace = null): vo
     throw_unless($workspace instanceof Workspace, RuntimeException::class, 'bindMailboxOAuthWorkspace requires a workspace.');
 
     session()->put(RedirectController::WORKSPACE_SESSION_KEY, $workspace->getKey());
+}
+
+/** @param  array<string, mixed>  $attributes */
+function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $subject, string $requesterName, EmailAccessRequestStatus $status = EmailAccessRequestStatus::PENDING, array $attributes = []): EmailAccessRequest
+{
+    $requester = User::factory()->create(['name' => $requesterName]);
+    $workspace->users()->attach($requester, ['role' => 'member']);
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $owner->id,
+    ]));
+
+    $email = Email::factory()->private()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $owner->id,
+        'connected_account_id' => $account->getKey(),
+        'subject' => $subject,
+    ]);
+
+    return EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+        'requester_id' => $requester->id,
+        'owner_id' => $owner->id,
+        'email_id' => $email->getKey(),
+        'status' => $status,
+        ...$attributes,
+    ]);
 }
 
 function denyRequestMidDecision(EmailAccessRequest $request): void
