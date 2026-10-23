@@ -207,13 +207,7 @@ trait InteractsWithEmailAccessRequests
                     return;
                 }
 
-                $decided = resolve(ApproveEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
-                unset($this->pendingIncomingCount);
-                $this->resetTable();
-                $this->dispatch('access-requests:changed');
-                $this->dispatch('databaseNotificationsSent');
-
-                $this->notifyDecision($decided, 'approved');
+                $this->afterDecision(resolve(ApproveEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser()), 'approved');
             });
     }
 
@@ -238,13 +232,7 @@ trait InteractsWithEmailAccessRequests
                     return;
                 }
 
-                $decided = resolve(DenyEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
-                unset($this->pendingIncomingCount);
-                $this->resetTable();
-                $this->dispatch('access-requests:changed');
-                $this->dispatch('databaseNotificationsSent');
-
-                $this->notifyDecision($decided, 'denied');
+                $this->afterDecision(resolve(DenyEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser()), 'denied');
             });
     }
 
@@ -269,13 +257,18 @@ trait InteractsWithEmailAccessRequests
                     return;
                 }
 
-                $decided = resolve(CancelEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser());
-                $this->resetTable();
-                $this->dispatch('access-requests:changed');
-                $this->dispatch('databaseNotificationsSent');
-
-                $this->notifyDecision($decided, 'cancelled');
+                $this->afterDecision(resolve(CancelEmailAccessRequestAction::class)->execute($accessRequest, $this->authUser()), 'cancelled');
             });
+    }
+
+    private function afterDecision(bool $decided, string $outcome): void
+    {
+        unset($this->pendingIncomingCount);
+        $this->resetTable();
+        $this->dispatch('access-requests:changed');
+        $this->dispatch('databaseNotificationsSent');
+
+        $this->notifyDecision($decided, $outcome);
     }
 
     private function notifyDecision(bool $decided, string $outcome): void
