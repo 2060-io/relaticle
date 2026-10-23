@@ -4,20 +4,28 @@ declare(strict_types=1);
 
 use App\Enums\Notifications\NotificationReason;
 use App\Filament\Pages\Dashboard;
+use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager;
 use App\Models\Notification as NotificationRow;
+use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Mail\Markdown;
+use Illuminate\Notifications\ChannelManager;
+use Illuminate\Notifications\Events\NotificationSent;
+use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
-use Relaticle\EmailIntegration\Actions\UpdateEmailSharingAction;
+use Illuminate\Support\Facades\Queue;
+use Livewire\Features\SupportTesting\Testable;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
+use Relaticle\EmailIntegration\Filament\Concerns\HasEmailReaderActions;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Notifications\EmailSharedNotification;
 use Relaticle\EmailIntegration\Services\EmailSharingService;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
-mutates(UpdateEmailSharingAction::class, EmailSharedNotification::class);
+mutates(HasEmailReaderActions::class, EmailSharedNotification::class);
 
 beforeEach(function (): void {
     $this->owner = User::factory()->withWorkspace()->create();
@@ -40,16 +48,38 @@ beforeEach(function (): void {
         'connected_account_id' => $account->getKey(),
         'subject' => 'Renewal terms',
     ]);
+
+    $this->person = People::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'creator_id' => $this->owner->id,
+    ]);
+    $this->person->emails()->attach($this->email->getKey());
+
+    $this->mailedNotices = collect();
+    Event::listen(NotificationSent::class, function (NotificationSent $sent): void {
+        if ($sent->channel === 'mail' && $sent->notification instanceof EmailSharedNotification) {
+            $this->mailedNotices->push($sent->notification);
+        }
+    });
 });
 
-function saveSharing(array $members, EmailPrivacyTier $tier = EmailPrivacyTier::FULL): void
+/** @param  list<array{tier: EmailPrivacyTier, members: list<User>}>  $rows */
+function saveSharingRows(array $rows, EmailPrivacyTier $emailTier = EmailPrivacyTier::METADATA_ONLY): Testable
 {
-    resolve(UpdateEmailSharingAction::class)->execute(
-        test()->email,
-        test()->owner,
-        EmailPrivacyTier::METADATA_ONLY,
-        array_map(fn (User $member): array => ['shared_with' => $member->getKey(), 'tier' => $tier->value], $members),
-    );
+    return livewire(EmailsRelationManager::class, ['ownerRecord' => test()->person, 'pageClass' => ViewPeople::class])
+        ->callAction('manageSharing', data: [
+            'privacy_tier' => $emailTier->value,
+            'shares' => array_map(fn (array $row): array => [
+                'tier' => $row['tier']->value,
+                'shared_with' => array_map(fn (User $member): string => $member->getKey(), $row['members']),
+            ], $rows),
+        ], arguments: ['emailId' => test()->email->getKey()]);
+}
+
+/** @param  list<User>  $members */
+function saveSharing(array $members, EmailPrivacyTier $tier = EmailPrivacyTier::FULL, EmailPrivacyTier $emailTier = EmailPrivacyTier::METADATA_ONLY): Testable
+{
+    return saveSharingRows($members === [] ? [] : [['tier' => $tier, 'members' => $members]], $emailTier);
 }
 
 it('notifies a member the email is newly shared with, once', function (): void {
@@ -82,24 +112,23 @@ it('notifies only the member added on a later save', function (): void {
     Notification::assertNotSentTo($this->alice, EmailSharedNotification::class);
 });
 
-it('notifies a member once when listed in two rows', function (): void {
+it('refuses a member listed in two rows and notifies nobody', function (): void {
     Notification::fake();
 
-    resolve(UpdateEmailSharingAction::class)->execute($this->email, $this->owner, EmailPrivacyTier::METADATA_ONLY, [
-        ['shared_with' => [$this->alice->getKey()], 'tier' => EmailPrivacyTier::FULL->value],
-        ['shared_with' => $this->alice->getKey(), 'tier' => EmailPrivacyTier::SUBJECT->value],
-    ]);
+    saveSharingRows([
+        ['tier' => EmailPrivacyTier::FULL, 'members' => [$this->alice]],
+        ['tier' => EmailPrivacyTier::SUBJECT, 'members' => [$this->alice]],
+    ])->assertHasActionErrors();
 
-    Notification::assertSentToTimes($this->alice, EmailSharedNotification::class, 1);
+    Notification::assertNothingSent();
 });
 
-it('never notifies the sharer', function (): void {
+it('offers the sharer no share and notifies nobody when the sharer is submitted', function (): void {
     Notification::fake();
 
-    saveSharing([$this->owner, $this->alice]);
+    saveSharing([$this->owner, $this->alice])->assertHasActionErrors();
 
-    Notification::assertNotSentTo($this->owner, EmailSharedNotification::class);
-    Notification::assertSentToTimes($this->alice, EmailSharedNotification::class, 1);
+    Notification::assertNothingSent();
 });
 
 it('notifies nobody and keeps the old shares when a member is outside the workspace', function (): void {
@@ -109,7 +138,7 @@ it('notifies nobody and keeps the old shares when a member is outside the worksp
 
     Notification::fake();
 
-    expect(fn () => saveSharing([$this->bob, $outsider]))->toThrow(HttpException::class);
+    saveSharing([$this->bob, $outsider])->assertHasActionErrors();
 
     Notification::assertNothingSent();
     $this->assertDatabaseHas('email_shares', ['email_id' => $this->email->getKey(), 'shared_with' => $this->alice->getKey()]);
@@ -153,10 +182,10 @@ it('sends a Participants-only share without the subject in the bell or the mail'
     saveSharing([$this->alice], EmailPrivacyTier::METADATA_ONLY);
 
     $row = $this->alice->notifications()->where('type', EmailSharedNotification::class)->sole();
+    $mail = $this->mailedNotices->sole()->toMail($this->alice);
 
     $this->actingAs($this->alice);
     $presented = EmailSharedNotification::present($row);
-    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice)->toMail($this->alice);
 
     expect($row->data['email_subject'])->toBeNull()
         ->and($presented->getTitle())->toBe($this->owner->name.' shared an email with you')
@@ -176,26 +205,27 @@ it('sends nothing for a Private share', function (): void {
 });
 
 it('sends nothing when the share is revoked before the notice goes out', function (): void {
-    $notification = new EmailSharedNotification($this->email, $this->owner, $this->alice);
-    $sharing = resolve(EmailSharingService::class);
+    Queue::fake();
 
-    $sharing->shareEmail($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL);
-    expect($notification->shouldSend($this->alice, 'mail'))->toBeTrue();
+    saveSharing([$this->alice], emailTier: EmailPrivacyTier::PRIVATE);
+    saveSharing([], emailTier: EmailPrivacyTier::PRIVATE);
 
-    $sharing->revokeShare($this->email, $this->alice);
+    Queue::pushed(SendQueuedNotifications::class)->each(
+        fn (SendQueuedNotifications $job) => unserialize(serialize($job))->handle(resolve(ChannelManager::class)),
+    );
 
-    expect($notification->shouldSend($this->alice, 'mail'))->toBeFalse()
-        ->and($notification->shouldSend($this->alice, 'database'))->toBeFalse();
+    expect($this->alice->notifications()->count())->toBe(0)
+        ->and($this->mailedNotices)->toBeEmpty();
 });
 
 it('gives a Full share a reader link in the bell and the mail', function (): void {
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
     $row = $this->alice->notifications()->where('type', EmailSharedNotification::class)->sole();
+    $mail = $this->mailedNotices->sole()->toMail($this->alice);
 
     $this->actingAs($this->alice);
     $presented = EmailSharedNotification::present($row);
-    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice)->toMail($this->alice);
     $link = Dashboard::getUrl(['email' => $this->email->getKey()], panel: 'app', tenant: $this->workspace);
 
     expect($presented->getBody())->toBe('Renewal terms')
@@ -210,7 +240,7 @@ it('renders Markdown in the subject and the sharer name as text', function (): v
     $this->email->update(['subject' => '[x](https://evil.example) and www.evil.example and bad@evil.example']);
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
-    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice)->toMail($this->alice)->render();
+    $html = (string) $this->mailedNotices->sole()->toMail($this->alice)->render();
 
     expect($html)->not->toContain('<a href="https://evil.example')
         ->not->toContain('<a href="http://www.evil.example')
@@ -223,7 +253,7 @@ it('keeps Markdown escapes out of the plain text mail', function (): void {
     $this->email->update(['subject' => 'Re: Q3 (draft)']);
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
-    $mail = new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice)->toMail($this->alice);
+    $mail = $this->mailedNotices->sole()->toMail($this->alice);
     $text = (string) resolve(Markdown::class)->renderText($mail->markdown, $mail->data());
 
     expect($text)->toContain('J. Smith')
@@ -236,7 +266,7 @@ it('keeps quotes and ampersands readable in the mail', function (): void {
     $this->email->update(['subject' => "Let's meet about Q&A <draft>"]);
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
-    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice)->toMail($this->alice)->render();
+    $html = (string) $this->mailedNotices->sole()->toMail($this->alice)->render();
 
     expect($html)->toContain("Olivia O'Brien")
         ->toContain("Let's meet about Q&amp;A &lt;draft&gt;")
@@ -248,7 +278,7 @@ it('keeps quotes and ampersands readable in the mail', function (): void {
 it('leaves the email tier unchanged when a member is rejected', function (): void {
     $outsider = User::factory()->withWorkspace()->create();
 
-    expect(fn () => saveSharing([$outsider]))->toThrow(HttpException::class);
+    saveSharing([$outsider])->assertHasActionErrors();
 
     expect($this->email->fresh()->privacy_tier)->toBe(EmailPrivacyTier::PRIVATE);
 });
