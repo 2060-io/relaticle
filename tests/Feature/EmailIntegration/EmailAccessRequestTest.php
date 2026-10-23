@@ -920,7 +920,7 @@ describe('open requests', function (): void {
 
         expect(EmailAccessRequest::query()->open()->pluck('id')->sort()->values()->all())
             ->toBe(collect([$current, $noDeadline])->pluck('id')->sort()->values()->all())
-            ->and(EmailAccessRequest::query()->pendingIncomingFor($this->owner)->count())->toBe(2)
+            ->and(EmailAccessRequest::query()->pendingIncomingFor($this->owner, $this->workspace)->count())->toBe(2)
             ->and([$current->isOpen(), $noDeadline->isOpen(), $overdue->isOpen(), $denied->isOpen()])->toBe([true, true, false, false]);
     });
 });

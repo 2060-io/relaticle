@@ -96,12 +96,13 @@ final class EmailAccessRequest extends Model
      * @return Builder<self>
      */
     #[Scope]
-    protected function pendingIncomingFor(Builder $query, User $owner): Builder
+    protected function pendingIncomingFor(Builder $query, User $owner, Workspace $workspace): Builder
     {
         return $query
             ->where('owner_id', $owner->getKey())
+            ->where('workspace_id', $workspace->getKey())
             ->open()
-            ->whereHas('email', fn (Builder $email): Builder => $email->where('workspace_id', $owner->current_workspace_id));
+            ->whereHas('email');
     }
 
     public function deadline(): ?CarbonImmutable

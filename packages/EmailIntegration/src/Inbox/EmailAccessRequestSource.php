@@ -74,7 +74,7 @@ final readonly class EmailAccessRequestSource implements RequestSource
     /** @return Builder<EmailAccessRequest> */
     private function pending(User $user, Workspace $workspace): Builder
     {
-        return $this->owned($user, $workspace)->open()->whereHas('email');
+        return EmailAccessRequest::query()->pendingIncomingFor($user, $workspace);
     }
 
     private function find(User $user, Workspace $workspace, string $requestId): EmailAccessRequest
