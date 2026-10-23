@@ -7,6 +7,7 @@ use App\Filament\Pages\Dashboard;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Notification;
 use Relaticle\EmailIntegration\Actions\UpdateEmailSharingAction;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
@@ -215,6 +216,19 @@ it('renders Markdown in the subject and the sharer name as text', function (): v
         ->not->toContain('<a href="http://www.evil.example')
         ->not->toContain('<a href="mailto:bad@evil.example')
         ->toContain('[x](https://evil.example)');
+});
+
+it('keeps Markdown escapes out of the plain text mail', function (): void {
+    $this->owner->update(['name' => 'J. Smith']);
+    $this->email->update(['subject' => 'Re: Q3 (draft)']);
+    saveSharing([$this->alice], EmailPrivacyTier::FULL);
+
+    $mail = new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice);
+    $text = (string) resolve(Markdown::class)->renderText($mail->markdown, $mail->data());
+
+    expect($text)->toContain('J. Smith')
+        ->toContain('Re: Q3 (draft)')
+        ->not->toContain('\\');
 });
 
 it('keeps quotes and ampersands readable in the mail', function (): void {
