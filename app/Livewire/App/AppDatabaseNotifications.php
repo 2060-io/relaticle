@@ -313,5 +313,13 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             : $notifications;
 
         $rows->load(['actor', 'workspace', 'subject']);
+
+        $rows->groupBy('type')->each(function (EloquentCollection $ofType, string $type): void {
+            if (! is_subclass_of($type, InboxNotification::class) || $type::presentingRelations() === []) {
+                return;
+            }
+
+            new EloquentCollection($ofType->pluck('subject')->filter()->values()->all())->loadMissing($type::presentingRelations());
+        });
     }
 }

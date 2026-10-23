@@ -411,8 +411,13 @@ final class Email extends Model
 
     public function appUrlFor(User $viewer): string
     {
+        return $this->appUrl($viewer->can('viewBody', $this));
+    }
+
+    public function appUrl(bool $openReader): string
+    {
         return Dashboard::getUrl(
-            $viewer->can('viewBody', $this) ? ['email' => $this->getKey()] : [],
+            $openReader ? ['email' => $this->getKey()] : [],
             panel: 'app',
             tenant: $this->workspace,
         );

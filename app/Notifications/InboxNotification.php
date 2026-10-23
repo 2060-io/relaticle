@@ -35,6 +35,12 @@ abstract class InboxNotification extends Notification implements ShouldQueueAfte
 
     abstract public static function present(NotificationRow $row): FilamentNotification;
 
+    /** @return list<string> */
+    public static function presentingRelations(): array
+    {
+        return [];
+    }
+
     public function actor(): ?User
     {
         return null;

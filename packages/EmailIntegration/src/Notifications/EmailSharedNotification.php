@@ -27,6 +27,12 @@ final class EmailSharedNotification extends InboxNotification
         public readonly User $recipient,
     ) {}
 
+    /** @return list<string> */
+    public static function presentingRelations(): array
+    {
+        return ['workspace', 'shares', 'participants'];
+    }
+
     public function workspace(): Workspace
     {
         return $this->email->workspace;
@@ -110,16 +116,18 @@ final class EmailSharedNotification extends InboxNotification
             return $notification;
         }
 
+        $canViewBody = $viewer->can('viewBody', $email);
+
         if ($viewer->can('viewSubject', $email) && is_string($emailSubject) && $emailSubject !== '') {
             $notification->body(e($emailSubject));
         }
 
-        if ($viewer->can('viewBody', $email)) {
+        if ($canViewBody) {
             $notification->actions([
                 Action::make('viewEmail')
                     ->button()
                     ->label(__(self::LANG.'.actions.view'))
-                    ->url($email->appUrlFor($viewer))
+                    ->url($email->appUrl(openReader: true))
                     ->markAsRead(),
             ]);
         }

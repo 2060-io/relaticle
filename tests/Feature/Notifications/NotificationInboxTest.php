@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Actions\Notifications\ArchiveNotification;
 use App\Actions\Task\NotifyTaskAssignees;
+use App\Enums\Notifications\NotificationReason;
 use App\Features\EmailIntegration;
 use App\Features\OnboardSeed;
 use App\Filament\Pages\NotificationPreferences;
@@ -17,6 +18,7 @@ use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Notifications\DatabaseNotification as FilamentDatabaseNotification;
 use Filament\Notifications\Notification as FilamentNotification;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Str;
@@ -28,6 +30,8 @@ use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Notifications\EmailSharedNotification;
+use Relaticle\EmailIntegration\Services\EmailSharingService;
 use Tests\Helpers\GroupedInboxNotification;
 
 mutates(AppDatabaseNotifications::class, ArchiveNotification::class);
@@ -60,6 +64,39 @@ function insertFilamentNotification(User $user, ?string $workspaceId, string $ti
     ]);
 
     return $id;
+}
+
+function sharedEmailNotices(User $viewer, Workspace $workspace, int $count): void
+{
+    $owner = User::factory()->create();
+    $workspace->users()->attach($owner, ['role' => 'member']);
+
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $owner->id,
+    ]));
+
+    foreach (range(1, $count) as $number) {
+        $email = Email::factory()->private()->create([
+            'workspace_id' => $workspace->id,
+            'user_id' => $owner->id,
+            'connected_account_id' => $account->getKey(),
+        ]);
+
+        resolve(EmailSharingService::class)->shareEmail($email, $owner, $viewer, EmailPrivacyTier::FULL);
+
+        Notification::factory()->create([
+            'type' => EmailSharedNotification::class,
+            'notifiable_type' => $viewer->getMorphClass(),
+            'notifiable_id' => $viewer->getKey(),
+            'workspace_id' => $workspace->id,
+            'actor_id' => $owner->id,
+            'reason' => NotificationReason::Shared,
+            'subject_type' => $email->getMorphClass(),
+            'subject_id' => $email->getKey(),
+            'data' => ['email_subject' => $email->subject],
+        ]);
+    }
 }
 
 function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $subject, string $requesterName, EmailAccessRequestStatus $status = EmailAccessRequestStatus::PENDING): EmailAccessRequest
@@ -578,4 +615,27 @@ it('describes the empty requests tab without naming email features', function ()
 it('renders the inbox panel as a modal dialog', function (): void {
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
         ->assertSeeHtml('aria-modal="true"');
+});
+
+it('renders shared email rows without per-row queries beyond the synced copy checks', function (): void {
+    $queriesPerRender = function (): Collection {
+        $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $component->call('$refresh');
+
+        return collect(DB::getQueryLog())->pluck('query');
+    };
+    $isSyncedCopyCheck = fn (string $query): bool => str_starts_with($query, 'select exists(select * from "emails"');
+
+    sharedEmailNotices($this->user, $this->workspaceA, 5);
+    $withFive = $queriesPerRender();
+
+    sharedEmailNotices($this->user, $this->workspaceA, 45);
+    $withFifty = $queriesPerRender();
+
+    expect($withFifty->reject($isSyncedCopyCheck))->toHaveCount($withFive->reject($isSyncedCopyCheck)->count())
+        ->and($withFifty->filter($isSyncedCopyCheck))->toHaveCount(100);
 });
