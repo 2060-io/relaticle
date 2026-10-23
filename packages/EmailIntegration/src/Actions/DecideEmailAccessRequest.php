@@ -15,35 +15,51 @@ final readonly class DecideEmailAccessRequest
 {
     public function execute(EmailAccessRequest $request, EmailAccessRequestStatus $outcome, ?User $actor): bool
     {
-        $decidedAt = now();
-        $decidedBy = $actor?->getKey();
+        return DB::transaction(function () use ($request, $outcome, $actor): bool {
+            $decidedAt = now();
+            $decidedBy = $actor?->getKey();
 
-        $decided = EmailAccessRequest::query()
-            ->whereKey($request->getKey())
-            ->when(
-                $outcome === EmailAccessRequestStatus::EXPIRED,
-                fn (Builder $pending): Builder => $pending->overdue(),
-                fn (Builder $pending): Builder => $pending->open(),
-            )
-            ->update([
-                'status' => $outcome->value,
+            $decided = EmailAccessRequest::query()
+                ->whereKey($request->getKey())
+                ->when(
+                    $outcome === EmailAccessRequestStatus::EXPIRED,
+                    fn (Builder $pending): Builder => $pending->overdue(),
+                    fn (Builder $pending): Builder => $pending->open(),
+                )
+                ->update([
+                    'status' => $outcome->value,
+                    'decided_at' => $decidedAt,
+                    'decided_by' => $decidedBy,
+                ]);
+
+            if ($decided === 0) {
+                return false;
+            }
+
+            $request->forceFill([
+                'status' => $outcome,
                 'decided_at' => $decidedAt,
                 'decided_by' => $decidedBy,
-            ]);
+            ])->syncOriginal();
 
-        if ($decided === 0) {
-            return false;
+            $this->logOutcome($request, $outcome, $actor);
+            $this->refreshOwnerBadge($request);
+
+            return true;
+        });
+    }
+
+    private function logOutcome(EmailAccessRequest $request, EmailAccessRequestStatus $outcome, ?User $actor): void
+    {
+        $activity = activity()->performedOn($request)->event($outcome->value);
+
+        if ($actor instanceof User) {
+            $activity->causedBy($actor);
+        } else {
+            $activity->causedByAnonymous();
         }
 
-        $request->forceFill([
-            'status' => $outcome,
-            'decided_at' => $decidedAt,
-            'decided_by' => $decidedBy,
-        ])->syncOriginal();
-
-        $this->refreshOwnerBadge($request);
-
-        return true;
+        $activity->log($outcome->value);
     }
 
     private function refreshOwnerBadge(EmailAccessRequest $request): void

@@ -525,6 +525,21 @@ describe('CancelEmailAccessRequestAction', function (): void {
             ->and($request->decided_at)->not->toBeNull();
     });
 
+    it('logs the cancellation against the requester', function (): void {
+        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        resolve(CancelEmailAccessRequestAction::class)->execute($request, $this->requester);
+
+        $logged = Activity::query()->where('subject_id', $request->getKey())->where('event', 'cancelled')->get();
+
+        expect($logged)->toHaveCount(1)
+            ->and($logged->first()->causer_id)->toBe($this->requester->getKey());
+    });
+
     it('removes the owner access-request notification when cancelled', function (): void {
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
@@ -1104,5 +1119,20 @@ describe('email:expire-access-requests', function (): void {
             ->assertSuccessful();
 
         expect($this->requester->notifications()->where('type', EmailAccessRespondedNotification::class)->count())->toBe(1);
+    });
+
+    it('logs the expiry with no causer', function (): void {
+        $overdue = EmailAccessRequest::factory()->overdue()->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        $this->artisan('email:expire-access-requests')->assertSuccessful();
+
+        $logged = Activity::query()->where('subject_id', $overdue->getKey())->where('event', 'expired')->get();
+
+        expect($logged)->toHaveCount(1)
+            ->and($logged->first()->causer_id)->toBeNull();
     });
 });

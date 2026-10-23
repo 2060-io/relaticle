@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
@@ -29,15 +28,7 @@ final readonly class DenyEmailAccessRequestAction
             return false;
         }
 
-        $denied = DB::transaction(function () use ($accessRequest, $actor): bool {
-            if (! $this->decide->execute($accessRequest, EmailAccessRequestStatus::DENIED, $actor)) {
-                return false;
-            }
-
-            activity()->performedOn($accessRequest)->causedBy($actor)->event('denied')->log('denied');
-
-            return true;
-        });
+        $denied = $this->decide->execute($accessRequest, EmailAccessRequestStatus::DENIED, $actor);
 
         if (! $denied) {
             return false;

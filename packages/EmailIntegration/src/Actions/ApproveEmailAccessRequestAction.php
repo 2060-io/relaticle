@@ -48,8 +48,6 @@ final readonly class ApproveEmailAccessRequestAction
 
             $this->sharingService->shareEmail($email, $owner, $requester, $tier);
 
-            activity()->performedOn($accessRequest)->causedBy($actor)->event('approved')->log('approved');
-
             return true;
         });
 
