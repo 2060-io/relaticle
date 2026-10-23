@@ -10,13 +10,10 @@ use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\InboxNotification;
-use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
-use Filament\Support\Icons\Heroicon;
 use Illuminate\Notifications\Messages\MailMessage;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccessRequestsPage;
-use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Support\MarkdownText;
 
@@ -101,24 +98,6 @@ final class EmailAccessRequestedNotification extends InboxNotification
             ->title($requesterName === null
                 ? __('filament/notifications/email-access-requested.title_without_requester')
                 : __('filament/notifications/email-access-requested.title', ['name' => e($requesterName)]))
-            ->body(is_string($emailSubject) && $emailSubject !== '' ? e($emailSubject) : __('filament/pages/email-inbox.subject.none'))
-            ->warning()
-            ->icon(Heroicon::OutlinedKey)
-            ->actions([
-                self::action('viewEmail', 'view', 'info', 'open-email-from-access-request', ['emailId' => data_get($row->data, 'email_id')]),
-                self::action('accept', 'accept', 'success', 'approve-email-access-request', ['requestId' => $row->subject_id]),
-                self::action('decline', 'decline', 'warning', 'deny-email-access-request', ['requestId' => $row->subject_id]),
-            ]);
-    }
-
-    /** @param  array<string, mixed>  $eventData */
-    private static function action(string $name, string $label, string $color, string $event, array $eventData): Action
-    {
-        return Action::make($name)
-            ->label(__("filament/notifications/email-access-requested.actions.{$label}"))
-            ->link()
-            ->color($color)
-            ->dispatchTo(EmailAccessNotificationHandler::LIVEWIRE_ALIAS, $event)
-            ->eventData($eventData);
+            ->body(is_string($emailSubject) && $emailSubject !== '' ? e($emailSubject) : __('filament/pages/email-inbox.subject.none'));
     }
 }

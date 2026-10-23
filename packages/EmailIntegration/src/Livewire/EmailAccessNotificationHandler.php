@@ -110,18 +110,6 @@ final class EmailAccessNotificationHandler extends Component implements HasActio
             ->get();
     }
 
-    #[On('approve-email-access-request')]
-    public function approveFromNotification(string $requestId): void
-    {
-        $this->decideOwnedReaderAccessRequest($requestId, approve: true);
-    }
-
-    #[On('deny-email-access-request')]
-    public function denyFromNotification(string $requestId): void
-    {
-        $this->decideOwnedReaderAccessRequest($requestId, approve: false);
-    }
-
     #[On('retry-mailbox-history-import')]
     public function retryMailboxHistoryImport(string $accountId, string $batchId): void
     {
