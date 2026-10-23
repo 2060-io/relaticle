@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Enums;
 
+use App\Support\IconPath;
+
 /**
  * ABOUTME: Maps to the field types available in the relaticle/custom-fields package
  * ABOUTME: Provides type-safe references to custom field types for maintainability
@@ -86,6 +88,13 @@ enum CustomFieldType: string
             self::FILE_UPLOAD => 'heroicon-o-paper-clip',
             self::RECORD => 'heroicon-o-link',
         };
+    }
+
+    // Heroicon outline paths share one stroke style and open with an absolute moveto,
+    // so a two-path icon (radio, tags-input) draws the same as one joined `d`.
+    public function iconPath(): string
+    {
+        return implode(' ', IconPath::all($this->icon()));
     }
 
     public function example(): mixed
