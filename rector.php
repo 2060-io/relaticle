@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Rector\CodingStyle\Rector\ArrowFunction\ArrowFunctionDelegatingCallToFirstClassCallableRector;
 use Rector\Config\RectorConfig;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUnusedPrivateMethodRector;
+use Rector\Php55\Rector\String_\StringClassNameToClassConstantRector;
 use Rector\Php81\Rector\Array_\ArrayToFirstClassCallableRector;
 use Rector\Php83\Rector\ClassMethod\AddOverrideAttributeToOverriddenMethodsRector;
 use Rector\Php85\Rector\Property\AddOverrideAttributeToOverriddenPropertiesRector;
@@ -63,6 +64,10 @@ return RectorConfig::configure()
         // `??` to that default hands the migration null and it runs `create table ""`.
         ApplyDefaultInsteadOfNullCoalesceRector::class => [
             __DIR__.'/database/migrations/2026_08_27_120000_create_settings_table.php',
+        ],
+        // A migration keeps the type as a string: the stored value outlives the class.
+        StringClassNameToClassConstantRector::class => [
+            __DIR__.'/database/migrations/2026_10_22_000002_archive_email_access_request_notifications.php',
         ],
         AddHasFactoryToModelsRector::class => [
             __DIR__.'/app/Models/PersonalAccessToken.php',

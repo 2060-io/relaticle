@@ -5,11 +5,10 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 
 return new class extends Migration
 {
-    private const string TYPE = EmailAccessRequestedNotification::class;
+    private const string TYPE = 'Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification';
 
     public function up(): void
     {
