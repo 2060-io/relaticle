@@ -105,6 +105,15 @@ final class EmailAccessRequest extends Model
             ->whereHas('email');
     }
 
+    public static function countPendingIncomingFor(User $owner, ?Workspace $workspace): int
+    {
+        if (! $workspace instanceof Workspace) {
+            return 0;
+        }
+
+        return self::query()->pendingIncomingFor($owner, $workspace)->count();
+    }
+
     public function deadline(): ?CarbonImmutable
     {
         return $this->expires_at ?? $this->created_at?->addDays(self::EXPIRES_AFTER_DAYS);

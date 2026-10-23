@@ -52,13 +52,12 @@ final class EmailAccessRequestsPage extends Page implements HasTable
     {
         /** @var User|null $user */
         $user = auth()->user();
-        $workspace = $user?->currentWorkspace;
 
-        if ($user === null || $workspace === null) {
+        if ($user === null) {
             return null;
         }
 
-        $count = EmailAccessRequest::query()->pendingIncomingFor($user, $workspace)->count();
+        $count = EmailAccessRequest::countPendingIncomingFor($user, $user->currentWorkspace);
 
         return $count > 0 ? (string) $count : null;
     }

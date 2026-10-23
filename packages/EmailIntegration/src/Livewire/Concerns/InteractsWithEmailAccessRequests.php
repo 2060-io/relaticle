@@ -96,13 +96,8 @@ trait InteractsWithEmailAccessRequests
     public function pendingIncomingCount(): int
     {
         $user = $this->authUser();
-        $workspace = $user->currentWorkspace;
 
-        if ($workspace === null) {
-            return 0;
-        }
-
-        return EmailAccessRequest::query()->pendingIncomingFor($user, $workspace)->count();
+        return EmailAccessRequest::countPendingIncomingFor($user, $user->currentWorkspace);
     }
 
     private function accessRequestsEmptyHeading(): string

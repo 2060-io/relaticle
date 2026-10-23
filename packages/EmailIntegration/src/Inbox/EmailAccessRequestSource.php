@@ -64,7 +64,7 @@ final readonly class EmailAccessRequestSource implements RequestSource
             return 0;
         }
 
-        return $this->pending($user, $workspace)->count();
+        return EmailAccessRequest::countPendingIncomingFor($user, $workspace);
     }
 
     public function approve(User $user, Workspace $workspace, string $requestId): bool
