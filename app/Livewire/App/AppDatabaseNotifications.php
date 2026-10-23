@@ -14,6 +14,7 @@ use App\Models\Workspace;
 use App\Notifications\InboxNotification;
 use App\Support\CurrentWorkspace;
 use App\Support\Inbox\InboxRequests;
+use App\Support\PlainText;
 use Carbon\CarbonImmutable;
 use Filament\Livewire\DatabaseNotifications;
 use Filament\Notifications\Notification as FilamentNotification;
@@ -229,7 +230,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
 
         return collect([$presented->getTitle(), $presented->getBody()])
             ->filter()
-            ->map(fn (string $text): string => html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5))
+            ->map(PlainText::fromHtml(...))
             ->implode('. ');
     }
 
