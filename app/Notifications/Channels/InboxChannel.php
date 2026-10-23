@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Notifications\Channels;
 
+use App\Actions\Notifications\RefreshNotificationBell;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Notifications\InboxNotification;
 use App\Support\CurrentWorkspace;
 use Filament\Notifications\DatabaseNotification as FilamentDatabaseNotification;
-use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Notifications\Channels\DatabaseChannel;
@@ -19,6 +19,8 @@ use LogicException;
 
 final class InboxChannel extends DatabaseChannel
 {
+    public function __construct(private readonly RefreshNotificationBell $refresh) {}
+
     public function send(mixed $notifiable, Notification $notification): NotificationRow
     {
         if ($notification instanceof InboxNotification && $notifiable instanceof User) {
@@ -51,7 +53,7 @@ final class InboxChannel extends DatabaseChannel
         $row = $this->collapse($notifiable, $notification, $columns)
             ?? $this->insertOrCollapse($notifiable, $notification, $columns);
 
-        $this->broadcastAfterCommit($notifiable);
+        $this->refresh->execute($notifiable);
 
         return $row;
     }
@@ -63,16 +65,9 @@ final class InboxChannel extends DatabaseChannel
             'workspace_id' => resolve(CurrentWorkspace::class)->get()?->getKey(),
         ]);
 
-        $this->broadcastAfterCommit($notifiable);
+        $this->refresh->execute($notifiable);
 
         return $row;
-    }
-
-    private function broadcastAfterCommit(User $notifiable): void
-    {
-        DB::afterCommit(static function () use ($notifiable): void {
-            event(new DatabaseNotificationsSent($notifiable));
-        });
     }
 
     /** @param  array<string, mixed>  $columns */

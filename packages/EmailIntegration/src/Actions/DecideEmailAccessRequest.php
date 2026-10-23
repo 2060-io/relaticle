@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Actions;
 
+use App\Actions\Notifications\RefreshNotificationBell;
 use App\Models\User;
-use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
@@ -13,6 +13,8 @@ use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 
 final readonly class DecideEmailAccessRequest
 {
+    public function __construct(private RefreshNotificationBell $refreshBell) {}
+
     public function execute(EmailAccessRequest $request, EmailAccessRequestStatus $outcome, ?User $actor): bool
     {
         return DB::transaction(function () use ($request, $outcome, $actor): bool {
@@ -43,7 +45,7 @@ final readonly class DecideEmailAccessRequest
             ])->syncOriginal();
 
             $this->logOutcome($request, $outcome, $actor);
-            $this->refreshOwnerBadge($request);
+            $this->refreshOwnerBell($request);
 
             return true;
         });
@@ -62,16 +64,12 @@ final readonly class DecideEmailAccessRequest
         $activity->log($outcome->value);
     }
 
-    private function refreshOwnerBadge(EmailAccessRequest $request): void
+    private function refreshOwnerBell(EmailAccessRequest $request): void
     {
         $owner = $request->owner;
 
-        if ($owner === null) {
-            return;
+        if ($owner !== null) {
+            $this->refreshBell->execute($owner);
         }
-
-        DB::afterCommit(static function () use ($owner): void {
-            event(new DatabaseNotificationsSent($owner));
-        });
     }
 }
