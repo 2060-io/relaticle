@@ -8,9 +8,11 @@ use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
@@ -564,6 +566,28 @@ describe('RequestEmailAccessAction', function (): void {
         Notification::assertSentToTimes($this->owner, EmailAccessRequestedNotification::class, 1);
     });
 
+    it('keeps one pending request and one owner notice when two requests race', function (): void {
+        Notification::fake();
+        $action = resolve(RequestEmailAccessAction::class);
+        $racing = true;
+
+        DB::listen(function (QueryExecuted $query) use (&$racing, $action): void {
+            if (! $racing || ! str_starts_with($query->sql, 'select exists') || ! str_contains($query->sql, 'from "email_access_requests"')) {
+                return;
+            }
+
+            $racing = false;
+            $action->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+        });
+
+        $loser = $action->execute($this->email, $this->requester, EmailPrivacyTier::SUBJECT);
+
+        expect($loser)->toBeNull()
+            ->and(EmailAccessRequest::query()->where('email_id', $this->email->getKey())->where('requester_id', $this->requester->id)->open()->count())->toBe(1);
+
+        Notification::assertSentToTimes($this->owner, EmailAccessRequestedNotification::class, 1);
+    });
+
     it('aborts with 403 when the requester is not in the email\'s team', function (): void {
         $outsider = User::factory()->withWorkspace()->create();
 
@@ -907,7 +931,7 @@ describe('EmailAccessRespondedNotification', function (): void {
 describe('open requests', function (): void {
     it('counts a pending request until its deadline and one without a deadline', function (): void {
         $make = fn (array $state): EmailAccessRequest => EmailAccessRequest::factory()->create([
-            'requester_id' => $this->requester->id,
+            'requester_id' => User::factory()->create(['current_workspace_id' => $this->workspace->id])->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
             ...$state,
@@ -952,7 +976,7 @@ describe('email:expire-access-requests', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
         $current = EmailAccessRequest::factory()->create([
-            'requester_id' => $this->requester->id,
+            'requester_id' => User::factory()->create(['current_workspace_id' => $this->workspace->id])->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
         ]);
@@ -963,7 +987,7 @@ describe('email:expire-access-requests', function (): void {
             'expires_at' => now()->subDay(),
         ]);
         $noDeadline = EmailAccessRequest::factory()->create([
-            'requester_id' => $this->requester->id,
+            'requester_id' => User::factory()->create(['current_workspace_id' => $this->workspace->id])->id,
             'owner_id' => $this->owner->id,
             'email_id' => $this->email->getKey(),
             'expires_at' => null,

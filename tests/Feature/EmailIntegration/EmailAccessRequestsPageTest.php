@@ -440,7 +440,7 @@ describe('getNavigationBadge', function (): void {
 
         EmailAccessRequest::factory()->pending()->create([
             'owner_id' => $this->user->id,
-            'requester_id' => $requester->id,
+            'requester_id' => User::factory()->create(['current_workspace_id' => $this->workspace->id])->id,
             'email_id' => $this->email->getKey(),
         ]);
 

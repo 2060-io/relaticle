@@ -6,6 +6,8 @@ namespace Relaticle\EmailIntegration\Actions;
 
 use App\Actions\Notifications\RefreshNotificationBell;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
@@ -32,16 +34,11 @@ final readonly class RequestEmailAccessAction
             return null;
         }
 
-        /** @var EmailAccessRequest $request */
-        $request = EmailAccessRequest::query()->create([
-            'email_id' => $email->getKey(),
-            'requester_id' => $requester->getKey(),
-            'owner_id' => $email->user_id,
-            'tier_requested' => $tierRequested->value,
-            'status' => EmailAccessRequestStatus::PENDING,
-            'workspace_id' => $email->workspace_id,
-            'expires_at' => now()->addDays(EmailAccessRequest::EXPIRES_AFTER_DAYS),
-        ]);
+        $request = $this->openRequest($email, $requester, $tierRequested);
+
+        if (! $request instanceof EmailAccessRequest) {
+            return null;
+        }
 
         $email->user?->notify(new EmailAccessRequestedNotification($request));
 
@@ -50,6 +47,23 @@ final readonly class RequestEmailAccessAction
         }
 
         return $request;
+    }
+
+    private function openRequest(Email $email, User $requester, EmailPrivacyTier $tierRequested): ?EmailAccessRequest
+    {
+        try {
+            return DB::transaction(fn (): EmailAccessRequest => EmailAccessRequest::query()->create([
+                'email_id' => $email->getKey(),
+                'requester_id' => $requester->getKey(),
+                'owner_id' => $email->user_id,
+                'tier_requested' => $tierRequested->value,
+                'status' => EmailAccessRequestStatus::PENDING,
+                'workspace_id' => $email->workspace_id,
+                'expires_at' => now()->addDays(EmailAccessRequest::EXPIRES_AFTER_DAYS),
+            ]));
+        } catch (UniqueConstraintViolationException) {
+            return null;
+        }
     }
 
     private function expireOverdueRequests(Email $email, User $requester): void
