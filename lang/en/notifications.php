@@ -27,11 +27,11 @@ return [
             'description' => 'Notify me when I\'m assigned a task.',
         ],
         'email_access' => [
-            'label' => 'Email access',
-            'description' => 'Notify me when someone asks to read an email I own, and when my own request is approved or denied.',
+            'label' => 'Email Access',
+            'description' => 'Email me when someone asks to read an email I own. Notify me when my own request is approved, denied or expires.',
         ],
         'email_shared' => [
-            'label' => 'Shared emails',
+            'label' => 'Shared Emails',
             'description' => 'Notify me when someone shares an email with me.',
         ],
         'task_digest' => [

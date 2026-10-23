@@ -59,8 +59,9 @@ it('offers the email access and shared emails rows while email integration is ac
     $this->actingAs($user);
 
     Livewire::test(ManageNotificationPreferences::class)
-        ->assertSee('Email access')
-        ->assertSee('Shared emails')
+        ->assertSee('Email Access')
+        ->assertSee('Shared Emails')
+        ->assertSee('Email me when someone asks to read an email I own. Notify me when my own request is approved, denied or expires.')
         ->assertSet('cells.email_shared.in_app', true)
         ->assertSet('cells.email_shared.email', true)
         ->assertSet('cells.email_access.in_app', true)
@@ -73,8 +74,8 @@ it('hides the email access and shared emails rows while email integration is off
     $this->actingAs($user);
 
     Livewire::test(ManageNotificationPreferences::class)
-        ->assertDontSee('Email access')
-        ->assertDontSee('Shared emails')
+        ->assertDontSee('Email Access')
+        ->assertDontSee('Shared Emails')
         ->assertSee('Task Assignments');
 });
 
