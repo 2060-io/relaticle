@@ -20,14 +20,28 @@ final readonly class IconPath
 {
     public static function for(string $icon): string
     {
-        $svg = resolve(Factory::class)->svg($icon)->contents();
+        $paths = self::all($icon);
 
         throw_if(
-            preg_match_all('/\sd="([^"]+)"/', $svg, $matches) !== 1,
+            count($paths) !== 1,
             RuntimeException::class,
             "Icon [{$icon}] must have exactly one path to be usable as raw path data.",
         );
 
-        return $matches[1][0];
+        return $paths[0];
+    }
+
+    /** @return list<string> */
+    public static function all(string $icon): array
+    {
+        $svg = resolve(Factory::class)->svg($icon)->contents();
+
+        throw_if(
+            preg_match_all('/\sd="([^"]+)"/', $svg, $matches) === 0,
+            RuntimeException::class,
+            "Icon [{$icon}] has no path to use as raw path data.",
+        );
+
+        return $matches[1];
     }
 }

@@ -199,7 +199,8 @@ final readonly class CustomFieldSettingsSchema
         return match (true) {
             is_bool($value) => $value ? (string) __('Yes') : (string) __('No'),
             $value === null || $value === '' => (string) __('None'),
-            $key === 'display_type' => (string) __("custom-fields::custom-fields.currency.display_options.{$value}"),
+            $key === 'display_type' && $value === 'symbol' => (string) __('Symbol'),
+            $key === 'display_type' && $value === 'code' => (string) __('Code'),
             default => (string) $value,
         };
     }

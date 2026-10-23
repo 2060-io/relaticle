@@ -199,7 +199,9 @@ it('creates a currency field that pins the default currency settings', function 
     $pending = PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail();
 
     expect($pending->action_data['settings'])->toEqual(['currency_code' => 'USD', 'display_type' => 'symbol', 'decimal_places' => 2])
-        ->and(array_column($pending->display_data['fields'], 'value', 'label'))->toMatchArray(['Currency' => 'USD', 'Decimal Places' => '2']);
+        ->and(array_column($pending->display_data['fields'], 'value', 'label'))->toMatchArray(['Type' => 'Currency', 'Currency' => 'USD', 'Display' => 'Symbol', 'Decimal Places' => '2'])
+        ->and($pending->display_data['summary'])->toBe('Create "Retainer" (Currency) on opportunity')
+        ->and(collect($pending->display_data['fields'])->firstWhere('label', 'Type')['icon'])->toStartWith('M');
 
     $field = approveSoleFieldProposal($pending, $this->owner);
 
@@ -619,7 +621,7 @@ it('proposes fields across two entities as one batch approved item by item', fun
         ->and($decoded)->not->toHaveKey('skipped_records')
         ->and($pending->action_data['records'])->toHaveCount(3)
         ->and($pending->display_data['summary'])->toBe('Create 3 custom fields')
-        ->and($pending->display_data['items'][2]['summary'])->toBe('Create "Tier" (select) on people with options: Gold, Silver');
+        ->and($pending->display_data['items'][2]['summary'])->toBe('Create "Tier" (Select) on people with options: Gold, Silver');
 
     $service = resolve(PendingActionService::class);
     $service->approveItem($pending, $this->owner, 0);

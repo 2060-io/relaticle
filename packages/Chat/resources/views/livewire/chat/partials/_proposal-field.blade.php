@@ -1,5 +1,5 @@
 {{-- Type-aware proposal field row. Expects Alpine scope var `field`:
-     {label, value?|new?, old?, type?, values?} --}}
+     {label, value?|new?, old?, type?, values?, icon?} --}}
 <div class="flex items-start gap-3">
     <span class="w-32 shrink-0 truncate text-sm leading-5 text-gray-700 sm:w-36 dark:text-gray-300" x-text="field.label"></span>
 
@@ -57,6 +57,12 @@
                 class="min-w-0 truncate text-primary-600 hover:underline dark:text-primary-400"
                 x-text="field.new ?? field.value"
             ></a>
+        </template>
+
+        <template x-if="field.icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="size-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" :d="field.icon"></path>
+            </svg>
         </template>
 
         <template x-if="!['badges', 'boolean', 'link'].includes(field.type)">

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Tools\CustomField;
 
 use App\Actions\CustomFields\CreateCustomField;
+use App\Enums\CustomFieldType;
 use App\Enums\WorkspaceCapability;
 use App\Models\User;
 use App\Support\CustomFieldDefinitionValidator;
@@ -22,6 +23,7 @@ use Relaticle\Chat\Tools\Concerns\LimitsPlanSteps;
 use Relaticle\Chat\Tools\Concerns\ReportsSkippedRecords;
 use Relaticle\Chat\Tools\Concerns\RequiresWorkspaceCapability;
 use Relaticle\Chat\Tools\Concerns\WithConversationContext;
+use Relaticle\CustomFields\Facades\CustomFieldsType;
 use Relaticle\CustomFields\Facades\Entities;
 use Relaticle\CustomFields\Support\CodeGenerator;
 
@@ -230,10 +232,12 @@ final class CreateCustomFieldTool implements Tool
         $code = (string) ($validated['code'] ?? '');
         $optionNames = array_column(is_array($validated['options'] ?? null) ? $validated['options'] : [], 'name');
 
+        $typeLabel = CustomFieldsType::getFieldType($type)->label ?? $type;
+
         $fields = [
             ['label' => __('Entity'), 'value' => $entityType],
             ['label' => __('Name'), 'value' => $name],
-            ['label' => __('Type'), 'value' => $type],
+            ['label' => __('Type'), 'value' => $typeLabel, 'icon' => CustomFieldType::from($type)->iconPath()],
         ];
 
         if ($code !== '') {
@@ -252,7 +256,7 @@ final class CreateCustomFieldTool implements Tool
             $fields[] = ['label' => CustomFieldSettingsSchema::label($key), 'value' => CustomFieldSettingsSchema::displayValue($key, $value)];
         }
 
-        $replace = ['name' => $name, 'type' => $type, 'entity' => $entityType, 'options' => implode(', ', $optionNames)];
+        $replace = ['name' => $name, 'type' => $typeLabel, 'entity' => $entityType, 'options' => implode(', ', $optionNames)];
 
         return [
             'title' => __('Create Custom Field'),

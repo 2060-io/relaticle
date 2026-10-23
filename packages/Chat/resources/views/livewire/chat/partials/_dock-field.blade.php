@@ -128,6 +128,12 @@
                         ])
                     >{{ $row['new'] ?? $row['value'] ?? '' }}</span>
                 @else
+                    @if (is_string($row['icon'] ?? null) && $row['icon'] !== '')
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="size-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="{{ $row['icon'] }}"></path>
+                        </svg>
+                    @endif
+
                     <span @class([
                         'font-medium text-gray-900 dark:text-white' => array_key_exists('new', $row),
                         'text-gray-700 dark:text-gray-300' => ! array_key_exists('new', $row),
