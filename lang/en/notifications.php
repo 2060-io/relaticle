@@ -91,11 +91,11 @@ return [
         'empty' => [
             'notifications' => [
                 'heading' => 'You are all caught up',
-                'description' => 'Task assignments, shared emails, imports and exports, and email sends land here.',
+                'description' => 'Task assignments, imports and exports, and other updates in this workspace land here.',
             ],
             'requests' => [
                 'heading' => 'No requests waiting',
-                'description' => 'When a teammate asks to read an email you own, you decide here.',
+                'description' => 'When a teammate asks for something you own, you decide here.',
             ],
             'settings' => 'Settings',
         ],

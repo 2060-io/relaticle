@@ -577,9 +577,17 @@ it('refuses a browser write to the decided requests', function (): void {
     expect(fn () => $component->set('decidedRequests', []))->toThrow(CannotUpdateLockedPropertyException::class);
 });
 
-it('describes only what lands in the inbox today', function (): void {
+it('describes the empty notifications tab without naming email features', function (): void {
     Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
-        ->assertDontSee('mention')
-        ->assertDontSee('follow')
+        ->assertSee('Task assignments, imports and exports, and other updates in this workspace land here.');
+});
+
+it('describes the empty requests tab without naming email features', function (): void {
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
+        ->assertSee('When a teammate asks for something you own, you decide here.');
+});
+
+it('renders the inbox panel as a modal dialog', function (): void {
+    Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
         ->assertSeeHtml('aria-modal="true"');
 });
