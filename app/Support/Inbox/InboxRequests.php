@@ -25,6 +25,11 @@ final readonly class InboxRequests
             ->values();
     }
 
+    public function find(User $user, Workspace $workspace, string $kind, string $id): ?InboxRequest
+    {
+        return $this->source($kind)->find($user, $workspace, $id);
+    }
+
     public function countFor(User $user, Workspace $workspace): int
     {
         return collect($this->sources)

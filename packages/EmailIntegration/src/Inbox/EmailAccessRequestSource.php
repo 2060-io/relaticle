@@ -44,6 +44,20 @@ final readonly class EmailAccessRequestSource implements RequestSource
             ->map(fn (EmailAccessRequest $request): InboxRequest => $this->present($request, $user));
     }
 
+    public function find(User $user, Workspace $workspace, string $requestId): ?InboxRequest
+    {
+        if (! EmailIntegrationServiceProvider::enabled()) {
+            return null;
+        }
+
+        $request = $this->pending($user, $workspace)
+            ->with(['requester', 'email.workspace', 'email.participants'])
+            ->whereKey($requestId)
+            ->first();
+
+        return $request instanceof EmailAccessRequest ? $this->present($request, $user) : null;
+    }
+
     public function countPendingFor(User $user, Workspace $workspace): int
     {
         if (! EmailIntegrationServiceProvider::enabled()) {
@@ -55,12 +69,12 @@ final readonly class EmailAccessRequestSource implements RequestSource
 
     public function approve(User $user, Workspace $workspace, string $requestId): bool
     {
-        return $this->approve->execute($this->find($user, $workspace, $requestId), $user);
+        return $this->approve->execute($this->findOwned($user, $workspace, $requestId), $user);
     }
 
     public function deny(User $user, Workspace $workspace, string $requestId): bool
     {
-        return $this->deny->execute($this->find($user, $workspace, $requestId), $user);
+        return $this->deny->execute($this->findOwned($user, $workspace, $requestId), $user);
     }
 
     /** @return Builder<EmailAccessRequest> */
@@ -77,7 +91,7 @@ final readonly class EmailAccessRequestSource implements RequestSource
         return EmailAccessRequest::query()->pendingIncomingFor($user, $workspace);
     }
 
-    private function find(User $user, Workspace $workspace, string $requestId): EmailAccessRequest
+    private function findOwned(User $user, Workspace $workspace, string $requestId): EmailAccessRequest
     {
         abort_unless(EmailIntegrationServiceProvider::enabled(), 404);
 

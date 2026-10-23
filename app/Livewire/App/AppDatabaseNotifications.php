@@ -158,8 +158,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         abort_unless($workspace instanceof Workspace, 404);
 
         $requests = resolve(InboxRequests::class);
-        $request = $requests->for($user, $workspace)
-            ->first(fn (InboxRequest $pending): bool => $pending->kind === $kind && $pending->id === $id);
+        $request = $requests->find($user, $workspace, $kind, $id);
 
         $decided = $outcome === RequestOutcome::Approved
             ? $requests->approve($user, $workspace, $kind, $id)

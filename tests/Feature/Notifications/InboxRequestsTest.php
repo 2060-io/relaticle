@@ -112,6 +112,25 @@ it('leaves out decided and overdue requests', function (): void {
         ->and($this->requests->countFor($this->owner, $this->workspace))->toBe(0);
 });
 
+it('finds the owner\'s open request and nothing that is not theirs or open', function (): void {
+    $elsewhere = Workspace::factory()->create();
+    $elsewhere->users()->attach($this->owner, ['role' => 'admin']);
+    $elsewhere->users()->attach($this->requester, ['role' => 'member']);
+
+    $request = ($this->requestFor)($this->email);
+    $otherWorkspace = ($this->requestFor)(($this->emailIn)($elsewhere));
+    $decided = ($this->requestFor)(($this->emailIn)($this->workspace, 'Decided'));
+    $decided->update(['status' => EmailAccessRequestStatus::DENIED]);
+
+    $found = $this->requests->find($this->owner, $this->workspace, 'email_access', $request->getKey());
+
+    expect($found?->id)->toBe($request->getKey())
+        ->and($found?->title)->toBe("{$this->requester->name} requested email access")
+        ->and($this->requests->find($this->requester, $this->workspace, 'email_access', $request->getKey()))->toBeNull()
+        ->and($this->requests->find($this->owner, $this->workspace, 'email_access', $otherWorkspace->getKey()))->toBeNull()
+        ->and($this->requests->find($this->owner, $this->workspace, 'email_access', $decided->getKey()))->toBeNull();
+});
+
 it('lists the newest request first', function (): void {
     $older = ($this->requestFor)($this->email);
     $this->travelTo(now()->addMinute());
