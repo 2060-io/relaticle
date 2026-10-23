@@ -12,9 +12,29 @@ use App\Support\CurrentWorkspace;
 use Filament\Actions\Exports\Enums\ExportFormat;
 use Filament\Actions\Exports\Jobs\ExportCompletion;
 use Filament\Facades\Filament;
+use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Facades\Storage;
 
 mutates(ExportPolicy::class, CompleteExport::class);
+
+function completeQueuedExport(Export $export): void
+{
+    /** @var CompleteExport $job */
+    $job = resolve(ExportCompletion::class, [
+        'export' => $export,
+        'columnMap' => ['name' => 'Name'],
+        'formats' => [ExportFormat::Csv],
+        'options' => [],
+        'authGuard' => 'web',
+    ])->onConnection('redis');
+
+    new Pipeline(app())
+        ->send($job)
+        ->through($job->middleware())
+        ->then(function (CompleteExport $job): void {
+            $job->handle();
+        });
+}
 
 beforeEach(function (): void {
     Storage::fake('local');
@@ -71,13 +91,7 @@ it('sends the completion notice to the workspace the export ran in', function ()
     $this->user->switchWorkspace($otherWorkspace);
     resolve(CurrentWorkspace::class)->set($otherWorkspace);
 
-    resolve(ExportCompletion::class, [
-        'export' => $this->export,
-        'columnMap' => ['name' => 'Name'],
-        'formats' => [ExportFormat::Csv],
-        'options' => [],
-        'authGuard' => 'web',
-    ])->onConnection('redis')->handle();
+    completeQueuedExport($this->export);
 
     expect($this->user->notifications()->sole()->workspace_id)->toBe($this->workspace->getKey())
         ->and(resolve(CurrentWorkspace::class)->get()?->getKey())->toBe($otherWorkspace->getKey());
@@ -87,13 +101,7 @@ it('completes an export stored without a workspace in the bound workspace', func
     $this->export->forceFill(['workspace_id' => null])->save();
     resolve(CurrentWorkspace::class)->set($this->workspace);
 
-    resolve(ExportCompletion::class, [
-        'export' => $this->export->fresh(),
-        'columnMap' => ['name' => 'Name'],
-        'formats' => [ExportFormat::Csv],
-        'options' => [],
-        'authGuard' => 'web',
-    ])->onConnection('redis')->handle();
+    completeQueuedExport($this->export->fresh());
 
     expect($this->user->notifications()->sole()->workspace_id)->toBe($this->workspace->getKey());
 });
