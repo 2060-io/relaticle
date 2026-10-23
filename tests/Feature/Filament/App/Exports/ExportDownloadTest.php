@@ -82,3 +82,18 @@ it('sends the completion notice to the workspace the export ran in', function ()
     expect($this->user->notifications()->sole()->workspace_id)->toBe($this->workspace->getKey())
         ->and(resolve(CurrentWorkspace::class)->get()?->getKey())->toBe($otherWorkspace->getKey());
 });
+
+it('completes an export stored without a workspace in the bound workspace', function (): void {
+    $this->export->forceFill(['workspace_id' => null])->save();
+    resolve(CurrentWorkspace::class)->set($this->workspace);
+
+    resolve(ExportCompletion::class, [
+        'export' => $this->export->fresh(),
+        'columnMap' => ['name' => 'Name'],
+        'formats' => [ExportFormat::Csv],
+        'options' => [],
+        'authGuard' => 'web',
+    ])->onConnection('redis')->handle();
+
+    expect($this->user->notifications()->sole()->workspace_id)->toBe($this->workspace->getKey());
+});
