@@ -51,16 +51,12 @@ final class EmailAccessRespondedNotification extends InboxNotification
     /** @return array<string, mixed> */
     public function facts(): array
     {
-        return ['outcome' => match ($this->request->status) {
-            EmailAccessRequestStatus::APPROVED => 'approved',
-            EmailAccessRequestStatus::EXPIRED => 'expired',
-            default => 'denied',
-        }];
+        return ['outcome' => $this->request->status->value];
     }
 
     public function toMail(User $notifiable): MailMessage
     {
-        $outcome = $this->facts()['outcome'];
+        $outcome = $this->request->status->value;
         $email = $this->request->emailIncludingHidden;
         $ownerName = $this->request->owner->name;
 
@@ -86,26 +82,29 @@ final class EmailAccessRespondedNotification extends InboxNotification
         $ownerName = $row->actor?->name;
 
         $notification = FilamentNotification::make((string) $row->getKey())
-            ->title(__(self::LANG.".{$outcome}.title"))
+            ->title(__(self::LANG.".{$outcome->value}.title"))
             ->body($ownerName === null
-                ? __(self::LANG.".{$outcome}.body_without_owner")
-                : __(self::LANG.".{$outcome}.body", ['owner' => e($ownerName)]));
+                ? __(self::LANG.".{$outcome->value}.body_without_owner")
+                : __(self::LANG.".{$outcome->value}.body", ['owner' => e($ownerName)]));
 
         return match ($outcome) {
-            'approved' => $notification->success()->icon(Heroicon::OutlinedCheckCircle),
-            'expired' => $notification->color('gray')->icon(Heroicon::OutlinedClock),
+            EmailAccessRequestStatus::APPROVED => $notification->success()->icon(Heroicon::OutlinedCheckCircle),
+            EmailAccessRequestStatus::EXPIRED => $notification->color('gray')->icon(Heroicon::OutlinedClock),
             default => $notification->danger()->icon(Heroicon::OutlinedXCircle),
         };
     }
 
-    private static function outcomeOf(NotificationRow $row): string
+    private static function outcomeOf(NotificationRow $row): EmailAccessRequestStatus
     {
-        $outcome = data_get($row->data, 'outcome');
+        $stored = data_get($row->data, 'outcome');
+        $outcome = is_string($stored) ? EmailAccessRequestStatus::tryFrom($stored) : null;
 
-        if (in_array($outcome, ['approved', 'denied', 'expired'], true)) {
+        if ($outcome instanceof EmailAccessRequestStatus) {
             return $outcome;
         }
 
-        return data_get($row->data, 'approved') === true ? 'approved' : 'denied';
+        return data_get($row->data, 'approved') === true
+            ? EmailAccessRequestStatus::APPROVED
+            : EmailAccessRequestStatus::DENIED;
     }
 }
