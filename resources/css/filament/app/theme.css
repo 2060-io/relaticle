@@ -170,9 +170,7 @@ html.fi:has(body.fi-panel-app) {
     @apply absolute -end-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[0.625rem] font-semibold leading-4 text-white;
 }
 
-/* Inbox panel (AppDatabaseNotifications): teleported to the body, it floats beside
-   the sidebar from lg and fills the screen below. `--inbox-left` is the sidebar's
-   measured right edge, set each time the panel opens. */
+/* `--inbox-left` is the sidebar's measured right edge, set each time the panel opens. */
 .fi-inbox-panel {
     @apply fixed inset-0 z-40 flex flex-col overflow-hidden bg-white text-sm dark:bg-gray-900;
 }
@@ -210,15 +208,15 @@ html.fi:has(body.fi-panel-app) {
 }
 
 .fi-inbox-row {
-    @apply transition;
+    @apply flex w-full gap-3 px-4 py-3 text-start transition;
 }
 
 .fi-inbox-row-interactive {
     @apply cursor-pointer hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500 dark:hover:bg-white/5 dark:focus-visible:bg-white/5;
 }
 
-/* Row controls sit over the row's top-right corner and show on hover and focus.
-   Touch screens have neither, so there they sit under the row instead of over its title. */
+/* Touch screens have no hover or focus, so the controls sit under the row
+   instead of over its title. */
 .fi-inbox-row-controls {
     @apply absolute end-3 top-2 flex gap-0.5 rounded-lg bg-white p-0.5 opacity-0 shadow-xs ring-1 ring-gray-950/10 transition dark:bg-gray-900 dark:ring-white/10;
 

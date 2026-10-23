@@ -10,7 +10,7 @@
     wire:key="inbox-request-{{ $requestId }}"
     data-inbox-key="request-{{ $requestId }}"
     x-data="{ kind: @js($kind), requestId: @js($requestId) }"
-    class="flex gap-3 px-4 py-3"
+    class="fi-inbox-row"
 >
     @if ($request['avatar'])
         <img src="{{ $request['avatar'] }}" alt="" class="size-8 shrink-0 rounded-full object-cover" />

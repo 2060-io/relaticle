@@ -28,10 +28,6 @@ use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 
-/**
- * The inbox panel: notifications and requests, opened beside the sidebar.
- * Filament's own trigger variants do not fit the sidebar's search row.
- */
 final class AppDatabaseNotifications extends DatabaseNotifications
 {
     /** @var array<string, array{outcome: string, title: string, body: ?string, avatar: ?string, created_at: string}> */

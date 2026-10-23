@@ -38,7 +38,7 @@
             x-on:click="act(() => markAsRead(), $el, '[data-inbox-main]')"
         @endif
         @class([
-            'fi-inbox-row flex w-full gap-3 px-4 py-3 text-start',
+            'fi-inbox-row',
             'fi-inbox-row-interactive' => $control !== 'div',
         ])
     >
@@ -92,7 +92,7 @@
     </{{ $control }}>
 
     @if ($barActions->isNotEmpty())
-        <div class="fi-ac flex flex-wrap gap-3 pb-3 ps-[3.75rem] pe-4">
+        <div class="fi-ac flex flex-wrap gap-3 pb-3 ps-15 pe-4">
             @foreach ($barActions as $action)
                 {{ $action }}
             @endforeach
