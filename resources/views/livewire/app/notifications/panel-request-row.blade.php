@@ -1,6 +1,4 @@
 @php
-    use App\Enums\Notifications\RequestOutcome;
-
     $requestId = $request['id'];
     $kind = $request['kind'];
     $outcome = $request['outcome'];
@@ -41,8 +39,8 @@
                 <span
                     @class([
                         'inline-flex items-center gap-1 text-xs font-medium',
-                        'text-success-600 dark:text-success-400' => $outcome === RequestOutcome::Approved,
-                        'text-gray-500 dark:text-gray-400' => $outcome !== RequestOutcome::Approved,
+                        'text-success-600 dark:text-success-400' => $outcome->color() === 'success',
+                        'text-gray-500 dark:text-gray-400' => $outcome->color() === 'gray',
                     ])
                 >
                     <x-filament::icon :icon="$outcome->icon()" class="size-4" />

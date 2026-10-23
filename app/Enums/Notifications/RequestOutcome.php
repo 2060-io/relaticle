@@ -28,6 +28,14 @@ enum RequestOutcome: string
         };
     }
 
+    public function color(): string
+    {
+        return match ($this) {
+            self::Approved => 'success',
+            self::Denied, self::AlreadyDecided => 'gray',
+        };
+    }
+
     public function announcement(string $title): string
     {
         return match ($this) {
