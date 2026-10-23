@@ -22,6 +22,10 @@ use Illuminate\Support\Str;
 use Livewire\Attributes\Url;
 use Livewire\Features\SupportTesting\Testable;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 
 mutates(ActivityLog::class, Activity::class);
 
@@ -827,4 +831,35 @@ test('a long plain text change keeps its line breaks in the slide-over', functio
         ->mountAction(TestAction::make('viewChanges')->table($activity));
 
     expect(slideOverChanges($component))->toContain("keeps going\nclosing words");
+});
+
+test('a decided email access request is logged under its own name and stays off the audit trail', function (): void {
+    $requester = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
+    $this->workspace->users()->attach($requester, ['role' => 'member']);
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->owner->id,
+    ]));
+    $email = Email::factory()->private()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->owner->id,
+        'connected_account_id' => $account->getKey(),
+    ]);
+    $request = EmailAccessRequest::factory()->create([
+        'requester_id' => $requester->id,
+        'owner_id' => $this->owner->id,
+        'email_id' => $email->getKey(),
+    ]);
+    Company::factory()->for($this->workspace)->create(['name' => 'Lumen Robotics'])->delete();
+
+    resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+    $decision = Activity::query()->where('subject_id', $request->getKey())->sole();
+    $deletion = Activity::query()->where('event', 'deleted')->sole();
+
+    expect($decision->log_name)->toBe(Activity::EMAIL_ACCESS_LOG);
+
+    livewire(ActivityLog::class)
+        ->assertCanSeeTableRecords([$deletion])
+        ->assertCanNotSeeTableRecords([$decision]);
 });

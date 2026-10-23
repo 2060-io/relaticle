@@ -154,34 +154,10 @@ final class ActivityLog extends Page implements HasTable
         ];
     }
 
-    /**
-     * One save writes the trait's own event plus one `custom_field_changes` row
-     * per custom field that moved, all sharing a `batch_uuid`. Reporting them
-     * all put a phantom update next to every create, so they collapse onto a
-     * single surviving row: the native event when there is one, otherwise the
-     * first custom-field row, whichever carries every sibling payload with it.
-     */
     public function table(Table $table): Table
     {
         return $table
-            ->query(
-                Activity::query()
-                    ->select('activity_log.*')
-                    ->addSelect(['batch_custom_field_properties' => $this->sameSave(DB::table('activity_log', 'sibling'))
-                        ->selectRaw('json_agg(sibling.properties order by sibling.id)')
-                        ->where('sibling.event', self::CUSTOM_FIELD_EVENT),
-                    ])
-                    ->whereNot(fn (Builder $query): Builder => $query
-                        ->where('event', self::CUSTOM_FIELD_EVENT)
-                        ->whereNotNull('batch_uuid')
-                        ->whereExists(fn (QueryBuilder $sibling): QueryBuilder => $this->sameSave($sibling)
-                            ->whereRaw(
-                                '(case when sibling.event = ? then 1 else 0 end, sibling.id) < (1, activity_log.id)',
-                                [self::CUSTOM_FIELD_EVENT],
-                            )))
-                    ->whereNull('activity_log.properties->import_id')
-                    ->with('causer')
-            )
+            ->query($this->auditTrailQuery())
             ->defaultSort('created_at', 'desc')
             ->stackedOnMobile()
             ->recordUrl($this->subjectUrl(...))
@@ -275,6 +251,36 @@ final class ActivityLog extends Page implements HasTable
                         ->when(filled($data['until'] ?? null), fn (Builder $q): Builder => $q->whereDate('activity_log.created_at', '<=', $data['until'])))
                     ->indicateUsing($this->dateIndicators(...)),
             ]);
+    }
+
+    /**
+     * One save writes the trait's own event plus one `custom_field_changes` row
+     * per custom field that moved, all sharing a `batch_uuid`. Reporting them
+     * all put a phantom update next to every create, so they collapse onto a
+     * single surviving row: the native event when there is one, otherwise the
+     * first custom-field row, whichever carries every sibling payload with it.
+     *
+     * @return Builder<Activity>
+     */
+    private function auditTrailQuery(): Builder
+    {
+        return Activity::query()
+            ->select('activity_log.*')
+            ->addSelect(['batch_custom_field_properties' => $this->sameSave(DB::table('activity_log', 'sibling'))
+                ->selectRaw('json_agg(sibling.properties order by sibling.id)')
+                ->where('sibling.event', self::CUSTOM_FIELD_EVENT),
+            ])
+            ->whereNot(fn (Builder $query): Builder => $query
+                ->where('event', self::CUSTOM_FIELD_EVENT)
+                ->whereNotNull('batch_uuid')
+                ->whereExists(fn (QueryBuilder $sibling): QueryBuilder => $this->sameSave($sibling)
+                    ->whereRaw(
+                        '(case when sibling.event = ? then 1 else 0 end, sibling.id) < (1, activity_log.id)',
+                        [self::CUSTOM_FIELD_EVENT],
+                    )))
+            ->whereNull('activity_log.properties->import_id')
+            ->inAuditTrail()
+            ->with('causer');
     }
 
     private function changesColumn(): TextColumn

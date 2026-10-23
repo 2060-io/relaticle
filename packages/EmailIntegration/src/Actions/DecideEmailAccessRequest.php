@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Actions;
 
 use App\Actions\Notifications\RefreshNotificationBell;
+use App\Models\ActivityLog\Activity;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -53,7 +54,7 @@ final readonly class DecideEmailAccessRequest
 
     private function logOutcome(EmailAccessRequest $request, EmailAccessRequestStatus $outcome, ?User $actor): void
     {
-        $activity = activity()->performedOn($request)->event($outcome->value);
+        $activity = activity(Activity::EMAIL_ACCESS_LOG)->performedOn($request)->event($outcome->value);
 
         if ($actor instanceof User) {
             $activity->causedBy($actor);
