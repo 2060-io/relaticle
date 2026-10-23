@@ -88,7 +88,7 @@ final class EmailSharedNotification extends InboxNotification
 
         if ($notifiable->can('viewSubject', $this->email)) {
             $mail->line(__(self::LANG.'.mail.subject_line', [
-                'subject' => MarkdownText::escape(filled($this->email->subject) ? $this->email->subject : __('filament/pages/email-inbox.subject.none')),
+                'subject' => MarkdownText::escape($this->email->displaySubject()),
             ]));
         }
 

@@ -409,6 +409,11 @@ final class Email extends Model
         return $this->hasMany(EmailAccessRequest::class);
     }
 
+    public function displaySubject(): string
+    {
+        return filled($this->subject) ? $this->subject : __('filament/pages/email-inbox.subject.none');
+    }
+
     public function appUrlFor(User $viewer): string
     {
         return $this->appUrl($viewer->can('viewBody', $this));

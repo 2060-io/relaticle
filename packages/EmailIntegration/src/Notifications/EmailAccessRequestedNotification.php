@@ -84,7 +84,7 @@ final class EmailAccessRequestedNotification extends InboxNotification
             ->subject(__(self::LANG.'.mail.subject', ['name' => $requesterName]))
             ->line(__(self::LANG.'.mail.line', ['name' => MarkdownText::escape($requesterName)]))
             ->line(__(self::LANG.'.mail.subject_line', [
-                'subject' => MarkdownText::escape(filled($email->subject) ? $email->subject : __('filament/pages/email-inbox.subject.none')),
+                'subject' => MarkdownText::escape($email->displaySubject()),
             ]))
             ->action(
                 __(self::LANG.'.mail.action'),

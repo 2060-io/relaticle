@@ -109,7 +109,7 @@ final readonly class EmailAccessRequestSource implements RequestSource
             title: $requester === null
                 ? __('filament/notifications/email-access-requested.title_without_requester')
                 : __('filament/notifications/email-access-requested.title', ['name' => $requester->name]),
-            body: filled($email?->subject) ? $email->subject : __('filament/pages/email-inbox.subject.none'),
+            body: $email?->displaySubject() ?? __('filament/pages/email-inbox.subject.none'),
             requester: $requester,
             createdAt: CarbonImmutable::instance($request->created_at),
             expiresAt: $request->deadline(),

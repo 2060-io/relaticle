@@ -66,7 +66,7 @@ final class EmailAccessRespondedNotification extends InboxNotification
 
         if ($notifiable->can('viewSubject', $email)) {
             $mail->line(__(self::LANG.'.mail.subject_line', [
-                'subject' => MarkdownText::escape(filled($email->subject) ? $email->subject : __('filament/pages/email-inbox.subject.none')),
+                'subject' => MarkdownText::escape($email->displaySubject()),
             ]));
         }
 
