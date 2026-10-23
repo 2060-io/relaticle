@@ -1,13 +1,9 @@
 @php
+    use App\Enums\Notifications\RequestOutcome;
+
     $requestId = $request['id'];
     $kind = $request['kind'];
     $outcome = $request['outcome'];
-    $outcomeLabel = match ($outcome) {
-        'approved' => __('notifications.panel.requests.approved'),
-        'denied' => __('notifications.panel.requests.denied'),
-        'already_decided' => __('notifications.panel.requests.already_decided'),
-        default => null,
-    };
 @endphp
 
 <li
@@ -41,16 +37,16 @@
         </p>
 
         <div class="mt-2 flex flex-wrap items-center gap-2">
-            @if ($outcomeLabel)
+            @if ($outcome)
                 <span
                     @class([
                         'inline-flex items-center gap-1 text-xs font-medium',
-                        'text-success-600 dark:text-success-400' => $outcome === 'approved',
-                        'text-gray-500 dark:text-gray-400' => $outcome !== 'approved',
+                        'text-success-600 dark:text-success-400' => $outcome === RequestOutcome::Approved,
+                        'text-gray-500 dark:text-gray-400' => $outcome !== RequestOutcome::Approved,
                     ])
                 >
-                    <x-filament::icon :icon="match ($outcome) { 'approved' => 'ri-check-line', 'denied' => 'ri-close-line', default => 'ri-information-line' }" class="size-4" />
-                    {{ $outcomeLabel }}
+                    <x-filament::icon :icon="$outcome->icon()" class="size-4" />
+                    {{ $outcome->label() }}
                 </span>
             @else
                 <x-filament::button

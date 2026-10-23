@@ -6,6 +6,7 @@ namespace App\Livewire\App;
 
 use App\Actions\Notifications\ArchiveNotification;
 use App\Data\InboxRequest;
+use App\Enums\Notifications\RequestOutcome;
 use App\Filament\Pages\NotificationPreferences;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
@@ -33,12 +34,6 @@ use Livewire\Attributes\On;
  */
 final class AppDatabaseNotifications extends DatabaseNotifications
 {
-    private const string APPROVED = 'approved';
-
-    private const string DENIED = 'denied';
-
-    private const string ALREADY_DECIDED = 'already_decided';
-
     /** @var array<string, array{outcome: string, title: string, body: ?string, avatar: ?string, created_at: string}> */
     #[Locked]
     public array $decidedRequests = [];
@@ -124,12 +119,12 @@ final class AppDatabaseNotifications extends DatabaseNotifications
 
     public function approveRequest(string $kind, string $id): void
     {
-        $this->decideRequest($kind, $id, self::APPROVED);
+        $this->decideRequest($kind, $id, RequestOutcome::Approved);
     }
 
     public function denyRequest(string $kind, string $id): void
     {
-        $this->decideRequest($kind, $id, self::DENIED);
+        $this->decideRequest($kind, $id, RequestOutcome::Denied);
     }
 
     public function render(): View
@@ -155,7 +150,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         ]);
     }
 
-    private function decideRequest(string $kind, string $id, string $outcome): void
+    private function decideRequest(string $kind, string $id, RequestOutcome $outcome): void
     {
         $user = $this->requireUser();
         $workspace = resolve(CurrentWorkspace::class)->get();
@@ -166,7 +161,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
         $request = $requests->for($user, $workspace)
             ->first(fn (InboxRequest $pending): bool => $pending->kind === $kind && $pending->id === $id);
 
-        $decided = $outcome === self::APPROVED
+        $decided = $outcome === RequestOutcome::Approved
             ? $requests->approve($user, $workspace, $kind, $id)
             : $requests->deny($user, $workspace, $kind, $id);
 
@@ -174,12 +169,12 @@ final class AppDatabaseNotifications extends DatabaseNotifications
             return;
         }
 
-        $recorded = $decided ? $outcome : self::ALREADY_DECIDED;
+        $recorded = $decided ? $outcome : RequestOutcome::AlreadyDecided;
 
-        $this->announcement = __("notifications.panel.announcements.{$recorded}", ['title' => $request->title]);
+        $this->announcement = $recorded->announcement($request->title);
 
         $this->decidedRequests[$id] = [
-            'outcome' => $recorded,
+            'outcome' => $recorded->value,
             'title' => $request->title,
             'body' => $request->body,
             'avatar' => $request->requester instanceof User ? filament()->getUserAvatarUrl($request->requester) : null,
@@ -271,7 +266,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
      *     createdAt: CarbonImmutable,
      *     expiresAt: ?CarbonImmutable,
      *     url: ?string,
-     *     outcome: ?string
+     *     outcome: ?RequestOutcome
      * }>
      */
     private function requestRows(Collection $pending): array
@@ -300,7 +295,7 @@ final class AppDatabaseNotifications extends DatabaseNotifications
                 'createdAt' => CarbonImmutable::parse($row['created_at']),
                 'expiresAt' => null,
                 'url' => null,
-                'outcome' => $row['outcome'],
+                'outcome' => RequestOutcome::tryFrom($row['outcome']),
             ]);
 
         return $rows->concat($decided)->sortByDesc('createdAt')->values()->all();
