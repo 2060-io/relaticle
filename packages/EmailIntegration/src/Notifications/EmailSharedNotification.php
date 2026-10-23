@@ -14,7 +14,6 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Notifications\Messages\MailMessage;
-use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Support\MarkdownText;
 
@@ -26,7 +25,6 @@ final class EmailSharedNotification extends InboxNotification
         public readonly Email $email,
         public readonly User $sharer,
         public readonly User $recipient,
-        public readonly EmailPrivacyTier $tier,
     ) {}
 
     public function workspace(): Workspace
@@ -71,7 +69,6 @@ final class EmailSharedNotification extends InboxNotification
     {
         return [
             'email_subject' => $this->recipient->can('viewSubject', $this->email) ? $this->email->subject : null,
-            'tier' => $this->tier->value,
         ];
     }
 

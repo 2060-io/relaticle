@@ -35,18 +35,18 @@ final readonly class UpdateEmailSharingAction
             $email->shares()->where('shared_by', $sharer->getKey())->delete();
 
             return $this->recreateShares($email, $sharer, $shares)
-                ->reject(fn (array $grant, string $userId): bool => $userId === (string) $sharer->getKey()
+                ->reject(fn (User $recipient, string $userId): bool => $userId === (string) $sharer->getKey()
                     || in_array($userId, $alreadyHadAccess, true));
         });
 
-        $newlyGranted->each(fn (array $grant) => $grant['user']->notify(
-            new EmailSharedNotification($email, $sharer, $grant['user'], $grant['tier']),
+        $newlyGranted->each(fn (User $recipient) => $recipient->notify(
+            new EmailSharedNotification($email, $sharer, $recipient),
         ));
     }
 
     /**
      * @param  array<int, array{shared_with: string|int|array<int, string|int>, tier: string|EmailPrivacyTier}>  $shares
-     * @return Collection<string, array{user: User, tier: EmailPrivacyTier}>
+     * @return Collection<string, User>
      */
     private function recreateShares(Email $email, User $sharer, array $shares): Collection
     {
@@ -67,7 +67,7 @@ final readonly class UpdateEmailSharingAction
 
                 $this->sharingService->shareEmail($email, $sharer, $sharedWithUser, $tierForShare);
 
-                $granted->put((string) $sharedWithUser->getKey(), ['user' => $sharedWithUser, 'tier' => $tierForShare]);
+                $granted->put((string) $sharedWithUser->getKey(), $sharedWithUser);
             }
         }
 

@@ -126,7 +126,7 @@ it('writes the row in the email workspace with the sharer as actor', function ()
         ->and($row->actor_id)->toBe($this->owner->getKey())
         ->and($row->subject_id)->toBe($this->email->getKey())
         ->and($row->reason)->toBe(NotificationReason::Shared)
-        ->and($row->data)->toBe(['email_subject' => 'Renewal terms', 'tier' => EmailPrivacyTier::SUBJECT->value]);
+        ->and($row->data)->toBe(['email_subject' => 'Renewal terms']);
 });
 
 it('turning off the in-app channel leaves the mail', function (): void {
@@ -156,7 +156,7 @@ it('sends a Participants-only share without the subject in the bell or the mail'
 
     $this->actingAs($this->alice);
     $presented = EmailSharedNotification::present($row);
-    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice, EmailPrivacyTier::METADATA_ONLY)->toMail($this->alice);
+    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice)->toMail($this->alice);
 
     expect($row->data['email_subject'])->toBeNull()
         ->and($presented->getTitle())->toBe($this->owner->name.' shared an email with you')
@@ -176,7 +176,7 @@ it('sends nothing for a Private share', function (): void {
 });
 
 it('sends nothing when the share is revoked before the notice goes out', function (): void {
-    $notification = new EmailSharedNotification($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL);
+    $notification = new EmailSharedNotification($this->email, $this->owner, $this->alice);
     $sharing = resolve(EmailSharingService::class);
 
     $sharing->shareEmail($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL);
@@ -195,7 +195,7 @@ it('gives a Full share a reader link in the bell and the mail', function (): voi
 
     $this->actingAs($this->alice);
     $presented = EmailSharedNotification::present($row);
-    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice);
+    $mail = new EmailSharedNotification($this->email, $this->owner, $this->alice)->toMail($this->alice);
     $link = Dashboard::getUrl(['email' => $this->email->getKey()], panel: 'app', tenant: $this->workspace);
 
     expect($presented->getBody())->toBe('Renewal terms')
@@ -210,7 +210,7 @@ it('renders Markdown in the subject and the sharer name as text', function (): v
     $this->email->update(['subject' => '[x](https://evil.example) and www.evil.example and bad@evil.example']);
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
-    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice)->render();
+    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice)->toMail($this->alice)->render();
 
     expect($html)->not->toContain('<a href="https://evil.example')
         ->not->toContain('<a href="http://www.evil.example')
@@ -223,7 +223,7 @@ it('keeps Markdown escapes out of the plain text mail', function (): void {
     $this->email->update(['subject' => 'Re: Q3 (draft)']);
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
-    $mail = new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice);
+    $mail = new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice)->toMail($this->alice);
     $text = (string) resolve(Markdown::class)->renderText($mail->markdown, $mail->data());
 
     expect($text)->toContain('J. Smith')
@@ -236,7 +236,7 @@ it('keeps quotes and ampersands readable in the mail', function (): void {
     $this->email->update(['subject' => "Let's meet about Q&A <draft>"]);
     saveSharing([$this->alice], EmailPrivacyTier::FULL);
 
-    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice, EmailPrivacyTier::FULL)->toMail($this->alice)->render();
+    $html = (string) new EmailSharedNotification($this->email->fresh(), $this->owner->fresh(), $this->alice)->toMail($this->alice)->render();
 
     expect($html)->toContain("Olivia O'Brien")
         ->toContain("Let's meet about Q&amp;A &lt;draft&gt;")
