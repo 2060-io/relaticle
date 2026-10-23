@@ -28,7 +28,7 @@ final class EmailAccessRequestedNotification extends InboxNotification
 
     public function workspace(): Workspace
     {
-        return $this->request->emailIncludingHidden->workspace;
+        return $this->request->workspace ?? $this->request->emailIncludingHidden->workspace;
     }
 
     public function subject(): EmailAccessRequest
