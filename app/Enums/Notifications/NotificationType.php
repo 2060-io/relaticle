@@ -46,6 +46,14 @@ enum NotificationType: string
         };
     }
 
+    public function requiresEmailIntegration(): bool
+    {
+        return match ($this) {
+            self::EmailAccess, self::EmailShared => true,
+            self::TaskAssigned, self::TaskDigest => false,
+        };
+    }
+
     /** @return array<int, self> */
     public static function collaboration(): array
     {

@@ -11,6 +11,8 @@ use App\Models\User;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 
+mutates(ManageNotificationPreferences::class);
+
 it('hydrates cells and the digest toggle from defaults', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);

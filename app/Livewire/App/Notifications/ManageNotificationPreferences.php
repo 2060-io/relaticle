@@ -72,8 +72,7 @@ final class ManageNotificationPreferences extends BaseLivewireComponent
 
         return array_values(array_filter(
             NotificationType::collaboration(),
-            fn (NotificationType $type): bool => $emailIntegrationActive
-                || ! in_array($type, [NotificationType::EmailAccess, NotificationType::EmailShared], true),
+            fn (NotificationType $type): bool => $emailIntegrationActive || ! $type->requiresEmailIntegration(),
         ));
     }
 
