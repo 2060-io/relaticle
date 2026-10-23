@@ -62,8 +62,6 @@ function ownerWithAccessRequests(string ...$requesterNames): array
             'requester_id' => $requester->id,
             'owner_id' => $owner->id,
             'email_id' => $email->getKey(),
-            'workspace_id' => $workspace->id,
-            'expires_at' => now()->addDays(30),
             'created_at' => now()->subMinutes(10 - $offset),
         ]);
     }
@@ -233,8 +231,6 @@ it('approves an email access request from the Requests tab and shows the outcome
         'requester_id' => $requester->id,
         'owner_id' => $owner->id,
         'email_id' => $email->getKey(),
-        'workspace_id' => $workspace->id,
-        'expires_at' => now()->addDays(30),
     ]);
 
     openInbox($owner, $workspace)

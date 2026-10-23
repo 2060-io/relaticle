@@ -51,12 +51,10 @@ beforeEach(function (): void {
         ]);
     };
 
-    $this->requestFor = fn (Email $email, ?User $requester = null): EmailAccessRequest => EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+    $this->requestFor = fn (Email $email, ?User $requester = null, string $state = 'pending'): EmailAccessRequest => EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->{$state}()->create([
         'requester_id' => ($requester ?? $this->requester)->id,
         'owner_id' => $this->owner->id,
         'email_id' => $email->getKey(),
-        'workspace_id' => $email->workspace_id,
-        'expires_at' => now()->addDays(30),
     ]);
 
     $this->email = ($this->emailIn)($this->workspace);
@@ -102,11 +100,8 @@ it('never shows a request to its requester', function (): void {
 });
 
 it('leaves out decided and overdue requests', function (): void {
-    $approved = ($this->requestFor)($this->email);
-    $approved->update(['status' => EmailAccessRequestStatus::APPROVED]);
-
-    $overdue = ($this->requestFor)(($this->emailIn)($this->workspace, 'Older'));
-    $overdue->update(['expires_at' => now()->subMinute()]);
+    ($this->requestFor)($this->email, state: 'approved');
+    ($this->requestFor)(($this->emailIn)($this->workspace, 'Older'), state: 'overdue');
 
     expect($this->requests->for($this->owner, $this->workspace))->toBeEmpty()
         ->and($this->requests->countFor($this->owner, $this->workspace))->toBe(0);
@@ -119,8 +114,7 @@ it('finds the owner\'s open request and nothing that is not theirs or open', fun
 
     $request = ($this->requestFor)($this->email);
     $otherWorkspace = ($this->requestFor)(($this->emailIn)($elsewhere));
-    $decided = ($this->requestFor)(($this->emailIn)($this->workspace, 'Decided'));
-    $decided->update(['status' => EmailAccessRequestStatus::DENIED]);
+    $decided = ($this->requestFor)(($this->emailIn)($this->workspace, 'Decided'), state: 'denied');
 
     $found = $this->requests->find($this->owner, $this->workspace, 'email_access', $request->getKey());
 
@@ -173,10 +167,8 @@ it('denies through the source without sharing', function (): void {
 
 it('returns false when the request was already decided or expired', function (string $decision): void {
     Notification::fake();
-    $decidedElsewhere = ($this->requestFor)($this->email);
-    $decidedElsewhere->update(['status' => EmailAccessRequestStatus::DENIED]);
-    $overdue = ($this->requestFor)(($this->emailIn)($this->workspace, 'Older'));
-    $overdue->update(['expires_at' => now()->subMinute()]);
+    $decidedElsewhere = ($this->requestFor)($this->email, state: 'denied');
+    $overdue = ($this->requestFor)(($this->emailIn)($this->workspace, 'Older'), state: 'overdue');
 
     expect($this->requests->{$decision}($this->owner, $this->workspace, 'email_access', $decidedElsewhere->getKey()))->toBeFalse()
         ->and($this->requests->{$decision}($this->owner, $this->workspace, 'email_access', $overdue->getKey()))->toBeFalse()
@@ -292,8 +284,7 @@ describe('owner badge', function (): void {
 
     it('moves when a request expires', function (): void {
         Notification::fake();
-        $request = ($this->requestFor)($this->email);
-        $request->update(['expires_at' => now()->subMinute()]);
+        $request = ($this->requestFor)($this->email, state: 'overdue');
         Event::fake([DatabaseNotificationsSent::class]);
 
         $this->artisan('email:expire-access-requests')->assertSuccessful();

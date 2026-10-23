@@ -62,7 +62,7 @@ function insertFilamentNotification(User $user, ?string $workspaceId, string $ti
     return $id;
 }
 
-function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $subject, string $requesterName): EmailAccessRequest
+function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $subject, string $requesterName, EmailAccessRequestStatus $status = EmailAccessRequestStatus::PENDING): EmailAccessRequest
 {
     $requester = User::factory()->create(['name' => $requesterName]);
     $workspace->users()->attach($requester, ['role' => 'member']);
@@ -83,8 +83,7 @@ function pendingEmailAccessRequest(User $owner, Workspace $workspace, string $su
         'requester_id' => $requester->id,
         'owner_id' => $owner->id,
         'email_id' => $email->getKey(),
-        'workspace_id' => $workspace->id,
-        'expires_at' => now()->addDays(30),
+        'status' => $status,
     ]);
 }
 
@@ -398,8 +397,7 @@ it('denies a request from the panel and shows the outcome in place', function ()
 });
 
 it('drops a request someone else already decided instead of recording an outcome', function (string $method, EmailAccessRequestStatus $decidedAs): void {
-    $request = pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
-    $request->update(['status' => $decidedAs]);
+    $request = pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield', $decidedAs);
 
     $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class)
         ->call($method, 'email_access', $request->getKey())
