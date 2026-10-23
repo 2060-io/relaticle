@@ -126,9 +126,9 @@ jobs:
       fail-fast: false
       matrix:
         php: [8.5]
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
 
-    name: Tests (Shard ${{ matrix.shard }}/5)
+    name: Tests (Shard ${{ matrix.shard }}/6)
 
     services:
       postgres:
@@ -185,10 +185,18 @@ jobs:
           php artisan key:generate
           php artisan passport:keys --force --no-interaction
 
+      # The newest recording from the Shard Timings workflow. The committed file is the fallback.
+      - name: Restore shard timings
+        uses: actions/cache/restore@v6
+        with:
+          path: tests/.pest/shards.json
+          key: pest-shards-${{ github.run_id }}
+          restore-keys: pest-shards-
+
       - name: Tests
         run: composer test:pest:ci
         env:
-          SHARD: ${{ matrix.shard }}/5
+          SHARD: ${{ matrix.shard }}/6
 
   browser-tests:
     runs-on: ubuntu-latest

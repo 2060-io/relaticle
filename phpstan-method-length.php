@@ -6,7 +6,6 @@ return [
     'parameters' => [
         'methodLength' => [
             'grandfathered' => [
-                'App\Actions\CustomFields\CreateCustomField::execute' => 67,
                 'App\Queries\Opportunities\OpportunityAggregatesQuery::byStage' => 63,
                 'App\Console\Commands\BackfillCustomFieldColorsCommand::handle' => 93,
                 'App\Console\Commands\BackfillRichEditorAttachmentsCommand::migrateValue' => 76,
@@ -36,7 +35,6 @@ return [
                 'App\Providers\Filament\AppPanelProvider::panel' => 288,
                 'App\Providers\HealthServiceProvider::boot' => 65,
                 'App\Services\AvatarService::getInitials' => 70,
-                'App\Support\CustomFieldDefinitionValidator::forUpdate' => 62,
                 'App\Support\CustomFieldOptionPlan::fromToolInput' => 77,
                 'App\Support\CustomFieldOptionPlan::validated' => 114,
                 'Relaticle\Chat\Queries\ConversationMessagesQuery::get' => 125,
@@ -60,7 +58,7 @@ return [
                 'Relaticle\Chat\Tools\BaseWriteCreateTool::handle' => 129,
                 'Relaticle\Chat\Tools\BaseWriteDeleteTool::handle' => 63,
                 'Relaticle\Chat\Tools\BaseWriteUpdateTool::handle' => 162,
-                'Relaticle\Chat\Tools\CustomField\CreateCustomFieldTool::handle' => 119,
+                'Relaticle\Chat\Tools\CustomField\CreateCustomFieldTool::handle' => 117,
                 'Relaticle\Chat\Tools\CustomField\DeleteCustomFieldTool::handle' => 100,
                 'Relaticle\Chat\Tools\CustomField\SetCustomFieldOptionsTool::handle' => 102,
                 'Relaticle\Chat\Tools\CustomField\UpdateCustomFieldTool::handle' => 138,

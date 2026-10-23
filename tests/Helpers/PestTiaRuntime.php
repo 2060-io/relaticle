@@ -21,7 +21,10 @@ final class PestTiaRuntime
         '.ai/**' => 'tests/Arch',
         '.github/**' => 'tests/Arch',
         '*.md' => 'tests/Arch',
+        'Dockerfile' => 'tests/Arch',
         'composer.json' => 'tests/Arch',
+        'packages/*/resources/css/**' => 'tests/Arch',
+        'resources/css/**' => 'tests/Arch',
         'phpstan*.neon' => 'tests/Arch',
         'phpunit*.xml' => 'tests/Arch',
     ];
