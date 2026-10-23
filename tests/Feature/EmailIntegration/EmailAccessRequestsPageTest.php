@@ -5,8 +5,6 @@ declare(strict_types=1);
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
-use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Support\Facades\DB;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccessRequestsPage;
@@ -21,24 +19,6 @@ use Relaticle\EmailIntegration\Services\EmailSearchService;
 mutates(AccessRequestsTable::class, EmailAccessRequestsPage::class, InteractsWithEmailAccessRequests::class, EmailSearchService::class);
 
 beforeEach(function (): void {
-    $this->denyOnceActionLoadsIt = function (EmailAccessRequest $request): void {
-        $armed = true;
-
-        DB::listen(function (QueryExecuted $query) use ($request, &$armed): void {
-            $loadsRequest = str_starts_with($query->sql, 'select')
-                && str_contains($query->sql, 'from "email_access_requests"')
-                && ! str_contains($query->sql, 'exists');
-
-            if (! $armed || ! $loadsRequest) {
-                return;
-            }
-
-            $armed = false;
-
-            DB::table('email_access_requests')->where('id', $request->getKey())->update(['status' => 'denied']);
-        });
-    };
-
     $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
     $this->workspace = $this->user->currentWorkspace;
@@ -267,7 +247,7 @@ describe('approveAccessRequest action', function (): void {
         $table = livewire(AccessRequestsTable::class)
             ->mountTableAction('approveAccessRequest', $request);
 
-        ($this->denyOnceActionLoadsIt)($request);
+        denyRequestMidDecision($request);
 
         $table->callMountedTableAction()
             ->assertNotified('This request is no longer pending.');
@@ -328,7 +308,7 @@ describe('denyAccessRequest action', function (): void {
         $table = livewire(AccessRequestsTable::class)
             ->mountTableAction('denyAccessRequest', $request);
 
-        ($this->denyOnceActionLoadsIt)($request);
+        denyRequestMidDecision($request);
 
         $table->callMountedTableAction()
             ->assertNotified('This request is no longer pending.');
@@ -438,7 +418,7 @@ describe('cancelAccessRequest action', function (): void {
             ->call('setTab', 'outgoing')
             ->mountTableAction('cancelAccessRequest', $request);
 
-        ($this->denyOnceActionLoadsIt)($request);
+        denyRequestMidDecision($request);
 
         $table->callMountedTableAction()
             ->assertNotified('This request is no longer pending.');

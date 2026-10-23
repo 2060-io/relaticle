@@ -17,7 +17,6 @@ use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Notifications\DatabaseNotification as FilamentDatabaseNotification;
 use Filament\Notifications\Notification as FilamentNotification;
-use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Str;
@@ -418,16 +417,7 @@ it('says the request was already decided when another member decides it mid-clic
     $request = pendingEmailAccessRequest($this->user, $this->workspaceA, 'Confidential Thread', 'Dana Whitfield');
     $component = Livewire::actingAs($this->user)->test(AppDatabaseNotifications::class);
 
-    $reads = 0;
-    DB::listen(function (QueryExecuted $query) use ($request, &$reads): void {
-        if (! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'from "email_access_requests"')) {
-            return;
-        }
-
-        if (++$reads === 2) {
-            DB::table('email_access_requests')->where('id', $request->getKey())->update(['status' => 'denied']);
-        }
-    });
+    denyRequestMidDecision($request);
 
     $component->call($method, 'email_access', $request->getKey())
         ->assertSee('This request was already decided.')

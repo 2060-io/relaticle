@@ -33,6 +33,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Passport\AccessToken;
@@ -42,6 +43,7 @@ use Livewire\Livewire;
 use Pest\Browser\Api\AwaitableWebpage;
 use Pest\Browser\Playwright\Playwright;
 use Relaticle\EmailIntegration\Controllers\RedirectController;
+use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Jobs\StoreEmailJob;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
@@ -203,6 +205,21 @@ function bindMailboxOAuthWorkspace(User $user, ?Workspace $workspace = null): vo
     throw_unless($workspace instanceof Workspace, RuntimeException::class, 'bindMailboxOAuthWorkspace requires a workspace.');
 
     session()->put(RedirectController::WORKSPACE_SESSION_KEY, $workspace->getKey());
+}
+
+function denyRequestMidDecision(EmailAccessRequest $request): void
+{
+    $loads = 0;
+
+    EmailAccessRequest::retrieved(function (EmailAccessRequest $retrieved) use ($request, &$loads): void {
+        if ($retrieved->isNot($request) || ++$loads < 2) {
+            return;
+        }
+
+        Event::forget('eloquent.retrieved: '.EmailAccessRequest::class);
+
+        DB::table('email_access_requests')->where('id', $request->getKey())->update(['status' => EmailAccessRequestStatus::DENIED->value]);
+    });
 }
 
 function bellAccessRequestNotice(User $owner, EmailAccessRequest $request): NotificationRow
