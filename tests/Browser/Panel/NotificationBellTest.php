@@ -37,6 +37,40 @@ function notifiedOwner(string ...$taskTitles): array
     return [$owner, $workspace, $teammate];
 }
 
+function ownerWithAccessRequests(string ...$requesterNames): array
+{
+    Feature::for(null)->activate(EmailIntegration::class);
+
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->ownedWorkspaces()->first();
+    $account = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $owner->id,
+    ]));
+    $requests = [];
+
+    foreach ($requesterNames as $offset => $name) {
+        $requester = User::factory()->create(['name' => $name, 'current_workspace_id' => $workspace->id]);
+        $workspace->users()->attach($requester, ['role' => 'member']);
+        $email = Email::factory()->private()->create([
+            'workspace_id' => $workspace->id,
+            'user_id' => $owner->id,
+            'connected_account_id' => $account->getKey(),
+            'subject' => "Confidential Thread {$offset}",
+        ]);
+        $requests[] = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $requester->id,
+            'owner_id' => $owner->id,
+            'email_id' => $email->getKey(),
+            'workspace_id' => $workspace->id,
+            'expires_at' => now()->addDays(30),
+            'created_at' => now()->subMinutes(10 - $offset),
+        ]);
+    }
+
+    return [$owner, $workspace, $requests];
+}
+
 function openInbox(User $owner, Workspace $workspace): AwaitableWebpage
 {
     return loginViaBrowser($owner)
@@ -121,6 +155,56 @@ it('moves focus to the active tab after marking all notifications as read', func
         ->wait(1)
         ->assertMissing(INBOX_PANEL.' button:has-text("Mark all as read")')
         ->assertScript('document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true"', true)
+        ->assertNoJavaScriptErrors();
+
+    expect($user->notifications()->whereNull('read_at')->count())->toBe(0);
+});
+
+it('moves focus and selection to the Requests tab with ArrowRight', function (): void {
+    $this->withVite();
+
+    [$user, $workspace] = notifiedOwner('Send the renewal quote');
+
+    openInbox($user, $workspace)
+        ->keys('#inbox-tab-notifications', 'ArrowRight')
+        ->wait(0.3)
+        ->assertScript('document.activeElement?.id', 'inbox-tab-requests')
+        ->assertScript('document.activeElement?.getAttribute("aria-selected")', 'true')
+        ->assertScript('document.getElementById("inbox-tab-notifications")?.getAttribute("aria-selected")', 'false')
+        ->assertNoJavaScriptErrors();
+});
+
+it('moves focus to the next request after approving, then to the active tab after the last', function (): void {
+    $this->withVite();
+
+    [$owner, $workspace, $requests] = ownerWithAccessRequests('Dana Whitfield', 'Priya Natarajan');
+
+    $page = openInbox($owner, $workspace)
+        ->click(INBOX_PANEL.' [role=tab]:nth-child(2)')
+        ->wait(0.3)
+        ->assertScript('document.querySelectorAll("'.INBOX_PANEL.' [data-inbox-approve]").length', 2);
+
+    $page->click(INBOX_PANEL.' li[data-inbox-key]:has-text("Priya Natarajan") [data-inbox-approve]')
+        ->wait(1)
+        ->assertScript('document.activeElement?.hasAttribute("data-inbox-approve")', true)
+        ->assertScript('document.activeElement?.closest("li")?.textContent.includes("Dana Whitfield")', true)
+        ->click(INBOX_PANEL.' li[data-inbox-key]:has-text("Dana Whitfield") [data-inbox-approve]')
+        ->wait(1)
+        ->assertScript('document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true"', true)
+        ->assertNoJavaScriptErrors();
+
+    expect(EmailAccessRequest::query()->where('status', EmailAccessRequestStatus::APPROVED)->count())->toBe(2);
+});
+
+it('marks a notification read and opens its record when its row is clicked', function (): void {
+    $this->withVite();
+
+    [$user, $workspace] = notifiedOwner('Send the renewal quote');
+
+    openInbox($user, $workspace)
+        ->click(INBOX_PANEL.' li[data-inbox-key] a[data-inbox-main]')
+        ->wait(2)
+        ->assertPathContains('/tasks')
         ->assertNoJavaScriptErrors();
 
     expect($user->notifications()->whereNull('read_at')->count())->toBe(0);
