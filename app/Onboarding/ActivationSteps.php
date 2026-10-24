@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Onboarding;
 
 use App\Enums\ActivationStep;
+use App\Features\Chat;
 use App\Features\EmailIntegration;
 use App\Models\User;
 use App\Models\Workspace;
@@ -66,14 +67,16 @@ final readonly class ActivationSteps
                 });
         }
 
-        $steps->addStep(ActivationStep::AskRela->value, Workspace::class)
-            ->attributes([
-                'key' => ActivationStep::AskRela,
-                'label_key' => 'filament/pages/dashboard.activation.steps.ask_rela.label',
-                'description_key' => 'filament/pages/dashboard.activation.steps.ask_rela.description',
-                'icon' => 'heroicon-o-sparkles',
-            ])
-            ->completeIf(fn (Workspace $model): bool => resolve(WorkspaceActivationFacts::class)->hasUserChatMessage($model));
+        if (Feature::active(Chat::class)) {
+            $steps->addStep(ActivationStep::AskRela->value, Workspace::class)
+                ->attributes([
+                    'key' => ActivationStep::AskRela,
+                    'label_key' => 'filament/pages/dashboard.activation.steps.ask_rela.label',
+                    'description_key' => 'filament/pages/dashboard.activation.steps.ask_rela.description',
+                    'icon' => 'heroicon-o-sparkles',
+                ])
+                ->completeIf(fn (Workspace $model): bool => resolve(WorkspaceActivationFacts::class)->hasUserChatMessage($model));
+        }
 
         $steps->addStep(ActivationStep::Import->value, Workspace::class)
             ->attributes([

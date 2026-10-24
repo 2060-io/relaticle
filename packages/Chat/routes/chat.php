@@ -16,6 +16,14 @@ Route::middleware(['auth:web', AuthenticateSession::class, EnsureHostedWorkspace
         ->middleware('throttle:60,1,record-redirect')
         ->name('chat.record-redirect');
 
+    // RELATICLE_FEATURE_CHAT=false drops the assistant's endpoints. The record
+    // permalinks above stay: they are plain links to a record and outlive any
+    // transcript that printed them. Read from config, not Pennant: routes load
+    // from register(), before Pennant can resolve (same as the blog flag).
+    if (! config('relaticle.features.chat', true)) {
+        return;
+    }
+
     Route::get('/chat/mentions', [ChatController::class, 'mentions'])
         ->middleware('throttle:60,1,chat-mentions')
         ->name('chat.mentions');
