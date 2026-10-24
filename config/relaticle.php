@@ -66,6 +66,7 @@ return [
         'support_menu' => (bool) env('RELATICLE_FEATURE_SUPPORT_MENU', false),
         'blog' => (bool) env('RELATICLE_FEATURE_BLOG', false),
         'setup_conversation' => (bool) env('RELATICLE_FEATURE_SETUP_CONVERSATION', true),
+        'chat' => (bool) env('RELATICLE_FEATURE_CHAT', true),
     ],
 
 ];
