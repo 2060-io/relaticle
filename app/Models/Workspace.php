@@ -97,6 +97,9 @@ use Spatie\Sluggable\SlugOptions;
 ])]
 #[Hidden([
     'invite_link_token',
+    'stripe_id',
+    'pm_type',
+    'pm_last_four',
 ])]
 final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
 {
