@@ -6,23 +6,28 @@ namespace App\Providers;
 
 use App\Console\Commands\MakeFilamentUserCommand;
 use App\Enums\CrmEntity;
+use App\Enums\EmailGrant;
 use App\Enums\Plan;
+use App\Events\InactiveRecipientsRejected;
 use App\Events\WorkspaceCreated;
 use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
+use App\Filament\CustomFields\DomainFieldType;
 use App\Filament\CustomFields\RichEditorFieldType;
+use App\Http\Middleware\ReadAcrossWorkspaces;
 use App\Http\Responses\LoginResponse;
+use App\Jobs\CompleteExport;
 use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
 use App\Listeners\CreateSetupConversationListener;
 use App\Listeners\Email\DropBouncedRecipientsListener;
 use App\Listeners\Email\NewSubscriberListener;
+use App\Listeners\Email\ParkInactiveRecipientsListener;
 use App\Listeners\Email\RecordLoginTimestampListener;
 use App\Listeners\Email\WorkspaceCreatedTagListener;
 use App\Listeners\Email\WorkspaceMemberAddedListener;
 use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
 use App\Listeners\SeedWorkspaceCreditBalanceListener;
 use App\Livewire\FilamentNotifications;
-use App\Mcp\Schema\McpSchemaCache;
 use App\Models\ActivityLog\Activity as ActivityModel;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
@@ -34,6 +39,7 @@ use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
+use App\Notifications\Channels\InboxChannel;
 use App\Onboarding\ActivationSteps;
 use App\Services\Billing\HostedWorkspaceAccess;
 use App\Services\DiscordService;
@@ -47,10 +53,14 @@ use App\Support\BrandColors;
 use App\Support\CurrentSource;
 use App\Support\CurrentWorkspace;
 use App\Support\CustomFields\CustomFieldInput;
+use App\Support\CustomFields\CustomFieldSchemaCache;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\CustomFields\RestoreConflictMessage;
 use App\Support\CustomFields\WorkspaceCustomFields;
+use App\Support\Http\RequestAbility;
+use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
+use App\Support\Mail\ParksInactiveRecipientsTransport;
 use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Media\MediaLookup;
 use App\Support\Migrations\TenantMigration;
@@ -59,6 +69,7 @@ use App\Support\Passport\WorkspaceBearerTokenResponse;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Actions\Exports\ExportColumn;
+use Filament\Actions\Exports\Jobs\ExportCompletion;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Auth\Notifications\NoticeOfEmailChangeRequest;
@@ -86,13 +97,17 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
 use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Notifications\Channels\DatabaseChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\View;
 use Knuckles\Scribe\Scribe;
@@ -121,7 +136,11 @@ use SocialiteProviders\Microsoft\MicrosoftExtendSocialite;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\PendingActivityLog;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
+use Spatie\MailcoachMailer\Exceptions\InvalidMailerConfig;
+use Spatie\MailcoachMailer\MailcoachTransportFactory;
 use Spatie\Onboard\OnboardingSteps;
+use Symfony\Component\Mailer\Transport\Dsn;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 
 final class AppServiceProvider extends ServiceProvider
 {
@@ -134,10 +153,7 @@ final class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(\Filament\Auth\Http\Responses\Contracts\LoginResponse::class, LoginResponse::class);
         $this->app->bind(\Filament\Actions\Exports\Models\Export::class, Export::class);
-        $this->app->bind(VerifyEmail::class, \App\Notifications\Auth\VerifyEmail::class);
-        $this->app->bind(VerifyEmailChange::class, \App\Notifications\Auth\VerifyEmailChange::class);
-        $this->app->bind(ResetPassword::class, \App\Notifications\Auth\ResetPassword::class);
-        $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
+        $this->registerNotificationBindings();
 
         // Ink registers its public routes from packageBooted(), which runs after every
         // provider's register(). Read the config key App\Features\Blog resolves from
@@ -194,9 +210,7 @@ final class AppServiceProvider extends ServiceProvider
             ),
         );
 
-        // Passport self-binds this singleton, and every OAuth endpoint resolves the
-        // client it was handed through it.
-        $this->app->singleton(BaseClientRepository::class, ClientRepository::class);
+        $this->registerPassport();
 
         // The shared MarkdownRenderer always loads HeadingPermalinkExtension, which
         // stamps a docs-site anchor onto every heading regardless of add_anchors_to_headings.
@@ -211,11 +225,51 @@ final class AppServiceProvider extends ServiceProvider
             ));
     }
 
+    private function registerNotificationBindings(): void
+    {
+        $this->app->bind(VerifyEmail::class, \App\Notifications\Auth\VerifyEmail::class);
+        $this->app->bind(VerifyEmailChange::class, \App\Notifications\Auth\VerifyEmailChange::class);
+        $this->app->bind(ResetPassword::class, \App\Notifications\Auth\ResetPassword::class);
+        $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
+        $this->app->bind(DatabaseChannel::class, InboxChannel::class);
+        $this->app->bind(ExportCompletion::class, CompleteExport::class);
+    }
+
+    private function registerPassport(): void
+    {
+        // Passport self-binds this singleton, and every OAuth endpoint resolves the
+        // client it was handed through it.
+        $this->app->singleton(BaseClientRepository::class, ClientRepository::class);
+
+        // A device-approved token would skip ApproveAuthorizationController, which derives
+        // the email scopes from the user's role. Passport reads this when it boots.
+        Passport::$deviceCodeGrantEnabled = false;
+    }
+
+    private function registerParkingMailTransport(): void
+    {
+        $this->app->booted(fn () => Facades\Mail::extend('mailcoach', function (array $config): TransportInterface {
+            foreach (['domain', 'token'] as $key) {
+                throw_unless(array_key_exists($key, $config), InvalidMailerConfig::missingKey($key));
+                throw_if($config[$key] === null, InvalidMailerConfig::missingValue($key));
+            }
+
+            $inner = (new MailcoachTransportFactory)->create(new Dsn('mailcoach', $config['domain'], options: [
+                'token' => $config['token'],
+                'api_base_url' => $config['api_base_url'] ?? null,
+            ]));
+
+            return new ParksInactiveRecipientsTransport($inner);
+        }));
+    }
+
     /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
+        $this->registerParkingMailTransport();
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MakeFilamentUserCommand::class,
@@ -231,6 +285,7 @@ final class AppServiceProvider extends ServiceProvider
         Event::listen(Login::class, RecordLoginTimestampListener::class);
         Event::listen(Verified::class, NewSubscriberListener::class);
         Event::listen(MessageSending::class, DropBouncedRecipientsListener::class);
+        Event::listen(InactiveRecipientsRejected::class, ParkInactiveRecipientsListener::class);
         Event::listen(TeamMemberAdded::class, WorkspaceMemberAddedListener::class);
         Event::listen(WorkspaceCreated::class, WorkspaceCreatedTagListener::class);
         Event::listen(WorkspaceCreated::class, SeedWorkspaceCreditBalanceListener::class);
@@ -245,19 +300,32 @@ final class AppServiceProvider extends ServiceProvider
         Event::listen(AccessTokenCreated::class, CopyWorkspaceIdToAccessToken::class);
         Passport::useAuthorizationServerResponseType(new WorkspaceBearerTokenResponse);
 
-        // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
-        Passport::tokensCan([
-            'read' => 'Read your CRM records',
-            'create' => 'Create new CRM records',
-            'update' => 'Update existing CRM records',
-            'delete' => 'Delete CRM records',
-        ]);
+        $this->configureTokenScopes();
 
         // Connectors are long-lived but must not be immortal: a user who revokes one from
         // the Access Tokens page should not be outlived by a year-long bearer token.
         Passport::tokensExpireIn(now()->addDays(30));
         Passport::refreshTokensExpireIn(now()->addDays(90));
 
+        $this->configureConsentScreen();
+
+        $this->configurePolicies();
+        $this->configureSessions();
+        $this->configureModels();
+        $this->configureFilament();
+        $this->configureCommunityCounts();
+        $this->configureLivewire();
+        $this->configureMacros();
+        $this->configureRateLimiting();
+        $this->configureScribe();
+
+        $this->configureActivityLog();
+        $this->configureBlog();
+        $this->configureDevCommands();
+    }
+
+    private function configureConsentScreen(): void
+    {
         Passport::authorizationView(function (array $parameters) {
             $user = $parameters['user'] ?? null;
 
@@ -289,21 +357,26 @@ final class AppServiceProvider extends ServiceProvider
                 ? $currentWorkspaceId
                 : $workspaces->first(fn (Workspace $workspace): bool => ! in_array((string) $workspace->getKey(), $pausedWorkspaceIds, true))?->getKey();
 
+            $parameters['abilitiesByWorkspace'] = $user instanceof User
+                ? $workspaces->mapWithKeys(fn (Workspace $workspace): array => [
+                    (string) $workspace->getKey() => $user->grantableTokenPermissions((string) $workspace->getKey()),
+                ])->all()
+                : [];
+
             return response()->view('mcp.authorize', $parameters);
         });
+    }
 
-        $this->configurePolicies();
-        $this->configureModels();
-        $this->configureFilament();
-        $this->configureCommunityCounts();
-        $this->configureLivewire();
-        $this->configureMacros();
-        $this->configureRateLimiting();
-        $this->configureScribe();
-
-        $this->configureActivityLog();
-        $this->configureBlog();
-        $this->configureDevCommands();
+    private function configureTokenScopes(): void
+    {
+        // laravel/mcp appends `mcp:use` from a later booted callback, so setting the catalog here keeps it.
+        Passport::tokensCan([
+            'read' => 'Read your CRM records',
+            'create' => 'Create new CRM records',
+            'update' => 'Update existing CRM records',
+            'delete' => 'Delete CRM records',
+            ...EmailGrant::passportScopes(),
+        ]);
     }
 
     /**
@@ -469,6 +542,16 @@ final class AppServiceProvider extends ServiceProvider
         return $existingPolicy ?: $classDirname.'\\Policies\\'.class_basename($modelClass).'Policy';
     }
 
+    private function configureSessions(): void
+    {
+        Session::extend('database', fn (Application $app): ImpersonationSessionHandler => new ImpersonationSessionHandler(
+            DB::connection(Config::get('session.connection')),
+            Config::string('session.table'),
+            (int) Config::get('session.lifetime'),
+            $app,
+        ));
+    }
+
     /**
      * Configure custom Livewire components.
      */
@@ -481,6 +564,9 @@ final class AppServiceProvider extends ServiceProvider
         // and the dotted entry carries the mapping the resolver reads.
         Livewire::component('filament.livewire.notifications', FilamentNotifications::class);
         Livewire::component(Notifications::class, FilamentNotifications::class);
+
+        // Livewire matches persistent middleware by class, so the panel's alias alone skips update requests.
+        Livewire::addPersistentMiddleware(ReadAcrossWorkspaces::class);
     }
 
     private function rateLimitTokenId(?object $token): ?string
@@ -506,7 +592,7 @@ final class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(600)->by('workspace:'.($workspaceId ?? $request->ip())),
             ];
 
-            if ($request->isMethod('GET')) {
+            if (RequestAbility::isRead($request)) {
                 $limits[] = Limit::perMinute(300)->by("token:{$key}:read");
             } else {
                 $limits[] = Limit::perMinute(60)->by("token:{$key}:write");
@@ -638,6 +724,7 @@ final class AppServiceProvider extends ServiceProvider
             'date-time' => DateTimeFieldType::class,
             'date' => DateFieldType::class,
             'rich-editor' => RichEditorFieldType::class,
+            'domain' => DomainFieldType::class,
         ]);
 
         $this->configureCustomFieldSchemaInvalidation();
@@ -656,7 +743,7 @@ final class AppServiceProvider extends ServiceProvider
             $entityType = $field->getAttribute('entity_type');
 
             if ((is_string($tenantId) || is_int($tenantId)) && is_string($entityType)) {
-                McpSchemaCache::forget($tenantId, $entityType);
+                CustomFieldSchemaCache::forget($tenantId, $entityType);
                 resolve(WorkspaceCustomFields::class)->forget($tenantId);
             }
         };
@@ -671,7 +758,7 @@ final class AppServiceProvider extends ServiceProvider
             $tenantId = $option->getAttribute('tenant_id');
 
             if (is_string($tenantId) || is_int($tenantId)) {
-                McpSchemaCache::forgetTenant($tenantId);
+                CustomFieldSchemaCache::forgetTenant($tenantId);
                 resolve(WorkspaceCustomFields::class)->forget($tenantId);
             }
         };
@@ -766,17 +853,23 @@ final class AppServiceProvider extends ServiceProvider
             return in_array($timezone, timezone_identifiers_list(), true) ? $timezone : null;
         });
 
+        $this->registerPanelScripts();
+
+        // App assets are otherwise versioned with Filament's release, so an edit would keep its cached URL.
+        FilamentAsset::appVersion((string) filemtime(public_path('js/app/rich-editor-slash-menu.js')));
+    }
+
+    private function registerPanelScripts(): void
+    {
         // The browser loads the published copy: run `php artisan filament:assets` after editing it.
         FilamentAsset::register([
             Js::make('rich-editor-slash-menu', resource_path('js/filament/rich-content-plugins/slash-menu.js'))
                 ->loadedOnRequest(),
             Js::make('payload-guard', resource_path('js/filament/payload-guard.js')),
+            Js::make('linked-records-picker', resource_path('js/filament/linked-records-picker.js')),
         ]);
 
         FilamentAsset::registerScriptData(['payloadTooLarge' => __('filament/panel.payload_too_large')]);
-
-        // App assets are otherwise versioned with Filament's release, so an edit would keep its cached URL.
-        FilamentAsset::appVersion((string) filemtime(public_path('js/app/rich-editor-slash-menu.js')));
     }
 
     private function configureCommunityCounts(): void

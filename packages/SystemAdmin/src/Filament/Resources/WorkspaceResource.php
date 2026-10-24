@@ -27,7 +27,6 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Laravel\Jetstream\Contracts\DeletesTeams;
 use Override;
 use Relaticle\EmailIntegration\EmailIntegrationServiceProvider;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\Pages\CreateWorkspace;
@@ -46,8 +45,9 @@ use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\SubscriptionsRelationManager;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource\RelationManagers\TasksRelationManager;
 use Relaticle\SystemAdmin\Filament\Support\EndTrial;
+use Relaticle\SystemAdmin\Filament\Support\ExtendTrial;
+use Relaticle\SystemAdmin\Filament\Support\QueuePurge;
 use Relaticle\SystemAdmin\Filament\Support\RecordLink;
-use Relaticle\SystemAdmin\Filament\Support\SafeDelete;
 use Relaticle\SystemAdmin\Metrics\Scopes\AbuseSuspect;
 use Relaticle\SystemAdmin\Metrics\Scopes\ExternalWorkspace;
 use Relaticle\SystemAdmin\Metrics\Scopes\FormedHabit;
@@ -351,14 +351,13 @@ final class WorkspaceResource extends Resource
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()->action(null),
+                ExtendTrial::action(),
                 EndTrial::action(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
                     EndTrial::bulkAction(),
-                    SafeDelete::bulkAction(function (Workspace $record): void {
-                        resolve(DeletesTeams::class)->delete($record);
-                    }),
+                    QueuePurge::bulkAction(),
                 ]),
             ]);
     }

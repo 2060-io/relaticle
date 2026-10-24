@@ -11,6 +11,7 @@ use App\Models\Workspace;
 use App\Models\WorkspaceInvitation as WorkspaceInvitationModel;
 use App\Rules\RegistrableEmail;
 use App\Support\EmailAddress;
+use App\Support\Workspaces\InvitationCeiling;
 use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -29,6 +30,8 @@ use Laravel\Jetstream\Rules\Role;
 
 final readonly class InviteWorkspaceMember implements InvitesTeamMembers
 {
+    public function __construct(private InvitationCeiling $ceiling) {}
+
     /**
      * Invite a new workspace member to the given workspace.
      *
@@ -44,9 +47,13 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
             Gate::forUser($user)->authorize('promoteToAdmin', $workspace);
         }
 
+        $this->ensureWorkspaceIsNotClosing($workspace);
+
         $email = EmailAddress::canonicalize($email);
 
         $this->validate($workspace, $email, $role);
+
+        $this->ceiling->ensureAvailable($user, $workspace);
 
         event(new InvitingTeamMember($workspace, $email, $role));
 
@@ -80,7 +87,20 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
         // leave a real invitation email on its way.
         Mail::to($invitation->email)->queue(new WorkspaceInvitationMail($invitation, $rawToken)->afterCommit());
 
+        $this->ceiling->recordSent($user, $workspace);
+
         return $invitation;
+    }
+
+    private function ensureWorkspaceIsNotClosing(Workspace $workspace): void
+    {
+        if (! $workspace->isScheduledForDeletion()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'email' => __('workspaces.validation.workspace_scheduled_for_deletion'),
+        ])->errorBag('addWorkspaceMember');
     }
 
     /**
@@ -99,6 +119,14 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
     }
 
     /**
+     * @return list<mixed>
+     */
+    public static function emailRules(): array
+    {
+        return ['max:255', ...RegistrableEmail::rules(checkDns: false)];
+    }
+
+    /**
      * Get the validation rules for inviting a workspace member.
      *
      * @return array<string, list<Unique|Role|string>>
@@ -107,7 +135,7 @@ final readonly class InviteWorkspaceMember implements InvitesTeamMembers
     {
         return [
             'email' => [
-                'required', ...RegistrableEmail::rules(checkDns: false),
+                'required', ...self::emailRules(),
                 Rule::unique(Jetstream::teamInvitationModel())->where(function (Builder $query) use ($workspace): void {
                     $query->where('workspace_id', $workspace->id);
                 }),

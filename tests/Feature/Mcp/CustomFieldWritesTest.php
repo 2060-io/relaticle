@@ -7,6 +7,7 @@ use App\Http\Resources\V1\Concerns\FormatsCustomFields;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\BaseCreateTool;
 use App\Mcp\Tools\BaseUpdateTool;
+use App\Mcp\Tools\Company\UpdateCompanyTool;
 use App\Mcp\Tools\Note\CreateNoteTool;
 use App\Mcp\Tools\Note\GetNoteTool;
 use App\Mcp\Tools\Task\CreateTaskTool;
@@ -20,6 +21,7 @@ use App\Models\CustomFieldOption;
 use App\Models\Note;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\Workspace;
 use App\Rules\OwnedLookupRecords;
 use App\Rules\ValidCustomFields;
 use App\Support\CustomFields\CustomFieldInput;
@@ -29,8 +31,11 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Tests\Helpers\LegacyCompanyDomains;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(BaseCreateTool::class, BaseUpdateTool::class, CustomFieldInput::class, CustomFieldOptionMap::class, OwnedLookupRecords::class, ValidCustomFields::class, RecordNameResolver::class, FormatsCustomFields::class);
 
@@ -57,7 +62,7 @@ function statusOptionId(CustomField $field, string $label): string
 function workspaceScopedCompanyLookups(): Collection
 {
     return collect(DB::getQueryLog())->filter(
-        fn (array $query): bool => str_contains($query['query'], 'from "companies"') && str_contains($query['query'], 'workspace_id'),
+        fn (array $query): bool => str_contains($query['query'], 'from "companies"') && str_contains($query['query'], 'where "workspace_id"'),
     );
 }
 
@@ -168,6 +173,36 @@ it('clears a select field sent a blank string', function (string $blank): void {
 
     expect($task->fresh('customFieldValues.customField.options')->getCustomFieldValue($this->status))->toBeNull();
 })->with(['empty' => '', 'whitespace' => '  ']);
+
+it('clears a date or date-time field sent a blank string instead of storing the current time', function (string $code, string $blank): void {
+    $this->travelTo('2026-10-05 12:00:00');
+    $field = WorkspaceCustomField::byCode($this->workspace->getKey(), 'task', 'due_date');
+    $field = $code === 'due_date' ? $field : CustomField::query()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $field->custom_field_section_id,
+        'entity_type' => 'task',
+        'code' => $code,
+        'name' => 'Starts on',
+        'type' => 'date',
+        'sort_order' => 99,
+        'active' => true,
+        'validation_rules' => [],
+        'settings' => $field->settings,
+    ]);
+    $task = Task::factory()->create(['workspace_id' => $this->workspace->getKey()]);
+    $task->saveCustomFieldValue($field, '2026-01-15 09:00:00');
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateTaskTool::class, ['id' => $task->getKey(), 'custom_fields' => [$code => $blank]])
+        ->assertOk();
+
+    expect($task->fresh('customFieldValues.customField')->getCustomFieldValue($field))->toBeNull();
+})->with([
+    'date-time, empty' => ['due_date', ''],
+    'date-time, whitespace' => ['due_date', '  '],
+    'date, empty' => ['starts_on', ''],
+    'date, whitespace' => ['starts_on', '  '],
+]);
 
 it('clears a multi-select field sent an empty string', function (): void {
     $field = CustomField::query()->create([
@@ -526,13 +561,15 @@ it('sets then clears a value for every writable custom field type', function (st
     'currency' => ['currency', 1500.5, 1500.5],
     'email' => ['email', ['ada@example.com'], ['ada@example.com']],
     'phone' => ['phone', ['+14155552671'], ['+14155552671']],
-    'link' => ['link', ['https://example.com'], ['https://example.com']],
+    'link' => ['link', ['https://Example.com/Pricing/'], ['https://example.com/Pricing']],
+    'domain' => ['domain', ['https://www.Acme.com/pricing?x=1#top'], ['acme.com']],
     'checkbox' => ['checkbox', true, true],
     'toggle' => ['toggle', true, true],
     'tags-input' => ['tags-input', ['priority', 'customer'], ['priority', 'customer']],
     'color-picker' => ['color-picker', '#0A80EA', '#0A80EA'],
     'date' => ['date', '2026-09-10', '2026-09-10T00:00:00+00:00'],
     'date-time' => ['date-time', '2026-09-10T10:30:00Z', '2026-09-10T10:30:00+00:00'],
+    'date-time with an offset' => ['date-time', '2026-09-10T10:30:00+05:00', '2026-09-10T05:30:00+00:00'],
     'rich-editor' => ['rich-editor', '**bold**', "<p><strong>bold</strong></p>\n"],
     'select' => ['select', null, 'OPTION_ID'],
     'radio' => ['radio', null, 'OPTION_ID'],
@@ -605,3 +642,86 @@ describe('rich editor images', function (): void {
             ->assertDontSee('stale');
     });
 });
+
+it('accepts a company resubmitting its own legacy domain while another company holds the canonical form', function (): void {
+    ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateCompanyTool::class, ['id' => $own->getKey(), 'custom_fields' => ['domains' => ['https://acme.com']]])
+        ->assertOk();
+
+    $domains = CustomField::query()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', 'domains')
+        ->firstOrFail();
+
+    expect(collect($own->fresh('customFieldValues.customField')->getCustomFieldValue($domains))->all())->toBe(['acme.com']);
+});
+
+it('rejects a domain another company holds in a different spelling', function (): void {
+    ['own' => $own] = LegacyCompanyDomains::seed($this->workspace);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateCompanyTool::class, ['id' => $own->getKey(), 'custom_fields' => ['domains' => ['https://acme.com', 'www.other.com']]])
+        ->assertHasErrors(['The value "www.other.com" is already assigned to another record.']);
+});
+
+function domainProbeField(Workspace $workspace): CustomField
+{
+    return CustomField::query()->create([
+        'tenant_id' => $workspace->getKey(),
+        'entity_type' => 'company',
+        'code' => 'probe_domains',
+        'name' => 'Probe domains',
+        'type' => 'domain',
+        'sort_order' => 70,
+        'validation_rules' => [],
+        'active' => true,
+        'system_defined' => true,
+        'settings' => new CustomFieldSettingsData(allow_multiple: true, max_values: 5),
+    ]);
+}
+
+it('stores every spelling of a domain as its bare lowercase host', function (string $input): void {
+    $field = domainProbeField($this->workspace);
+    $company = Company::factory()->for($this->workspace)->create();
+
+    $company->saveCustomFieldValue($field, [$input]);
+
+    expect(collect($company->refresh()->getCustomFieldValue($field))->all())->toBe(['acme.com']);
+})->with([
+    'scheme, www and path' => 'https://www.Acme.com/pricing?x=1#top',
+    'bare' => 'acme.com',
+    'userinfo and port' => 'http://user:secret@acme.com:8080/',
+    'trailing dot' => 'ACME.COM.',
+    'padded' => '  www.acme.com  ',
+    'at sign in the query' => 'acme.com?ref=a@b.com',
+    'repeated www' => 'www.www.acme.com',
+    'non-breaking space' => "\u{00A0}https://acme.com",
+    'zero-width characters' => "https://\u{200B}acme.com\u{FEFF}",
+    'stacked schemes split by whitespace' => "http:// HTTPS://\thttp://\u{00A0}acme.com",
+    'two hundred stacked schemes' => str_repeat('http://', 200).'Acme.com/x',
+]);
+
+it('keeps a domain value it cannot read as a host', function (string $input, string $stored): void {
+    $field = domainProbeField($this->workspace);
+    $company = Company::factory()->for($this->workspace)->create();
+
+    $company->saveCustomFieldValue($field, [$input]);
+
+    expect(collect($company->refresh()->getCustomFieldValue($field))->all())->toBe([$stored]);
+})->with([
+    'not a link' => ['N/A', 'N/A'],
+    'tel uri' => ['tel:+14155550100', 'tel:+14155550100'],
+    'www host with no registrable part' => ['WWW.CO', 'www.co'],
+]);
+
+it('drops a domain value that holds no host', function (string $empty): void {
+    $field = domainProbeField($this->workspace);
+    $company = Company::factory()->for($this->workspace)->create();
+
+    $company->saveCustomFieldValue($field, [$empty, 'https://www.Acme.com/x']);
+
+    expect(collect($company->refresh()->getCustomFieldValue($field))->all())->toBe(['acme.com']);
+})->with(['scheme only' => 'https://', 'slash' => '/', 'www only' => 'www.']);

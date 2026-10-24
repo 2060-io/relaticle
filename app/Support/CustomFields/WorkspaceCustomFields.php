@@ -6,12 +6,16 @@ namespace App\Support\CustomFields;
 
 use App\Models\CustomField;
 use App\Models\Workspace;
+use Closure;
 use Illuminate\Support\Collection;
 
 final class WorkspaceCustomFields
 {
     /** @var array<string, Collection<int, CustomField>> */
     private array $byTenant = [];
+
+    /** @var array<string, array<string, array<string, mixed>>> */
+    private array $derived = [];
 
     /**
      * @return Collection<int, CustomField>
@@ -23,9 +27,18 @@ final class WorkspaceCustomFields
             ->values();
     }
 
+    /**
+     * @param  Closure(): array<string, mixed>  $build
+     * @return array<string, mixed>
+     */
+    public function remember(Workspace $workspace, string $key, Closure $build): array
+    {
+        return $this->derived[(string) $workspace->getKey()][$key] ??= $build();
+    }
+
     public function forget(int|string $tenantId): void
     {
-        unset($this->byTenant[(string) $tenantId]);
+        unset($this->byTenant[(string) $tenantId], $this->derived[(string) $tenantId]);
     }
 
     /**
@@ -39,6 +52,7 @@ final class WorkspaceCustomFields
             ->withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->with('options')
             ->get();
     }

@@ -79,6 +79,9 @@ final class ActivityLog extends Page implements HasTable
     /** Characters of the full sentence the title carries before it, too, is clipped. */
     private const int TITLE_LENGTH = 240;
 
+    /** @var array<int|string, list<array{label: string, old: string, new: string, full: array{old: string, new: string}|null}>> */
+    private array $changeRows = [];
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClock;
 
     protected static ?string $slug = 'workspace/activity';
@@ -151,34 +154,10 @@ final class ActivityLog extends Page implements HasTable
         ];
     }
 
-    /**
-     * One save writes the trait's own event plus one `custom_field_changes` row
-     * per custom field that moved, all sharing a `batch_uuid`. Reporting them
-     * all put a phantom update next to every create, so they collapse onto a
-     * single surviving row: the native event when there is one, otherwise the
-     * first custom-field row, whichever carries every sibling payload with it.
-     */
     public function table(Table $table): Table
     {
         return $table
-            ->query(
-                Activity::query()
-                    ->select('activity_log.*')
-                    ->addSelect(['batch_custom_field_properties' => $this->sameSave(DB::table('activity_log', 'sibling'))
-                        ->selectRaw('json_agg(sibling.properties order by sibling.id)')
-                        ->where('sibling.event', self::CUSTOM_FIELD_EVENT),
-                    ])
-                    ->whereNot(fn (Builder $query): Builder => $query
-                        ->where('event', self::CUSTOM_FIELD_EVENT)
-                        ->whereNotNull('batch_uuid')
-                        ->whereExists(fn (QueryBuilder $sibling): QueryBuilder => $this->sameSave($sibling)
-                            ->whereRaw(
-                                '(case when sibling.event = ? then 1 else 0 end, sibling.id) < (1, activity_log.id)',
-                                [self::CUSTOM_FIELD_EVENT],
-                            )))
-                    ->whereNull('activity_log.properties->import_id')
-                    ->with('causer')
-            )
+            ->query($this->auditTrailQuery())
             ->defaultSort('created_at', 'desc')
             ->stackedOnMobile()
             ->recordUrl($this->subjectUrl(...))
@@ -210,7 +189,7 @@ final class ActivityLog extends Page implements HasTable
                 TextColumn::make('causer.name')
                     ->label(__('workspaces.activity.columns.causer'))
                     ->weight(FontWeight::Medium)
-                    ->placeholder(__('workspaces.activity.system')),
+                    ->placeholder(fn (Activity $record): string => $record->causerLabel()),
                 TextColumn::make('source')
                     ->label(__('workspaces.activity.columns.source'))
                     ->badge()
@@ -239,14 +218,7 @@ final class ActivityLog extends Page implements HasTable
                     ->tooltip($this->destroyedNotice(...))
                     ->searchable(query: $this->searchByRecordName(...))
                     ->wrap(),
-                TextColumn::make('batch_uuid')
-                    ->label(__('workspaces.activity.columns.changes'))
-                    ->state(ActivityChangeSummary::for(...))
-                    ->formatStateUsing($this->changeLine(...))
-                    ->listWithLineBreaks()
-                    ->limitList(1)
-                    ->placeholder(ActivityValue::EMPTY)
-                    ->action($this->viewChangesAction()),
+                $this->changesColumn(),
             ])
             ->filters([
                 SelectFilter::make('event')
@@ -282,6 +254,49 @@ final class ActivityLog extends Page implements HasTable
     }
 
     /**
+     * One save writes the trait's own event plus one `custom_field_changes` row
+     * per custom field that moved, all sharing a `batch_uuid`. Reporting them
+     * all put a phantom update next to every create, so they collapse onto a
+     * single surviving row: the native event when there is one, otherwise the
+     * first custom-field row, whichever carries every sibling payload with it.
+     *
+     * @return Builder<Activity>
+     */
+    private function auditTrailQuery(): Builder
+    {
+        return Activity::query()
+            ->select('activity_log.*')
+            ->addSelect(['batch_custom_field_properties' => $this->sameSave(DB::table('activity_log', 'sibling'))
+                ->selectRaw('json_agg(sibling.properties order by sibling.id)')
+                ->where('sibling.event', self::CUSTOM_FIELD_EVENT),
+            ])
+            ->whereNot(fn (Builder $query): Builder => $query
+                ->where('event', self::CUSTOM_FIELD_EVENT)
+                ->whereNotNull('batch_uuid')
+                ->whereExists(fn (QueryBuilder $sibling): QueryBuilder => $this->sameSave($sibling)
+                    ->whereRaw(
+                        '(case when sibling.event = ? then 1 else 0 end, sibling.id) < (1, activity_log.id)',
+                        [self::CUSTOM_FIELD_EVENT],
+                    )))
+            ->whereNull('activity_log.properties->import_id')
+            ->inAuditTrail()
+            ->with('causer');
+    }
+
+    private function changesColumn(): TextColumn
+    {
+        return TextColumn::make('batch_uuid')
+            ->label(__('workspaces.activity.columns.changes'))
+            ->state($this->changes(...))
+            ->formatStateUsing($this->changeLine(...))
+            ->listWithLineBreaks()
+            ->limitList(1)
+            ->placeholder(ActivityValue::EMPTY)
+            ->description($this->slideOverHint(...))
+            ->action($this->viewChangesAction());
+    }
+
+    /**
      * A save that moved one field is the common case and reads inline. Anything
      * longer would stretch the row and truncate the values that make it worth
      * reading, so the rest opens in a slide-over where the whole diff fits.
@@ -295,11 +310,46 @@ final class ActivityLog extends Page implements HasTable
             ->modalDescription($this->changesDescription(...))
             ->modalIcon(fn (Activity $record): Heroicon => $this->eventIcon($record->event))
             ->modalContent(fn (Activity $record): View => view('filament.pages.workspace.activity-changes', [
-                'rows' => ActivityChangeSummary::for($record),
+                'rows' => $this->changes($record),
             ]))
             ->modalSubmitAction(false)
             ->modalCancelActionLabel(__('workspaces.activity.changes_modal.close'))
-            ->visible(fn (Activity $record): bool => count(ActivityChangeSummary::for($record)) > 1);
+            ->visible(fn (Activity $record): bool => $this->needsSlideOver($this->changes($record)));
+    }
+
+    /**
+     * @return list<array{label: string, old: string, new: string, full: array{old: string, new: string}|null}>
+     */
+    private function changes(Activity $record): array
+    {
+        return $this->changeRows[$record->getKey()] ??= ActivityChangeSummary::for($record);
+    }
+
+    private function slideOverHint(Activity $record): ?HtmlString
+    {
+        $rows = $this->changes($record);
+
+        if (! $this->needsSlideOver($rows)) {
+            return null;
+        }
+
+        return new HtmlString(view('filament.pages.workspace.activity-more', [
+            'label' => count($rows) > 1
+                ? __('workspaces.activity.changes_modal.trigger')
+                : __('workspaces.activity.changes_modal.trigger_full'),
+        ])->render());
+    }
+
+    /**
+     * @param  list<array{label: string, old: string, new: string, full: array{old: string, new: string}|null}>  $rows
+     */
+    private function needsSlideOver(array $rows): bool
+    {
+        if (count($rows) > 1) {
+            return true;
+        }
+
+        return array_any($rows, fn (array $row): bool => $row['full'] !== null);
     }
 
     /**
@@ -309,12 +359,10 @@ final class ActivityLog extends Page implements HasTable
      */
     private function changesDescription(Activity $record): string
     {
-        $causer = $record->causer?->getAttribute('name');
-
         return implode(' · ', [
             $this->typeLabel($record->subject_type),
             $this->eventLabel($record->event),
-            is_string($causer) && $causer !== '' ? $causer : __('workspaces.activity.system'),
+            $record->causerLabel(),
             $record->created_at?->copy()->setTimezone(FilamentTimezone::get())->toDayDateTimeString() ?? ActivityValue::EMPTY,
         ]);
     }
@@ -533,7 +581,7 @@ final class ActivityLog extends Page implements HasTable
      * body arrives here stripped but not shortened, and uncapped it would ship
      * the whole note into the title of every row on the page.
      *
-     * @param  array{label: string, old: string, new: string}  $state
+     * @param  array{label: string, old: string, new: string, full: array{old: string, new: string}|null}  $state
      */
     private function changeLine(array $state): HtmlString
     {

@@ -11,6 +11,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Foundation\Testing\WithCachedConfig;
 use Illuminate\Foundation\Testing\WithCachedRoutes;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -41,6 +42,10 @@ abstract class TestCase extends BaseTestCase
         // Scribe marks its translation layer loaded in a static, so a second `scribe:generate`
         // in one process renders against a fresh translator that never received it.
         ScribeServiceProvider::$customTranslationLayerLoaded = false;
+
+        // TrustHosts writes its patterns into Symfony's static Request state, so a test that
+        // fakes production would otherwise answer every later request in the worker with a 400.
+        Request::setTrustedHosts([]);
 
         return parent::createApplication();
     }

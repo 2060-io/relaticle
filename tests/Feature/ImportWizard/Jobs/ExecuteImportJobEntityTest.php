@@ -10,7 +10,9 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use Filament\Events\TenantSet;
 use Filament\Facades\Filament;
+use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Support\Facades\Event;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
@@ -23,7 +25,7 @@ use Tests\Helpers\ImportExecutionFixture;
 mutates(ExecuteImportJob::class, EntityLinkResolver::class);
 
 beforeEach(function (): void {
-    Event::fake()->except([WorkspaceCreated::class]);
+    Event::fake()->except([WorkspaceCreated::class, Authenticated::class, TenantSet::class]);
 
     $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
@@ -274,5 +276,5 @@ it('imports company with custom field values for toggle and link', function (): 
 
     $linkedinCfv = ImportExecutionFixture::customFieldValue($this, (string) $company->id, (string) $linkedinCf->id);
     expect($linkedinCfv)->not->toBeNull()
-        ->and(collect($linkedinCfv->json_value)->all())->toContain('https://linkedin.com/company/great');
+        ->and(collect($linkedinCfv->json_value)->all())->toBe(['https://linkedin.com/company/great']);
 });

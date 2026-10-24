@@ -63,6 +63,31 @@ it('keeps the paragraphs of a rich-text field apart and decodes its entities', f
     expect($rows[0]['new'])->toBe('Send the quote & terms. Loop in finance.');
 });
 
+it('formats a currency field in its currency, as the panel shows it', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    $rows = resolve(CustomFieldsDisplayFormatter::class)
+        ->format($user, 'opportunity', cleanFields: ['amount' => 4500], oldModel: null);
+
+    expect($rows[0])->toMatchArray(['label' => 'Amount', 'new' => '$4,500.00']);
+});
+
+it('formats a currency field shown by code with its code and decimals', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $amount = CustomField::query()
+        ->where('tenant_id', $user->currentWorkspace->getKey())
+        ->where('entity_type', 'opportunity')
+        ->where('code', 'amount')
+        ->firstOrFail();
+    $amount->settings->additional = ['currency_code' => 'JPY', 'display_type' => 'code', 'decimal_places' => 0];
+    $amount->save();
+
+    $rows = resolve(CustomFieldsDisplayFormatter::class)
+        ->format($user, 'opportunity', cleanFields: ['amount' => 4500], oldModel: null);
+
+    expect($rows[0]['new'])->toBe('JPY 4,500');
+});
+
 it('includes the old value for updates with a current value on the model', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
@@ -204,6 +229,7 @@ it('names the record on a stored record card, not its id', function (): void {
             $task->fresh('customFieldValues.customField.options'),
             [$field->fresh('options')],
             200,
+            $user->effectiveTimezone(),
         );
     } finally {
         TenantContextService::setTenantId(null);

@@ -22,7 +22,6 @@ use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
 use Relaticle\EmailIntegration\Actions\MarkEmailAsReadAction;
 use Relaticle\EmailIntegration\Actions\RequestEmailAccessAction;
 use Relaticle\EmailIntegration\Actions\UpdateEmailSharingAction;
-use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
@@ -76,7 +75,7 @@ trait HasEmailReaderActions
         return EmailAccessRequest::query()
             ->with('requester')
             ->where('email_id', $email->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->open()
             ->get();
     }
 
@@ -461,19 +460,11 @@ trait HasEmailReaderActions
             return;
         }
 
-        if ($approve) {
-            resolve(ApproveEmailAccessRequestAction::class)->execute($accessRequest, $this->readerUser());
-        } else {
-            resolve(DenyEmailAccessRequestAction::class)->execute($accessRequest, $this->readerUser());
-        }
+        $decided = $approve
+            ? resolve(ApproveEmailAccessRequestAction::class)->execute($accessRequest, $this->readerUser())
+            : resolve(DenyEmailAccessRequestAction::class)->execute($accessRequest, $this->readerUser());
 
-        $accessRequest->refresh();
-
-        $expected = $approve
-            ? EmailAccessRequestStatus::APPROVED
-            : EmailAccessRequestStatus::DENIED;
-
-        if ($accessRequest->status !== $expected) {
+        if (! $decided) {
             return;
         }
 
@@ -511,7 +502,7 @@ trait HasEmailReaderActions
             ->with(['email', 'owner', 'requester'])
             ->whereKey($requestId)
             ->where('owner_id', $this->readerUser()->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->open()
             ->first();
     }
 

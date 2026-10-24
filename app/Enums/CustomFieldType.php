@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Enums;
 
+use App\Support\IconPath;
+
 /**
  * ABOUTME: Maps to the field types available in the relaticle/custom-fields package
  * ABOUTME: Provides type-safe references to custom field types for maintainability
@@ -15,6 +17,7 @@ enum CustomFieldType: string
     case EMAIL = 'email';
     case PHONE = 'phone';
     case LINK = 'link';
+    case DOMAIN = 'domain';
     case TEXTAREA = 'textarea';
     case CHECKBOX = 'checkbox';
     case CHECKBOX_LIST = 'checkbox-list';
@@ -44,6 +47,7 @@ enum CustomFieldType: string
             self::EMAIL => 'array of email strings',
             self::PHONE => 'array of phone strings',
             self::LINK => 'array of URL strings',
+            self::DOMAIN => 'array of domain strings; a URL is reduced to its host',
             self::CHECKBOX, self::TOGGLE => 'boolean',
             self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => 'option label or option ID',
             self::MULTI_SELECT, self::CHECKBOX_LIST => 'array of option labels or IDs',
@@ -51,7 +55,7 @@ enum CustomFieldType: string
             self::RICH_EDITOR => 'markdown, or HTML when the value starts with <; stored and returned as HTML',
             self::COLOR_PICKER => 'hex color string',
             self::DATE => 'ISO 8601 date',
-            self::DATE_TIME => 'ISO 8601 datetime string',
+            self::DATE_TIME => 'ISO 8601 datetime string; an offset is converted to UTC',
             self::RECORD => 'array of record IDs of the lookup entity; records must belong to this workspace',
             self::FILE_UPLOAD => 'read-only; the file-upload field type is no longer supported and cannot be written',
         };
@@ -66,6 +70,7 @@ enum CustomFieldType: string
             self::EMAIL => 'heroicon-o-envelope',
             self::PHONE => 'heroicon-o-phone',
             self::LINK => 'heroicon-o-globe-alt',
+            self::DOMAIN => 'heroicon-o-globe-alt',
             self::TEXTAREA => 'heroicon-o-document-text',
             self::CHECKBOX => 'heroicon-o-check-circle',
             self::CHECKBOX_LIST => 'heroicon-o-list-bullet',
@@ -85,6 +90,13 @@ enum CustomFieldType: string
         };
     }
 
+    // Heroicon outline paths share one stroke style and open with an absolute moveto,
+    // so a two-path icon (radio, tags-input) draws the same as one joined `d`.
+    public function iconPath(): string
+    {
+        return implode(' ', IconPath::all($this->icon()));
+    }
+
     public function example(): mixed
     {
         return match ($this) {
@@ -94,6 +106,7 @@ enum CustomFieldType: string
             self::EMAIL => ['user@example.com'],
             self::PHONE => ['+1234567890'],
             self::LINK => ['https://example.com'],
+            self::DOMAIN => ['example.com'],
             self::CHECKBOX, self::TOGGLE => true,
             self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => 'In progress',
             self::MULTI_SELECT, self::CHECKBOX_LIST => ['Enterprise', 'EU'],
@@ -105,6 +118,38 @@ enum CustomFieldType: string
             self::RECORD => ['01J...'],
             self::FILE_UPLOAD => null,
         };
+    }
+
+    public function filterMatching(): ?string
+    {
+        return match ($this) {
+            self::EMAIL => 'in any letter case',
+            self::LINK => 'in any letter case, with or without the scheme',
+            self::DOMAIN => 'as a bare host or a full URL, with or without www',
+            self::PHONE => 'in any format, and the operand needs a country code such as +1 415 555 0100',
+            self::TAGS_INPUT => 'the exact stored value',
+            self::DATE_TIME => 'a date without a time, such as 2026-10-01, as that whole day',
+            default => null,
+        };
+    }
+
+    /** @return array<string, mixed> */
+    public function filterExample(): array
+    {
+        return match ($this) {
+            self::TEXT => ['$contains' => $this->example()],
+            self::NUMBER, self::CURRENCY, self::DATE, self::DATE_TIME => ['$gte' => $this->example()],
+            self::CHECKBOX, self::TOGGLE => ['$eq' => $this->example()],
+            self::EMAIL, self::PHONE, self::LINK, self::DOMAIN, self::MULTI_SELECT, self::CHECKBOX_LIST, self::TAGS_INPUT => ['$has_any' => $this->example()],
+            self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => ['$in' => [$this->example()]],
+            default => [],
+        };
+    }
+
+    /** Whether the value is a list of URL-like strings that read as links. */
+    public function isLinkList(): bool
+    {
+        return in_array($this, [self::LINK, self::DOMAIN], true);
     }
 
     /** Whether values are picked from the field's own options rather than typed freely. */

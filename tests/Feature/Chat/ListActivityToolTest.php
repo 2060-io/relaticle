@@ -110,6 +110,25 @@ it('reports a name change with its old and new value', function (): void {
         ->and($block['rows'][1]['cells']['what'])->toBe('Created');
 });
 
+it('names a change by a deleted account as a former member', function (): void {
+    $workspace = $this->user->personalWorkspace();
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => WorkspaceRole::Admin->value]);
+    $member->switchWorkspace($workspace);
+    $company = app(CreateCompany::class)->execute($this->user, ['name' => 'Old Co']);
+
+    nextActivityRequest();
+    $this->actingAs($member);
+    app(UpdateCompany::class)->execute($member, $company, ['name' => 'New Co']);
+    $member->delete();
+    $this->actingAs($this->user);
+
+    $payload = activityPayload(['record_type' => 'company', 'record_id' => (string) $company->getKey()]);
+
+    expect($payload['data'][0]['event'])->toBe('updated')
+        ->and($payload['data'][0]['by'])->toBe('Former member');
+});
+
 it('never shows another workspace\'s activity', function (): void {
     $intruder = User::factory()->withPersonalWorkspace()->create();
     $owner = User::factory()->withPersonalWorkspace()->create();
@@ -502,4 +521,54 @@ it('names every known channel and null in its description', function (): void {
     }
 
     expect($description)->toContain('null');
+});
+
+it('serves an empty page for a page number no activity list can reach', function (mixed $page): void {
+    app(CreateCompany::class)->execute($this->user, ['name' => 'Acme']);
+
+    $payload = activityPayload(['page' => $page]);
+
+    expect($payload['data'])->toBe([])
+        ->and($payload['total'])->toBeGreaterThan(0);
+})->with([
+    'the largest integer' => [PHP_INT_MAX],
+    'a float past the integer range' => [1.0e30],
+]);
+
+it('hands the model an excerpt of a long rich text change, not the whole body', function (): void {
+    $company = app(CreateCompany::class)->execute($this->user, ['name' => 'Acme']);
+    $body = '<p>'.str_repeat('a renewal note that keeps going. ', 200).'</p><p>closing words</p>';
+
+    Activity::withoutGlobalScopes()->create([
+        'log_name' => 'crm',
+        'description' => 'custom_field_changes',
+        'event' => 'custom_field_changes',
+        'subject_type' => $company->getMorphClass(),
+        'subject_id' => $company->getKey(),
+        'causer_type' => 'user',
+        'causer_id' => $this->user->getKey(),
+        'workspace_id' => $company->workspace_id,
+        'attribute_changes' => ['attributes' => ['name' => str_repeat('n', 600)], 'old' => ['name' => 'Acme']],
+        'properties' => ['custom_field_changes' => [[
+            'code' => 'description',
+            'label' => 'Description',
+            'type' => 'rich-editor',
+            'old' => ['value' => '<p>Draft</p>', 'label' => '<p>Draft</p>'],
+            'new' => ['value' => $body, 'label' => $body],
+        ]]],
+    ]);
+
+    $payload = activityPayload([
+        'record_type' => 'company',
+        'record_id' => (string) $company->getKey(),
+    ]);
+
+    $changes = collect(array_merge(...array_column($payload['data'], 'changes')));
+    $change = $changes->firstWhere('field', 'Description');
+
+    expect($change['old'])->toBe('Draft')
+        ->and($changes->firstWhere('field', 'Name')['new'])->toEndWith('(shortened)')
+        ->and($change['new'])->toStartWith('a renewal note')
+        ->and($change['new'])->toEndWith('(shortened)')
+        ->and(mb_strlen((string) $change['new']))->toBeLessThan(600);
 });

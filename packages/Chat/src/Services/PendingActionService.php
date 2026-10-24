@@ -36,23 +36,25 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CurrentSource;
+use App\Support\CurrentWorkspace;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Enums\PendingActionStatus;
+use Relaticle\Chat\Enums\ProposalEntity;
 use Relaticle\Chat\Events\PendingActionResolved;
 use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\PendingAction;
-use Relaticle\Chat\Support\ProposalCoreFields;
 use Relaticle\Chat\Support\ProposalLabel;
 use Relaticle\Chat\Support\ProposalOwnership;
 use Relaticle\Chat\Support\ProposalPayload;
 use Relaticle\Chat\Support\ProposalProgress;
 use Relaticle\Chat\Support\RecordReferenceResolver;
 use Relaticle\CustomFields\Models\Scopes\CustomFieldsActivableScope;
-use Relaticle\CustomFields\Services\TenantContextService;
+use Relaticle\EmailIntegration\Actions\SaveAssistantEmailDraft;
+use Relaticle\EmailIntegration\Actions\SendAssistantEmail;
 use RuntimeException;
 use Throwable;
 
@@ -91,6 +93,8 @@ final readonly class PendingActionService
         DeleteCustomField::class,
         CreateWorkspaceInvitation::class,
         RemoveSampleData::class,
+        SaveAssistantEmailDraft::class,
+        SendAssistantEmail::class,
     ];
 
     /**
@@ -102,7 +106,7 @@ final readonly class PendingActionService
         ?string $conversationId,
         string $actionClass,
         PendingActionOperation $operation,
-        string $entityType,
+        ProposalEntity $entityType,
         array $actionData,
         array $displayData,
         ?string $messageId = null,
@@ -110,21 +114,10 @@ final readonly class PendingActionService
     ): PendingAction {
         $expiryMinutes = $this->expiryMinutesFor($conversationId);
 
-        // Idempotency across job retries. A continuation creates its proposal mid-stream; if a
-        // later chunk throws a transient error (429/529/503) the job is retried from the top and
-        // re-emits the identical tool call. Without this guard every retry inserts another
-        // duplicate proposal card. Collapse an identical still-pending proposal in the same
-        // conversation instead of inserting a duplicate. Only PENDING rows match, so an already
-        // approved/rejected proposal never absorbs a legitimate fresh one.
+        // A retried job re-emits its tool calls: reuse the identical pending proposal,
+        // or the one the user decided earlier in this same turn.
         if ($conversationId !== null) {
-            $duplicate = PendingAction::query()
-                ->where('conversation_id', $conversationId)
-                ->where('action_class', $actionClass)
-                ->where('operation', $operation)
-                ->where('entity_type', $entityType)
-                ->pending()
-                ->get()
-                ->first(static fn (PendingAction $existing): bool => $existing->action_data === $actionData);
+            $duplicate = $this->identicalProposal($conversationId, $turnId, $actionClass, $operation, $entityType, $actionData);
 
             if ($duplicate instanceof PendingAction) {
                 return $duplicate;
@@ -145,6 +138,44 @@ final readonly class PendingActionService
             'status' => PendingActionStatus::Pending,
             'expires_at' => now()->addMinutes($expiryMinutes),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $actionData
+     */
+    private function identicalProposal(string $conversationId, ?string $turnId, string $actionClass, PendingActionOperation $operation, ProposalEntity $entityType, array $actionData): ?PendingAction
+    {
+        $sameWrite = fn (): Builder => PendingAction::query()
+            ->where('conversation_id', $conversationId)
+            ->where('action_class', $actionClass)
+            ->where('operation', $operation)
+            ->where('entity_type', $entityType);
+
+        $isIdentical = fn (PendingAction $existing): bool => $this->withSortedKeys($existing->action_data) === $this->withSortedKeys($actionData);
+
+        $pending = $sameWrite()->pending()->get()->first($isIdentical);
+
+        if ($pending instanceof PendingAction || $turnId === null) {
+            return $pending;
+        }
+
+        return $sameWrite()
+            ->where('turn_id', $turnId)
+            ->whereIn('status', [PendingActionStatus::Approved, PendingActionStatus::Rejected])
+            ->get()
+            ->first($isIdentical);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    private function withSortedKeys(array $data): array
+    {
+        // jsonb stores object keys by length, so a stored payload equals the written one only with keys sorted.
+        ksort($data, SORT_STRING);
+
+        return array_map(fn (mixed $value): mixed => is_array($value) ? $this->withSortedKeys($value) : $value, $data);
     }
 
     private function expiryMinutesFor(?string $conversationId): int
@@ -190,66 +221,50 @@ final readonly class PendingActionService
      */
     public function approve(PendingAction $pendingAction, User $user, array $excludedFields = []): PendingAction
     {
-        ProposalOwnership::assert($pendingAction, $user);
+        $workspace = ProposalOwnership::assert($pendingAction, $user);
 
         $excludedFields = $this->sanitizedExclusions($pendingAction, $excludedFields);
 
-        // The action executes the underlying CRM write, which may persist custom-field
-        // values. When approve() runs there may be no resolvable custom-fields tenant
-        // context (the Livewire dock sets the Filament tenant but not necessarily the
-        // custom-fields one). Without it the custom-fields TenantScope no-ops and
-        // saveCustomFields() iterates EVERY tenant's field definitions, writing value rows
-        // across all tenants (cross-tenant leak) and, at scale, exceeding the request
-        // timeout. Scope it to the action's workspace, and restore the prior value afterward so
-        // the override never outlives this call (TenantContextService resolves its context
-        // before the Filament tenant).
-        $previousTenantId = TenantContextService::getCurrentTenantId();
-        TenantContextService::setTenantId($pendingAction->workspace_id);
+        $resolved = resolve(CurrentWorkspace::class)->within($workspace, fn (): PendingAction => DB::transaction(function () use ($pendingAction, $user, $excludedFields): PendingAction {
+            /** @var PendingAction $pendingAction */
+            $pendingAction = PendingAction::query()
+                ->lockForUpdate()
+                ->findOrFail($pendingAction->getKey());
 
-        try {
-            $resolved = DB::transaction(function () use ($pendingAction, $user, $excludedFields): PendingAction {
-                /** @var PendingAction $pendingAction */
-                $pendingAction = PendingAction::query()
-                    ->lockForUpdate()
-                    ->findOrFail($pendingAction->getKey());
+            $this->validateResolvable($pendingAction);
 
-                $this->validateResolvable($pendingAction);
+            // Batches resolve one record at a time through approveItem()/rejectItem(),
+            // which is what the dock's per-record Create steps through, one record and
+            // one transaction at a time. Refuse a whole-batch approve so no caller can
+            // bypass that and commit every record in one atomic write with no per-item
+            // outcome.
+            throw_if(
+                ProposalPayload::from($pendingAction)->isBatch,
+                RuntimeException::class,
+                'Batch proposals resolve per item via approveItem()/rejectItem(), not approve().',
+            );
 
-                // Batches resolve one record at a time through approveItem()/rejectItem(),
-                // which is what the dock's per-record Create steps through, one record and
-                // one transaction at a time. Refuse a whole-batch approve so no caller can
-                // bypass that and commit every record in one atomic write with no per-item
-                // outcome.
-                throw_if(
-                    ProposalPayload::from($pendingAction)->isBatch,
-                    RuntimeException::class,
-                    'Batch proposals resolve per item via approveItem()/rejectItem(), not approve().',
-                );
+            $result = CurrentSource::during(CreationSource::CHAT, fn (): mixed => $this->executeAction($pendingAction, $user, $excludedFields));
 
-                $result = CurrentSource::during(CreationSource::CHAT, fn (): mixed => $this->executeAction($pendingAction, $user, $excludedFields));
+            $resultData = $result instanceof Model
+                ? ['id' => $result->getKey(), 'type' => $result->getMorphClass()]
+                : ['success' => true];
 
-                $resultData = $result instanceof Model
-                    ? ['id' => $result->getKey(), 'type' => $result->getMorphClass()]
-                    : ['success' => true];
+            // The audit truth: an excluded field was NOT written, and both the
+            // transcript and the model's <resolved_actions> block must be able to
+            // say so, or the assistant reports a value it never set.
+            if ($excludedFields !== []) {
+                $resultData['excluded'] = $excludedFields;
+            }
 
-                // The audit truth: an excluded field was NOT written, and both the
-                // transcript and the model's <resolved_actions> block must be able to
-                // say so, or the assistant reports a value it never set.
-                if ($excludedFields !== []) {
-                    $resultData['excluded'] = $excludedFields;
-                }
+            $pendingAction->update([
+                'status' => PendingActionStatus::Approved,
+                'resolved_at' => now(),
+                'result_data' => $resultData,
+            ]);
 
-                $pendingAction->update([
-                    'status' => PendingActionStatus::Approved,
-                    'resolved_at' => now(),
-                    'result_data' => $resultData,
-                ]);
-
-                return $pendingAction->refresh();
-            });
-        } finally {
-            TenantContextService::setTenantId($previousTenantId);
-        }
+            return $pendingAction->refresh();
+        }));
 
         $this->broadcastResolution($resolved, PendingActionStatus::Approved->value, null, true);
 
@@ -326,58 +341,51 @@ final readonly class PendingActionService
      */
     public function approveItem(PendingAction $pendingAction, User $user, int $index, array $excludedFields = []): array
     {
-        ProposalOwnership::assert($pendingAction, $user);
+        $workspace = ProposalOwnership::assert($pendingAction, $user);
 
         $excludedFields = $this->sanitizedExclusions($pendingAction, $excludedFields);
 
-        $previousTenantId = TenantContextService::getCurrentTenantId();
-        TenantContextService::setTenantId($pendingAction->workspace_id);
+        [$finalized, $record, $itemStatus] = resolve(CurrentWorkspace::class)->within($workspace, fn (): array => DB::transaction(function () use ($pendingAction, $user, $index, $excludedFields): array {
+            /** @var PendingAction $locked */
+            $locked = PendingAction::query()->lockForUpdate()->findOrFail($pendingAction->getKey());
 
-        try {
-            [$finalized, $record, $itemStatus] = DB::transaction(function () use ($pendingAction, $user, $index, $excludedFields): array {
-                /** @var PendingAction $locked */
-                $locked = PendingAction::query()->lockForUpdate()->findOrFail($pendingAction->getKey());
+            $this->validateResolvable($locked);
+            $records = ProposalPayload::from($locked)->batchRecords();
+            $this->assertItemIndex($records, $index);
 
-                $this->validateResolvable($locked);
-                $records = ProposalPayload::from($locked)->batchRecords();
-                $this->assertItemIndex($records, $index);
+            $resultData = is_array($locked->result_data) ? $locked->result_data : [];
+            $items = is_array($resultData['items'] ?? null) ? $resultData['items'] : [];
+            $progress = ProposalProgress::of($items, count($records));
 
-                $resultData = is_array($locked->result_data) ? $locked->result_data : [];
-                $items = is_array($resultData['items'] ?? null) ? $resultData['items'] : [];
-                $progress = ProposalProgress::of($items, count($records));
+            // Idempotent: an already-resolved item is a no-op (no re-execute). Report
+            // the item's REAL stored status, not an assumed 'approved': it may have
+            // been rejected by an earlier call.
+            if ($progress->isResolved($index)) {
+                return [$progress->isComplete(), null, $progress->statusOf($index, 'approved')];
+            }
 
-                // Idempotent: an already-resolved item is a no-op (no re-execute). Report
-                // the item's REAL stored status, not an assumed 'approved': it may have
-                // been rejected by an earlier call.
-                if ($progress->isResolved($index)) {
-                    return [$progress->isComplete(), null, $progress->statusOf($index, 'approved')];
-                }
+            $model = CurrentSource::during(CreationSource::CHAT, fn (): Model => $this->executeBatchItem($locked, $user, $this->withoutExcludedFields($records[$index], $excludedFields, $locked->entity_type)));
 
-                $model = CurrentSource::during(CreationSource::CHAT, fn (): Model => $this->executeBatchItem($locked, $user, $this->withoutExcludedFields($records[$index], $excludedFields, $locked->entity_type)));
+            // A failure remembered from an earlier attempt is history the
+            // moment an item commits; leaving it would report a stale error
+            // on a batch that finalizes Approved.
+            unset($resultData['last_error']);
 
-                // A failure remembered from an earlier attempt is history the
-                // moment an item commits; leaving it would report a stale error
-                // on a batch that finalizes Approved.
-                unset($resultData['last_error']);
+            $items[$index] = ['status' => 'approved', 'id' => $model->getKey()];
 
-                $items[$index] = ['status' => 'approved', 'id' => $model->getKey()];
+            if ($excludedFields !== []) {
+                $items[$index]['excluded'] = $excludedFields;
+            }
+            $resultData['items'] = $items;
+            $resultData['type'] ??= $model->getMorphClass();
+            $ids = is_array($resultData['ids'] ?? null) ? $resultData['ids'] : [];
+            $ids[] = $model->getKey();
+            $resultData['ids'] = array_values($ids);
 
-                if ($excludedFields !== []) {
-                    $items[$index]['excluded'] = $excludedFields;
-                }
-                $resultData['items'] = $items;
-                $resultData['type'] ??= $model->getMorphClass();
-                $ids = is_array($resultData['ids'] ?? null) ? $resultData['ids'] : [];
-                $ids[] = $model->getKey();
-                $resultData['ids'] = array_values($ids);
+            $finalized = $this->finalizeBatchIfComplete($locked, $items, $records, $resultData);
 
-                $finalized = $this->finalizeBatchIfComplete($locked, $items, $records, $resultData);
-
-                return [$finalized, $model, 'approved'];
-            });
-        } finally {
-            TenantContextService::setTenantId($previousTenantId);
-        }
+            return [$finalized, $model, 'approved'];
+        }));
 
         $this->broadcastResolution($pendingAction, $itemStatus, $index, $finalized);
 
@@ -620,7 +628,7 @@ final readonly class PendingActionService
 
         return array_values(array_map(fn (PendingAction $action): array => [
             'operation' => $action->operation->value,
-            'entity_type' => $action->entity_type,
+            'entity_type' => $action->entity_type->value,
             'status' => $action->status->value,
             'label' => $this->resolveActionLabel($action),
             'record_id' => $this->resolveResultRecordId($action),
@@ -774,7 +782,7 @@ final readonly class PendingActionService
 
         return array_values(array_map(fn (PendingAction $action): array => [
             'operation' => $action->operation->value,
-            'entity_type' => $action->entity_type,
+            'entity_type' => $action->entity_type->value,
             'label' => $this->resolveActionLabel($action),
         ], $actions->all()));
     }
@@ -829,6 +837,11 @@ final readonly class PendingActionService
         }
 
         $resolver = resolve(RecordReferenceResolver::class);
+
+        if ($action->entity_type->isIndivisible()) {
+            return [];
+        }
+
         $payload = ProposalPayload::from($action);
 
         if (! $payload->isBatch) {
@@ -837,7 +850,7 @@ final readonly class PendingActionService
             return $id === null ? [] : [[
                 'id' => $id,
                 'label' => $this->resolveActionLabel($action),
-                'url' => $resolver->referenceUrl($action->entity_type, $id),
+                'url' => $resolver->referenceUrl($action->entity_type->value, $id),
             ]];
         }
 
@@ -857,7 +870,7 @@ final readonly class PendingActionService
             $records[] = [
                 'id' => (string) $id,
                 'label' => $item === null ? null : ProposalLabel::of($action->entity_type, $item['data'], $item['display']),
-                'url' => $resolver->referenceUrl($action->entity_type, (string) $id),
+                'url' => $resolver->referenceUrl($action->entity_type->value, (string) $id),
             ];
         }
 
@@ -989,7 +1002,7 @@ final readonly class PendingActionService
      */
     private function sanitizedExclusions(PendingAction $pendingAction, array $excludedFields): array
     {
-        if ($pendingAction->operation === PendingActionOperation::Delete) {
+        if ($pendingAction->operation === PendingActionOperation::Delete || $pendingAction->entity_type->isIndivisible()) {
             return [];
         }
 
@@ -998,7 +1011,7 @@ final readonly class PendingActionService
             fn (mixed $code): bool => is_string($code)
                 && $code !== ''
                 && ! str_starts_with($code, '_')
-                && $code !== ProposalCoreFields::titleKey($pendingAction->entity_type),
+                && $code !== $pendingAction->entity_type->titleKey(),
         )));
     }
 
@@ -1011,10 +1024,10 @@ final readonly class PendingActionService
      * @param  list<string>  $excludedFields
      * @return array<array-key, mixed>
      */
-    private function withoutExcludedFields(array $record, array $excludedFields, string $entityType): array
+    private function withoutExcludedFields(array $record, array $excludedFields, ProposalEntity $entityType): array
     {
         foreach ($excludedFields as $code) {
-            if (ProposalCoreFields::isCore($entityType, $code)) {
+            if ($entityType->isCore($code)) {
                 unset($record[$code]);
 
                 continue;

@@ -12,6 +12,7 @@ use App\Mcp\Tools\Concerns\HasReadOnlyToolAnnotations;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\User;
+use App\Support\ActivityLog\ActivityValue;
 use App\Support\CanonicalRecordUrl;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -263,7 +264,7 @@ final class ListActivityTool extends Tool
 
         return [
             'at' => $this->occurredAt($user, $base)->toIso8601String(),
-            'by' => $this->causerName($base),
+            'by' => $base->causerLabel(),
             'source' => $base->source?->value,
             'event' => (string) ($base->event ?? $base->description),
             'record' => [
@@ -338,8 +339,8 @@ final class ListActivityTool extends Tool
 
             $rows[] = [
                 'field' => $row->label,
-                'old' => $this->isUnset($row->old) ? null : $row->formattedOld(),
-                'new' => $this->isUnset($row->new) ? null : $row->formattedNew(),
+                'old' => $this->isUnset($row->old) ? null : ActivityValue::excerpt($row->formattedOld()),
+                'new' => $this->isUnset($row->new) ? null : ActivityValue::excerpt($row->formattedNew()),
             ];
         }
 
@@ -355,8 +356,8 @@ final class ListActivityTool extends Tool
             $label = $change['label'] ?? $change['code'] ?? '';
             $rows[] = [
                 'field' => is_string($label) ? $label : '',
-                'old' => $this->customFieldSide($change['old'] ?? null),
-                'new' => $this->customFieldSide($change['new'] ?? null),
+                'old' => ActivityValue::forAgent($change['old'] ?? null),
+                'new' => ActivityValue::forAgent($change['new'] ?? null),
             ];
         }
 
@@ -368,27 +369,9 @@ final class ListActivityTool extends Tool
         return $value === null || $value === '';
     }
 
-    private function customFieldSide(mixed $side): ?string
-    {
-        if (! is_array($side) || ($side['value'] ?? null) === null) {
-            return null;
-        }
-
-        $label = $side['label'] ?? null;
-
-        return is_string($label) && $label !== '' ? $label : null;
-    }
-
     private function occurredAt(User $user, Activity $activity): CarbonImmutable
     {
         return Date::parse($activity->created_at)->setTimezone($user->effectiveTimezone());
-    }
-
-    private function causerName(Activity $activity): string
-    {
-        $name = $activity->causer?->getAttribute('name');
-
-        return is_string($name) && $name !== '' ? $name : 'System';
     }
 
     private function recordName(Model $subject, ?CrmEntity $entity): string

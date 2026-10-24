@@ -8,6 +8,7 @@ use App\Features\SetupConversation;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Billing\HostedWorkspaceAccess;
+use App\Support\CurrentWorkspace;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -61,7 +62,6 @@ use Relaticle\Chat\Support\ProviderStreamError;
 use Relaticle\Chat\Support\StoredSteps;
 use Relaticle\Chat\Support\StreamEventBroadcaster;
 use Relaticle\Chat\Support\TurnPresence;
-use Relaticle\CustomFields\Services\TenantContextService;
 use Throwable;
 
 #[Timeout(self::TIMEOUT_SECONDS)]
@@ -138,6 +138,11 @@ final class ProcessChatMessage implements ShouldQueue
     }
 
     public function handle(CreditService $creditService): void
+    {
+        resolve(CurrentWorkspace::class)->within($this->workspace, fn () => $this->process($creditService));
+    }
+
+    private function process(CreditService $creditService): void
     {
         $startedAt = microtime(true);
 
@@ -273,6 +278,12 @@ final class ProcessChatMessage implements ShouldQueue
         );
     }
 
+    private function releaseForRetry(int $delay): void
+    {
+        TurnPresence::markRetried($this->conversationId, $this->turnId);
+        $this->release($delay);
+    }
+
     private function streamTurn(CrmAssistant $agent, StreamEventBroadcaster $broadcaster, CreditService $creditService, float $startedAt): void
     {
         try {
@@ -394,7 +405,7 @@ final class ProcessChatMessage implements ShouldQueue
                     maxAttempts: self::MAX_RATE_LIMIT_RETRIES,
                     delaySeconds: $delay,
                 ));
-                $this->release($delay);
+                $this->releaseForRetry($delay);
 
                 return;
             }
@@ -1102,12 +1113,6 @@ final class ProcessChatMessage implements ShouldQueue
         }
     }
 
-    /**
-     * The custom-fields tenant id in force before this job bound its own,
-     * restored by releaseAuth() so the override never outlives the job.
-     */
-    private null|int|string $previousTenantId = null;
-
     private function bindAuth(): void
     {
         // In memory only: the user may have switched workspace since dispatch, and the
@@ -1116,21 +1121,11 @@ final class ProcessChatMessage implements ShouldQueue
         $this->user->setRelation('currentWorkspace', $this->workspace);
 
         Auth::guard('web')->setUser($this->user);
-
-        // The job runs with no Filament panel request, so the custom-fields
-        // package has no ambient tenant. Without one its TenantScope no-ops:
-        // per-field validation rules that query other records (unique values,
-        // above all) silently pass during tool validation, which is how a
-        // duplicate unique email sailed through chat while the panel form
-        // rejected it. Same contract as SetApiWorkspaceContext on the API path.
-        $this->previousTenantId = TenantContextService::getCurrentTenantId();
-        TenantContextService::setTenantId($this->workspace->getKey());
     }
 
     private function releaseAuth(): void
     {
         Auth::guard('web')->forgetUser();
-        TenantContextService::setTenantId($this->previousTenantId);
     }
 
     private function resolutionKey(): string

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsStringOptions;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -26,6 +27,8 @@ use function Laravel\Prompts\warning;
                             {--env-file= : Custom path to .env file (for testing)}')]
 final class InstallCommand extends Command
 {
+    use ReadsStringOptions;
+
     public function handle(): int
     {
         $this->displayWelcome();
@@ -455,6 +458,6 @@ final class InstallCommand extends Command
 
     private function envPath(): string
     {
-        return $this->option('env-file') ?: base_path('.env');
+        return $this->stringOption('env-file') ?? base_path('.env');
     }
 }

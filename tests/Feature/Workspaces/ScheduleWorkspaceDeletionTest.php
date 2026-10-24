@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 use App\Actions\Jetstream\CancelWorkspaceDeletion;
 use App\Actions\Jetstream\ScheduleWorkspaceDeletion;
+use App\Enums\WorkspaceRole;
+use App\Filament\Pages\Dashboard;
+use App\Livewire\App\Workspaces\WorkspaceDeletionBanner;
 use App\Models\User;
 use App\Notifications\WorkspaceDeletionCancelledNotification;
 use App\Notifications\WorkspaceDeletionScheduledNotification;
+use Filament\Actions\Action;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 
-mutates(ScheduleWorkspaceDeletion::class, CancelWorkspaceDeletion::class);
+mutates(ScheduleWorkspaceDeletion::class, CancelWorkspaceDeletion::class, WorkspaceDeletionBanner::class);
 
 test('workspace owner can schedule workspace deletion', function () {
     Notification::fake();
@@ -94,4 +98,65 @@ test('workspace owner can cancel workspace deletion', function () {
 
     Notification::assertSentTo($user, WorkspaceDeletionCancelledNotification::class);
     Notification::assertNotSentTo($member, WorkspaceDeletionCancelledNotification::class);
+});
+
+test('every page of a workspace scheduled for deletion says when it will be deleted and lets the owner cancel', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $workspace->forceFill(['scheduled_deletion_at' => now()->addDays(14)])->save();
+
+    $this->actingAs($owner)
+        ->get(Dashboard::getUrl(['tenant' => $workspace]))
+        ->assertOk()
+        ->assertSee(__('workspaces.deletion_banner.message', ['date' => $workspace->scheduled_deletion_at->format('F j, Y')]))
+        ->assertSee(__('workspaces.actions.cancel_deletion'));
+});
+
+test('the owner cancels the deletion from the banner through the same confirmation as workspace settings', function (): void {
+    Notification::fake();
+
+    $owner = User::factory()->withWorkspace()->create();
+    $workspace = $owner->currentWorkspace;
+    $workspace->forceFill(['scheduled_deletion_at' => now()->addDays(14)])->save();
+
+    $this->actingAs($owner);
+
+    livewire(WorkspaceDeletionBanner::class, ['workspace' => $workspace])
+        ->assertActionExists('cancelDeletion', fn (Action $action): bool => $action->getModalHeading() === __('workspaces.modals.cancel_deletion.heading'))
+        ->mountAction('cancelDeletion')
+        ->assertActionMounted('cancelDeletion')
+        ->callMountedAction()
+        ->assertRedirect();
+
+    expect($workspace->refresh()->scheduled_deletion_at)->toBeNull();
+    Notification::assertSentTo($owner, WorkspaceDeletionCancelledNotification::class);
+});
+
+test('a member of a workspace scheduled for deletion sees the date but no cancel link', function (): void {
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $workspace->forceFill(['scheduled_deletion_at' => now()->addDays(14)])->save();
+
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($workspace);
+
+    $this->actingAs($member->fresh())
+        ->get(Dashboard::getUrl(['tenant' => $workspace]))
+        ->assertOk()
+        ->assertSee(__('workspaces.deletion_banner.message', ['date' => $workspace->scheduled_deletion_at->format('F j, Y')]))
+        ->assertDontSee(__('workspaces.actions.cancel_deletion'));
+
+    livewire(WorkspaceDeletionBanner::class, ['workspace' => $workspace])
+        ->assertActionHidden('cancelDeletion');
+
+    expect($workspace->refresh()->scheduled_deletion_at)->not->toBeNull();
+});
+
+test('a workspace that is not scheduled for deletion shows no deletion banner', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+
+    $this->actingAs($owner)
+        ->get(Dashboard::getUrl(['tenant' => $owner->currentWorkspace]))
+        ->assertOk()
+        ->assertDontSeeLivewire(WorkspaceDeletionBanner::class);
 });

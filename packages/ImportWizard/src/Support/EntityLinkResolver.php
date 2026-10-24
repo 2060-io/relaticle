@@ -6,7 +6,9 @@ namespace Relaticle\ImportWizard\Support;
 
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
+use App\Models\Scopes\WorkspaceScope;
 use App\Models\User;
+use App\Support\CustomFields\CanonicalValue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Relaticle\ImportWizard\Data\EntityLink;
@@ -143,6 +145,7 @@ final class EntityLinkResolver
         $modelClass = $link->targetModelClass;
 
         return $modelClass::query()
+            ->withoutGlobalScope(WorkspaceScope::class)
             ->where('workspace_id', $this->workspaceId)
             ->whereIn($field, $uniqueValues)
             ->pluck('id', $field)
@@ -187,7 +190,7 @@ final class EntityLinkResolver
         $valueColumn = $customField->getValueColumn();
 
         return $valueColumn === 'json_value'
-            ? $this->resolveViaJsonColumn($link, $customField->getKey(), $uniqueValues)
+            ? $this->resolveViaJsonColumn($link, $customField, $uniqueValues)
             : CustomFieldValue::query()
                 ->withoutGlobalScopes()
                 ->where('tenant_id', $this->workspaceId)
@@ -205,6 +208,7 @@ final class EntityLinkResolver
         $modelClass = $link->targetModelClass;
 
         return $modelClass::query()
+            ->withoutGlobalScope(WorkspaceScope::class)
             ->select((new $modelClass)->getQualifiedKeyName())
             ->where('workspace_id', $this->workspaceId);
     }
@@ -213,63 +217,31 @@ final class EntityLinkResolver
      * @param  array<string>  $uniqueValues
      * @return array<string, int|string>
      */
-    private function resolveViaJsonColumn(EntityLink $link, int|string $customFieldId, array $uniqueValues): array
+    private function resolveViaJsonColumn(EntityLink $link, CustomField $customField, array $uniqueValues): array
     {
         if ($uniqueValues === []) {
             return [];
         }
 
+        $spellingsByOriginal = $this->spellingsByOriginal($customField, $uniqueValues);
+        $lookupValues = array_values(array_unique(array_merge(...array_values($spellingsByOriginal))));
+
         $model = new CustomFieldValue;
         $connection = $model->getConnection();
         $table = $model->getTable();
-        $driver = $connection->getDriverName();
         $tenantKey = config('custom-fields.database.column_names.tenant_foreign_key');
         $accessibleEntities = $this->accessibleEntities($link)->toBase();
         $results = [];
 
-        foreach (array_chunk($uniqueValues, 5000) as $chunk) {
+        foreach (array_chunk($lookupValues, 5000) as $chunk) {
             $lowerChunk = array_map(mb_strtolower(...), $chunk);
             $placeholders = implode(',', array_fill(0, count($lowerChunk), '?'));
 
-            $sql = match ($driver) {
-                'sqlite' => "SELECT cfv.entity_id, je.value AS matched_value
-                   FROM {$table} cfv, json_each(
-                       CASE WHEN JSON_TYPE(cfv.json_value) = 'array'
-                           THEN cfv.json_value
-                           ELSE JSON_ARRAY(cfv.json_value)
-                       END
-                   ) je
-                   WHERE cfv.{$tenantKey} = ?
-                     AND cfv.custom_field_id = ?
-                     AND cfv.entity_type = ?
-                     AND LOWER(CAST(je.value AS TEXT)) IN ({$placeholders})",
-                'pgsql' => "SELECT cfv.entity_id, LOWER(je.value) AS matched_value
-                   FROM {$table} cfv
-                   CROSS JOIN LATERAL jsonb_array_elements_text(
-                       CASE WHEN jsonb_typeof(cfv.json_value::jsonb) = 'array'
-                           THEN cfv.json_value::jsonb
-                           ELSE jsonb_build_array(cfv.json_value::jsonb)
-                       END
-                   ) AS je(value)
-                   WHERE cfv.{$tenantKey} = ?
-                     AND cfv.custom_field_id = ?
-                     AND cfv.entity_type = ?
-                     AND LOWER(je.value) IN ({$placeholders})",
-                default => "SELECT cfv.entity_id, jt.val AS matched_value
-                   FROM {$table} cfv
-                   JOIN JSON_TABLE(
-                       IF(JSON_TYPE(cfv.json_value) = 'ARRAY', cfv.json_value, JSON_ARRAY(cfv.json_value)),
-                       '\$[*]' COLUMNS(val TEXT PATH '\$')
-                   ) AS jt
-                   WHERE cfv.{$tenantKey} = ?
-                     AND cfv.custom_field_id = ?
-                     AND cfv.entity_type = ?
-                     AND LOWER(jt.val) IN ({$placeholders})",
-            };
+            $sql = $this->jsonValueMatchSql($table, $tenantKey, $placeholders);
 
             $sql .= " AND cfv.entity_id IN ({$accessibleEntities->toSql()})";
             $bindings = array_merge(
-                [$this->workspaceId, $customFieldId, $link->targetEntity],
+                [$this->workspaceId, $customField->getKey(), $link->targetEntity],
                 $lowerChunk,
                 $accessibleEntities->getBindings(),
             );
@@ -282,7 +254,84 @@ final class EntityLinkResolver
             }
         }
 
-        return $results;
+        $matched = [];
+
+        foreach ($spellingsByOriginal as $original => $spellings) {
+            $spelling = array_find([(string) $original, ...$spellings], static fn (string $candidate): bool => isset($results[$candidate]));
+
+            if ($spelling !== null) {
+                $matched[(string) $original] = $results[$spelling];
+            }
+        }
+
+        return $matched;
+    }
+
+    private function jsonValueMatchSql(string $table, string $tenantKey, string $placeholders): string
+    {
+        return "SELECT cfv.entity_id, LOWER(je.value) AS matched_value
+                   FROM {$table} cfv
+                   CROSS JOIN LATERAL jsonb_array_elements_text(
+                       CASE WHEN jsonb_typeof(cfv.json_value::jsonb) = 'array'
+                           THEN cfv.json_value::jsonb
+                           ELSE jsonb_build_array(cfv.json_value::jsonb)
+                       END
+                   ) AS je(value)
+                   WHERE cfv.{$tenantKey} = ?
+                     AND cfv.custom_field_id = ?
+                     AND cfv.entity_type = ?
+                     AND LOWER(je.value) IN ({$placeholders})";
+    }
+
+    /**
+     * @param  array<string>  $uniqueValues
+     * @return array<string, list<string>>
+     */
+    private function spellingsByOriginal(CustomField $customField, array $uniqueValues): array
+    {
+        $spellingsByOriginal = [];
+
+        foreach ($uniqueValues as $value) {
+            $spellingsByOriginal[mb_strtolower($value)] = array_map(mb_strtolower(...), CanonicalValue::spellings($customField, $value));
+        }
+
+        return $spellingsByOriginal;
+    }
+
+    /**
+     * @param  list<string>  $values
+     * @return array<string, list<string>>
+     */
+    public function recordIdsByValue(CustomField $customField, array $values): array
+    {
+        $valueColumn = $customField->getValueColumn();
+        $tenantKey = config('custom-fields.database.column_names.tenant_foreign_key');
+        $model = new CustomFieldValue;
+        $recordIdsByValue = [];
+
+        foreach (array_chunk(array_map(mb_strtolower(...), $values), 5000) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+
+            $sql = $valueColumn === 'json_value'
+                ? $this->jsonValueMatchSql($model->getTable(), $tenantKey, $placeholders)
+                : "SELECT cfv.entity_id, LOWER(cfv.{$valueColumn}::text) AS matched_value
+                   FROM {$model->getTable()} cfv
+                   WHERE cfv.{$tenantKey} = ?
+                     AND cfv.custom_field_id = ?
+                     AND cfv.entity_type = ?
+                     AND LOWER(cfv.{$valueColumn}::text) IN ({$placeholders})";
+
+            $rows = $model->getConnection()->select(
+                $sql,
+                [$this->workspaceId, $customField->getKey(), $customField->entity_type, ...$chunk],
+            );
+
+            foreach ($rows as $row) {
+                $recordIdsByValue[mb_strtolower((string) $row->matched_value)][] = (string) $row->entity_id;
+            }
+        }
+
+        return $recordIdsByValue;
     }
 
     /** @param  array<mixed>  $values */

@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace App\Services\Favicon\Drivers;
 
+use App\Support\Http\HostResolver;
 use App\Support\Http\SsrfGuard;
 use AshAllenDesign\FaviconFetcher\Collections\FaviconCollection;
 use AshAllenDesign\FaviconFetcher\Concerns\HasDefaultFunctionality;
 use AshAllenDesign\FaviconFetcher\Concerns\MakesHttpRequests;
 use AshAllenDesign\FaviconFetcher\Concerns\ValidatesUrls;
 use AshAllenDesign\FaviconFetcher\Contracts\Fetcher;
+use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Exceptions\InvalidUrlException;
 use AshAllenDesign\FaviconFetcher\Favicon;
+use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 
@@ -20,6 +24,20 @@ final class HighQualityDriver implements Fetcher
     use HasDefaultFunctionality;
     use MakesHttpRequests;
     use ValidatesUrls;
+
+    private const int BUDGET_SECONDS = 20;
+
+    private const int REQUEST_TIMEOUT_SECONDS = 5;
+
+    private const int CONNECT_TIMEOUT_SECONDS = 3;
+
+    private const int MINIMUM_SECONDS_PER_REQUEST = 1;
+
+    private const int MINIMUM_SECONDS_TO_VERIFY = 2;
+
+    private CarbonImmutable $deadline;
+
+    private bool $skippedForLackOfTime = false;
 
     /**
      * Attempt to fetch high-quality favicon using a waterfall strategy.
@@ -32,7 +50,17 @@ final class HighQualityDriver implements Fetcher
      */
     public function fetch(string $url): ?Favicon
     {
+        $bounded = clone $this;
+        $bounded->deadline = now()->addSeconds(self::BUDGET_SECONDS);
+
+        return $bounded->search($url);
+    }
+
+    private function search(string $url): ?Favicon
+    {
         throw_unless($this->urlIsValid($url), InvalidUrlException::class, $url.' is not a valid URL');
+
+        throw_if($this->hostDoesNotResolve($url), ConnectionException::class, "Could not resolve host for {$url}");
 
         if (! SsrfGuard::isAllowed($url)) {
             return null;
@@ -42,6 +70,71 @@ final class HighQualityDriver implements Fetcher
             return $favicon;
         }
 
+        $siteUnreachable = null;
+
+        try {
+            $favicon = $this->fromSite($url);
+        } catch (ConnectionException $exception) {
+            $favicon = null;
+            $siteUnreachable = $exception;
+        }
+
+        if ($favicon instanceof Favicon) {
+            return $favicon;
+        }
+
+        $favicon = $this->whileTimeLeft(fn (): ?Favicon => $this->tryGoogleHighRes($url));
+        if ($favicon instanceof Favicon && $this->faviconIsAccessible($favicon)) {
+            return $favicon;
+        }
+
+        $favicon = $this->whileTimeLeft(fn (): ?Favicon => $this->tryDuckDuckGo($url));
+
+        if (! $favicon instanceof Favicon) {
+            throw_if($siteUnreachable instanceof ConnectionException, $siteUnreachable);
+            throw_if($this->skippedForLackOfTime, ConnectionException::class, "Ran out of time looking for a favicon for {$url}");
+        }
+
+        return $favicon;
+    }
+
+    private function secondsLeft(): float
+    {
+        return now()->diffInSeconds($this->deadline, false);
+    }
+
+    private function whileTimeLeft(Closure $source): ?Favicon
+    {
+        if ($this->hasTimeLeft()) {
+            return $source();
+        }
+
+        $this->skippedForLackOfTime = true;
+
+        return null;
+    }
+
+    private function noteIfOutOfTime(): void
+    {
+        if (! $this->hasTimeLeft()) {
+            $this->skippedForLackOfTime = true;
+        }
+    }
+
+    private function hasTimeLeft(): bool
+    {
+        return $this->secondsLeft() >= self::MINIMUM_SECONDS_PER_REQUEST;
+    }
+
+    private function hostDoesNotResolve(string $url): bool
+    {
+        $host = trim((string) parse_url($url, PHP_URL_HOST), '[]');
+
+        return $host !== '' && resolve(HostResolver::class)->addresses($host) === [];
+    }
+
+    private function fromSite(string $url): ?Favicon
+    {
         $favicon = $this->tryAppleTouchIcon($url);
         if ($favicon instanceof Favicon && $this->faviconIsAccessible($favicon)) {
             return $favicon;
@@ -52,12 +145,7 @@ final class HighQualityDriver implements Fetcher
             return $favicon;
         }
 
-        $favicon = $this->tryGoogleHighRes($url);
-        if ($favicon instanceof Favicon && $this->faviconIsAccessible($favicon)) {
-            return $favicon;
-        }
-
-        return $this->tryDuckDuckGo($url);
+        return null;
     }
 
     public function fetchAll(string $url): FaviconCollection
@@ -67,7 +155,18 @@ final class HighQualityDriver implements Fetcher
 
     private function guardedHttpClient(): PendingRequest
     {
-        return SsrfGuard::guard($this->httpClient());
+        if (! $this->hasTimeLeft()) {
+            $this->skippedForLackOfTime = true;
+
+            throw new ConnectionException('Ran out of time looking for a favicon');
+        }
+
+        return SsrfGuard::guard(
+            $this->httpClient()
+                ->timeout(self::REQUEST_TIMEOUT_SECONDS)
+                ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS),
+            $this->deadline,
+        );
     }
 
     private function tryAppleTouchIcon(string $url): ?Favicon
@@ -120,6 +219,8 @@ final class HighQualityDriver implements Fetcher
                     ->setIconSize(180);
             }
 
+        } catch (ConnectionException $exception) {
+            throw $exception;
         } catch (\Exception) {
             // Fall through to next strategy
         }
@@ -157,6 +258,8 @@ final class HighQualityDriver implements Fetcher
                 }
             }
 
+        } catch (ConnectionException $exception) {
+            throw $exception;
         } catch (\Exception) {
             // Fall through
         }
@@ -166,10 +269,14 @@ final class HighQualityDriver implements Fetcher
 
     private function tryGoogleHighRes(string $url): ?Favicon
     {
-        try {
-            $urlWithoutProtocol = str_replace(['https://', 'http://'], '', $url);
+        $host = $this->bareHost($url);
 
-            $faviconUrl = 'https://www.google.com/s2/favicons?sz=256&domain='.$urlWithoutProtocol;
+        if ($host === null) {
+            return null;
+        }
+
+        try {
+            $faviconUrl = 'https://www.google.com/s2/favicons?sz=256&domain='.rawurlencode($host);
 
             if (! SsrfGuard::isAllowed($faviconUrl)) {
                 return null;
@@ -188,7 +295,7 @@ final class HighQualityDriver implements Fetcher
             }
 
         } catch (\Exception) {
-            // Fall through
+            $this->noteIfOutOfTime();
         }
 
         return null;
@@ -196,8 +303,13 @@ final class HighQualityDriver implements Fetcher
 
     private function tryDuckDuckGo(string $url): ?Favicon
     {
-        $urlWithoutProtocol = str_replace(['https://', 'http://'], '', $url);
-        $faviconUrl = 'https://icons.duckduckgo.com/ip3/'.$urlWithoutProtocol.'.ico';
+        $host = $this->bareHost($url);
+
+        if ($host === null) {
+            return $this->notFound($url);
+        }
+
+        $faviconUrl = 'https://icons.duckduckgo.com/ip3/'.$host.'.ico';
 
         if (! SsrfGuard::isAllowed($faviconUrl)) {
             return null;
@@ -217,10 +329,19 @@ final class HighQualityDriver implements Fetcher
             }
 
         } catch (\Exception) {
-            // Fall through
+            $this->noteIfOutOfTime();
         }
 
         return $this->notFound($url);
+    }
+
+    private function bareHost(string $url): ?string
+    {
+        $host = strtolower(preg_replace('/\\.$/', '', (string) parse_url($url, PHP_URL_HOST)));
+
+        $isHostname = preg_match('/^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/', $host) === 1;
+
+        return $isHostname ? $host : null;
     }
 
     private function faviconIsAccessible(Favicon $favicon): bool
@@ -229,6 +350,10 @@ final class HighQualityDriver implements Fetcher
 
         if (! SsrfGuard::isAllowed($faviconUrl)) {
             return false;
+        }
+
+        if ($this->secondsLeft() < self::MINIMUM_SECONDS_TO_VERIFY) {
+            return true;
         }
 
         try {

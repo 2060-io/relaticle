@@ -17,7 +17,6 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
-use Relaticle\Chat\Actions\ListConversationMessages;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Enums\MessageOrigin;
 use Relaticle\Chat\Enums\PendingActionOperation;
@@ -26,11 +25,13 @@ use Relaticle\Chat\Jobs\ProcessChatMessage;
 use Relaticle\Chat\Livewire\Chat\ProposalCard;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\PendingAction;
+use Relaticle\Chat\Queries\ConversationMessagesQuery;
 use Relaticle\Chat\Services\AiModelResolver;
 use Relaticle\Chat\Services\CreditService;
 use Relaticle\Chat\Services\PendingActionService;
 use Relaticle\Chat\Services\ProposalPlanService;
 use Relaticle\Chat\Services\TurnContinuationService;
+use Relaticle\Chat\Support\TurnPresence;
 use Tests\Helpers\AnthropicSse;
 
 mutates(TurnContinuationService::class);
@@ -97,6 +98,39 @@ it('resumes the assistant when an approval leaves nothing pending', function ():
             && $job->conversationId === $this->convId
             && $job->message === "The user decided the proposals above:\n- APPROVED (written): create company \"Continuation Co\"",
     );
+});
+
+it('does not resume a turn that is retrying, which reports the decided card itself', function (): void {
+    Queue::fake();
+
+    $turnId = (string) Str::ulid();
+    $proposal = continuationProposal($this->user, $this->convId, $turnId, 'Retrying Co');
+    TurnPresence::begin($this->convId, turnId: $turnId, message: 'Create it');
+    TurnPresence::markRetried($this->convId, $turnId);
+
+    Livewire::test(ProposalCard::class)
+        ->dispatch('proposal:set-active', id: (string) $proposal->getKey(), context: 'conversation')
+        ->call('createCurrent', resolve(PendingActionService::class));
+
+    Queue::assertNotPushed(ProcessChatMessage::class);
+
+    TurnPresence::clear($this->convId, $turnId);
+
+    expect(resolve(TurnContinuationService::class)->resume($this->user, $this->convId, $turnId))->toBeTrue();
+});
+
+it('still resumes behind a turn that is streaming and has not retried', function (): void {
+    Queue::fake();
+
+    $turnId = (string) Str::ulid();
+    $proposal = continuationProposal($this->user, $this->convId, $turnId, 'Streaming Co');
+    TurnPresence::begin($this->convId, turnId: $turnId, message: 'Create it');
+
+    Livewire::test(ProposalCard::class)
+        ->dispatch('proposal:set-active', id: (string) $proposal->getKey(), context: 'conversation')
+        ->call('createCurrent', resolve(PendingActionService::class));
+
+    Queue::assertPushed(ProcessChatMessage::class, fn (ProcessChatMessage $job): bool => $job->origin === MessageOrigin::Resume);
 });
 
 it('resumes after a rejection too, so a discarded card is not a dead end', function (): void {
@@ -382,7 +416,7 @@ it('hides the resumed turn prompt from the transcript but keeps every other mess
         ]);
     }
 
-    $messages = resolve(ListConversationMessages::class)->execute($this->user, $this->convId);
+    $messages = resolve(ConversationMessagesQuery::class)->get($this->user, $this->convId);
 
     expect($messages)->toHaveCount(3)
         ->and(array_column($messages, 'role'))->toBe(['user', 'assistant', 'assistant'])
@@ -439,7 +473,7 @@ it('leaves the next job on the worker to store its own question as the user type
         ->and($stored->content)->toContain('Acme')
         ->and($stored->origin)->toBe(MessageOrigin::Typed->value);
 
-    $transcript = resolve(ListConversationMessages::class)->execute($this->user, $this->convId);
+    $transcript = resolve(ConversationMessagesQuery::class)->get($this->user, $this->convId);
 
     expect(collect($transcript)->pluck('content')->implode(' '))->toContain('What did we agree with Acme?');
 });
@@ -468,7 +502,7 @@ it('saves a resumed turn as its opener with a resume origin and keeps it out of 
 
     expect($row->origin)->toBe(MessageOrigin::Resume->value)
         ->and($row->content)->toBe("The user decided the proposals above:\n- REJECTED (nothing was written): create company \"Rejected Co\"")
-        ->and(array_column(resolve(ListConversationMessages::class)->execute($this->user, $this->convId), 'role'))
+        ->and(array_column(resolve(ConversationMessagesQuery::class)->get($this->user, $this->convId), 'role'))
         ->toBe(['assistant']);
 
     CrmAssistant::assertPrompted(fn ($prompt): bool => $prompt->prompt === $row->content

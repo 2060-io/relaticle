@@ -2,6 +2,7 @@
 paths:
   - 'app/Mcp/Tools/**'
   - 'app/Mcp/Schema/**'
+  - 'app/Queries/**'
   - 'app/Mcp/Resources/**'
   - 'packages/Chat/src/Tools/**'
   - 'packages/Chat/src/Services/Tools/**'

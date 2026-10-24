@@ -5,20 +5,28 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\CustomFields\CompanyField;
+use App\Exceptions\SsrfGuardException;
 use App\Models\Company;
+use App\Support\Http\HostResolver;
 use App\Support\Http\SsrfGuard;
+use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
 use AshAllenDesign\FaviconFetcher\Facades\Favicon;
+use Carbon\CarbonImmutable;
 use finfo;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
 use Illuminate\Queue\Attributes\DeleteWhenMissingModels;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\Attributes\UniqueFor;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Throwable;
 
 #[DeleteWhenMissingModels]
@@ -30,77 +38,123 @@ final class FetchFaviconForCompany implements ShouldBeUnique, ShouldQueue
     use Dispatchable;
     use Queueable;
 
+    private const int BUDGET_SECONDS = 25;
+
+    private const int DOWNLOAD_TIMEOUT_SECONDS = 15;
+
+    private const int CONNECT_TIMEOUT_SECONDS = 3;
+
     public function __construct(public readonly Company $company) {}
 
     public function handle(): void
     {
+        $deadline = now()->addSeconds(self::BUDGET_SECONDS);
+
         try {
-            // The custom-fields package registers the tenant relation under the name
-            // `team`, so the relation has to be named rather than guessed.
-            $customFieldDomain = $this->company->customFields()
-                ->whereBelongsTo($this->company->workspace, 'team')
-                ->where('code', CompanyField::DOMAINS->value)
-                ->first();
-
-            // Reading a value walks every custom field value on the company, and a company
-            // with more than one of them trips strict lazy loading outside production.
-            $this->company->load('customFieldValues.customField.options');
-
-            $domains = $this->company->getCustomFieldValue($customFieldDomain);
-            $domainName = is_array($domains) ? ($domains[0] ?? null) : $domains;
-
-            if ($domainName === null || $domainName === '') {
-                return;
-            }
-
-            if (! Str::startsWith($domainName, ['http://', 'https://'])) {
-                $domainName = 'https://'.$domainName;
-            }
-
-            $favicon = Favicon::driver('high-quality')->fetch($domainName);
-            $url = $favicon?->getFaviconUrl();
-
-            if ($url === null) {
-                return;
-            }
-
-            if (filter_var($url, FILTER_VALIDATE_URL) === false) {
-                return;
-            }
-
-            if (! SsrfGuard::isAllowed($url)) {
-                return;
-            }
-
-            $response = SsrfGuard::guard(Http::timeout(15))->get($url);
-
-            if (! $response->successful()) {
-                return;
-            }
-
-            $body = $response->body();
-            $extension = Company::LOGO_MIME_TYPES[new finfo(FILEINFO_MIME_TYPE)->buffer($body)] ?? null;
-
-            if ($extension === null) {
-                return;
-            }
-
-            $logo = $this->company
-                ->addMediaFromString($body)
-                ->usingFileName("logo.{$extension}")
-                ->usingName('company_logo')
-                ->withCustomProperties([
-                    'domain' => $domainName,
-                    'original_size' => $favicon->getIconSize(),
-                    'icon_type' => $favicon->getIconType(),
-                    'fetched_at' => now()->toIso8601String(),
-                ])
-                ->toMediaCollection(Company::LOGO_MEDIA_COLLECTION);
-
-            $this->company->clearMediaCollectionExcept(Company::LOGO_MEDIA_COLLECTION, $logo);
+            HostResolver::remembering(fn () => $this->storeLogo($deadline));
         } catch (Throwable $exception) {
-            report($exception);
+            report_unless($this->isUnreachableSite($exception), $exception);
         }
+    }
+
+    private function storeLogo(CarbonImmutable $deadline): void
+    {
+        $sourceUrl = self::sourceUrl($this->company);
+
+        if ($sourceUrl === null) {
+            return;
+        }
+
+        $favicon = Favicon::driver('high-quality')->fetch($sourceUrl);
+        $url = $favicon?->getFaviconUrl();
+
+        if ($url === null) {
+            $this->company->getMedia(Company::LOGO_MEDIA_COLLECTION)
+                ->reject(fn (Media $logo): bool => self::fetchedFrom($logo, $sourceUrl))
+                ->each
+                ->delete();
+
+            return;
+        }
+
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return;
+        }
+
+        $body = $this->downloadIcon($url, $deadline);
+
+        if ($body === null) {
+            return;
+        }
+
+        $extension = Company::LOGO_MIME_TYPES[new finfo(FILEINFO_MIME_TYPE)->buffer($body)] ?? null;
+
+        if ($extension === null) {
+            return;
+        }
+
+        $logo = $this->company
+            ->addMediaFromString($body)
+            ->usingFileName("logo.{$extension}")
+            ->usingName('company_logo')
+            ->withCustomProperties([
+                'domain' => $sourceUrl,
+                'original_size' => $favicon->getIconSize(),
+                'icon_type' => $favicon->getIconType(),
+                'fetched_at' => now()->toIso8601String(),
+            ])
+            ->toMediaCollection(Company::LOGO_MEDIA_COLLECTION);
+
+        $this->company->clearMediaCollectionExcept(Company::LOGO_MEDIA_COLLECTION, $logo);
+    }
+
+    private function downloadIcon(string $url, CarbonImmutable $deadline): ?string
+    {
+        $secondsLeft = now()->diffInSeconds($deadline, false);
+
+        if ($secondsLeft < 1 || ! SsrfGuard::isAllowed($url)) {
+            return null;
+        }
+
+        $response = SsrfGuard::guard(
+            Http::timeout(self::DOWNLOAD_TIMEOUT_SECONDS)->connectTimeout(self::CONNECT_TIMEOUT_SECONDS),
+            $deadline,
+        )->get($url);
+
+        return $response->successful() ? $response->body() : null;
+    }
+
+    private function isUnreachableSite(Throwable $exception): bool
+    {
+        if ($exception instanceof ConnectionException || $exception instanceof HttpConnectionException) {
+            return true;
+        }
+
+        return $exception instanceof SsrfGuardException && $exception->hostUnresolved;
+    }
+
+    public static function sourceUrl(Company $company): ?string
+    {
+        $domains = $company->customFieldValues()
+            ->whereHas('customField', fn (Builder $field): Builder => $field
+                ->where('code', CompanyField::DOMAINS->value)
+                ->where('tenant_id', $company->workspace_id))
+            ->with('customField')
+            ->first()
+            ?->getValue();
+
+        $domain = is_iterable($domains) ? Arr::first($domains) : $domains;
+
+        if (blank($domain)) {
+            return null;
+        }
+
+        return Str::startsWith($domain, ['http://', 'https://']) ? $domain : "https://{$domain}";
+    }
+
+    public static function fetchedFrom(Media $logo, string $sourceUrl): bool
+    {
+        return $logo->getCustomProperty('domain', $sourceUrl) === $sourceUrl;
     }
 
     public function uniqueId(): string

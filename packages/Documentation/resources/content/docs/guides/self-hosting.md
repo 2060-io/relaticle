@@ -2,7 +2,7 @@
 title: Self-Hosting Guide
 description: Get Docker Compose, Coolify, Dokploy and Laravel Cloud deployment steps for Relaticle, with PostgreSQL, Redis and Ollama setup.
 order: 1
-updated: "2026-10-05"
+updated: "2026-10-13"
 ---
 
 Deploy Relaticle on your own infrastructure with Docker or manually.
@@ -81,6 +81,13 @@ These must be set or the containers will refuse to start.
 | `APP_DEBUG` | `false` | Set to `true` only for debugging. Never in production. |
 | `APP_TIMEZONE` | `UTC` | Application timezone. |
 | `APP_URL` | `http://localhost` | Full URL where Relaticle is accessible. Include the scheme. |
+| `TRUSTED_HOSTS` | `localhost` | Extra hostnames the app accepts, comma separated. The `APP_URL` host and any `*_DOMAIN` hosts are always accepted. Keep `localhost` in the list, because the container health check calls it. |
+| `TRUSTED_PROXIES` | (empty) | Proxy addresses whose `X-Forwarded-For`, `-Proto` and `-Port` headers the app believes, comma separated, as IPs or CIDR ranges. Empty trusts every private range (10/8, 172.16/12, 192.168/16, loopback), which Traefik, Coolify and Dokploy need. Narrow it to your proxy, for example its Docker network gateway or subnet, so no other container or host peer can forge a client IP. `*` trusts every sender and is unsafe. Never publish the app port directly to an untrusted network. |
+| `SESSION_SECURE_COOKIE` | (empty) | Sends the session cookie over HTTPS only. Empty means secure when `APP_URL` starts with `https://`, and not secure otherwise. Set `true` or `false` to override. Serve production installs over HTTPS. A Secure cookie over plain HTTP is dropped by the browser, so a plain-HTTP install must leave this empty or `false`, or nobody can sign in. An `https://` install that you also open over plain HTTP, such as by LAN IP, needs `false` for that access to work. |
+| `HSTS_MAX_AGE` | `15552000` | Seconds browsers keep forcing HTTPS for your host. The `Strict-Transport-Security` header is sent only when `APP_ENV=production` and the request is HTTPS. Set `0` to make browsers forget it. |
+| `HSTS_INCLUDE_SUBDOMAINS` | `false` | Set `true` to extend HSTS to every subdomain of the host. Leave it off if any sibling subdomain, such as an intranet host, is served over plain HTTP. |
+| `CSP_MODE` | `enforce` | Content-Security-Policy for HTML pages. `report-only` sends the full policy as a report-only header, and `off` drops it. `frame-ancestors`, `object-src` and `base-uri` stay enforced in every mode. |
+| `CSP_SCRIPT_SRC`, `CSP_STYLE_SRC`, `CSP_IMG_SRC`, `CSP_FONT_SRC`, `CSP_CONNECT_SRC`, `CSP_FRAME_SRC` | (empty) | Extra origins for that directive, comma separated. Set `CSP_IMG_SRC` when media or profile photos load from a bucket URL on another host. The websocket origin is added for you. |
 | `APP_PORT` | `80` | Host port the app container binds to. |
 | `APP_PANEL_DOMAIN` | (empty) | Set for subdomain routing (e.g., `app.example.com`). Leave empty for path mode (`/app`). |
 | `PASSKEYS_USER_HANDLE_SECRET` | `APP_KEY` | Derives the opaque WebAuthn user handle stored on each authenticator. Set it to its own random value (`openssl rand -base64 32`) before anyone registers a passkey, so rotating `APP_KEY` later does not change every user's handle. |
@@ -110,6 +117,17 @@ These are pre-configured in `compose.yml` and generally don't need changing.
 | `DB_DATABASE` | `relaticle` | PostgreSQL database name. |
 | `DB_USERNAME` | `relaticle` | PostgreSQL username. |
 | `REDIS_PASSWORD` | `null` | Redis password. Leave as `null` for no auth. |
+
+### Live updates
+
+Rela, the built-in AI assistant, streams its replies into the chat over a websocket. The `reverb` container serves it, and the app container proxies it under `/reverb` on the address you already use. No extra port, domain or certificate is needed.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REVERB_APP_SECRET` | `APP_KEY` | Signs messages between the app and the `reverb` container. Set it to rotate it apart from `APP_KEY`. |
+| `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME` | (empty) | Set these only when the websocket has its own public address. Left empty, the browser connects to the `APP_URL` origin under `/reverb`. |
+
+When the websocket is unreachable, the chat still works. Each reply appears a few seconds after it is saved, without typing live. The suggested next steps under a reply show after a page reload.
 
 ### Optional
 
@@ -156,7 +174,7 @@ One setting applies to both providers.
 
 ### AI Assistant
 
-Rela, the built-in AI assistant, works with cloud providers, a self-hosted server, or both. Models appear in the chat model picker only when their provider is configured. With none configured, the assistant cannot answer.
+Rela works with cloud providers, a self-hosted server, or both. Models appear in the chat model picker only when their provider is configured. With none configured, the assistant cannot answer.
 
 There are two ways to run a self-hosted model, and you can use either or both:
 
@@ -207,13 +225,14 @@ Restrict who can sign up and who can create workspaces on a private instance. Bo
 
 ## Architecture
 
-The Docker setup runs 5 containers:
+The Docker setup runs 6 containers:
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
 | **app** | `ghcr.io/relaticle/relaticle:latest` | Web server (nginx + PHP-FPM) on port 8080. Runs migrations automatically on startup. |
 | **horizon** | `ghcr.io/relaticle/relaticle:latest` | Queue worker powered by Laravel Horizon. Processes background jobs. |
 | **scheduler** | `ghcr.io/relaticle/relaticle:latest` | Runs `schedule:work` for recurring tasks (e.g., cleanup, notifications). |
+| **reverb** | `ghcr.io/relaticle/relaticle:latest` | Websocket server (Laravel Reverb). Streams Rela's replies to the browser. |
 | **postgres** | `postgres:17-alpine` | PostgreSQL 17 database. |
 | **redis** | `redis:7-alpine` | Cache, sessions, and queue backend. Runs with append-only persistence. |
 
@@ -227,7 +246,7 @@ The Docker setup runs 5 containers:
 
 ### Networking
 
-The app container listens on port 8080 internally and maps to `APP_PORT` (default 80) on the host. All containers communicate through Docker's internal network. Only the app container exposes a port to the host.
+The app container listens on port 8080 internally and maps to `APP_PORT` (default 80) on the host. All containers communicate through Docker's internal network. Only the app container exposes a port to the host. The browser reaches the websocket through it, at `/reverb`.
 
 ---
 
@@ -262,6 +281,11 @@ SSL is not optional if you want passkeys: browsers run WebAuthn over HTTPS only,
 ### Nginx
 
 ```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 server {
     listen 443 ssl http2;
     server_name crm.example.com;
@@ -275,6 +299,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
     }
 }
 
@@ -293,7 +320,7 @@ crm.example.com {
 }
 ```
 
-Caddy handles SSL certificates automatically via Let's Encrypt.
+Caddy handles SSL certificates automatically via Let's Encrypt, and it forwards websockets without extra configuration. So does Traefik.
 
 ### Traefik
 
@@ -308,7 +335,11 @@ labels:
   - "traefik.http.services.relaticle.loadbalancer.server.port=8080"
 ```
 
+The `Upgrade` and `Connection` headers in the Nginx block carry the chat websocket. A proxy that drops them still serves the app, and replies then appear a few seconds late.
+
 **Note**: When using a reverse proxy, set `APP_URL` to your public HTTPS URL (e.g., `https://crm.example.com`). The app trusts `X-Forwarded-*` headers from RFC1918 private networks, loopback, and IPv6 ULA/link-local, which covers Coolify/Dokploy/Traefik on a Docker network and reverse proxies on the host. Headers from public IPs are rejected, preventing spoofing.
+
+The app only accepts requests whose `Host` header matches `APP_URL`, `www.` plus that host, a configured `*_DOMAIN`, or an entry in `TRUSTED_HOSTS`. Any other host gets a 400. Your proxy must forward the real `Host` header (Nginx `proxy_set_header Host $host;`) and must not pass a client-supplied `X-Forwarded-Host` through. The app ignores `X-Forwarded-Host` and `X-Forwarded-Prefix`. Probes that call the container by IP or an internal name need that name in `TRUSTED_HOSTS`, or they should send the configured domain as the `Host` header.
 
 ---
 
@@ -524,6 +555,19 @@ docker compose up -d
 
 Database migrations run automatically on startup. The app container will apply any pending migrations before serving traffic.
 
+### 4. Refresh the Compose File
+
+A `compose.yml` downloaded before October 2026 has no `reverb` container. The chat works without it, and replies appear a few seconds after they are saved. To get live streaming, download the file again and start the stack:
+
+```bash
+curl -o compose.yml https://raw.githubusercontent.com/Relaticle/relaticle/main/compose.yml
+docker compose up -d
+```
+
+Copy any edits you made to the old file first. The new file passes the AI provider variables from `.env` to the containers, so those lines no longer need adding by hand.
+
+The image now caches in Redis by default, so the web, Horizon and scheduler containers share one cache. The old file gave only the web container Redis, and the chat's Stop button never reached the worker. A stack that sets `CACHE_STORE` itself keeps its own value.
+
 **Note**: Check the [release notes](https://github.com/Relaticle/relaticle/releases) before upgrading. Breaking changes will be documented there.
 
 ---
@@ -597,7 +641,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Edit `.env` with your database credentials, mail settings, and `APP_URL`.
+Edit `.env` with your database credentials, mail settings, and `APP_URL`. Set `APP_ENV=production` and `APP_DEBUG=false`. The example file ships `local` and `true`, and debug pages in production expose your configuration.
 
 4. Set up the database:
 
@@ -639,11 +683,22 @@ server {
         include fastcgi_params;
     }
 
+    location /reverb/app/ {
+        rewrite ^/reverb(/.*)$ $1 break;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+    }
+
     location ~ /\.(?!well-known).* {
         deny all;
     }
 }
 ```
+
+The `/reverb/app/` block carries the chat websocket to Reverb. In `.env`, set `BROADCAST_CONNECTION=reverb`, `BROADCAST_REVERB_HOST=127.0.0.1` and `BROADCAST_REVERB_PORT=8080`, and leave `REVERB_HOST` empty.
 
 ### Supervisor for Horizon
 
@@ -668,6 +723,23 @@ sudo supervisorctl reread
 sudo supervisorctl update
 sudo supervisorctl start relaticle-horizon
 ```
+
+### Supervisor for Reverb
+
+Create `/etc/supervisor/conf.d/relaticle-reverb.conf`:
+
+```ini
+[program:relaticle-reverb]
+process_name=%(program_name)s
+command=php /var/www/relaticle/artisan reverb:start --host=127.0.0.1 --port=8080
+autostart=true
+autorestart=true
+user=www-data
+redirect_stderr=true
+stdout_logfile=/var/www/relaticle/storage/logs/reverb.log
+```
+
+Start it the same way, then run `php artisan reverb:restart` after each upgrade.
 
 ### Scheduler Cron
 
@@ -721,6 +793,16 @@ Common causes:
 2. Check your SMTP credentials are correct
 3. Test with: `docker compose exec app php artisan tinker --execute "Mail::raw('Test', fn(\$m) => \$m->to('you@example.com')->subject('Test'))"`
 4. Check logs: `docker compose logs app | grep -i mail`
+
+### Chat stays on "Thinking..."
+
+Since October 2026 a reply appears a few seconds after it is saved even with no websocket. If the chat still waits, the reply is not being produced:
+
+1. Check the job ran: `docker compose logs horizon --tail 50` shows `ProcessChatMessage` as `DONE`.
+2. Check the model answers: `docker compose exec horizon php artisan chat:models --probe=<id>`.
+3. Check every container shares the cache: `docker compose exec horizon php artisan config:show cache.default` prints `redis`.
+
+To see whether replies stream live, open the browser's Network tab, filter by WS, and look for a `/reverb/app/...` request with status 101. With no such request, the `reverb` container is missing or your reverse proxy drops the `Upgrade` header.
 
 ### Horizon not processing jobs
 

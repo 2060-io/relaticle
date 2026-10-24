@@ -200,6 +200,7 @@ abstract class BaseReadShowTool implements Tool
             $model,
             resolve(DisplayFieldSelector::class)->cardFields($user->currentWorkspace, $this->citationType()),
             self::FREE_TEXT_LIMIT,
+            $user->effectiveTimezone(),
         );
 
         return [

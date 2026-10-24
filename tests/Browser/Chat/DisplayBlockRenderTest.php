@@ -5,13 +5,13 @@ declare(strict_types=1);
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Relaticle\Chat\Actions\ListConversationMessages;
 use Relaticle\Chat\Livewire\Chat\ChatInterface;
+use Relaticle\Chat\Queries\ConversationMessagesQuery;
 use Tests\Helpers\ChatBrowser;
 use Tests\Helpers\ChatDocument;
 
 mutates(ChatInterface::class);
-mutates(ListConversationMessages::class);
+mutates(ConversationMessagesQuery::class);
 
 /**
  * A read tool's `display_block` envelope, painted as a real table/card in the
@@ -391,11 +391,15 @@ it('attaches display blocks to the streamed bubble at stream-end reconcile', fun
         (() => {
             {$resolveInterface}
 
-            data.mintAssistantStub({ content: 'Here are your companies.', invocationId: 'inv-reconcile' });
+            data.mintAssistantStub({ content: 'Here they are again.', invocationId: 'inv-reconcile' });
 
             return true;
         })();
     JS);
+
+    displayBlockInsertAssistantMessage($conversationId, $user, 'Here they are again.', [
+        displayBlockTableFixture(),
+    ], 0);
 
     // The real finalize path: handleStreamEnd() reconciles from the DB and
     // marks the bubble rendered, which is what actually puts the block on

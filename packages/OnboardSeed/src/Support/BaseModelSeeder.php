@@ -137,7 +137,7 @@ abstract class BaseModelSeeder implements ModelSeederInterface
     protected function getGlobalAttributes(): array
     {
         return [
-            'creation_source' => CreationSource::SYSTEM,
+            'creation_source' => CreationSource::SAMPLE,
         ];
     }
 

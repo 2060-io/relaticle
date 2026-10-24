@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Actions\Note\CreateNote;
 use App\Actions\Note\DeleteNote;
-use App\Actions\Note\ListNotes;
 use App\Actions\Note\UpdateNote;
 use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\NotesController;
@@ -12,8 +11,12 @@ use App\Models\Company;
 use App\Models\Note;
 use App\Models\Opportunity;
 use App\Models\People;
+use App\Models\Scopes\WorkspaceScope;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\Concerns\ListsEntity;
+use App\Queries\Notes\NotesQuery;
+use App\Support\CurrentWorkspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
@@ -24,7 +27,8 @@ mutates(
     CreateNote::class,
     UpdateNote::class,
     DeleteNote::class,
-    ListNotes::class,
+    NotesQuery::class,
+    ListsEntity::class,
 );
 
 beforeEach(function () {
@@ -39,7 +43,7 @@ it('requires authentication', function (): void {
 it('can list notes', function (): void {
     Sanctum::actingAs($this->user);
 
-    $seeded = Note::query()->where('workspace_id', $this->workspace->id)->count();
+    $seeded = Note::query()->withoutGlobalScope(WorkspaceScope::class)->where('workspace_id', $this->workspace->id)->count();
     Note::factory(3)->recycle([$this->user, $this->workspace])->create();
 
     $this->getJson('/api/v1/notes')
@@ -295,7 +299,7 @@ describe('filtering and sorting', function (): void {
         Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Meeting summary']);
         Note::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Code review']);
 
-        $response = $this->getJson('/api/v1/notes?filter[title]=Meeting');
+        $response = $this->getJson('/api/v1/notes?filter[title][$contains]=Meeting');
 
         $response->assertOk();
 
@@ -340,7 +344,8 @@ describe('filtering and sorting', function (): void {
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/notes?filter[workspace_id]=fake')
-            ->assertStatus(400);
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.workspace_id']);
     });
 
     it('rejects disallowed sort fields', function (): void {
@@ -409,7 +414,7 @@ describe('mass assignment protection', function (): void {
         ])
             ->assertCreated();
 
-        $note = Note::query()->where('title', 'Test Note')->first();
+        $note = Note::query()->withoutGlobalScope(WorkspaceScope::class)->where('title', 'Test Note')->first();
         expect($note->workspace_id)->toBe($this->workspace->id);
     });
 
@@ -424,7 +429,7 @@ describe('mass assignment protection', function (): void {
         ])
             ->assertCreated();
 
-        $note = Note::query()->where('title', 'Test Note')->first();
+        $note = Note::query()->withoutGlobalScope(WorkspaceScope::class)->where('title', 'Test Note')->first();
         expect($note->creator_id)->toBe($this->user->id);
     });
 
@@ -525,7 +530,9 @@ it('can create a note with relationship ids', function (): void {
     ])
         ->assertCreated();
 
-    $note = Note::query()->where('title', 'Linked note')->first();
+    $note = Note::query()->withoutGlobalScope(WorkspaceScope::class)->where('title', 'Linked note')->first();
+    resolve(CurrentWorkspace::class)->set($this->workspace);
+
     expect($note->companies)->toHaveCount(1)
         ->and($note->people)->toHaveCount(1)
         ->and($note->opportunities)->toHaveCount(1);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\OpportunityResource\Pages;
 
+use App\Actions\Opportunity\UpdateOpportunity;
 use App\Enums\CustomFields\OpportunityField as OpportunityCustomField;
 use App\Filament\Components\Forms\RecordSelect;
 use App\Filament\Components\Infolists\RecordChipEntry;
@@ -11,33 +12,37 @@ use App\Filament\Components\Tables\Filters\RecordSelectFilter;
 use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\OpportunityResource;
 use App\Filament\Resources\OpportunityResource\Forms\OpportunityForm;
+use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\Opportunity;
+use App\Models\User;
 use App\Models\Workspace;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Size;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentTimezone;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use League\CommonMark\Exception\InvalidArgumentException;
 use Relaticle\CustomFields\Facades\CustomFields;
 use Relaticle\Flowforge\Board;
-use Relaticle\Flowforge\BoardResourcePage;
 use Relaticle\Flowforge\Column;
 use Relaticle\Flowforge\Components\CardFlex;
-use Throwable;
+use Relaticle\Flowforge\Exceptions\CardMoveRejectedException;
+use Relaticle\Flowforge\Grouping;
+use Relaticle\Flowforge\Lane;
+use Relaticle\Flowforge\Modern\BoardResourcePage;
 
 final class OpportunitiesBoard extends BoardResourcePage
 {
@@ -114,54 +119,7 @@ final class OpportunitiesBoard extends BoardResourcePage
                         ])->align('center'),
                     ]);
             })
-            ->columnActions([
-                CreateAction::make()
-                    ->authorize(fn (): bool => Gate::allows('create', Opportunity::class))
-                    ->label(__('filament/pages/boards.opportunities.actions.add'))
-                    ->icon('heroicon-o-plus')
-                    ->iconButton()
-                    ->modalWidth(Width::Large)
-                    ->slideOver(false)
-                    ->model(Opportunity::class)
-                    ->schema(fn (Schema $schema): Schema => $schema
-                        ->components([
-                            TextInput::make('name')
-                                ->required()
-                                ->placeholder(__('filament/pages/boards.opportunities.form.name_placeholder'))
-                                ->columnSpanFull(),
-                            RecordSelect::make('company_id')
-                                ->relationship('company', 'name')
-                                ->searchable()
-                                ->preload(),
-                            RecordSelect::make('contact_id')
-                                ->relationship('contact', 'name')
-                                ->searchable()
-                                ->preload(),
-                            CustomFields::form()
-                                ->except([OpportunityCustomField::STAGE])
-                                ->build()
-                                ->columnSpanFull()
-                                ->columns(1),
-                        ])
-                        ->columns(2))
-                    ->using(function (array $data, CreateAction $action): Opportunity {
-                        /** @var Workspace $currentWorkspace */
-                        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
-
-                        /** @var Opportunity $opportunity */
-                        $opportunity = $currentWorkspace->opportunities()->create($data);
-
-                        $columnId = $action->getArguments()['column'] ?? null;
-
-                        if (filled($columnId)) {
-                            $opportunity->saveCustomFieldValue(self::stageCustomField(), $columnId);
-                            $opportunity->order_column = (float) $this->getBoardPositionInColumn($columnId);
-                            $opportunity->saveQuietly();
-                        }
-
-                        return $opportunity;
-                    }),
-            ])
+            ->createCardAction($this->cardCreation())
             ->cardAction('edit')
             ->cardActions([
                 Action::make('edit')
@@ -189,66 +147,116 @@ final class OpportunitiesBoard extends BoardResourcePage
                         $record->delete();
                     }),
             ])
-            ->filters([
-                RecordSelectFilter::make('companies')
-                    ->label(__('filament/pages/boards.opportunities.filters.company'))
-                    ->relationship('company', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->multiple(),
-                RecordSelectFilter::make('contacts')
-                    ->label(__('filament/pages/boards.opportunities.filters.contact'))
-                    ->relationship('contact', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->multiple(),
-            ])
+            ->groupings([$this->companyGrouping()])
+            ->filters($this->boardFilters())
             ->filtersFormWidth(Width::Medium)
+            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->labeledFrom('sm')->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
             ->headerToolbar();
     }
 
     /**
-     * Move card to new position using DecimalPosition service.
-     *
-     * Overrides the default Flowforge implementation to properly handle
-     * custom field columns which are stored in a polymorphic table.
-     *
-     * @throws Throwable
+     * @return array<int, RecordSelectFilter>
      */
-    public function moveCard(
-        string $cardId,
-        string $targetColumnId,
-        ?string $afterCardId = null,
-        ?string $beforeCardId = null
-    ): void {
-        $board = $this->getBoard();
-        $query = $board->getQuery();
+    private function boardFilters(): array
+    {
+        return [
+            RecordSelectFilter::make('companies')
+                ->label(__('filament/pages/boards.opportunities.filters.company'))
+                ->relationship('company', 'name')
+                ->searchable()
+                ->preload()
+                ->multiple(),
+            RecordSelectFilter::make('contacts')
+                ->label(__('filament/pages/boards.opportunities.filters.contact'))
+                ->relationship('contact', 'name')
+                ->searchable()
+                ->preload()
+                ->multiple(),
+        ];
+    }
 
-        throw_unless($query instanceof Builder, InvalidArgumentException::class, 'Board query not available');
+    protected function authorizeCardMove(Model $card, string $targetColumnId, ?string $toLaneId = null): void
+    {
+        if (Gate::denies('update', $card)) {
+            throw CardMoveRejectedException::because(__('filament/pages/boards.move_denied'));
+        }
+    }
 
-        $card = (clone $query)->find($cardId);
-        throw_unless($card, InvalidArgumentException::class, "Card not found: {$cardId}");
+    protected function persistCardMove(Model $card, mixed $columnValue, string $position): void
+    {
+        $card->update([$this->getBoard()->getPositionIdentifierAttribute() => $position]);
 
-        abort_unless(Gate::allows('update', $card), 403);
+        /** @var Opportunity $card */
+        $card->saveCustomFieldValue(self::stageCustomField(), $columnValue);
+    }
 
-        $newPosition = $this->calculatePositionBetweenCards($afterCardId, $beforeCardId, $targetColumnId);
+    private function cardCreation(): CreateAction
+    {
+        return CreateAction::make()
+            ->authorize(fn (): bool => Gate::allows('create', Opportunity::class))
+            ->label(__('filament/pages/boards.opportunities.actions.add'))
+            ->icon('heroicon-o-plus')
+            ->iconButton()
+            ->modalWidth(Width::Large)
+            ->slideOver(false)
+            ->model(Opportunity::class)
+            ->schema($this->quickCreateForm(...))
+            ->using($this->createCard(...));
+    }
 
-        DB::transaction(function () use ($card, $board, $targetColumnId, $newPosition): void {
-            $columnIdentifier = $board->getColumnIdentifierAttribute();
-            $columnValue = $this->resolveStatusValue($card, $columnIdentifier, $targetColumnId);
-            $positionIdentifier = $board->getPositionIdentifierAttribute();
+    private function companyGrouping(): Grouping
+    {
+        return Grouping::make('company')
+            ->label(__('filament/pages/boards.opportunities.groupings.company'))
+            ->lanes(fn (Builder $boardQuery): array => Company::query()
+                ->whereIn('companies.id', (clone $boardQuery)->select('opportunities.company_id'))
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Company $company): Lane => Lane::make($company->getKey())
+                    ->label($company->name)
+                    ->query(fn (Builder $query): Builder => $query->where('opportunities.company_id', $company->getKey())))
+                ->all())
+            ->emptyLane(
+                __('filament/pages/boards.opportunities.groupings.no_company'),
+                fn (Builder $query): Builder => $query->whereNull('opportunities.company_id'),
+            )
+            ->moveUsing(fn (Opportunity $record, Lane $to): Opportunity => resolve(UpdateOpportunity::class)->execute(
+                $this->currentUser(),
+                $record,
+                ['company_id' => $to->getName() === Grouping::EMPTY_LANE ? null : $to->getName()],
+            ));
+    }
 
-            $card->update([$positionIdentifier => $newPosition]);
+    private function currentUser(): User
+    {
+        /** @var User */
+        return Auth::guard('web')->user();
+    }
 
-            /** @var Opportunity $card */
-            $card->saveCustomFieldValue(self::stageCustomField(), $columnValue);
-        });
-
-        $this->dispatch('kanban-card-moved', [
-            'cardId' => $cardId,
-            'columnId' => $targetColumnId,
-            'position' => $newPosition,
-        ]);
+    private function quickCreateForm(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                TextInput::make('name')
+                    ->required()
+                    ->placeholder(__('filament/pages/boards.opportunities.form.name_placeholder'))
+                    ->columnSpanFull(),
+                RecordSelect::make('company_id')
+                    ->relationship('company', 'name')
+                    ->searchable()
+                    ->preload(),
+                RecordSelect::make('contact_id')
+                    ->label(__('filament/resources/opportunity.fields.contact_id.label'))
+                    ->relationship('contact', 'name')
+                    ->searchable()
+                    ->preload(),
+                CustomFields::form()
+                    ->except([OpportunityCustomField::STAGE])
+                    ->build()
+                    ->columnSpanFull()
+                    ->columns(1),
+            ])
+            ->columns(2);
     }
 
     /**
@@ -295,6 +303,35 @@ final class OpportunitiesBoard extends BoardResourcePage
             $closesOn === $tomorrow => 'Closes Tomorrow',
             default => $date->format('M j'),
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function createCard(array $data, CreateAction $action): Opportunity
+    {
+        $columnId = $action->getArguments()['column'] ?? null;
+
+        abort_unless(blank($columnId) || $this->ownsColumn((string) $columnId), 422);
+
+        /** @var Workspace $currentWorkspace */
+        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
+
+        /** @var Opportunity $opportunity */
+        $opportunity = $currentWorkspace->opportunities()->create($data);
+
+        if (filled($columnId)) {
+            $opportunity->saveCustomFieldValue(self::stageCustomField(), $columnId);
+            $opportunity->order_column = (float) $this->getBoardPositionInColumn($columnId);
+            $opportunity->saveQuietly();
+        }
+
+        return $opportunity;
+    }
+
+    private function ownsColumn(string $id): bool
+    {
+        return $this->stages()->contains(fn (array $stage): bool => (string) $stage['id'] === $id);
     }
 
     private static function stageCustomField(): ?CustomField

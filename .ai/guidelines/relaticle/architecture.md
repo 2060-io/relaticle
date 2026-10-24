@@ -28,23 +28,80 @@ anatomy mirrors a Laravel app: `src/`, `config/`, `routes/`, `resources/`,
 - `packages/EmailIntegration` owns its controllers, jobs, policies, views, config and
   timeline entries. `App\Http`, `App\Jobs`, `App\Policies`, `App\ActivityLog` and
   `App\Console` must not use it. The app reaches it only from CRM resources, models,
-  onboarding and panel wiring, and anything it exposes to them checks the feature flag
+  onboarding, panel wiring and the MCP email tools in `app/Mcp/Tools/Email`, and
+  anything it exposes to them checks the feature flag
 - Never use the custom-fields package models directly. Use the `App\Models\CustomField*`
   subclasses (runtime model swapping is configured in `AppServiceProvider`)
 - `packages/SystemAdmin` is excluded from PHPStan. When adding or removing enum
   cases, manually sweep SystemAdmin for `match` expressions over that enum (this
   exclusion already caused a production `UnhandledMatchError`)
+- `app/Queries` holds the filter and sort language every list surface shares, laid out
+  like spatie/laravel-query-builder's own `src/`. A class that implements Spatie's `Filter`
+  lives in `app/Queries/Filters`, and a `Sort` in `app/Queries/Sorts`. Shared traits go in
+  `app/Queries/Concerns`, and registries sit at the root. `app/Queries` never uses a
+  transport: `App\Mcp`, `App\Http`, `App\Filament`, `App\Livewire`, `App\Scribe` or
+  `Relaticle\Chat`. Enums stay in `app/Enums`, because the Pest Laravel preset fails one
+  anywhere else. `.ai/rules/queries.md` holds the rules for extending it
 
-## Actions (the write path)
+## Workspace scope (fails closed)
 
-Write operations (create, update, delete) that reach the domain from a transport
-surface go through action classes in `app/Actions/<Domain>/`. Never inline business
+Company, People, Opportunity, Task and Note carry `App\Models\Scopes\WorkspaceScope`. With no
+workspace bound in `App\Support\CurrentWorkspace` the scope returns no rows. It never reads
+every workspace. `tests/Feature/Models/Scopes/WorkspaceScopeTest.php` fails when that changes.
+
+| The code runs | The workspace comes from |
+|---|---|
+| in a web or panel request | `BindCurrentWorkspaceListener`: the signed-in user's workspace, then the Filament tenant |
+| in an API or MCP request | `SetApiWorkspaceContext`, from the token |
+| in a job dispatched while a workspace is bound | Laravel `Context`, which carries the id into the job |
+| in a job, command or webhook that starts unbound | `CurrentWorkspace::within($workspace, fn () => ...)`, which also sets the custom-fields tenant |
+| in the system admin panel | the `workspaces.across` middleware, which reads across workspaces |
+
+- A reader that already filters by an explicit workspace id removes the scope and keeps its own
+  filter: `->withoutGlobalScope(WorkspaceScope::class)->where('workspace_id', $id)`. The filter
+  is the tenant guard, so it never depends on what happens to be bound. `TenantFkValidator` and
+  `ListsEntity` are the working examples
+- Reading across workspaces lives in memory only and never enters `Context`, so a job
+  dispatched from the system admin panel starts unbound. A bound workspace always wins over it
+- Filament builds its own queries for relationship selects, relationship filters and column
+  eager loads. Removing the scope in `getEloquentQuery()` does not reach them, which is why the
+  system admin panel uses the middleware and no per-resource override
+- Livewire matches persistent middleware by class. `AppServiceProvider` registers
+  `ReadAcrossWorkspaces`, because the alias alone skips every update request.
+  `tests/Feature/SystemAdmin/SystemAdminPanelProviderTest.php` fails without it
+- A job that calls `auth()->setUser()`, as Filament's `ExportCsv` does, fires `Authenticated`.
+  `BindCurrentWorkspaceListener` then binds the user's stored workspace over the one `Context`
+  carried, and every job dispatched from there inherits it. A job that must act in its record's
+  workspace declares `App\Support\Workspaces\BindWorkspace` as middleware with the record's own
+  `workspace_id`, as `App\Jobs\CompleteExport` does.
+  `tests/Feature/Filament/App/Exports/ExportDownloadTest.php` fails when the export notice lands
+  in the other workspace
+
+## Actions (business operations)
+
+An action is one business operation: a class that takes input, does something, and gives
+output. Most are writes. Write operations (create, update, delete) that reach the domain from
+a transport surface go through action classes in `app/Actions/<Domain>/`. Never inline business
 logic in controllers, MCP tools, Livewire components, or Filament resources.
 Actions are the single source of truth for business logic and side effects
 (notifications, syncs, etc.).
 
+A step or a rule that two actions share is an action too, and they inject it.
+`PrepareAgentEmail` checks the capability, the mailbox and the recipient limit, and
+`QueueAgentEmailAction` composes it. A reusable read that returns records is a query class,
+never an action.
+
+An action is named for what it does, verb first, with no `Action` suffix: `CreateOpportunity`,
+`PrepareAgentEmail`. The `Actions` namespace already says what it is.
+`tests/Arch/ConventionsTest.php` fails a class in an `Actions` folder whose name ends in
+`Action`. The 51 EmailIntegration actions that predate the rule are listed in that test, and
+the list only shrinks.
+
 The canonical shape is `final readonly`, with a single `execute()` method and
-authorization plus tenant-ownership checks inside the action itself:
+authorization plus tenant-ownership checks inside the action itself.
+`tests/Arch/ConventionsTest.php` fails an action in `app/Actions` or in a package's `Actions`
+folder that exposes another public method. Five package actions predate the check. They are
+listed in that test, and the list only shrinks:
 
 ```php
 final readonly class CreateOpportunity
@@ -72,15 +129,63 @@ final readonly class CreateOpportunity
   canonical `abort_unless` plus `assertOwned` shape does not apply. Give a command an
   action when a second caller shares the write, otherwise the logic lives in `handle()`
 - When reviewing or refactoring code, extract inline business logic into action classes
-- Use `App\Data` (spatie/laravel-data) objects for structured payloads where they
-  already exist; don't introduce new patterns
+- A structured payload is a class in a `Data` folder. Use spatie/laravel-data when untyped
+  data becomes an object: a request, a stored JSON value, Livewire state
+  (`Relaticle\ImportWizard\Data\ColumnData`). Use a plain `final readonly` class when code
+  builds the object with `new` (`App\Data\ListQuery`). No test tells the two apart, so a
+  reviewer reads for a data object that only ever meets `new`
 - Name domain concepts plainly (`Plan`, not `AiPlan`). Context comes from the
   namespace
+- `Support` holds code with no business rule in it: code that could ship as a standalone
+  package, such as `App\Support\EmailAddress`. A class that knows a capability, a role, a
+  sharing level or a workspace rule is an action, a query, a policy or a model method. No test
+  reads for this, so a reviewer reads for a `Support` class that knows one
+
+## Queries (the read path)
+
+A reusable read is a query class, never an action. `tests/Arch/ConventionsTest.php` fails a
+class under `Actions` named `List*`, `Find*`, `Search*`, `Get*` or `Aggregate*` ("keeps reads out
+of the Actions folders").
+
+| A read that is | Lives in |
+|---|---|
+| a predicate over one model's columns | a `#[Scope]` on the model |
+| one entity's list, or a read across models | `app/Queries/<Domain>/<Name>Query.php` |
+| a read over a package's own models | `packages/<Name>/src/Queries/<Name>Query.php` |
+| a read with one caller | inline in that caller |
+
+A query class is `final readonly`. The five list queries implement
+`App\Queries\Contracts\EntityQuery` and use `App\Queries\Concerns\ListsEntity`. The shape is
+an interface plus a trait, not a base class, because three arch tests forbid inheritance in `App`.
+The trait authorizes and bounds the workspace itself, so a transport cannot forget either:
+
+````php
+final readonly class CompaniesQuery implements EntityQuery
+{
+    use ListsEntity;
+
+    // fields() and includes()
+}
+
+$page = $query->paginate($user, $request->toListQuery());
+````
+
+- Each transport maps its own input to `App\Data\ListQuery`. A query class reads no ambient
+  user, request or workspace, because chat tools run in queued jobs. `tests/Arch/ArchTest.php`
+  fails it ("takes the acting user and reads no ambient user, request or workspace")
+- `CrmEntity::query()` owns which query lists which entity. A list query declares `fields()` and
+  `includes()`, and the trait derives the rest
+- `paginate()` is the one entry. The builder behind it stays private until a caller needs more
+  than a page, and `.ai/rules/queries.md` says how to open it
+- A query class never writes. `EloquentWriteOutsideActionRule` (PHPStan) covers every `Queries`
+  folder, and `tests/Arch/ConventionsTest.php` fails one that `phpstan.neon` does not list
+- `.ai/rules/queries.md` holds the filter grammar and the rest of the rules
 
 ## One fact, one owner
 
 A fact more than one surface publishes gets an owner class, and every surface reads it.
 The working examples: `CustomFieldFilterSchema` owns filter operators,
+`EntityFilters::definitions()` owns the filter names each entity accepts,
 `App\Mcp\Schema\CustomFieldSchema` plus `CustomFieldType::inputFormat()` own how a
 custom field is described to an agent, `CrmEntity::titleColumn()` owns the name column.
 Facts that are a pure function of an enum case (a label, a format, a capability) live on

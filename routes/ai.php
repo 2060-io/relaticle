@@ -5,11 +5,14 @@ declare(strict_types=1);
 use App\Http\Controllers\Mcp\ApproveAuthorizationController;
 use App\Http\Controllers\Mcp\ReceiveUploadController;
 use App\Http\Middleware\EnsureHostedWorkspaceAccess;
+use App\Http\Middleware\RequireConsent;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Http\Middleware\ValidateMcpOrigin;
 use App\Mcp\Servers\RelaticleServer;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Support\Facades\Route;
 use Laravel\Mcp\Facades\Mcp;
+use Laravel\Passport\Http\Controllers\AuthorizationController;
 use Symfony\Component\HttpFoundation\Response;
 
 $mcpDomain = config('app.mcp_domain');
@@ -21,9 +24,13 @@ Route::middleware('throttle:mcp-oauth')->group(static fn () => Mcp::oauthRoutes(
 // Defer registration until after Passport (which boots later) has registered its routes,
 // so our POST /oauth/authorize wins the dispatch slot in the route collection.
 app()->booted(static function (): void {
-    Route::middleware(['web', 'auth', 'throttle:mcp-oauth'])
+    Route::middleware(['web', 'auth', AuthenticateSession::class, 'throttle:mcp-oauth'])
         ->post('/oauth/authorize', [ApproveAuthorizationController::class, 'approve'])
         ->name('passport.authorizations.approve');
+
+    Route::middleware(['web', AuthenticateSession::class, RequireConsent::class])
+        ->get('/oauth/authorize', [AuthorizationController::class, 'authorize'])
+        ->name('passport.authorizations.authorize');
 });
 
 // The challenge is served from whichever host the MCP endpoint answers on.

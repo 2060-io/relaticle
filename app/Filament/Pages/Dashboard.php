@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Actions\Task\CompleteTask;
+use App\Enums\WorkspaceCapability;
 use App\Filament\Actions\CreateTaskAction;
+use App\Filament\Actions\EditTaskAction;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Models\Task;
@@ -18,8 +20,8 @@ use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
 use Livewire\Attributes\Computed;
-use Relaticle\Chat\Actions\ListConversations;
 use Relaticle\Chat\Data\MyTaskItem;
+use Relaticle\Chat\Queries\ConversationsQuery;
 use Relaticle\Chat\Services\MyTasksService;
 
 final class Dashboard extends Page
@@ -62,7 +64,7 @@ final class Dashboard extends Page
         /** @var User $user */
         $user = Filament::auth()->user();
 
-        $recentChat = (new ListConversations)->execute($user, 1)->first();
+        $recentChat = new ConversationsQuery()->recent($user, 1)->first();
 
         if ($recentChat) {
             $this->recentChatId = $recentChat->id;
@@ -120,6 +122,15 @@ final class Dashboard extends Page
         return $workspace !== null && resolve(MyTasksService::class)->hasDoneOption($workspace);
     }
 
+    #[Computed]
+    public function canEditTasks(): bool
+    {
+        /** @var User $user */
+        $user = Filament::auth()->user();
+
+        return $user->hasWorkspaceCapability(Filament::getTenant()?->getKey(), WorkspaceCapability::RecordsUpdate);
+    }
+
     public function completeTask(string $taskId): void
     {
         /** @var User $user */
@@ -130,7 +141,7 @@ final class Dashboard extends Page
         // field id written onto it. A row that no longer resolves (completed in
         // another tab, deleted meanwhile) is not an error: the desired end state
         // is already true, so just refresh instead of throwing a 404 over Home.
-        $task = Task::query()->where('workspace_id', Filament::getTenant()?->getKey())->find($taskId);
+        $task = $this->tenantTask($taskId);
 
         if ($task instanceof Task) {
             resolve(CompleteTask::class)->execute($user, $task);
@@ -144,6 +155,27 @@ final class Dashboard extends Page
         return TaskResource::getUrl('index', [
             'tableFilters' => ['assigned_to_me' => ['isActive' => true]],
         ]);
+    }
+
+    public function editTaskAction(): EditTaskAction
+    {
+        return EditTaskAction::make('editTask')
+            ->record(fn (array $arguments): ?Task => $this->tenantTask($arguments['task'] ?? null))
+            ->recordTitleAttribute('title')
+            ->authorize('update')
+            ->slideOver()
+            ->schema(fn (Schema $schema): Schema => TaskForm::get($schema))
+            ->after(function (): void {
+                unset($this->myTasks);
+            });
+    }
+
+    private function tenantTask(mixed $taskId): ?Task
+    {
+        return Task::query()
+            ->where('workspace_id', Filament::getTenant()?->getKey())
+            ->whereKey($taskId)
+            ->first();
     }
 
     public function createTaskAction(): CreateTaskAction

@@ -83,15 +83,19 @@ months two copies of the same field vocabulary drifted apart.
 ## Quality Checks
 
 The local loop is scoped to the change. GitHub CI (`.github/workflows/ci.yml`) is the
-only full run: it executes lint, rector, PHPStan, type coverage, five test shards and
+only full run: it executes lint, rector, PHPStan, type coverage, six test shards and
 six Browser shards on every push to a pull request. A run takes about 4 minutes when
 runners are free, and longer when several runs queue for them.
 
 After each change, while iterating:
 
 1. `vendor/bin/pint --dirty --format agent`: fix code style
-2. `php artisan test --compact <paths>`: the test files you touched, plus the tests
-   that exercise the classes you changed (`grep -rl 'ClassName' tests`)
+2. `composer test:affected`: the tests the branch's changes reach, picked from the TIA
+   baseline and run on four processes. `-- --plan` lists them and runs nothing. When it
+   refuses, or names a file it cannot place, run `php artisan test --compact <paths>`
+   over the test files you touched and the tests that exercise the classes you changed
+   (`grep -rl 'ClassName' tests`). The Running the suite section of `testing.md` has
+   both forms
 
 Once, before pushing:
 
@@ -158,8 +162,8 @@ are under about 50. Each rule below names what fails when it is broken.
   only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
   that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
 - A class is named for its role where its directory carries one: `Command`, `Controller`,
-  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
-  fails a class there without the suffix.
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`, and `Filter` and `Sort` under
+  `app/Queries`. `tests/Arch/ConventionsTest.php` fails a class there without the suffix.
 - Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
   can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
   direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.

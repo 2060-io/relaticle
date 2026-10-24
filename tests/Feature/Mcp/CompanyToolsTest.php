@@ -335,11 +335,11 @@ describe('validation', function (): void {
 
 describe('creation source filtering', function (): void {
     it('filters companies by creation source', function (): void {
-        Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Sample Corp', 'creation_source' => CreationSource::SYSTEM]);
+        Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Sample Corp', 'creation_source' => CreationSource::SAMPLE]);
         Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Real Corp', 'creation_source' => CreationSource::WEB]);
 
         RelaticleServer::actingAs($this->user)
-            ->tool(ListCompaniesTool::class, ['creation_source' => 'system'])
+            ->tool(ListCompaniesTool::class, ['filter' => ['creation_source' => ['$eq' => 'sample']]])
             ->assertOk()
             ->assertSee('Sample Corp')
             ->assertDontSee('Real Corp');
@@ -347,27 +347,27 @@ describe('creation source filtering', function (): void {
 });
 
 describe('date filtering', function (): void {
-    it('filters companies by created_after', function (): void {
+    it('filters companies created on or after a date', function (): void {
         $old = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ancient Corp']);
         $old->forceFill(['created_at' => now()->subMonth()])->saveQuietly();
 
         Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Recent Corp']);
 
         RelaticleServer::actingAs($this->user)
-            ->tool(ListCompaniesTool::class, ['created_after' => now()->subWeek()->toDateString()])
+            ->tool(ListCompaniesTool::class, ['filter' => ['created_at' => ['$gte' => now()->subWeek()->toDateString()]]])
             ->assertOk()
             ->assertSee('Recent Corp')
             ->assertDontSee('Ancient Corp');
     });
 
-    it('filters companies by created_before', function (): void {
+    it('filters companies created on or before a date', function (): void {
         $old = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Ancient Corp']);
         $old->forceFill(['created_at' => now()->subMonth()])->saveQuietly();
 
         Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Recent Corp']);
 
         RelaticleServer::actingAs($this->user)
-            ->tool(ListCompaniesTool::class, ['created_before' => now()->subWeek()->toDateString()])
+            ->tool(ListCompaniesTool::class, ['filter' => ['created_at' => ['$lte' => now()->subWeek()->toDateString()]]])
             ->assertOk()
             ->assertSee('Ancient Corp')
             ->assertDontSee('Recent Corp');

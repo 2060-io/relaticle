@@ -171,11 +171,11 @@ it('stamps each item of a batch chat approval as chat', function (): void {
 
 it('records the channel a record was created through, unless the writer states one', function (): void {
     $posted = CurrentSource::during(CreationSource::API, fn (): Company => Company::factory()->for($this->workspace)->create());
-    $stated = CurrentSource::during(CreationSource::API, fn (): Company => Company::factory()->for($this->workspace)->create(['creation_source' => CreationSource::SYSTEM]));
+    $stated = CurrentSource::during(CreationSource::API, fn (): Company => Company::factory()->for($this->workspace)->create(['creation_source' => CreationSource::SAMPLE]));
     $typed = Company::factory()->for($this->workspace)->create();
 
     expect($posted->creation_source)->toBe(CreationSource::API)
-        ->and($stated->creation_source)->toBe(CreationSource::SYSTEM)
+        ->and($stated->creation_source)->toBe(CreationSource::SAMPLE)
         ->and($typed->creation_source)->toBe(CreationSource::WEB);
 });
 
