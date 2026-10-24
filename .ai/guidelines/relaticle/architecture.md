@@ -69,6 +69,13 @@ every workspace. `tests/Feature/Models/Scopes/WorkspaceScopeTest.php` fails when
 - Livewire matches persistent middleware by class. `AppServiceProvider` registers
   `ReadAcrossWorkspaces`, because the alias alone skips every update request.
   `tests/Feature/SystemAdmin/SystemAdminPanelProviderTest.php` fails without it
+- A job that calls `auth()->setUser()`, as Filament's `ExportCsv` does, fires `Authenticated`.
+  `BindCurrentWorkspaceListener` then binds the user's stored workspace over the one `Context`
+  carried, and every job dispatched from there inherits it. A job that must act in its record's
+  workspace declares `App\Support\Workspaces\BindWorkspace` as middleware with the record's own
+  `workspace_id`, as `App\Jobs\CompleteExport` does.
+  `tests/Feature/Filament/App/Exports/ExportDownloadTest.php` fails when the export notice lands
+  in the other workspace
 
 ## Actions (business operations)
 
