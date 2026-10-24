@@ -10,6 +10,7 @@ use App\Models\Company;
 use App\Models\Note;
 use App\Models\Opportunity;
 use App\Models\People;
+use App\Models\Scopes\WorkspaceScope;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
@@ -31,15 +32,16 @@ final readonly class RemoveSampleData
     public function execute(User $user, Workspace $workspace, bool $allowEmptyWorkspace = false): int
     {
         abort_unless($user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::WorkspaceManage), 403);
-        abort_unless($allowEmptyWorkspace || $this->facts->hasOwnRecord($workspace), 422);
+        abort_unless($allowEmptyWorkspace || $this->facts->hasNonSampleRecord($workspace), 422);
 
         $removed = DB::transaction(function () use ($workspace): int {
             $removed = 0;
 
             foreach (self::MODELS as $model) {
                 $records = $model::query()
+                    ->withoutGlobalScope(WorkspaceScope::class)
                     ->where('workspace_id', $workspace->getKey())
-                    ->where('creation_source', CreationSource::SYSTEM)
+                    ->where('creation_source', CreationSource::SAMPLE)
                     ->get();
 
                 $records->each(function (Model $record) use (&$removed): void {

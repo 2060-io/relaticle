@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\WorkspaceRole;
 use App\Mcp\Servers\RelaticleServer;
+use App\Notifications\InboxNotification;
 use Illuminate\Contracts\Database\Eloquent\Builder as EloquentBuilderContract;
 use Illuminate\Contracts\Database\Query\Builder as QueryBuilderContract;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -37,6 +38,27 @@ function migrationFiles(): array
     return $files;
 }
 
+/**
+ * @param  list<string>  $directories
+ * @return list<string>
+ */
+function phpFilesUnder(array $directories): array
+{
+    $root = dirname(__DIR__, 2).'/';
+    $files = [];
+
+    foreach ($directories as $directory) {
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getExtension() === 'php') {
+                $files[] = str_replace($root, '', $file->getPathname());
+            }
+        }
+    }
+
+    return $files;
+}
+
 it('keeps migrations forward-only (no down methods)', function (): void {
     $offenders = array_values(array_filter(
         migrationFiles(),
@@ -52,7 +74,12 @@ it('keeps migrations forward-only (no down methods)', function (): void {
 it('queues only commands that exist from migrations', function (): void {
     $declared = [];
 
-    foreach (glob(dirname(__DIR__, 2).'/app/Console/Commands/*.php') ?: [] as $file) {
+    $commandFiles = [
+        ...(glob(dirname(__DIR__, 2).'/app/Console/Commands/*.php') ?: []),
+        ...(glob(dirname(__DIR__, 2).'/packages/*/src/Console/Commands/*.php') ?: []),
+    ];
+
+    foreach ($commandFiles as $file) {
         if (preg_match('/#\[Signature\(\s*\'([a-z0-9:_-]+)/i', (string) file_get_contents($file), $match) === 1) {
             $declared[] = $match[1];
         }
@@ -193,22 +220,24 @@ it('keeps each Boost guideline override a copy of the bundled file minus its pin
 it('keeps every action on the canonical single-execute() shape', function (): void {
     $root = dirname(__DIR__, 2);
 
-    $files = new RegexIterator(
-        new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/app/Actions')),
-        '/\.php$/',
-    );
+    $predatesTheCheck = [
+        'Relaticle\Chat\Actions\StoreChatAttachment',
+        'Relaticle\EmailIntegration\Actions\ApplyDefaultSharingTierToExistingEmailsAction',
+        'Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction',
+        'Relaticle\EmailIntegration\Actions\DeleteEmailDraftAction',
+        'Relaticle\EmailIntegration\Actions\LinkEmailAction',
+    ];
 
     $violations = [];
 
-    foreach ($files as $file) {
-        $path = (string) $file;
-
-        // Fortify/Jetstream action shapes are dictated by their framework contracts.
+    foreach (phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]) as $path) {
         if (str_contains($path, '/Actions/Fortify/') || str_contains($path, '/Actions/Jetstream/')) {
             continue;
         }
 
-        $class = 'App\\'.str_replace(['/', '.php'], ['\\', ''], mb_substr($path, mb_strlen($root.'/app/')));
+        $class = str_starts_with($path, 'app/')
+            ? 'App\\'.str_replace(['/', '.php'], ['\\', ''], mb_substr($path, mb_strlen('app/')))
+            : 'Relaticle\\'.str_replace(['/src/', '/', '.php'], ['\\', '\\', ''], mb_substr($path, mb_strlen('packages/')));
 
         if (! class_exists($class)) {
             continue;
@@ -220,7 +249,6 @@ it('keeps every action on the canonical single-execute() shape', function (): vo
             continue;
         }
 
-        // An action replacing a vendor class must keep that class's shape.
         if (str_starts_with((string) ($reflection->getParentClass() ?: null)?->getName(), 'Laravel\\')) {
             continue;
         }
@@ -240,9 +268,90 @@ it('keeps every action on the canonical single-execute() shape', function (): vo
         }
     }
 
-    expect($violations)->toBe(
+    expect(array_diff_key($violations, array_flip($predatesTheCheck)))->toBe(
         [],
         'Actions expose exactly one public method, execute() (.ai/guidelines/relaticle/architecture.md). Fix: '.json_encode($violations),
+    );
+
+    expect(array_values(array_diff($predatesTheCheck, array_keys($violations))))->toBe(
+        [],
+        'These actions now have the single-execute() shape. Remove them from $predatesTheCheck.',
+    );
+});
+
+it('names an action for what it does, with no Action suffix', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $predatesTheRule = [
+        'ApplyDefaultSharingTierToExistingEmailsAction',
+        'ApproveEmailAccessRequestAction',
+        'AutoCreateCompanyAction',
+        'AutoCreatePersonAction',
+        'CancelEmailAccessRequestAction',
+        'CancelQueuedEmailAction',
+        'CompleteMailboxHistoryImportAction',
+        'ConnectAccountAction',
+        'CreateEmailTemplateAction',
+        'CreateSignatureAction',
+        'DeleteDraftAttachmentAction',
+        'DeleteEmailDraftAction',
+        'DeleteEmailTemplatesAction',
+        'DeleteSignatureAction',
+        'DeleteWorkspaceEmailVisibilityEntryAction',
+        'DenyEmailAccessRequestAction',
+        'DisconnectConnectedAccountAction',
+        'LinkEmailAction',
+        'LinkMeetingAction',
+        'LinkMeetingToRecordAction',
+        'MarkEmailAsReadAction',
+        'MarkEmailsSendFailedAction',
+        'QueueAgentEmailAction',
+        'ReconcileCalendarMeetingsAction',
+        'RequestEmailAccessAction',
+        'RescheduleQueuedEmailAction',
+        'RespondToMeetingAction',
+        'RetryFailedEmailAction',
+        'RetryMailboxHistoryImportFailuresAction',
+        'SaveEmailDraftAction',
+        'SaveWorkspaceEmailSharingDefaultAction',
+        'SendEmailAction',
+        'SendEmailBatchAction',
+        'SetDefaultConnectedAccountAction',
+        'StartMailboxHistoryImportAction',
+        'StopCalendarPushChannelAction',
+        'StoreEmailAction',
+        'StoreMeetingAction',
+        'SyncEmailBatchCountersAction',
+        'SyncEmailThreadAction',
+        'UnlinkMeetingFromRecordAction',
+        'UpdateConnectedAccountBlocklistAction',
+        'UpdateConnectedAccountSettingsAction',
+        'UpdateEmailSharingAction',
+        'UpdateSignatureAction',
+        'UpdateWorkspaceContactCreationSettingsAction',
+        'UpdateWorkspaceEmailPrivacySettingsAction',
+        'UpdateWorkspaceEmailVisibilityAction',
+        'UpdateWorkspaceEmailVisibilityEntryAction',
+        'UpdateWorkspaceEmailVisibilityEntrySubdomainsAction',
+        'UpdateWorkspaceProtectedRecipientsAction',
+    ];
+
+    $suffixed = array_values(array_filter(
+        array_map(
+            static fn (string $file): string => basename($file, '.php'),
+            phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]),
+        ),
+        static fn (string $name): bool => str_ends_with($name, 'Action'),
+    ));
+
+    expect(array_values(array_diff($suffixed, $predatesTheRule)))->toBe(
+        [],
+        'An action is named for what it does, with no Action suffix (.ai/guidelines/relaticle/architecture.md).',
+    );
+
+    expect(array_values(array_diff($predatesTheRule, $suffixed)))->toBe(
+        [],
+        'These actions no longer carry the suffix. Remove them from $predatesTheRule.',
     );
 });
 
@@ -929,6 +1038,8 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
         'Mcp/Tools' => 'Tool',
         'Observers' => 'Observer',
         'Policies' => 'Policy',
+        'Queries/Filters' => 'Filter',
+        'Queries/Sorts' => 'Sort',
         'Tools' => 'Tool',
     ];
 
@@ -964,6 +1075,106 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
     );
 });
 
+it('names a class in a domain folder of Queries with the Query suffix', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $domainFolders = array_filter(
+        glob($root.'/app/Queries/*', GLOB_ONLYDIR) ?: [],
+        static fn (string $folder): bool => ! in_array(basename($folder), ['Filters', 'Sorts', 'Concerns', 'Contracts'], true),
+    );
+
+    $offenders = array_filter(
+        phpFilesUnder([...$domainFolders, ...glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: []]),
+        static fn (string $file): bool => ! str_ends_with(basename($file, '.php'), 'Query'),
+    );
+
+    expect($offenders)->toBeEmpty(
+        'A reusable read is a *Query class (.ai/rules/queries.md): '.implode(', ', $offenders),
+    );
+});
+
+it('keeps reads out of the Actions folders', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $offenders = array_filter(
+        phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]),
+        static fn (string $file): bool => preg_match('/^(List|Find|Search|Get|Aggregate)[A-Z]/', basename($file, '.php')) === 1,
+    );
+
+    expect($offenders)->toBeEmpty(
+        'A reusable read is a *Query class under Queries, never an action (.ai/rules/queries.md): '.implode(', ', $offenders),
+    );
+});
+
+it('guards every Queries folder against writes in phpstan.neon', function (): void {
+    $root = dirname(__DIR__, 2);
+    $neon = (string) file_get_contents($root.'/phpstan.neon');
+
+    $namespaces = [
+        'App\\Queries',
+        ...array_map(
+            static fn (string $folder): string => 'Relaticle\\'.basename(dirname($folder, 2)).'\\Queries',
+            glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
+        ),
+    ];
+
+    $unguarded = array_values(array_filter(
+        $namespaces,
+        static fn (string $namespace): bool => ! str_contains($neon, "- {$namespace}\n"),
+    ));
+
+    expect($unguarded)->toBe(
+        [],
+        'List each under guardedNamespaces of EloquentWriteOutsideActionRule (.ai/rules/queries.md): '.implode(', ', $unguarded),
+    );
+});
+
+it('sends in-app notifications only through the inbox base', function (): void {
+    $root = dirname(__DIR__, 2);
+    $inboxBase = 'app/Notifications/InboxNotification.php';
+
+    $sourceFiles = phpFilesUnder([$root.'/app', ...glob($root.'/packages/*/src', GLOB_ONLYDIR) ?: []]);
+
+    $outsideTheBase = [];
+    $declaringToDatabase = [];
+
+    foreach ($sourceFiles as $path) {
+        if ($path === $inboxBase) {
+            continue;
+        }
+
+        $source = (string) file_get_contents($root.'/'.$path);
+
+        if (preg_match('/->\s*(sendToDatabase\s*\(|toDatabase\s*\(\s*\))/', $source) === 1) {
+            $outsideTheBase[] = $path;
+        }
+
+        if (preg_match('/function\s+toDatabase\s*\(/', $source) !== 1) {
+            continue;
+        }
+
+        preg_match('/^namespace\s+([^;]+);/m', $source, $namespace);
+        preg_match('/^(?:final\s+|abstract\s+|readonly\s+)*class\s+(\w+)/m', $source, $class);
+
+        $name = isset($class[1]) ? ($namespace[1] ?? '').'\\'.$class[1] : null;
+
+        if ($name === null || ! is_subclass_of($name, InboxNotification::class)) {
+            $declaringToDatabase[] = $path;
+        }
+    }
+
+    expect($declaringToDatabase)->toBe(
+        [],
+        'A notification written to the database extends InboxNotification, which owns toDatabase(). Fix: '.implode(', ', $declaringToDatabase),
+    );
+
+    expect($outsideTheBase)->toBe(
+        [],
+        'A bell row always carries its workspace, subject and reason, so it is written by InboxChannel for an InboxNotification. '.
+        'Send an InboxNotification instead of calling sendToDatabase() or toDatabase(): '.implode(', ', $outsideTheBase),
+    );
+});
+
 it('keeps each negated arch expectation to one layer', function (): void {
     $root = dirname(__DIR__, 2);
     $offenders = [];
@@ -991,4 +1202,65 @@ it('keeps each negated arch expectation to one layer', function (): void {
         'A negated toUse over several layers only fails when every layer violates at once '.
         '(.ai/guidelines/relaticle/testing.md). Write one arch() per layer in a foreach: '.implode(', ', $offenders),
     );
+});
+
+it('keeps every Tailwind source on disk and inside the Docker frontend stage', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    preg_match('/^FROM \S+ AS frontend$(.*?)^FROM /ms', (string) file_get_contents($root.'/Dockerfile'), $stage);
+    preg_match_all('#^COPY\s.*\s(\S+)$|target=(/app/[^\s,]+)#m', $stage[1] ?? '', $copies);
+    $copied = array_values(array_filter(array_map(
+        static fn (string $destination): string => trim((string) preg_replace('#^(/app/|\./)#', '', $destination), '/'),
+        [...$copies[1], ...$copies[2]],
+    )));
+
+    $stylesheets = [];
+
+    foreach ([$root.'/resources/css', ...glob($root.'/packages/*/resources/css', GLOB_ONLYDIR) ?: []] as $directory) {
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getExtension() === 'css') {
+                $stylesheets[] = $file->getPathname();
+            }
+        }
+    }
+
+    $problems = [];
+
+    foreach ($stylesheets as $stylesheet) {
+        $css = (string) file_get_contents($stylesheet);
+        $name = str_replace($root.'/', '', $stylesheet);
+
+        preg_match_all('/^@import\s+([\'"])tailwindcss\1(.*)$/m', $css, $imports);
+
+        foreach ($imports[2] as $modifiers) {
+            if (! str_contains($modifiers, 'source(none)')) {
+                $problems[] = "{$name} imports tailwindcss without source(none)";
+            }
+        }
+
+        preg_match_all('/^@source\s+([\'"])(.+?)\1/m', $css, $sources);
+
+        foreach ($sources[2] as $source) {
+            $path = realpath(dirname($stylesheet).'/'.preg_replace('#/\*.*$#', '', $source));
+
+            if ($path === false) {
+                $problems[] = "{$name}: {$source} does not exist";
+
+                continue;
+            }
+
+            $relative = str_replace($root.'/', '', $path);
+
+            if (! array_any($copied, static fn (string $directory): bool => $relative === $directory || str_starts_with($relative, $directory.'/'))) {
+                $problems[] = "{$name}: {$source} is not copied or mounted in the Dockerfile frontend stage";
+            }
+        }
+    }
+
+    expect($copied)->not->toBeEmpty()
+        ->and($problems)->toBe(
+            [],
+            'Self-hosted images would ship CSS that differs from production (.ai/guidelines/relaticle/ui.md): '.implode(', ', $problems),
+        );
 });

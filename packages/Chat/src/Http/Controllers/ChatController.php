@@ -28,7 +28,6 @@ use Illuminate\Validation\ValidationException;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Actions\CreateConversation;
 use Relaticle\Chat\Actions\DeleteConversation;
-use Relaticle\Chat\Actions\ListConversations;
 use Relaticle\Chat\Actions\MarkAttachmentSent;
 use Relaticle\Chat\Actions\RenameConversation;
 use Relaticle\Chat\Actions\StoreImportHandoff;
@@ -36,6 +35,7 @@ use Relaticle\Chat\Jobs\GenerateConversationTitle;
 use Relaticle\Chat\Jobs\ProcessChatMessage;
 use Relaticle\Chat\Models\AgentConversationMessage;
 use Relaticle\Chat\Models\AiCreditBalance;
+use Relaticle\Chat\Queries\ConversationsQuery;
 use Relaticle\Chat\Services\AiModelResolver;
 use Relaticle\Chat\Services\CreditService;
 use Relaticle\Chat\Services\ModelAccess;
@@ -48,6 +48,7 @@ use Relaticle\Chat\Support\ConversationTitleGate;
 use Relaticle\Chat\Support\ModelDescriptor;
 use Relaticle\Chat\Support\RecordReferenceResolver;
 use Relaticle\Chat\Support\TurnPresence;
+use stdClass;
 
 final readonly class ChatController
 {
@@ -451,6 +452,16 @@ final readonly class ChatController
         return response()->json(['cancelled' => true]);
     }
 
+    public function turn(Request $request, string $conversationId): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        abort_unless(new ConversationsQuery()->find($user, $conversationId) instanceof stdClass, 404);
+
+        return response()->json(['in_flight' => TurnPresence::current($conversationId) !== null]);
+    }
+
     /**
      * Mark a turn (and everything after it) superseded. This is the server-truth side
      * of Regenerate/Edit. Without this the client splice is a lie: reload
@@ -640,7 +651,7 @@ final readonly class ChatController
         $user = $request->user();
 
         return response()->json([
-            'data' => (new ListConversations)->execute($user),
+            'data' => new ConversationsQuery()->recent($user),
         ]);
     }
 

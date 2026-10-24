@@ -55,11 +55,10 @@ it('persists a queued Email row for the outbox', function (): void {
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ];
 
-    $email = app(SendEmailAction::class)->execute($sendData);
+    $email = app(SendEmailAction::class)->execute($this->user, $sendData);
 
     expect($email->status)->toBe(EmailStatus::QUEUED)
         ->and($email->direction)->toBe(EmailDirection::OUTBOUND)
@@ -79,7 +78,7 @@ it('forbids queuing mail when the mailbox cannot send', function (): void {
         ],
     ]);
 
-    expect(fn () => app(SendEmailAction::class)->execute([
+    expect(fn () => app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Hello World',
         'body_html' => '<p>Test</p>',
@@ -88,7 +87,6 @@ it('forbids queuing mail when the mailbox cannot send', function (): void {
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]))->toThrow(HttpException::class);
 });
@@ -96,7 +94,7 @@ it('forbids queuing mail when the mailbox cannot send', function (): void {
 it('forbids queuing mail when the mailbox is not active', function (EmailAccountStatus $status): void {
     $this->account->update(['status' => $status]);
 
-    expect(fn () => app(SendEmailAction::class)->execute([
+    expect(fn () => app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Hello World',
         'body_html' => '<p>Test</p>',
@@ -105,7 +103,6 @@ it('forbids queuing mail when the mailbox is not active', function (EmailAccount
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]))->toThrow(HttpException::class);
 })->with([
@@ -137,7 +134,7 @@ it('ignores an in_reply_to_email_id that belongs to another team', function (): 
         'status' => EmailStatus::SENT,
     ]);
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Re: nothing',
         'body_html' => '<p>Reply</p>',
@@ -146,7 +143,6 @@ it('ignores an in_reply_to_email_id that belongs to another team', function (): 
         'bcc' => [],
         'in_reply_to_email_id' => $foreignEmail->getKey(),
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -162,7 +158,7 @@ it('ignores a link_to record that belongs to another team', function (): void {
         'creator_id' => $otherUser->getKey(),
     ]);
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Hello',
         'body_html' => '<p>Hi</p>',
@@ -170,7 +166,6 @@ it('ignores a link_to record that belongs to another team', function (): void {
         'cc' => [],
         'bcc' => [],
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ], People::class, $foreignPerson->getKey());
 
@@ -199,7 +194,7 @@ it('does not copy a provider thread id from a different sending mailbox', functi
         'status' => EmailStatus::SENT,
     ]);
 
-    $reply = app(SendEmailAction::class)->execute([
+    $reply = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Re: Shared mail',
         'body_html' => '<p>Reply from my mailbox</p>',
@@ -208,7 +203,6 @@ it('does not copy a provider thread id from a different sending mailbox', functi
         'bcc' => [],
         'in_reply_to_email_id' => $sharedEmail->getKey(),
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -257,7 +251,7 @@ it('syncs the email thread aggregate when an outbound reply is sent', function (
         'role' => 'from',
     ]);
 
-    $reply = app(SendEmailAction::class)->execute([
+    $reply = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Re: Original Subject',
         'body_html' => '<p>Reply</p>',
@@ -266,7 +260,6 @@ it('syncs the email thread aggregate when an outbound reply is sent', function (
         'bcc' => [],
         'in_reply_to_email_id' => $original->getKey(),
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -309,11 +302,10 @@ it('links the queued email to a CRM record via emailables', function (): void {
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ];
 
-    $email = app(SendEmailAction::class)->execute($sendData, People::class, $person->id);
+    $email = app(SendEmailAction::class)->execute($this->user, $sendData, People::class, $person->id);
 
     $this->assertDatabaseHas('emailables', [
         'email_id' => $email->getKey(),
@@ -348,11 +340,10 @@ it('updates record metrics after a manually linked queued send is delivered', fu
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ];
 
-    $email = app(SendEmailAction::class)->execute($sendData, People::class, $person->id);
+    $email = app(SendEmailAction::class)->execute($this->user, $sendData, People::class, $person->id);
 
     expect($person->fresh()->email_count)->toBe(0);
 
@@ -381,7 +372,7 @@ it('rejects sending through a connected account owned by another user', function
         'email_address' => 'victim@example.com',
     ]));
 
-    expect(fn () => app(SendEmailAction::class)->execute([
+    expect(fn () => app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $foreignAccount->id,
         'subject' => 'Impersonation attempt',
         'body_html' => '<p>nope</p>',
@@ -390,7 +381,6 @@ it('rejects sending through a connected account owned by another user', function
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]))->toThrow(ModelNotFoundException::class);
 
@@ -407,10 +397,9 @@ it('throws when the user has hit the max queued limit', function (): void {
         'subject' => 'Already queued',
         'direction' => EmailDirection::OUTBOUND,
         'status' => EmailStatus::QUEUED,
-        'privacy_tier' => EmailPrivacyTier::FULL,
     ]);
 
-    expect(fn () => app(SendEmailAction::class)->execute([
+    expect(fn () => app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Over limit',
         'body_html' => '<p>test</p>',
@@ -419,7 +408,6 @@ it('throws when the user has hit the max queued limit', function (): void {
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]))->toThrow(RuntimeException::class, 'queued');
 });
@@ -431,7 +419,7 @@ it('persists uploaded attachments and flags the email', function (): void {
         ->createWithContent('quarterly-report.pdf', '%PDF-1.4 fake pdf bytes')
         ->store('email-attachments', 'local');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Here is the report',
         'body_html' => '<p>See attached.</p>',
@@ -440,7 +428,6 @@ it('persists uploaded attachments and flags the email', function (): void {
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
         'attachments' => [$path],
         'attachment_file_names' => [$path => 'quarterly-report.pdf'],
@@ -463,7 +450,7 @@ it('reads attachment bytes into the provider payload when sending', function ():
         ->createWithContent('notes.txt', 'attachment body')
         ->store('email-attachments', 'local');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'With file',
         'body_html' => '<p>hi</p>',
@@ -472,7 +459,6 @@ it('reads attachment bytes into the provider payload when sending', function ():
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
         'attachments' => [$path],
         'attachment_file_names' => [$path => 'notes.txt'],
@@ -508,7 +494,7 @@ it('persists inline cid attachments and includes them in the provider payload', 
         ->createWithContent('logo.png', 'png-bytes')
         ->store('email-attachments', 'local');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Fwd with logo',
         'body_html' => '<p><img src="cid:logo@example.test"></p>',
@@ -517,7 +503,6 @@ it('persists inline cid attachments and includes them in the provider payload', 
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::FORWARD,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
         'attachments' => [$path],
         'attachment_file_names' => [$path => 'logo.png'],
@@ -563,7 +548,7 @@ it('embeds rich editor inline images from data-id paths when queuing send', func
     $editorPath = EmailAttachment::composeImagesDirectory((string) $this->user->current_workspace_id).'/editor-image.png';
     Storage::disk('local')->put($editorPath, 'png-bytes');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Inline image',
         'body_html' => '<p>See below</p><img data-id="'.$editorPath.'" src="">',
@@ -572,7 +557,6 @@ it('embeds rich editor inline images from data-id paths when queuing send', func
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -597,7 +581,7 @@ it('does not attach a storage file referenced by a composer image url', function
     Storage::disk('public')->put('private.csv', 'secret,tenant,data');
     Storage::disk('local')->put('private.csv', 'secret,tenant,data');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Inline image',
         'body_html' => '<p>See below</p><img src="/storage/private.csv">',
@@ -606,7 +590,6 @@ it('does not attach a storage file referenced by a composer image url', function
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -622,7 +605,7 @@ it('does not attach another tenant image named in composer html', function (): v
     $foreignPath = EmailAttachment::composeImagesDirectory((string) $otherUser->current_workspace_id).'/secret.png';
     Storage::disk('local')->put($foreignPath, 'png-bytes-from-other-tenant');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Inline image',
         'body_html' => '<p>See below</p><img data-id="'.$foreignPath.'" src="">',
@@ -631,7 +614,6 @@ it('does not attach another tenant image named in composer html', function (): v
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -646,7 +628,7 @@ it('does not attach a non-image file from the tenant compose directory', functio
     $path = EmailAttachment::composeImagesDirectory((string) $this->user->current_workspace_id).'/notes.csv';
     Storage::disk('local')->put($path, 'secret,csv,contents');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Inline image',
         'body_html' => '<p>See below</p><img data-id="'.$path.'" src="">',
@@ -655,7 +637,6 @@ it('does not attach a non-image file from the tenant compose directory', functio
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -669,7 +650,7 @@ it('does not follow path traversal in composer image data-id', function (): void
 
     $path = EmailAttachment::composeImagesDirectory((string) $this->user->current_workspace_id).'/../../private.csv';
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Inline image',
         'body_html' => '<p>See below</p><img data-id="'.$path.'" src="">',
@@ -678,7 +659,6 @@ it('does not follow path traversal in composer image data-id', function (): void
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
     ]);
 
@@ -700,7 +680,7 @@ it('rejects a Graph attachment that exceeds the inline JSON file cap', function 
         ->createWithContent('huge.bin', str_repeat('a', (3 * 1024 * 1024) + 1))
         ->store('email-attachments', 'local');
 
-    expect(fn () => app(SendEmailAction::class)->execute([
+    expect(fn () => app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $account->id,
         'subject' => 'Too large for Graph',
         'body_html' => '<p>See attached.</p>',
@@ -709,7 +689,6 @@ it('rejects a Graph attachment that exceeds the inline JSON file cap', function 
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
         'attachments' => [$path],
         'attachment_file_names' => [$path => 'huge.bin'],
@@ -735,7 +714,7 @@ it('rejects Graph attachments whose combined encoded size exceeds the JSON reque
         ->createWithContent('two.bin', str_repeat('b', 2_000_000))
         ->store('email-attachments', 'local');
 
-    expect(fn () => app(SendEmailAction::class)->execute([
+    expect(fn () => app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $account->id,
         'subject' => 'Too large together',
         'body_html' => '<p>See attached.</p>',
@@ -744,7 +723,6 @@ it('rejects Graph attachments whose combined encoded size exceeds the JSON reque
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
         'attachments' => [$first, $second],
         'attachment_file_names' => [
@@ -763,7 +741,7 @@ it('still queues a Gmail attachment that would exceed Graph inline limits', func
         ->createWithContent('report.bin', str_repeat('a', (3 * 1024 * 1024) + 1))
         ->store('email-attachments', 'local');
 
-    $email = app(SendEmailAction::class)->execute([
+    $email = app(SendEmailAction::class)->execute($this->user, [
         'connected_account_id' => $this->account->id,
         'subject' => 'Gmail sized file',
         'body_html' => '<p>See attached.</p>',
@@ -772,7 +750,6 @@ it('still queues a Gmail attachment that would exceed Graph inline limits', func
         'bcc' => [],
         'in_reply_to_email_id' => null,
         'creation_source' => EmailCreationSource::COMPOSE,
-        'privacy_tier' => EmailPrivacyTier::FULL,
         'batch_id' => null,
         'attachments' => [$path],
         'attachment_file_names' => [$path => 'report.bin'],
@@ -781,4 +758,24 @@ it('still queues a Gmail attachment that would exceed Graph inline limits', func
     expect($email->status)->toBe(EmailStatus::QUEUED)
         ->and($email->has_attachments)->toBeTrue()
         ->and($this->account->provider)->toBe(EmailProvider::GMAIL);
+});
+
+it('queues from the mailbox of the user it is given, not the signed-in one', function (): void {
+    $someoneElse = User::factory()->withWorkspace()->create();
+    $this->actingAs($someoneElse);
+
+    $email = app(SendEmailAction::class)->execute($this->user, [
+        'connected_account_id' => $this->account->id,
+        'subject' => 'Hello',
+        'body_html' => '<p>Test</p>',
+        'to' => [['email' => 'recipient@example.com', 'name' => null]],
+        'cc' => [],
+        'bcc' => [],
+        'in_reply_to_email_id' => null,
+        'creation_source' => EmailCreationSource::COMPOSE,
+        'batch_id' => null,
+    ]);
+
+    expect($email->user_id)->toBe($this->user->id)
+        ->and($email->connected_account_id)->toBe($this->account->id);
 });

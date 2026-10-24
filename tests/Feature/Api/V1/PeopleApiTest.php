@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 use App\Actions\People\CreatePeople;
 use App\Actions\People\DeletePeople;
-use App\Actions\People\ListPeople;
 use App\Actions\People\UpdatePeople;
 use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\PeopleController;
 use App\Http\Resources\V1\PeopleResource;
 use App\Models\Company;
 use App\Models\People;
+use App\Models\Scopes\WorkspaceScope;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\Concerns\ListsEntity;
+use App\Queries\People\PeopleQuery;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Laravel\Sanctum\Sanctum;
@@ -22,7 +24,8 @@ mutates(
     CreatePeople::class,
     UpdatePeople::class,
     DeletePeople::class,
-    ListPeople::class,
+    PeopleQuery::class,
+    ListsEntity::class,
     PeopleResource::class,
 );
 
@@ -81,6 +84,20 @@ it('validates required fields on create', function (): void {
     $this->postJson('/api/v1/people', [])
         ->assertUnprocessable()
         ->assertInvalid(['name']);
+});
+
+it('stores a phone as E.164 and refuses one without a country code', function (): void {
+    Sanctum::actingAs($this->user);
+
+    $created = $this->postJson('/api/v1/people', ['name' => 'Ana Costa', 'custom_fields' => ['phone_number' => ['+1 (415) 555-0100']]])->assertCreated();
+
+    expect($created->json('data.attributes.custom_fields.phone_number.0.id'))->toBe('+14155550100');
+
+    $this->patchJson("/api/v1/people/{$created->json('data.id')}", ['name' => 'Renamed', 'custom_fields' => ['phone_number' => ['415 555 0100']]])
+        ->assertUnprocessable()
+        ->assertInvalid(['custom_fields.phone_number.0']);
+
+    expect(People::query()->withoutGlobalScope(WorkspaceScope::class)->findOrFail($created->json('data.id'))->name)->toBe('Ana Costa');
 });
 
 it('can show a person', function (): void {
@@ -358,7 +375,7 @@ describe('filtering and sorting', function (): void {
         People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Alice Johnson']);
         People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Bob Smith']);
 
-        $response = $this->getJson('/api/v1/people?filter[name]=Alice');
+        $response = $this->getJson('/api/v1/people?filter[name][$contains]=Alice');
 
         $response->assertOk();
 
@@ -367,14 +384,14 @@ describe('filtering and sorting', function (): void {
         expect($names)->not->toContain('Bob Smith');
     });
 
-    it('can filter people by company_id', function (): void {
+    it('can filter people by company', function (): void {
         Sanctum::actingAs($this->user);
 
         $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
         $matched = People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id]);
         $unmatched = People::factory()->recycle([$this->user, $this->workspace])->create();
 
-        $response = $this->getJson("/api/v1/people?filter[company_id]={$company->id}");
+        $response = $this->getJson('/api/v1/people?filter[company][$in]='.$company->id);
 
         $response->assertOk();
 
@@ -419,7 +436,8 @@ describe('filtering and sorting', function (): void {
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/people?filter[workspace_id]=fake')
-            ->assertStatus(400);
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.workspace_id']);
     });
 
     it('rejects disallowed sort fields', function (): void {
@@ -488,7 +506,7 @@ describe('mass assignment protection', function (): void {
         ])
             ->assertCreated();
 
-        $person = People::query()->where('name', 'Test Person')->first();
+        $person = People::query()->withoutGlobalScope(WorkspaceScope::class)->where('name', 'Test Person')->first();
         expect($person->workspace_id)->toBe($this->workspace->id);
     });
 
@@ -503,7 +521,7 @@ describe('mass assignment protection', function (): void {
         ])
             ->assertCreated();
 
-        $person = People::query()->where('name', 'Test Person')->first();
+        $person = People::query()->withoutGlobalScope(WorkspaceScope::class)->where('name', 'Test Person')->first();
         expect($person->creator_id)->toBe($this->user->id);
     });
 

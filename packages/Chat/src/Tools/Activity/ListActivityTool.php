@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Tools\Activity;
 
+use App\Data\ListQuery;
 use App\Enums\CreationSource;
 use App\Enums\WorkspaceCapability;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\User;
+use App\Support\ActivityLog\ActivityValue;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Builder;
@@ -340,7 +342,7 @@ final readonly class ListActivityTool implements Tool
 
         return [
             'at' => $this->occurredAt($user, $base)->toIso8601String(),
-            'by' => $this->causerName($base),
+            'by' => $base->causerLabel(),
             'source' => $base->source?->value,
             'event' => $event,
             'record' => [
@@ -440,8 +442,8 @@ final readonly class ListActivityTool implements Tool
                 'field' => $row->label,
                 // Null rather than the formatter's placeholder glyph: the model
                 // reads this payload, and "unset" is a fact, not a dash.
-                'old' => $this->isUnset($row->old) ? null : $row->formattedOld(),
-                'new' => $this->isUnset($row->new) ? null : $row->formattedNew(),
+                'old' => $this->isUnset($row->old) ? null : ActivityValue::excerpt($row->formattedOld()),
+                'new' => $this->isUnset($row->new) ? null : ActivityValue::excerpt($row->formattedNew()),
             ];
         }
 
@@ -462,8 +464,8 @@ final readonly class ListActivityTool implements Tool
                 // (option names, Yes/No, formatted dates) when it logged the
                 // change -- CustomFieldValueObserver::describe(). Re-deriving
                 // them here would be a second, divergent formatter.
-                'old' => $this->customFieldSide($change['old'] ?? null),
-                'new' => $this->customFieldSide($change['new'] ?? null),
+                'old' => ActivityValue::forAgent($change['old'] ?? null),
+                'new' => ActivityValue::forAgent($change['new'] ?? null),
             ];
         }
 
@@ -486,22 +488,6 @@ final readonly class ListActivityTool implements Tool
     private function isUnset(mixed $value): bool
     {
         return $value === null || $value === '';
-    }
-
-    /**
-     * One side of a custom-field change, as `CustomFieldValueObserver` wrote it:
-     * `['value' => mixed, 'label' => string]`, with a null value standing for a
-     * field that held nothing.
-     */
-    private function customFieldSide(mixed $side): ?string
-    {
-        if (! is_array($side) || ($side['value'] ?? null) === null) {
-            return null;
-        }
-
-        $label = $side['label'] ?? null;
-
-        return is_string($label) && $label !== '' ? $label : null;
     }
 
     /**
@@ -586,13 +572,6 @@ final readonly class ListActivityTool implements Tool
         return Date::parse($activity->created_at)->setTimezone($user->effectiveTimezone());
     }
 
-    private function causerName(Activity $activity): string
-    {
-        $name = $activity->causer?->getAttribute('name');
-
-        return is_string($name) && $name !== '' ? $name : 'System';
-    }
-
     private function recordName(Model $subject): string
     {
         foreach (['name', 'title'] as $attribute) {
@@ -650,7 +629,7 @@ final readonly class ListActivityTool implements Tool
             return 1;
         }
 
-        return max(1, (int) $page);
+        return max(1, (int) min($page, ListQuery::MAX_PAGE));
     }
 
     private function stringOrNull(mixed $value): ?string

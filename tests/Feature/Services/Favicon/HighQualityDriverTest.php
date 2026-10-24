@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use App\Services\Favicon\Drivers\HighQualityDriver;
 use App\Support\Http\HostResolver;
+use AshAllenDesign\FaviconFetcher\Exceptions\ConnectionException;
+use AshAllenDesign\FaviconFetcher\Favicon;
+use Illuminate\Http\Client\ConnectionException as HttpConnectionException;
 use Illuminate\Http\Client\Request as HttpClientRequest;
 use Illuminate\Support\Facades\Http;
 
@@ -150,4 +153,160 @@ test('sends nothing when a host resolves to a private address at send time', fun
     expect((new HighQualityDriver)->fetch('https://rebind.example.com'))->toBeNull();
 
     Http::assertNothingSent();
+});
+
+test('reports a host that does not resolve as a connection failure', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => []));
+
+    Http::fake();
+
+    expect(fn (): ?Favicon => (new HighQualityDriver)->fetch('https://no-such-host.example.com'))
+        ->toThrow(ConnectionException::class);
+
+    Http::assertNothingSent();
+});
+
+test('reports an unreachable site with no icon from any other source as a connection failure', function (): void {
+    Http::fake([
+        'https://1.1.1.1' => Http::failedConnection(),
+        '*' => Http::response('', 404),
+    ]);
+
+    expect(fn (): ?Favicon => (new HighQualityDriver)->fetch('https://1.1.1.1'))
+        ->toThrow(ConnectionException::class);
+});
+
+test('uses another source when the site is unreachable', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://1.1.1.1' => Http::failedConnection(),
+        'https://www.google.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    expect((new HighQualityDriver)->fetch('https://1.1.1.1')?->getFaviconUrl())
+        ->toBe('https://www.google.com/s2/favicons?sz=256&domain=1.1.1.1');
+});
+
+test('finds no favicon when the site answers and no source has an icon', function (): void {
+    Http::fake(['*' => Http::response('', 404)]);
+
+    expect((new HighQualityDriver)->fetch('https://1.1.1.1'))->toBeNull();
+});
+
+test('keeps a path and query in the page url out of the google lookup', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://1.1.1.1/*' => Http::response('', 404),
+        'https://www.google.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    $favicon = (new HighQualityDriver)->fetch('https://1.1.1.1/../?&x=1#frag');
+
+    expect($favicon?->getFaviconUrl())->toBe('https://www.google.com/s2/favicons?sz=256&domain=1.1.1.1');
+
+    Http::assertNotSent(fn (HttpClientRequest $request): bool => str_contains($request->url(), 'google.com') && str_contains($request->url(), 'x=1'));
+});
+
+test('keeps a path and query in the page url out of the duckduckgo lookup', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://icons.duckduckgo.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    $favicon = (new HighQualityDriver)->fetch('https://1.1.1.1/../a/b?x=1');
+
+    expect($favicon?->getFaviconUrl())->toBe('https://icons.duckduckgo.com/ip3/1.1.1.1.ico');
+});
+
+test('skips the third party lookups when the host is not a bare hostname', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake(['*' => Http::response('', 404)]);
+
+    expect((new HighQualityDriver)->fetch('https://[2606:4700:4700::1111]/'))->toBeNull();
+
+    Http::assertNotSent(fn (HttpClientRequest $request): bool => str_contains($request->url(), 'google.com') || str_contains($request->url(), 'duckduckgo.com'));
+});
+
+test('keeps the third party lookups for a fully qualified host with a trailing dot', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+
+    Http::fake([
+        'https://icons.duckduckgo.com/*' => Http::response('', 200),
+        '*' => Http::response('', 404),
+    ]);
+
+    expect((new HighQualityDriver)->fetch('https://example.com.')?->getFaviconUrl())
+        ->toBe('https://icons.duckduckgo.com/ip3/example.com.ico');
+});
+
+test('caps a request at the time left in the budget', function (): void {
+    $this->freezeTime();
+
+    $timeouts = [];
+
+    Http::fake(function (HttpClientRequest $request, array $options) use (&$timeouts) {
+        $timeouts[] = [$options['timeout'], $options['connect_timeout']];
+        $this->travel(17)->seconds();
+
+        return Http::response('', 404);
+    });
+
+    expect(fn (): ?Favicon => (new HighQualityDriver)->fetch('https://1.1.1.1'))->toThrow(ConnectionException::class)
+        ->and($timeouts[0])->toEqual([5, 3])
+        ->and($timeouts[1])->toEqual([3, 3]);
+});
+
+test('returns an icon found at the end of the budget without verifying it', function (): void {
+    $this->freezeTime();
+
+    $requested = [];
+
+    Http::fake(function (HttpClientRequest $request) use (&$requested) {
+        $requested[] = $request->method().' '.$request->url();
+        $this->travel(19)->seconds();
+
+        return Http::response('<link rel="apple-touch-icon" href="/touch.png">');
+    });
+
+    expect((new HighQualityDriver)->fetch('https://1.1.1.1')?->getFaviconUrl())->toBe('https://1.1.1.1/touch.png')
+        ->and($requested)->toBe(['GET https://1.1.1.1']);
+});
+
+test('finds no favicon when the last source answers not found at the end of the budget', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+    $this->freezeTime();
+
+    Http::fake(function (HttpClientRequest $request) {
+        if (str_contains($request->url(), 'duckduckgo')) {
+            $this->travel(20)->seconds();
+        }
+
+        return Http::response('', 404);
+    });
+
+    expect((new HighQualityDriver)->fetch('https://1.1.1.1'))->toBeNull();
+});
+
+test('treats a lookup cut off by the end of the budget as out of time, not as no favicon', function (): void {
+    app()->instance(HostResolver::class, new HostResolver(fn (): array => ['93.184.216.34']));
+    $this->freezeTime();
+
+    Http::fake(function (HttpClientRequest $request) {
+        if (str_contains($request->url(), 'duckduckgo')) {
+            $this->travel(20)->seconds();
+
+            throw new HttpConnectionException('cURL error 28: Operation timed out');
+        }
+
+        return Http::response('', 404);
+    });
+
+    expect(fn (): ?Favicon => (new HighQualityDriver)->fetch('https://1.1.1.1'))->toThrow(ConnectionException::class);
 });

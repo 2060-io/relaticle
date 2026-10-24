@@ -3,22 +3,33 @@
 declare(strict_types=1);
 
 use App\Actions\Task\NotifyTaskAssignees;
+use App\Enums\WorkspaceRole;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
-use App\Mail\TaskAssignedMail;
+use App\Models\Company;
+use App\Models\CustomField;
+use App\Models\Opportunity;
+use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\TaskAssignedNotification;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\RichEditor;
 use Filament\Schemas\Components\Component;
+use Filament\Support\Enums\IconSize;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\Column;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Livewire\Livewire;
+
+use function Filament\Support\generate_icon_html;
 
 mutates(ManageTasks::class, NotifyTaskAssignees::class, TaskResource::class);
 
@@ -42,22 +53,30 @@ it('heads every column but the task title with an icon', function (): void {
 
     livewire(ManageTasks::class)
         ->assertTableColumnExists('title', fn (Column $column): bool => ! $hasIcon($column))
+        ->assertTableColumnExists('relations', $hasIcon)
         ->assertTableColumnExists('assignees.name', $hasIcon)
         ->assertTableColumnExists('created_at', $hasIcon);
+});
+
+it('heads the relations column with the link icon', function (): void {
+    $linkIcon = generate_icon_html(Heroicon::OutlinedLink, size: IconSize::Small)->toHtml();
+
+    livewire(ManageTasks::class)
+        ->assertTableColumnExists('relations', fn (Column $column): bool => str_contains((string) $column->getLabel(), $linkIcon));
 });
 
 it('exposes the expected table columns', function (): void {
     $table = livewire(ManageTasks::class);
 
-    foreach (['title', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
+    foreach (['title', 'relations', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
         $table->assertTableColumnExists($column);
     }
 
-    foreach (['title', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
+    foreach (['title', 'relations', 'assignees.name', 'creator.name', 'created_at', 'updated_at', 'deleted_at'] as $column) {
         $table->assertTableColumnVisible($column);
     }
 
-    foreach (['title', 'creator.name'] as $column) {
+    foreach (['title', 'relations', 'creator.name'] as $column) {
         $table->assertCanRenderTableColumn($column);
     }
 
@@ -74,6 +93,7 @@ it('can sort `:dataset` column', function (string $column): void {
         : $column;
 
     livewire(ManageTasks::class)
+        ->toggleAllTableColumns()
         ->sortTable($column)
         ->assertCanSeeTableRecords($records->sortBy($sortingKey), inOrder: true)
         ->sortTable($column, 'desc')
@@ -142,8 +162,6 @@ it('can create a task', function (): void {
 // user from another workspace. The option query is what rejects it, because Filament
 // builds the field's `in` rule from that same query.
 it('rejects a create payload naming an assignee outside the workspace', function (): void {
-    $this->withoutDefer();
-
     $outsider = User::factory()->withWorkspace()->create();
 
     livewire(ManageTasks::class)
@@ -158,8 +176,6 @@ it('rejects a create payload naming an assignee outside the workspace', function
 });
 
 it('notifies a newly assigned member with a deep-link that opens the task edit modal', function (): void {
-    $this->withoutDefer();
-
     $assignee = User::factory()->create();
     $this->workspace->users()->attach($assignee, ['role' => 'admin']);
 
@@ -171,7 +187,7 @@ it('notifies a newly assigned member with a deep-link that opens the task edit m
         ->assertHasNoActionErrors();
 
     $task = Task::query()->where('title', 'Assigned Task')->sole();
-    $url = data_get($assignee->notifications()->sole()->data, 'actions.0.url');
+    $url = TaskAssignedNotification::present($assignee->notifications()->sole())->getActions()[0]->getUrl();
 
     expect($url)->toContain('/tasks')
         ->and($url)->toContain('tableAction=edit')
@@ -179,7 +195,7 @@ it('notifies a newly assigned member with a deep-link that opens the task edit m
 });
 
 it('notifies only the assignees submitted through the create action', function (): void {
-    Mail::fake();
+    Notification::fake();
 
     $intendedAssignee = User::factory()->create([
         'notification_preferences' => ['task_assigned' => ['email' => true]],
@@ -215,10 +231,27 @@ it('notifies only the assignees submitted through the create action', function (
         ])
         ->assertHasNoActionErrors();
 
-    defer()->invoke();
+    Notification::assertSentTo($intendedAssignee, TaskAssignedNotification::class, fn (TaskAssignedNotification $notification, array $channels): bool => in_array('mail', $channels, true));
+    Notification::assertNotSentTo($concurrentAssignee, TaskAssignedNotification::class);
+});
 
-    Mail::assertQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($intendedAssignee->email));
-    Mail::assertNotQueued(TaskAssignedMail::class, fn (TaskAssignedMail $mail): bool => $mail->hasTo($concurrentAssignee->email));
+it('links companies, people and opportunities to a task from the relations picker', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $opportunity = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ManageTasks::class)
+        ->callAction('create', data: [
+            'title' => 'Send the renewal quote',
+            'relations' => ["company:{$company->id}", "people:{$person->id}", "opportunity:{$opportunity->id}"],
+        ])
+        ->assertHasNoActionErrors();
+
+    $task = Task::query()->where('title', 'Send the renewal quote')->sole();
+
+    expect($task->companies->modelKeys())->toBe([$company->id])
+        ->and($task->people->modelKeys())->toBe([$person->id])
+        ->and($task->opportunities->modelKeys())->toBe([$opportunity->id]);
 });
 
 it('can edit a task', function (): void {
@@ -231,6 +264,63 @@ it('can edit a task', function (): void {
         ->assertHasNoActionErrors();
 
     expect($record->refresh()->title)->toBe('Updated Task');
+});
+
+it('opens a task read-only for a member who can view but not edit it', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Read me']);
+
+    $this->actingAs($viewer);
+
+    livewire(ManageTasks::class)
+        ->assertActionHidden(TestAction::make('edit')->table($record))
+        ->mountAction(TestAction::make('view')->table($record))
+        ->assertActionMounted(TestAction::make('view')->table($record))
+        ->assertSchemaStateSet(['title' => 'Read me']);
+});
+
+it('opens the read-only view when a viewer follows a link to edit a task', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $this->actingAs($viewer);
+
+    Livewire::withQueryParams(['tableAction' => 'edit', 'tableActionRecord' => $record->getKey()])
+        ->test(ManageTasks::class)
+        ->call('mountDefaultActions')
+        ->assertSet('mountedActions.0.name', 'view')
+        ->assertSet('mountedActions.0.context.recordKey', $record->getKey());
+});
+
+it('keeps a member who can edit on the edit action', function (): void {
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ManageTasks::class)
+        ->assertActionHidden(TestAction::make('view')->table($record))
+        ->assertActionVisible(TestAction::make('edit')->table($record));
+});
+
+it('notifies only the member newly assigned through the edit action', function (): void {
+    $kept = User::factory()->create();
+    $added = User::factory()->create();
+    $this->workspace->users()->attach([$kept->id, $added->id], ['role' => 'member']);
+
+    $record = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $record->assignees()->attach($kept);
+
+    livewire(ManageTasks::class)
+        ->callAction(TestAction::make('edit')->table($record), data: [
+            'assignees' => [$kept->id, $added->id],
+        ])
+        ->assertHasNoActionErrors();
+
+    expect($record->refresh()->assignees->modelKeys())->toEqualCanonicalizing([$kept->id, $added->id])
+        ->and($added->notifications()->count())->toBe(1)
+        ->and($kept->notifications()->count())->toBe(0);
 });
 
 it('can delete a task', function (): void {
@@ -373,6 +463,17 @@ it('renders a custom-field datetime in the same format as the table default', fu
         ->assertSee(Date::parse('2026-08-19 08:30:00', 'Asia/Tokyo')->translatedFormat($format));
 });
 
+it('shows a due date in the task form the way tables and record pages write it', function (): void {
+    $page = livewire(ManageTasks::class)
+        ->mountAction('create')
+        ->instance();
+
+    $picker = collect($page->getSchema($page->getMountedActionSchemaName())->getFlatComponents(withHidden: true))
+        ->first(fn (Component $component): bool => $component instanceof DateTimePicker);
+
+    expect(Date::parse('2026-10-09 19:56:31')->format($picker->getDisplayFormat()))->toBe('Oct 9, 2026 19:56');
+});
+
 it('gives the task description the borderless document canvas', function (): void {
     $page = livewire(ManageTasks::class)
         ->mountAction('create')
@@ -384,3 +485,15 @@ it('gives the task description the borderless document canvas', function (): voi
     expect($editor->getExtraAttributes())->toHaveKey('data-slash-menu')
         ->and($editor->getExtraAttributes()['class'])->toContain('fi-fo-rich-editor-seamless');
 });
+
+it('groups tasks by a select custom field and titles each group with its option label', function (string $code): void {
+    $field = CustomField::query()->where('code', $code)->firstOrFail();
+    $option = $field->options()->firstOrFail();
+    $task = Task::factory()->for($this->workspace, 'workspace')->create();
+    $task->saveCustomFieldValue($field, $option->getKey());
+
+    livewire(ManageTasks::class)
+        ->set('tableGrouping', "{$code}_group")
+        ->assertOk()
+        ->assertSee($option->name);
+})->with(['status', 'priority']);

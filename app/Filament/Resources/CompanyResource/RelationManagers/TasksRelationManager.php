@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\CompanyResource\RelationManagers;
 
 use App\Filament\Actions\CreateTaskAction;
+use App\Filament\Actions\EditTaskAction;
 use App\Filament\Components\Tables\RelatedRecordColumns;
 use App\Filament\Concerns\CountsRelatedRecords;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
@@ -14,7 +15,6 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\DetachAction;
-use Filament\Actions\EditAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
@@ -44,7 +44,7 @@ final class TasksRelationManager extends RelationManager
             ])
             ->recordActions([
                 ActionGroup::make([
-                    EditAction::make(),
+                    EditTaskAction::make(),
                     DetachAction::make(),
                     DeleteAction::make(),
                 ]),

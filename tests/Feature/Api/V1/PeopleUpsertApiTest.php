@@ -2,15 +2,17 @@
 
 declare(strict_types=1);
 
-use App\Actions\CustomFields\FindEntitiesByFieldValue;
 use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\PeopleUpsertController;
 use App\Http\Middleware\EnsureTokenHasAbility;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\People;
+use App\Models\Scopes\WorkspaceScope;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\CustomFields\EntitiesByFieldValueQuery;
+use App\Support\CustomFields\CanonicalValue;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -18,11 +20,13 @@ use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Tests\Helpers\WorkspaceCustomField;
 
 mutates(
     PeopleUpsertController::class,
-    FindEntitiesByFieldValue::class,
+    EntitiesByFieldValueQuery::class,
     EnsureTokenHasAbility::class,
+    CanonicalValue::class,
 );
 
 beforeEach(function (): void {
@@ -32,12 +36,7 @@ beforeEach(function (): void {
 
 function upsertCustomField(string $workspaceId, string $entityType, string $code): CustomField
 {
-    return CustomField::query()
-        ->withoutGlobalScopes()
-        ->where('tenant_id', $workspaceId)
-        ->where('entity_type', $entityType)
-        ->where('code', $code)
-        ->firstOrFail();
+    return WorkspaceCustomField::byCode($workspaceId, $entityType, $code);
 }
 
 function markUpsertCustomFieldUnique(string $workspaceId, string $entityType, string $code): void
@@ -354,13 +353,13 @@ it('updates a person a concurrent upsert created after this request was validate
     $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Grace Hopper']);
     writeUpsertCustomFieldValue($this->workspace->id, 'people', $person->id, 'emails', ['grace@navy.mil']);
 
-    app()->instance(FindEntitiesByFieldValue::class, new class
+    app()->instance(EntitiesByFieldValueQuery::class, new class
     {
         private int $calls = 0;
 
-        public function execute(mixed ...$arguments): Collection
+        public function get(mixed ...$arguments): Collection
         {
-            return $this->calls++ === 0 ? new Collection : new FindEntitiesByFieldValue()->execute(...$arguments);
+            return $this->calls++ === 0 ? new Collection : new EntitiesByFieldValueQuery()->get(...$arguments);
         }
     });
 
@@ -384,13 +383,13 @@ it('keeps the emails of a person a concurrent upsert created after validation', 
         return $person;
     };
 
-    app()->instance(FindEntitiesByFieldValue::class, new class($createConcurrentPerson)
+    app()->instance(EntitiesByFieldValueQuery::class, new class($createConcurrentPerson)
     {
         private int $calls = 0;
 
         public function __construct(private readonly Closure $createConcurrentPerson) {}
 
-        public function execute(mixed ...$arguments): Collection
+        public function get(mixed ...$arguments): Collection
         {
             if ($this->calls++ < 2) {
                 return new Collection;
@@ -398,7 +397,7 @@ it('keeps the emails of a person a concurrent upsert created after validation', 
 
             ($this->createConcurrentPerson)();
 
-            return new FindEntitiesByFieldValue()->execute(...$arguments);
+            return new EntitiesByFieldValueQuery()->get(...$arguments);
         }
     });
 
@@ -421,7 +420,7 @@ it('creates a new person when only a deleted person holds the email', function (
         'name' => 'Grace Hopper',
     ])->assertCreated();
 
-    People::query()->findOrFail($deleted->json('data.id'))->delete();
+    People::query()->withoutGlobalScope(WorkspaceScope::class)->findOrFail($deleted->json('data.id'))->delete();
 
     $response = $this->postJson('/api/v1/people/upsert', [
         'match' => ['field' => 'emails', 'value' => 'grace@navy.mil'],

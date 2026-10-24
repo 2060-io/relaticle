@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 use App\Actions\Jetstream\DeleteWorkspace;
 use App\Enums\MediaCollection;
+use App\Jobs\PurgeUser;
+use App\Jobs\PurgeWorkspace;
 use App\Models\Note;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Notifications\PaymentFailedNotification;
 use App\Notifications\UserDeletionReminderNotification;
 use App\Notifications\WorkspaceDeletionReminderNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
@@ -19,7 +23,7 @@ use Relaticle\EmailIntegration\Models\EmailBody;
 use Relaticle\EmailIntegration\Models\Meeting;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-mutates(DeleteWorkspace::class);
+mutates(DeleteWorkspace::class, PurgeUser::class, PurgeWorkspace::class);
 
 test('expired users are permanently deleted', function () {
     $user = User::factory()->withPersonalWorkspace()->scheduledForDeletion(-1)->create();
@@ -104,6 +108,35 @@ test('purging a user removes mail and meetings synced from a mailbox they alread
         ->and(Workspace::query()->find($workspace->id))->not->toBeNull();
 });
 
+test('expired users and workspaces are queued for purge on the imports lane', function () {
+    $expiredUser = User::factory()->scheduledForDeletion(-1)->create();
+    $futureUser = User::factory()->scheduledForDeletion(15)->create();
+    $expiredWorkspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $expiredWorkspace->update(['scheduled_deletion_at' => now()->subDay()]);
+    Queue::fake([PurgeUser::class, PurgeWorkspace::class]);
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    Queue::assertPushedOn('imports', PurgeUser::class, fn (PurgeUser $job): bool => $job->user->is($expiredUser));
+    Queue::assertNotPushed(PurgeUser::class, fn (PurgeUser $job): bool => $job->user->is($futureUser));
+    Queue::assertPushedOn('imports', PurgeWorkspace::class, fn (PurgeWorkspace $job): bool => $job->workspace->is($expiredWorkspace));
+    expect($expiredUser->fresh())->not->toBeNull();
+});
+
+test('a workspace whose owner is due is purged with its owner, not queued twice', function () {
+    $owner = User::factory()->withPersonalWorkspace()->scheduledForDeletion(-1)->create();
+    $personalWorkspace = $owner->personalWorkspace();
+    $personalWorkspace->update(['scheduled_deletion_at' => $owner->scheduled_deletion_at]);
+    Queue::fake([PurgeUser::class, PurgeWorkspace::class]);
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    Queue::assertPushed(PurgeUser::class, fn (PurgeUser $job): bool => $job->user->is($owner));
+    Queue::assertNotPushed(PurgeWorkspace::class, fn (PurgeWorkspace $job): bool => $job->workspace->is($personalWorkspace));
+});
+
 test('non-expired users are not deleted', function () {
     $user = User::factory()->withPersonalWorkspace()->scheduledForDeletion(15)->create();
 
@@ -123,6 +156,20 @@ test('expired workspaces are permanently deleted', function () {
         ->assertExitCode(0);
 
     expect(Workspace::query()->find($workspaceId))->toBeNull();
+});
+
+it('removes the payment failure notice of a purged workspace and keeps the owner\'s other notices', function (): void {
+    $owner = User::factory()->withWorkspace()->create();
+    $doomed = $owner->currentWorkspace;
+    $kept = Workspace::factory()->for($owner, 'owner')->create();
+    $owner->notify(new PaymentFailedNotification($doomed));
+    $owner->notify(new PaymentFailedNotification($kept));
+    $doomed->update(['scheduled_deletion_at' => now()->subDay()]);
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    expect($owner->notifications()->pluck('data')->pluck('workspace_id')->all())->toBe([$kept->getKey()]);
 });
 
 it('removes a purged workspace\'s custom fields, options and values, and leaves other workspaces alone', function (): void {
@@ -233,6 +280,26 @@ it('removes every workspace upload during permanent deletion and preserves other
     Storage::disk('local')->assertMissing([$attachmentPath, $pendingPath]);
     Storage::disk('local')->assertExists($unrelated->getPathRelativeToRoot());
 })->with(['workspace deletion' => false, 'owner deletion' => true]);
+
+it('keeps the members and custom fields of a workspace whose purge fails', function (): void {
+    $workspace = User::factory()->withWorkspace()->create()->currentWorkspace;
+    $workspace->update(['scheduled_deletion_at' => now()->subDay()]);
+    $member = User::factory()->create();
+    $workspace->users()->attach($member, ['role' => 'member']);
+    $customFields = DB::table('custom_fields')->where('tenant_id', $workspace->getKey())->count();
+    Workspace::deleting(function (Workspace $deleting) use ($workspace): void {
+        if ($deleting->is($workspace)) {
+            throw new RuntimeException('Workspace deletion failed');
+        }
+    });
+
+    expect(fn (): int => Artisan::call('app:purge-scheduled-deletions'))
+        ->toThrow(RuntimeException::class, 'Workspace deletion failed');
+
+    expect($workspace->users()->whereKey($member->getKey())->exists())->toBeTrue()
+        ->and(DB::table('custom_fields')->where('tenant_id', $workspace->getKey())->count())->toBe($customFields)
+        ->and($customFields)->toBeGreaterThan(0);
+});
 
 it('keeps attachment bytes when permanent workspace deletion rolls back', function (): void {
     Storage::fake('local');

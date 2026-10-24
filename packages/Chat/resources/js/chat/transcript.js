@@ -663,7 +663,7 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
     // wire:navigate round trip resolves. Server truth always wins: whatever
     // this paints is provisional only, because the navigation that follows
     // always finishes by destroying this instance and mounting a fresh one
-    // from ChatInterface::mount()'s ListConversationMessages fetch, which wholesale
+    // from ChatInterface::mount()'s ConversationMessagesQuery fetch, which wholesale
     // replaces it regardless of whether the cache was right, stale, or
     // (via the ownership tag) refused outright. Returns true on a cache hit.
     switchConversation(targetConversationId) {
@@ -1183,6 +1183,7 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         countDeleted: ':count deleted',
         countSkipped: ':count skipped',
         countKept: ':count kept',
+        entityVerbs: {},
         ...proposalTexts,
     },
 
@@ -1195,7 +1196,7 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
             // A saved category survives reload (msg.feedback.category comes back
             // from the server); a saved comment only survives within this same
             // session (feedbackComment resets to '' on load, the server never
-            // sends it back, see ListConversationMessages). Either one means the
+            // sends it back, see ConversationMessagesQuery). Either one means the
             // user typed real detail that a silent toggle-off would discard.
             const hasSavedDetail = rating === 'down'
                 && (msg.feedback?.category || (msg.feedbackComment || '').trim() !== '');
@@ -1392,7 +1393,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
 
         const t = this.proposalTexts;
         const op = action.operation;
-        const doneTemplate = op === 'delete' ? t.countDeleted : (op === 'update' ? t.countUpdated : t.countCreated);
+        const doneTemplate = t.entityVerbs[action.entity_type]?.count
+            ?? (op === 'delete' ? t.countDeleted : (op === 'update' ? t.countUpdated : t.countCreated));
         const skippedTemplate = op === 'delete' ? t.countKept : t.countSkipped;
 
         return {
@@ -1412,12 +1414,13 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         return Object.keys(action?.itemResults || {}).length > 0;
     },
 
-    // Past-tense verb for a resolved item's chip, by operation.
+    // Past-tense verb for a resolved item's chip, by entity type then operation.
     itemVerb(action) {
         const op = action?.operation;
-        return op === 'delete'
-            ? this.proposalTexts.deletedVerb
-            : (op === 'update' ? this.proposalTexts.updatedVerb : this.proposalTexts.createdVerb);
+        return this.proposalTexts.entityVerbs[action?.entity_type]?.done
+            ?? (op === 'delete'
+                ? this.proposalTexts.deletedVerb
+                : (op === 'update' ? this.proposalTexts.updatedVerb : this.proposalTexts.createdVerb));
     },
 
     // Keep resolved proposal identity aligned with the record pills used in

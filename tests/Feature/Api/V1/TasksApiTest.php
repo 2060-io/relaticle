@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 use App\Actions\Task\CreateTask;
 use App\Actions\Task\DeleteTask;
-use App\Actions\Task\ListTasks;
 use App\Actions\Task\UpdateTask;
 use App\Enums\CreationSource;
 use App\Http\Controllers\Api\V1\TasksController;
 use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
+use App\Models\Scopes\WorkspaceScope;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Queries\Concerns\ListsEntity;
+use App\Queries\Tasks\TasksQuery;
+use App\Support\CurrentWorkspace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\Fluent\AssertableJson;
@@ -24,7 +27,8 @@ mutates(
     CreateTask::class,
     UpdateTask::class,
     DeleteTask::class,
-    ListTasks::class,
+    TasksQuery::class,
+    ListsEntity::class,
 );
 
 beforeEach(function () {
@@ -39,7 +43,7 @@ it('requires authentication', function (): void {
 it('can list tasks', function (): void {
     Sanctum::actingAs($this->user);
 
-    $seeded = Task::query()->where('workspace_id', $this->workspace->id)->count();
+    $seeded = Task::query()->withoutGlobalScope(WorkspaceScope::class)->where('workspace_id', $this->workspace->id)->count();
     Task::factory(3)->recycle([$this->user, $this->workspace])->create();
 
     $this->getJson('/api/v1/tasks')
@@ -200,7 +204,9 @@ it('can create a task with relationship ids', function (): void {
     ])
         ->assertCreated();
 
-    $task = Task::query()->where('title', 'Linked task')->first();
+    $task = Task::query()->withoutGlobalScope(WorkspaceScope::class)->where('title', 'Linked task')->first();
+    resolve(CurrentWorkspace::class)->set($this->workspace);
+
     expect($task->companies)->toHaveCount(1)
         ->and($task->people)->toHaveCount(1)
         ->and($task->opportunities)->toHaveCount(1)
@@ -370,17 +376,14 @@ describe('includes', function (): void {
 });
 
 describe('filtering and sorting', function (): void {
-    it('ignores assigned_to_me filter when value is false', function (): void {
+    it('rejects assigned_to_me when the value is false', function (): void {
         Sanctum::actingAs($this->user);
 
-        $unassignedTask = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Unassigned']);
-        $assignedTask = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Assigned']);
-        $assignedTask->assignees()->attach($this->user);
+        Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Unassigned']);
 
-        $this->getJson('/api/v1/tasks?filter[assigned_to_me]=false')
-            ->assertOk()
-            ->assertJsonFragment(['title' => 'Unassigned'])
-            ->assertJsonFragment(['title' => 'Assigned']);
+        $this->getJson('/api/v1/tasks?filter[assigned_to_me][$eq]=false')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.assigned_to_me']);
     });
 
     it('can filter tasks by title', function (): void {
@@ -389,7 +392,7 @@ describe('filtering and sorting', function (): void {
         Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Fix login bug']);
         Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Deploy to staging']);
 
-        $response = $this->getJson('/api/v1/tasks?filter[title]=login');
+        $response = $this->getJson('/api/v1/tasks?filter[title][$contains]=login');
 
         $response->assertOk();
 
@@ -434,7 +437,8 @@ describe('filtering and sorting', function (): void {
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/tasks?filter[workspace_id]=fake')
-            ->assertStatus(400);
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['filter.workspace_id']);
     });
 
     it('rejects disallowed sort fields', function (): void {
@@ -503,7 +507,7 @@ describe('mass assignment protection', function (): void {
         ])
             ->assertCreated();
 
-        $task = Task::query()->where('title', 'Test Task')->first();
+        $task = Task::query()->withoutGlobalScope(WorkspaceScope::class)->where('title', 'Test Task')->first();
         expect($task->workspace_id)->toBe($this->workspace->id);
     });
 
@@ -518,7 +522,7 @@ describe('mass assignment protection', function (): void {
         ])
             ->assertCreated();
 
-        $task = Task::query()->where('title', 'Test Task')->first();
+        $task = Task::query()->withoutGlobalScope(WorkspaceScope::class)->where('title', 'Test Task')->first();
         expect($task->creator_id)->toBe($this->user->id);
     });
 

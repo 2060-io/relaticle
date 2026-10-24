@@ -4,17 +4,22 @@ declare(strict_types=1);
 
 use App\Features\EmailIntegration;
 use App\Http\Controllers\Billing\StripeWebhookController;
+use App\Http\Middleware\ConfigureTrustedProxies;
 use App\Http\Middleware\DenyIndexingOnSecondaryHosts;
 use App\Http\Middleware\EnsureAuthenticationComplete;
 use App\Http\Middleware\NoReferrer;
+use App\Http\Middleware\ReadAcrossWorkspaces;
 use App\Http\Middleware\RedirectToPrimaryHost;
 use App\Http\Middleware\RequireIdentityConfirmation;
 use App\Http\Middleware\RequireOperationGrant;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetApiWorkspaceContext;
 use App\Http\Middleware\StopImpersonationOnLogout;
 use App\Http\Middleware\SubdomainRootResponse;
+use App\Http\Middleware\SuperviseImpersonation;
 use App\Http\Middleware\ThrottleBeforeAuthentication;
 use App\Http\Middleware\ValidateSignature;
+use App\Models\Notification;
 use Filament\Facades\Filament;
 use Filament\Http\Middleware\SetUpPanel;
 use Illuminate\Console\Scheduling\Schedule;
@@ -27,12 +32,20 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Middleware\VerifyWebhookSignature;
 use Laravel\Pennant\Feature;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use Livewire\Exceptions\MethodNotFoundException;
 use Livewire\Exceptions\PayloadTooLargeException;
+use Livewire\Exceptions\PublicPropertyNotFoundException;
+use Livewire\Features\SupportComputed\CannotCallComputedDirectlyException;
+use Livewire\Features\SupportLifecycleHooks\DirectlyCallingLifecycleHooksNotAllowedException;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Mechanisms\HandleComponents\CorruptComponentPayloadException;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
@@ -48,7 +61,6 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function (): void {
             // Registered here rather than by Cashier (see AppServiceProvider):
@@ -72,6 +84,7 @@ return Application::configure(basePath: dirname(__DIR__))
             $routes->group(base_path('routes/api.php'));
         },
     )
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', AuthenticateSession::class]])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trimStrings(except: [
             'document.*',
@@ -82,18 +95,12 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         // On Laravel Cloud the framework trusts its TLS edge itself, which reaches the app from a
-        // public IPv6 address this list would reject, turning every generated URL into http://.
+        // public IPv6 address the private ranges would reject, turning every generated URL into http://.
         if (! laravel_cloud()) {
-            $middleware->trustProxies(at: [
-                '127.0.0.0/8',
-                '10.0.0.0/8',
-                '172.16.0.0/12',
-                '192.168.0.0/16',
-                '169.254.0.0/16',
-                '::1/128',
-                'fc00::/7',
-                'fe80::/10',
-            ]);
+            $middleware->prepend(ConfigureTrustedProxies::class);
+            $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PORT);
         }
 
         $middleware->prepend(SubdomainRootResponse::class);
@@ -106,19 +113,23 @@ return Application::configure(basePath: dirname(__DIR__))
         // Controller constructors can resolve sessions before route middleware runs.
         $middleware->append(IsolateAuthenticationSession::class);
 
+        // Global rather than the web group: Filament panel routes do not run the web group.
+        $middleware->append(SecurityHeaders::class);
+
         $middleware->web(
             append: [
                 'auth.context',
                 RedirectToPrimaryHost::class,
                 EnsureAuthenticationComplete::class,
                 StopImpersonationOnLogout::class,
+                SuperviseImpersonation::class,
             ],
         );
 
-        // Only enforced on multi-host deployments (any *_DOMAIN configured);
-        // the framework already skips TrustHosts in local and test runs.
         // Anchored patterns, because Symfony matches them as unanchored regex.
         $middleware->trustHosts(at: function (): array {
+            $primaryHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+
             $dedicatedDomains = array_filter(
                 [
                     config('app.api_domain'),
@@ -129,21 +140,16 @@ return Application::configure(basePath: dirname(__DIR__))
                 fn (mixed $domain): bool => is_string($domain) && $domain !== '',
             );
 
-            if ($dedicatedDomains === []) {
-                return [];
-            }
-
-            $primaryHost = parse_url((string) config('app.url'), PHP_URL_HOST);
-
             $hosts = array_filter([
                 $primaryHost,
                 is_string($primaryHost) ? "www.{$primaryHost}" : null,
                 ...array_values($dedicatedDomains),
+                ...config('app.trusted_hosts'),
             ], is_string(...));
 
             return array_map(
                 fn (string $host): string => '^'.preg_quote($host).'$',
-                array_values($hosts),
+                array_values(array_unique($hosts)),
             );
         }, subdomains: false);
 
@@ -184,6 +190,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.context' => EnsureAuthenticationContext::class,
             'signed' => ValidateSignature::class,
             'no-referrer' => NoReferrer::class,
+            'workspaces.across' => ReadAcrossWorkspaces::class,
             // Fortify and Passkeys both reference this alias by name in their own
             // route definitions; overriding it here (rather than swapping every
             // route's middleware array) is the only way to reach both packages'
@@ -250,6 +257,49 @@ return Application::configure(basePath: dirname(__DIR__))
         // Sentry (issue #125406836).
         $exceptions->dontReport(CorruptComponentPayloadException::class);
 
+        // Tampered updates are client noise, not bugs. Logging inside the dontReport check is the
+        // only point that runs before Sentry and before an exception's own report().
+        $livewireTamperExceptions = [
+            CannotUpdateLockedPropertyException::class,
+            PublicPropertyNotFoundException::class,
+            DirectlyCallingLifecycleHooksNotAllowedException::class,
+            MethodNotFoundException::class,
+            CannotCallComputedDirectlyException::class,
+        ];
+        $isLivewireTamper = fn (Throwable $e): bool => Arr::first(
+            $livewireTamperExceptions,
+            fn (string $class): bool => $e instanceof $class,
+        ) !== null;
+
+        $exceptions->dontReportWhen(function (Throwable $e) use ($isLivewireTamper): bool {
+            if (! request()->hasHeader('X-Livewire') || ! $isLivewireTamper($e)) {
+                return false;
+            }
+
+            Log::warning('Livewire request rejected as tampered', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'components' => collect(request()->array('components'))
+                    ->map(fn (mixed $component): mixed => is_string($snapshot = data_get($component, 'snapshot'))
+                        ? data_get(json_decode($snapshot, true), 'memo.name')
+                        : null)
+                    ->filter()
+                    ->values()
+                    ->all(),
+                'ip' => request()->ip(),
+            ]);
+
+            return true;
+        });
+
+        $exceptions->render(function (Throwable $e, Request $request) use ($isLivewireTamper): ?Response {
+            if (! $request->hasHeader('X-Livewire') || ! $isLivewireTamper($e)) {
+                return null;
+            }
+
+            return response('', 419);
+        });
+
         // Passport reports every rejected bearer token; keep league's 5xx server errors visible.
         $exceptions->dontReportWhen(
             fn (Throwable $e): bool => $e instanceof OAuthServerException && $e->getHttpStatusCode() < 500,
@@ -273,6 +323,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('queue:prune-batches --hours=24')->daily()->onOneServer();
         $schedule->command('invitations:cleanup')->daily()->onOneServer();
         $schedule->command('activitylog:clean --force')->daily()->onOneServer();
+        $schedule->command('model:prune', ['--model' => [Notification::class]])->daily()->onOneServer();
         $schedule->command('chat:expire-pending-actions')->everyFiveMinutes()->onOneServer();
         $schedule->command('chat:release-orphaned-reservations')->everyTenMinutes()->withoutOverlapping()->onOneServer();
         $schedule->command('chat:purge-unsent-attachments')->hourly()->withoutOverlapping()->onOneServer();
@@ -308,6 +359,12 @@ return Application::configure(basePath: dirname(__DIR__))
             $schedule->command('email:dispatch-outbox')
                 ->everyMinute()
                 ->name('email:dispatch-outbox')
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            $schedule->command('email:expire-access-requests')
+                ->hourly()
+                ->name('email:expire-access-requests')
                 ->withoutOverlapping()
                 ->onOneServer();
         }

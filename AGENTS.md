@@ -31,23 +31,80 @@ anatomy mirrors a Laravel app: `src/`, `config/`, `routes/`, `resources/`,
 - `packages/EmailIntegration` owns its controllers, jobs, policies, views, config and
   timeline entries. `App\Http`, `App\Jobs`, `App\Policies`, `App\ActivityLog` and
   `App\Console` must not use it. The app reaches it only from CRM resources, models,
-  onboarding and panel wiring, and anything it exposes to them checks the feature flag
+  onboarding, panel wiring and the MCP email tools in `app/Mcp/Tools/Email`, and
+  anything it exposes to them checks the feature flag
 - Never use the custom-fields package models directly. Use the `App\Models\CustomField*`
   subclasses (runtime model swapping is configured in `AppServiceProvider`)
 - `packages/SystemAdmin` is excluded from PHPStan. When adding or removing enum
   cases, manually sweep SystemAdmin for `match` expressions over that enum (this
   exclusion already caused a production `UnhandledMatchError`)
+- `app/Queries` holds the filter and sort language every list surface shares, laid out
+  like spatie/laravel-query-builder's own `src/`. A class that implements Spatie's `Filter`
+  lives in `app/Queries/Filters`, and a `Sort` in `app/Queries/Sorts`. Shared traits go in
+  `app/Queries/Concerns`, and registries sit at the root. `app/Queries` never uses a
+  transport: `App\Mcp`, `App\Http`, `App\Filament`, `App\Livewire`, `App\Scribe` or
+  `Relaticle\Chat`. Enums stay in `app/Enums`, because the Pest Laravel preset fails one
+  anywhere else. `.ai/rules/queries.md` holds the rules for extending it
 
-## Actions (the write path)
+## Workspace scope (fails closed)
 
-Write operations (create, update, delete) that reach the domain from a transport
-surface go through action classes in `app/Actions/<Domain>/`. Never inline business
+Company, People, Opportunity, Task and Note carry `App\Models\Scopes\WorkspaceScope`. With no
+workspace bound in `App\Support\CurrentWorkspace` the scope returns no rows. It never reads
+every workspace. `tests/Feature/Models/Scopes/WorkspaceScopeTest.php` fails when that changes.
+
+| The code runs | The workspace comes from |
+|---|---|
+| in a web or panel request | `BindCurrentWorkspaceListener`: the signed-in user's workspace, then the Filament tenant |
+| in an API or MCP request | `SetApiWorkspaceContext`, from the token |
+| in a job dispatched while a workspace is bound | Laravel `Context`, which carries the id into the job |
+| in a job, command or webhook that starts unbound | `CurrentWorkspace::within($workspace, fn () => ...)`, which also sets the custom-fields tenant |
+| in the system admin panel | the `workspaces.across` middleware, which reads across workspaces |
+
+- A reader that already filters by an explicit workspace id removes the scope and keeps its own
+  filter: `->withoutGlobalScope(WorkspaceScope::class)->where('workspace_id', $id)`. The filter
+  is the tenant guard, so it never depends on what happens to be bound. `TenantFkValidator` and
+  `ListsEntity` are the working examples
+- Reading across workspaces lives in memory only and never enters `Context`, so a job
+  dispatched from the system admin panel starts unbound. A bound workspace always wins over it
+- Filament builds its own queries for relationship selects, relationship filters and column
+  eager loads. Removing the scope in `getEloquentQuery()` does not reach them, which is why the
+  system admin panel uses the middleware and no per-resource override
+- Livewire matches persistent middleware by class. `AppServiceProvider` registers
+  `ReadAcrossWorkspaces`, because the alias alone skips every update request.
+  `tests/Feature/SystemAdmin/SystemAdminPanelProviderTest.php` fails without it
+- A job that calls `auth()->setUser()`, as Filament's `ExportCsv` does, fires `Authenticated`.
+  `BindCurrentWorkspaceListener` then binds the user's stored workspace over the one `Context`
+  carried, and every job dispatched from there inherits it. A job that must act in its record's
+  workspace declares `App\Support\Workspaces\BindWorkspace` as middleware with the record's own
+  `workspace_id`, as `App\Jobs\CompleteExport` does.
+  `tests/Feature/Filament/App/Exports/ExportDownloadTest.php` fails when the export notice lands
+  in the other workspace
+
+## Actions (business operations)
+
+An action is one business operation: a class that takes input, does something, and gives
+output. Most are writes. Write operations (create, update, delete) that reach the domain from
+a transport surface go through action classes in `app/Actions/<Domain>/`. Never inline business
 logic in controllers, MCP tools, Livewire components, or Filament resources.
 Actions are the single source of truth for business logic and side effects
 (notifications, syncs, etc.).
 
+A step or a rule that two actions share is an action too, and they inject it.
+`PrepareAgentEmail` checks the capability, the mailbox and the recipient limit, and
+`QueueAgentEmailAction` composes it. A reusable read that returns records is a query class,
+never an action.
+
+An action is named for what it does, verb first, with no `Action` suffix: `CreateOpportunity`,
+`PrepareAgentEmail`. The `Actions` namespace already says what it is.
+`tests/Arch/ConventionsTest.php` fails a class in an `Actions` folder whose name ends in
+`Action`. The 51 EmailIntegration actions that predate the rule are listed in that test, and
+the list only shrinks.
+
 The canonical shape is `final readonly`, with a single `execute()` method and
-authorization plus tenant-ownership checks inside the action itself:
+authorization plus tenant-ownership checks inside the action itself.
+`tests/Arch/ConventionsTest.php` fails an action in `app/Actions` or in a package's `Actions`
+folder that exposes another public method. Five package actions predate the check. They are
+listed in that test, and the list only shrinks:
 
 ```php
 final readonly class CreateOpportunity
@@ -75,15 +132,63 @@ final readonly class CreateOpportunity
   canonical `abort_unless` plus `assertOwned` shape does not apply. Give a command an
   action when a second caller shares the write, otherwise the logic lives in `handle()`
 - When reviewing or refactoring code, extract inline business logic into action classes
-- Use `App\Data` (spatie/laravel-data) objects for structured payloads where they
-  already exist; don't introduce new patterns
+- A structured payload is a class in a `Data` folder. Use spatie/laravel-data when untyped
+  data becomes an object: a request, a stored JSON value, Livewire state
+  (`Relaticle\ImportWizard\Data\ColumnData`). Use a plain `final readonly` class when code
+  builds the object with `new` (`App\Data\ListQuery`). No test tells the two apart, so a
+  reviewer reads for a data object that only ever meets `new`
 - Name domain concepts plainly (`Plan`, not `AiPlan`). Context comes from the
   namespace
+- `Support` holds code with no business rule in it: code that could ship as a standalone
+  package, such as `App\Support\EmailAddress`. A class that knows a capability, a role, a
+  sharing level or a workspace rule is an action, a query, a policy or a model method. No test
+  reads for this, so a reviewer reads for a `Support` class that knows one
+
+## Queries (the read path)
+
+A reusable read is a query class, never an action. `tests/Arch/ConventionsTest.php` fails a
+class under `Actions` named `List*`, `Find*`, `Search*`, `Get*` or `Aggregate*` ("keeps reads out
+of the Actions folders").
+
+| A read that is | Lives in |
+|---|---|
+| a predicate over one model's columns | a `#[Scope]` on the model |
+| one entity's list, or a read across models | `app/Queries/<Domain>/<Name>Query.php` |
+| a read over a package's own models | `packages/<Name>/src/Queries/<Name>Query.php` |
+| a read with one caller | inline in that caller |
+
+A query class is `final readonly`. The five list queries implement
+`App\Queries\Contracts\EntityQuery` and use `App\Queries\Concerns\ListsEntity`. The shape is
+an interface plus a trait, not a base class, because three arch tests forbid inheritance in `App`.
+The trait authorizes and bounds the workspace itself, so a transport cannot forget either:
+
+````php
+final readonly class CompaniesQuery implements EntityQuery
+{
+    use ListsEntity;
+
+    // fields() and includes()
+}
+
+$page = $query->paginate($user, $request->toListQuery());
+````
+
+- Each transport maps its own input to `App\Data\ListQuery`. A query class reads no ambient
+  user, request or workspace, because chat tools run in queued jobs. `tests/Arch/ArchTest.php`
+  fails it ("takes the acting user and reads no ambient user, request or workspace")
+- `CrmEntity::query()` owns which query lists which entity. A list query declares `fields()` and
+  `includes()`, and the trait derives the rest
+- `paginate()` is the one entry. The builder behind it stays private until a caller needs more
+  than a page, and `.ai/rules/queries.md` says how to open it
+- A query class never writes. `EloquentWriteOutsideActionRule` (PHPStan) covers every `Queries`
+  folder, and `tests/Arch/ConventionsTest.php` fails one that `phpstan.neon` does not list
+- `.ai/rules/queries.md` holds the filter grammar and the rest of the rules
 
 ## One fact, one owner
 
 A fact more than one surface publishes gets an owner class, and every surface reads it.
 The working examples: `CustomFieldFilterSchema` owns filter operators,
+`EntityFilters::definitions()` owns the filter names each entity accepts,
 `App\Mcp\Schema\CustomFieldSchema` plus `CustomFieldType::inputFormat()` own how a
 custom field is described to an agent, `CrmEntity::titleColumn()` owns the name column.
 Facts that are a pure function of an enum case (a label, a format, a capability) live on
@@ -190,6 +295,21 @@ production: message ordering, approval races, duplicate proposals.
   single card and approved once (`ProposalPlanService`). A new foreign key on a
   write tool must be listed in `ownedForeignKeys()`/`ownedForeignKeyLists()`, or
   it will accept neither reference validation nor ownership checks.
+- A write that leaves the workspace is approved on its own: an email send and a
+  workspace invitation. `ProposalEntity::needsOwnApproval()` owns that list.
+  `ProposalPlanService::approveAll()` skips such a step: it stays pending, shown in
+  full, with its own button, and the keyboard shortcut never approves it.
+  `SendEmailTool` takes one email per call, and `PendingAction::isEmailSend()` makes
+  `approveStep()` refuse a batch of them. An invitation step may hold several
+  addresses, and its button sends them all. `tests/Feature/Chat/EmailToolsTest.php`
+  and `tests/Feature/Chat/InviteWorkspaceMemberToolTest.php` fail when "Approve all"
+  or its shortcut sends either.
+- `Relaticle\Chat\Enums\ProposalEntity` owns every fact that follows from what a proposal
+  writes: its title key, its core fields, its verbs, and whether it is approved on its own.
+  `PendingAction::entity_type` is cast to it. A new kind of proposal is a new case, and every
+  `match` in the enum lists each case with no `default`, so PHPStan fails a case that a
+  fact forgot. Strings remain only where another vocabulary starts: the custom-fields
+  bridge, `RecordReferenceResolver`, and payloads sent to the browser or the model.
 - Resolve a reference only at approval time (`PlanReferenceResolver`), never at
   proposal time, and never let a `$ref` fall out of a card's display: a plan card
   that hides the link being approved is the failure this design exists to
@@ -321,15 +441,19 @@ months two copies of the same field vocabulary drifted apart.
 ## Quality Checks
 
 The local loop is scoped to the change. GitHub CI (`.github/workflows/ci.yml`) is the
-only full run: it executes lint, rector, PHPStan, type coverage, five test shards and
+only full run: it executes lint, rector, PHPStan, type coverage, six test shards and
 six Browser shards on every push to a pull request. A run takes about 4 minutes when
 runners are free, and longer when several runs queue for them.
 
 After each change, while iterating:
 
 1. `vendor/bin/pint --dirty --format agent`: fix code style
-2. `php artisan test --compact <paths>`: the test files you touched, plus the tests
-   that exercise the classes you changed (`grep -rl 'ClassName' tests`)
+2. `composer test:affected`: the tests the branch's changes reach, picked from the TIA
+   baseline and run on four processes. `-- --plan` lists them and runs nothing. When it
+   refuses, or names a file it cannot place, run `php artisan test --compact <paths>`
+   over the test files you touched and the tests that exercise the classes you changed
+   (`grep -rl 'ClassName' tests`). The Running the suite section of `testing.md` has
+   both forms
 
 Once, before pushing:
 
@@ -396,8 +520,8 @@ are under about 50. Each rule below names what fails when it is broken.
   only shrinks. A listed method that grows fails. One that shrinks has its entry lowered, and one
   that fits has it removed. `tests/Arch/ConventionsTest.php` fails an entry whose method is gone.
 - A class is named for its role where its directory carries one: `Command`, `Controller`,
-  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`. `tests/Arch/ConventionsTest.php`
-  fails a class there without the suffix.
+  `Request`, `Resource`, `Mail`, `Observer`, `Policy`, `Tool`, and `Filter` and `Sort` under
+  `app/Queries`. `tests/Arch/ConventionsTest.php` fails a class there without the suffix.
 - Code reaches the network, the shell, and a wait through `Http`, `Process`, and `Sleep`. A test
   can fake each of them, and nothing can fake the raw call. `tests/Arch/ArchTest.php` fails a
   direct Guzzle client, `curl_*`, Symfony `Process` or `HttpClient`, `sleep()`, and `usleep()`.
@@ -443,7 +567,7 @@ is the exception that admits the code could not.
 - Tenant context for the custom-fields package is set in `SetApiWorkspaceContext` middleware via `TenantContextService::setTenantId()`. Actions don't need `withTenant()` wrappers
 - In Filament, the package's own `SetTenantContextMiddleware` handles tenant context. No action-level code is needed there either
 - `CustomFieldValidationService` intentionally uses explicit `where('tenant_id', ...)` with `withoutGlobalScopes()`. This is defensive and correct; don't change it to rely on ambient state
-- Every write path that is NOT a Filament panel request or behind `SetApiWorkspaceContext` (chat action approval, queued jobs, webhooks, commands) must set `TenantContextService::setTenantId()` before saving custom fields. Otherwise `saveCustomFields` iterates every tenant (gateway timeouts + cross-tenant writes). Wrap manual calls in try/finally restoring the previous tenant id (mirror `SetApiWorkspaceContext`)
+- Every write path that is NOT a Filament panel request or behind `SetApiWorkspaceContext` (chat action approval, queued jobs, webhooks, commands) runs inside `CurrentWorkspace::within($workspace, fn () => ...)` before saving custom fields. It binds the CRM workspace and the custom-fields tenant together and restores both, also when the callback throws. Without the tenant, `saveCustomFields` iterates every tenant (gateway timeouts + cross-tenant writes). Never hand-roll the `TenantContextService::setTenantId()` try/finally in new code
 - Writing null/empty for a custom field is how a value is cleared. Never skip or filter out "empty" values on save; only keys absent from the payload are left untouched. Verify any persistence change in both directions (set a value AND clear it), through both the panel form and the chat/API path
 - Retire a field type through `config('custom-fields.field_type_configuration')->disabled()` and keep its `CustomFieldType` case. Stored rows still need a type name and a write format when a schema lists them, and `CustomFieldType::from()` throws without the case. `FILE_UPLOAD` is the precedent
 - Sections, validation rules, conditional visibility and field width are package features Relaticle does not use. `config/custom-fields.php` disables all four, so the settings form never shows them. They are never a parity gap: do not add them to a chat tool, an MCP tool or the API
@@ -504,9 +628,32 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
 
 ## Running the suite
 
-- The normal local run is scoped: `php artisan test --compact <paths>` over the test
-  files you touched and the tests that exercise the classes you changed. The Quality
-  Checks section of `core.md` lists the whole loop.
+- The normal local run is `composer test:affected`. Pest reads the baseline the
+  `TIA Baseline` workflow records and lists the test files the branch's changes reach.
+  `bin/test-affected.sh` runs them with TIA off on four processes, because a TIA run
+  records coverage at 2.5 times the CPU. A seeded bug in `CreateOpportunity` broke 28
+  tests in 9 files. This run caught all 28 in 50s. The files `grep` picked caught 19.
+  The Quality Checks section of `core.md` lists the whole loop.
+- The command refuses past 60 files: the change reaches most of the suite, or no
+  baseline matches the checkout. A change to `composer.lock`, `phpunit.xml`,
+  `pnpm-lock.yaml` or `vite.config.js` voids the baseline until the workflow records on
+  it. Then the run is scoped by hand: `php artisan test --compact <paths>` over the test
+  files you touched and the tests that exercise the classes you changed.
+- The command names the files coverage cannot place: `config/`, `routes/`, `bootstrap/`,
+  JavaScript and CSS. Pick their tests by hand. Coverage also records no edge for a file
+  a test reads from disk, so `PestTiaRuntime::FILES_ARCH_TESTS_READ` maps those to
+  `tests/Arch`. A new test that reads a file adds its path there.
+- `pestphp/pest` installs from the `ManukMinasyan/pest` fork, branch
+  `tia-warmup-worktrees`. Stock Pest cannot fetch a baseline inside a git worktree
+  (pestphp/pest#1820) and has no `trustDefaultBranch()`. Return to `^5.0` when both ship.
+- A hand-picked run over more than one file goes parallel on four processes:
+  `php artisan test --compact tests/Feature/Api/V1 --parallel --processes=4`. Those 15
+  files take 73s in one process and 28s in four. A parallel run accepts one path. For
+  several files, pass the directory they share and name them:
+  `--filter='(NotesApiTest|TasksApiTest)::'`. Keep the directory, because the same filter
+  over the whole suite loads every test file and gains nothing. One file stays in one
+  process: each worker migrates its own database first. Four processes beat one per core
+  (33s) while other workspaces share the machine.
 - The merge gate is the `Tests` workflow on GitHub, which runs the complete suite on
   every push to a pull request. After a push, watch it as a background task. Do not run
   the complete suite locally to confirm a push.
@@ -515,9 +662,12 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
   a scoped run cannot, and for recording a TIA graph. TIA replays a cached pass whenever
   a test's edges are unchanged, so it cannot see time-dependent failures (`travelTo`,
   expiring tokens), `.env` edits, or dynamic dispatch it did not trace while recording.
-- After changing test timings materially, refresh the CI shard balance with
-  `composer test:update-shards` and commit `tests/.pest/shards.json`; a stale
-  file silently drops new test classes out of time-balancing.
+- The `Shard Timings` workflow records each test class's duration on main every night, and
+  each `Tests` shard restores that recording before Pest splits the suite. A class with no
+  recording yet is dealt round-robin. Browser shards are not timed and split round-robin too.
+  `tests/.pest/shards.json` is only the fallback for a run that finds no recording, so do not
+  refresh it with a local `composer test:update-shards`: a laptop's timings skew the split.
+  Refresh it from the workflow's `pest-shards` artifact.
 
 === .ai/relaticle/ui rules ===
 
@@ -557,6 +707,17 @@ test directories; if one is ever needed, declare it in BOTH `phpunit.xml` and
   values or colors without a semantic token.
 - Demo/example content (names, companies, conversations) must read like real CRM
   data for the buyer persona. No placeholder-looking values.
+
+## Stylesheets
+
+- Each Tailwind entry lists its sources with `@source`, and `app.css` turns automatic detection off with
+  `source(none)`. Detection reads `.gitignore`, which the Docker build never sees, so the image once
+  scanned all of `vendor/` and shipped different CSS from production.
+- A class written in a directory no entry lists never reaches the CSS. Add the directory to the entry
+  whose pages render it.
+- `documentation.css` only `@reference`s `app.css`, because the docs shell loads both. It emits no utilities.
+- The Dockerfile frontend stage copies or mounts every `@source` path. `tests/Arch/ConventionsTest.php`
+  fails a path that does not exist or that the stage cannot see.
 
 ## Icons (Remix Icon)
 

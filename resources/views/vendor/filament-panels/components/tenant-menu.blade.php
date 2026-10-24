@@ -31,11 +31,21 @@
     $afterSwitcherItemGroups = $multiGroupAfterSwitcher ? $this->getTenantMenuItemGroupsAfterSwitcher() : [];
 
     $isSidebarCollapsibleOnDesktop = filament()->isSidebarCollapsibleOnDesktop();
+
+    if ($isSearchable) {
+        foreach ($items as $item) {
+            $item->extraAttributes([
+                'role' => ($item->getUrl() && (! $item->shouldPostToUrl())) ? 'link' : 'button',
+                'tabindex' => '0',
+            ], merge: true);
+        }
+    }
 @endphp
 
 {{ \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::TENANT_MENU_BEFORE) }}
 
 <x-filament::dropdown
+    :menu="! $isSearchable"
     placement="bottom-start"
     size
     :teleport="$teleport"
@@ -52,12 +62,13 @@
                     tooltip = $store.sidebar.isOpen
                         ? false
                         : {
-                              content: @js($currentTenantName),
+                              content: @js(($currentTenantName instanceof \Illuminate\Contracts\Support\Htmlable) ? $currentTenantName->toHtml() : $currentTenantName),
+                              allowHTML: @js($currentTenantName instanceof \Illuminate\Contracts\Support\Htmlable),
                               placement: document.dir === 'rtl' ? 'left' : 'right',
                               theme: $store.theme,
                           }
                 "
-                x-tooltip.html="tooltip"
+                x-tooltip="tooltip"
             @endif
             type="button"
             class="fi-tenant-menu-trigger"
@@ -113,7 +124,7 @@
     @endif
 
     @if ($canSwitchTenants)
-        <div x-data="{ search: '' }">
+        <div x-data="filamentTenantMenu">
             <x-filament::dropdown.list>
                 @if ($isSearchable)
                     <div x-id="['input']">
@@ -138,20 +149,36 @@
                     @endphp
 
                     <div
-                        x-show="
-                            search === '' ||
-                                @js($tenantName).replace(/ /g, '')
-                                    .toLowerCase()
-                                    .includes(search.replace(/ /g, '').toLowerCase())
-                        "
+                        class="fi-tenant-menu-item"
+                        x-show="matchesSearch(@js(($tenantName instanceof \Illuminate\Contracts\Support\Htmlable) ? html_entity_decode(strip_tags($tenantName->toHtml()), ENT_QUOTES | ENT_HTML5, 'UTF-8') : $tenantName))"
                     >
-                        <x-filament::dropdown.list.item
-                            :href="$tenantUrl"
-                            :image="$tenantImage"
-                            tag="a"
-                        >
-                            {{ $tenantName }}
-                        </x-filament::dropdown.list.item>
+                        @if ($isSearchable)
+                            <a
+                                {{ \Filament\Support\generate_href_html($tenantUrl) }}
+                                class="fi-dropdown-list-item"
+                            >
+                                @if ($tenantImage)
+                                    <div
+                                        class="fi-dropdown-list-item-image"
+                                        style="
+                                            background-image: url('{{ $tenantImage }}');
+                                        "
+                                    ></div>
+                                @endif
+
+                                <span class="fi-dropdown-list-item-label">
+                                    {{ $tenantName }}
+                                </span>
+                            </a>
+                        @else
+                            <x-filament::dropdown.list.item
+                                :href="$tenantUrl"
+                                :image="$tenantImage"
+                                tag="a"
+                            >
+                                {{ $tenantName }}
+                            </x-filament::dropdown.list.item>
+                        @endif
                     </div>
                 @endforeach
             </x-filament::dropdown.list>

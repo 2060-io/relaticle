@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Services\WorkspaceActivationFacts;
+use App\Support\CurrentWorkspace;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -65,7 +66,7 @@ function seedSampleRecords(Workspace $workspace, User $owner): void
         $model::factory()->create([
             'workspace_id' => $workspace->getKey(),
             'creator_id' => $owner->getKey(),
-            'creation_source' => CreationSource::SYSTEM,
+            'creation_source' => CreationSource::SAMPLE,
         ]);
     }
 }
@@ -73,7 +74,7 @@ function seedSampleRecords(Workspace $workspace, User $owner): void
 function expectSampleRecordsIntact(Workspace $workspace): void
 {
     foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
-        expect($model::query()->where('workspace_id', $workspace->getKey())->where('creation_source', CreationSource::SYSTEM)->exists())->toBeTrue();
+        expect($model::query()->where('workspace_id', $workspace->getKey())->where('creation_source', CreationSource::SAMPLE)->exists())->toBeTrue();
     }
 }
 
@@ -102,7 +103,7 @@ it('completes the first-record step once the workspace holds a record the worksp
 it('leaves the first-record step incomplete while only seeded demo records exist', function (): void {
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     livewire(ActivationChecklist::class)
@@ -426,7 +427,7 @@ it('mentions sample data only while seeded records remain', function (): void {
 
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
@@ -496,7 +497,7 @@ it('asks what the assistant can do while the workspace holds no records', functi
 it('asks about the pipeline once the workspace holds records, seeded ones included', function (): void {
     People::factory()->create([
         'workspace_id' => $this->workspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
@@ -523,7 +524,7 @@ it('shows the invite row to the owner and hides it from a member', function (): 
         ->assertDontSee(__('filament/pages/dashboard.activation.invite_members'));
 });
 
-it('offers to remove sample data only once the workspace has an own record', function (): void {
+it('offers to remove sample data only once the workspace holds a record that is not a sample', function (): void {
     seedSampleRecords($this->workspace, $this->owner);
 
     livewire(ActivationChecklist::class)
@@ -543,6 +544,51 @@ it('offers to remove sample data only once the workspace has an own record', fun
         ->assertSee(__('filament/pages/dashboard.activation.remove_sample_data'));
 });
 
+it('offers to remove sample data once a mailbox sync has brought in a record', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => null,
+        'creation_source' => CreationSource::MAILBOX,
+    ]);
+
+    resolve(WorkspaceActivationFacts::class)->forget($this->workspace);
+
+    livewire(ActivationChecklist::class)
+        ->assertSet('canRemoveSampleData', true)
+        ->assertSee(__('filament/pages/dashboard.activation.remove_sample_data'));
+});
+
+it('removes sample data and keeps the records a mailbox sync created', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    $synced = People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => null,
+        'creation_source' => CreationSource::MAILBOX,
+    ]);
+
+    livewire(ActivationChecklist::class)->call('removeSampleData');
+
+    expect(People::query()->whereKey($synced->getKey())->exists())->toBeTrue()
+        ->and(People::query()->where('workspace_id', $this->workspace->getKey())->where('creation_source', CreationSource::SAMPLE)->exists())->toBeFalse();
+});
+
+it('removes the sample data of the workspace it is given when no workspace is bound', function (): void {
+    seedSampleRecords($this->workspace, $this->owner);
+    People::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+    resolve(CurrentWorkspace::class)->forget();
+
+    $removed = resolve(RemoveSampleData::class)->execute($this->owner, $this->workspace);
+
+    expect($removed)->toBeGreaterThan(0)
+        ->and($this->workspace->people()->where('creation_source', CreationSource::SAMPLE)->exists())->toBeFalse();
+});
+
 it('removes every system record and keeps the workspace\'s own', function (): void {
     seedSampleRecords($this->workspace, $this->owner);
     $own = People::factory()->create([
@@ -557,7 +603,7 @@ it('removes every system record and keeps the workspace\'s own', function (): vo
         ->assertRedirect(Dashboard::getUrl());
 
     foreach ([Company::class, People::class, Opportunity::class, Task::class, Note::class] as $model) {
-        expect($model::query()->where('workspace_id', $this->workspace->getKey())->where('creation_source', CreationSource::SYSTEM)->exists())->toBeFalse();
+        expect($model::query()->where('workspace_id', $this->workspace->getKey())->where('creation_source', CreationSource::SAMPLE)->exists())->toBeFalse();
     }
 
     expect(People::query()->whereKey($own->getKey())->exists())->toBeTrue()
@@ -581,7 +627,7 @@ it('keeps the contacts a mailbox sync created when removing sample data', functi
     expect(People::query()->whereKey($synced->getKey())->exists())->toBeTrue();
 });
 
-it('refuses removal while the workspace has no own record', function (): void {
+it('refuses removal while the workspace holds nothing but sample records', function (): void {
     seedSampleRecords($this->workspace, $this->owner);
 
     livewire(ActivationChecklist::class)

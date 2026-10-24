@@ -11,8 +11,10 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\CanonicalRecordUrl;
 use App\Support\LikePattern;
+use App\Support\PhoneSearch;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -75,6 +77,7 @@ final class SearchTool extends Tool
 
         $limit = (int) ($validated['limit'] ?? 5);
         $query = LikePattern::escape($validated['query']);
+        $phonePattern = PhoneSearch::pattern($validated['query']);
         $workspace = $user->currentWorkspace;
 
         if (! $workspace instanceof Workspace) {
@@ -96,26 +99,9 @@ final class SearchTool extends Tool
 
             $hits = $modelClass::query()
                 ->where('workspace_id', $workspace->getKey())
-                ->where(function (Builder $builder) use ($field, $query, $workspace, $entityType, $table): void {
+                ->where(function (Builder $builder) use ($field, $query, $phonePattern, $workspace, $entityType, $table): void {
                     $builder->where($field, 'ilike', "%{$query}%");
-                    $builder->orWhereExists(function (QueryBuilder $sub) use ($entityType, $table, $query, $workspace): void {
-                        $sub->selectRaw('1')
-                            ->from('custom_field_values as cfv')
-                            ->join('custom_fields as cf', 'cf.id', '=', 'cfv.custom_field_id')
-                            ->whereColumn('cfv.entity_id', "{$table}.id")
-                            ->where('cfv.entity_type', $entityType)
-                            ->where('cfv.tenant_id', (string) $workspace->getKey())
-                            ->where('cf.active', true)
-                            ->whereNotIn('cf.type', self::EXCLUDED_CUSTOM_FIELD_TYPES)
-                            ->where(function (QueryBuilder $values) use ($query): void {
-                                $values->where('cfv.text_value', 'ilike', "%{$query}%")
-                                    ->orWhere('cfv.string_value', 'ilike', "%{$query}%")
-                                    ->orWhereRaw(
-                                        "cfv.json_value is not null and json_typeof(cfv.json_value) = 'array' and exists (select 1 from json_array_elements_text(cfv.json_value) as elem(val) where elem.val ilike ?)",
-                                        ["%{$query}%"],
-                                    );
-                            });
-                    });
+                    $this->orMatchesCustomFields($builder, $entityType, $table, $query, $phonePattern, $workspace);
                 })
                 ->orderBy($field)
                 ->orderBy('id')
@@ -151,5 +137,34 @@ final class SearchTool extends Tool
             'count' => count($results),
             'truncated' => $truncated,
         ]);
+    }
+
+    /**
+     * @param  Builder<Model>  $builder
+     */
+    private function orMatchesCustomFields(Builder $builder, string $entityType, string $table, string $query, ?string $phonePattern, Workspace $workspace): void
+    {
+        $builder->orWhereExists(function (QueryBuilder $sub) use ($entityType, $table, $query, $phonePattern, $workspace): void {
+            $sub->selectRaw('1')
+                ->from('custom_field_values as cfv')
+                ->join('custom_fields as cf', 'cf.id', '=', 'cfv.custom_field_id')
+                ->whereColumn('cfv.entity_id', "{$table}.id")
+                ->where('cfv.entity_type', $entityType)
+                ->where('cfv.tenant_id', (string) $workspace->getKey())
+                ->where('cf.active', true)
+                ->whereNotIn('cf.type', self::EXCLUDED_CUSTOM_FIELD_TYPES)
+                ->where(function (QueryBuilder $values) use ($query, $phonePattern): void {
+                    $values->where('cfv.text_value', 'ilike', "%{$query}%")
+                        ->orWhere('cfv.string_value', 'ilike', "%{$query}%")
+                        ->orWhereRaw(
+                            "cfv.json_value is not null and json_typeof(cfv.json_value) = 'array' and exists (select 1 from json_array_elements_text(cfv.json_value) as elem(val) where elem.val ilike ?)",
+                            ["%{$query}%"],
+                        );
+
+                    if ($phonePattern !== null) {
+                        $values->orWhereRaw(PhoneSearch::ELEMENT_CONDITION, [$phonePattern]);
+                    }
+                });
+        });
     }
 }

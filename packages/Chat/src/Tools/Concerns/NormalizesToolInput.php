@@ -8,16 +8,13 @@ use Laravel\Ai\Tools\Request;
 
 trait NormalizesToolInput
 {
-    /**
-     * Drop only genuinely-absent (null) entries, preserving falsy-but-valid
-     * values like "0", 0, false, "". Use instead of bare array_filter().
-     *
-     * @param  array<string, mixed>  $values
-     * @return array<string, mixed>
-     */
-    protected function dropNull(array $values): array
+    protected function withoutNullArguments(Request $request): Request
     {
-        return array_filter($values, static fn (mixed $v): bool => $v !== null);
+        return new Request(
+            array_filter($request->all(), static fn (mixed $argument): bool => $argument !== null),
+            $request->toolCallId(),
+            $request->toolInvocationId(),
+        );
     }
 
     /**

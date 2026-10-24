@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 use App\Actions\Company\UpdateCompany;
-use App\Actions\Crm\GetCrmSummary;
-use App\Actions\Opportunity\AggregateOpportunities;
 use App\Enums\CreationSource;
 use App\Enums\WorkspaceRole;
 use App\Mcp\Servers\RelaticleServer;
@@ -24,17 +22,20 @@ use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\Opportunity;
+use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Queries\Crm\CrmSummaryQuery;
+use App\Queries\Opportunities\OpportunityAggregatesQuery;
 use App\Support\CurrentSource;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Testing\Fluent\AssertableJson;
 
 mutates(
-    AggregateOpportunities::class,
+    OpportunityAggregatesQuery::class,
     AggregateOpportunitiesTool::class,
     BaseListTool::class,
-    GetCrmSummary::class,
+    CrmSummaryQuery::class,
     GetCrmSchemaTool::class,
     GetCrmSummaryTool::class,
     ListActivityTool::class,
@@ -58,7 +59,10 @@ it('returns the current active schema through a tool', function (): void {
         ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
             ->where('entity', 'people')
             ->has('custom_fields.emails')
-            ->has('filterable_fields')
+            ->has('filterable_fields.name.operators')
+            ->has('filterable_fields.company.entity')
+            ->has('filterable_fields.types.email.sub_fields.domain')
+            ->has('filterable_fields.custom_fields.emails.type')
             ->has('relationships')
             ->etc());
 });
@@ -115,6 +119,25 @@ it('aggregates opportunity counts and amount by company', function (): void {
             ->where('rows.0.total_amount', 300)
             ->where('total_count', 2)
             ->etc());
+});
+
+it('does not surface the name of another workspace company in the company aggregate', function (): void {
+    $otherUser = User::factory()->withPersonalWorkspace()->create();
+    $foreignCompany = Company::factory()
+        ->recycle([$otherUser, $otherUser->personalWorkspace()])
+        ->create(['name' => 'Foreign Holdings']);
+    Opportunity::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $foreignCompany->id,
+    ]);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(AggregateOpportunitiesTool::class, ['group_by' => 'company'])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('rows.0.label', 'No Company')
+            ->where('rows.0.count', 1)
+            ->etc())
+        ->assertDontSee('Foreign Holdings');
 });
 
 it('marks aggregates truncated only when more than one hundred groups exist', function (): void {
@@ -186,6 +209,25 @@ it('returns activity with complete saves and caller-timezone timestamps', functi
             ->etc());
 });
 
+it('names a change by a deleted account as a former member', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => 'admin']);
+    $member->switchWorkspace($this->workspace);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Before']);
+
+    $this->actingAs($member);
+    resolve(UpdateCompany::class)->execute($member, $company, ['name' => 'After']);
+    $member->delete();
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListActivityTool::class, ['record_type' => 'company', 'record_id' => $company->id])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('items.0.event', 'updated')
+            ->where('items.0.by', 'Former member')
+            ->etc());
+});
+
 it('denies activity reads to an unverified user', function (): void {
     $unverifiedUser = User::factory()->withPersonalWorkspace()->unverified()->create();
 
@@ -210,10 +252,85 @@ it('rejects page numbers that could overflow database offsets', function (string
     ListCustomFieldsTool::class,
 ]);
 
-it('publishes the opportunity stale day bounds', function (): void {
-    expect(resolve(ListOpportunitiesTool::class)->toArray())
-        ->toHaveKey('inputSchema.properties.stale_days.minimum', 1)
-        ->toHaveKey('inputSchema.properties.stale_days.maximum', 3650);
+it('publishes one filter object and no flat filter params on every list tool', function (string $toolClass): void {
+    $properties = resolve($toolClass)->toArray()['inputSchema']['properties'];
+
+    expect(array_keys($properties))->toBe(['filter', 'sort', 'include', 'per_page', 'page']);
+})->with([
+    'companies' => ListCompaniesTool::class,
+    'people' => ListPeopleTool::class,
+    'opportunities' => ListOpportunitiesTool::class,
+    'tasks' => ListTasksTool::class,
+    'notes' => ListNotesTool::class,
+]);
+
+it('refuses a to-many relationship hidden behind a comma in one include', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => $company->id, 'name' => 'Hidden Person']);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListCompaniesTool::class, ['include' => ['creator,people']])
+        ->assertHasErrors(['Requested include(s) `creator,people` are not allowed.'])
+        ->assertDontSee('Hidden Person');
+});
+
+it('names the replacement for an argument a list tool no longer takes', function (string $toolClass, string $argument, string $replacement): void {
+    Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    RelaticleServer::actingAs($this->user)
+        ->tool($toolClass, [$argument => 'x'])
+        ->assertHasErrors(["{$argument} was replaced. Use {$replacement}."]);
+})->with([
+    'search' => [ListCompaniesTool::class, 'search', 'name or title with $contains'],
+    'created_after' => [ListPeopleTool::class, 'created_after', 'created_at with $gte'],
+    'created_before' => [ListNotesTool::class, 'created_before', 'created_at with $lte'],
+    'company_id' => [ListOpportunitiesTool::class, 'company_id', 'company (or companies) with $in'],
+    'assignee_ids' => [ListTasksTool::class, 'assignee_ids', 'assignees with $in'],
+]);
+
+it('rejects an argument a list tool does not take instead of listing every record', function (string $toolClass, string $argument): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool($toolClass, [$argument => true])
+        ->assertHasErrors(["{$argument} is not accepted here"]);
+})->with([
+    'a filter name sent beside filter' => [ListTasksTool::class, 'assigned_to_me'],
+    'creation_source beside filter' => [ListCompaniesTool::class, 'creation_source'],
+    'a misspelled filter' => [ListCompaniesTool::class, 'filters'],
+]);
+
+it('names a registered tool as the source of the filter codes on every list tool', function (string $toolClass): void {
+    $description = resolve($toolClass)->toArray()['inputSchema']['properties']['filter']['description'];
+    $registeredNames = array_map(
+        fn (string $registered): string => resolve($registered)->name(),
+        new ReflectionClass(RelaticleServer::class)->getDefaultProperties()['tools'],
+    );
+
+    preg_match('/(\S+) lists those codes/', $description, $matches);
+
+    expect($registeredNames)->toContain($matches[1] ?? null);
+})->with([
+    'companies' => ListCompaniesTool::class,
+    'people' => ListPeopleTool::class,
+    'opportunities' => ListOpportunitiesTool::class,
+    'tasks' => ListTasksTool::class,
+    'notes' => ListNotesTool::class,
+]);
+
+it('names only registered tools inside a tool definition', function (): void {
+    $tools = new ReflectionClass(RelaticleServer::class)->getDefaultProperties()['tools'];
+    $registeredNames = array_map(fn (string $tool): string => resolve($tool)->name(), $tools);
+
+    $named = collect($tools)
+        ->flatMap(function (string $tool): array {
+            preg_match_all('/\b(?:get|list|create|update|delete|attach|detach|aggregate)-[a-z]+(?:-[a-z]+)*/', (string) json_encode(resolve($tool)->toArray()), $matches);
+
+            return $matches[0];
+        })
+        ->unique()
+        ->values()
+        ->all();
+
+    expect(array_values(array_diff($named, $registeredNames)))->toBe([]);
 });
 
 it('rejects malformed list tool inputs before building the database query', function (string $toolClass, array $input, string $error): void {
@@ -221,30 +338,22 @@ it('rejects malformed list tool inputs before building the database query', func
         ->tool($toolClass, $input)
         ->assertHasErrors([$error]);
 })->with([
-    'search' => [ListCompaniesTool::class, ['search' => ['Acme']], 'search'],
-    'created after' => [ListCompaniesTool::class, ['created_after' => 'yesterday'], 'created after'],
-    'created before' => [ListCompaniesTool::class, ['created_before' => '26-08-2026'], 'created before'],
-    'date range' => [ListCompaniesTool::class, ['created_after' => '2026-08-27', 'created_before' => '2026-08-26'], 'created before'],
-    'creation source' => [ListCompaniesTool::class, ['creation_source' => 'sample'], 'creation source'],
+    'filter date operand' => [ListCompaniesTool::class, ['filter' => ['created_at' => ['$gte' => 'yesterday']]], 'created_at $gte must be a date as YYYY-MM-DD or an ISO 8601 date-time'],
+    'filter creation source' => [ListCompaniesTool::class, ['filter' => ['creation_source' => ['$eq' => 'system']]], 'creation_source $eq: system is not one of'],
     'filter object' => [ListCompaniesTool::class, ['filter' => ['invalid']], 'filter field must be an object'],
-    'filter operator object' => [ListCompaniesTool::class, ['filter' => ['industry' => 'software']], 'filter.industry'],
+    'filter operator object' => [ListCompaniesTool::class, ['filter' => ['name' => 'software']], 'name takes an operator object'],
     'sort object' => [ListCompaniesTool::class, ['sort' => 'name'], 'sort'],
     'sort field' => [ListCompaniesTool::class, ['sort' => ['direction' => 'asc']], 'field'],
     'sort direction' => [ListCompaniesTool::class, ['sort' => ['field' => 'name', 'direction' => 'sideways']], 'sort.direction'],
     'include list' => [ListCompaniesTool::class, ['include' => ['primary' => 'creator']], 'include'],
-    'people company id' => [ListPeopleTool::class, ['company_id' => []], 'company id'],
-    'opportunity company id' => [ListOpportunitiesTool::class, ['company_id' => []], 'company id'],
-    'opportunity contact id' => [ListOpportunitiesTool::class, ['contact_id' => []], 'contact id'],
-    'opportunity stale days minimum' => [ListOpportunitiesTool::class, ['stale_days' => 0], 'stale days'],
-    'opportunity stale days maximum' => [ListOpportunitiesTool::class, ['stale_days' => 3651], 'stale days'],
-    'task assigned to me' => [ListTasksTool::class, ['assigned_to_me' => 'yes'], 'assigned to me'],
-    'task assignee ids' => [ListTasksTool::class, ['assignee_ids' => 'user-id'], 'assignee ids'],
-    'task assignee id' => [ListTasksTool::class, ['assignee_ids' => ['not-a-ulid']], 'assignee_ids.0'],
-    'task company id' => [ListTasksTool::class, ['company_id' => []], 'company id'],
-    'task people id' => [ListTasksTool::class, ['people_id' => []], 'people id'],
-    'task opportunity id' => [ListTasksTool::class, ['opportunity_id' => []], 'opportunity id'],
-    'note notable type' => [ListNotesTool::class, ['notable_type' => 'deal'], 'notable type'],
-    'note notable id' => [ListNotesTool::class, ['notable_id' => []], 'notable id'],
+    'people relation ids' => [ListPeopleTool::class, ['filter' => ['company' => ['$in' => []]]], 'company $in must be a list of record IDs'],
+    'people relation id' => [ListPeopleTool::class, ['filter' => ['company' => ['$in' => ['abc']]]], 'company $in: abc is not a record ID'],
+    'opportunity stale days minimum' => [ListOpportunitiesTool::class, ['filter' => ['stale_days' => ['$gte' => 0]]], 'stale_days takes'],
+    'opportunity stale days maximum' => [ListOpportunitiesTool::class, ['filter' => ['stale_days' => ['$gte' => 3651]]], 'stale_days takes'],
+    'task assigned to me' => [ListTasksTool::class, ['filter' => ['assigned_to_me' => ['$eq' => 'maybe']]], 'assigned_to_me takes'],
+    'task not assigned to me' => [ListTasksTool::class, ['filter' => ['assigned_to_me' => ['$eq' => false]]], 'assigned_to_me takes'],
+    'task assignees' => [ListTasksTool::class, ['filter' => ['assignees' => ['$gte' => 'user-id']]], 'assignees takes $in, $not_in or $is_empty'],
+    'note relation' => [ListNotesTool::class, ['filter' => ['companies' => ['$eq' => 'x']]], 'companies does not support $eq. Use $in, $not_in, $is_empty, or conditions on the related record'],
 ]);
 
 it('computes task due status in the caller timezone', function (): void {
@@ -370,4 +479,40 @@ it('names every known channel and null in its description', function (): void {
     }
 
     expect($description)->toContain('null');
+});
+
+it('returns an excerpt of a long rich text change, not the whole body', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme']);
+    $body = '<p>'.str_repeat('a renewal note that keeps going. ', 200).'</p><p>closing words</p>';
+
+    Activity::withoutGlobalScopes()->where('subject_id', $company->getKey())->delete();
+    Activity::withoutGlobalScopes()->create([
+        'log_name' => 'crm',
+        'description' => 'custom_field_changes',
+        'event' => 'custom_field_changes',
+        'subject_type' => $company->getMorphClass(),
+        'subject_id' => $company->getKey(),
+        'causer_type' => 'user',
+        'causer_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
+        'attribute_changes' => ['attributes' => ['name' => str_repeat('n', 600)], 'old' => ['name' => 'Acme']],
+        'properties' => ['custom_field_changes' => [[
+            'code' => 'description',
+            'label' => 'Description',
+            'type' => 'rich-editor',
+            'old' => ['value' => '<p>Draft</p>', 'label' => '<p>Draft</p>'],
+            'new' => ['value' => $body, 'label' => $body],
+        ]]],
+    ]);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(ListActivityTool::class, ['record_type' => 'company', 'record_id' => $company->id])
+        ->assertOk()
+        ->assertStructuredContent(fn (AssertableJson $json): AssertableJson => $json
+            ->where('items.0.changes.0.field', 'Name')
+            ->where('items.0.changes.0.new', fn (string $new): bool => str_ends_with($new, '(shortened)'))
+            ->where('items.0.changes.1.field', 'Description')
+            ->where('items.0.changes.1.old', 'Draft')
+            ->where('items.0.changes.1.new', fn (string $new): bool => str_ends_with($new, '(shortened)') && mb_strlen($new) < 600)
+            ->etc());
 });

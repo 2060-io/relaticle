@@ -1,5 +1,5 @@
 {{-- Type-aware proposal field row. Expects Alpine scope var `field`:
-     {label, value?|new?, old?, type?, values?} --}}
+     {label, value?|new?, old?, type?, values?, icon?} --}}
 <div class="flex items-start gap-3">
     <span class="w-32 shrink-0 truncate text-sm leading-5 text-gray-700 sm:w-36 dark:text-gray-300" x-text="field.label"></span>
 
@@ -59,11 +59,20 @@
             ></a>
         </template>
 
+        <template x-if="field.icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="size-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" :d="field.icon"></path>
+            </svg>
+        </template>
+
         <template x-if="!['badges', 'boolean', 'link'].includes(field.type)">
             <span
-                :class="Object.prototype.hasOwnProperty.call(field, 'new')
-                    ? 'font-medium text-gray-900 dark:text-white'
-                    : 'text-gray-700 dark:text-gray-300'"
+                :class="[
+                    Object.prototype.hasOwnProperty.call(field, 'new')
+                        ? 'font-medium text-gray-900 dark:text-white'
+                        : 'text-gray-700 dark:text-gray-300',
+                    String(field.new ?? field.value ?? '').includes('\n') ? 'whitespace-pre-wrap' : '',
+                ]"
                 x-text="field.new ?? field.value"
             ></span>
         </template>

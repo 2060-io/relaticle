@@ -9,6 +9,7 @@ use Filament\Resources\Pages\ViewRecord;
 use Override;
 use Relaticle\SystemAdmin\Filament\Resources\WorkspaceResource;
 use Relaticle\SystemAdmin\Filament\Support\EndTrial;
+use Relaticle\SystemAdmin\Filament\Support\ExtendTrial;
 use Relaticle\SystemAdmin\Filament\Support\Impersonate;
 
 final class ViewWorkspace extends ViewRecord
@@ -20,6 +21,7 @@ final class ViewWorkspace extends ViewRecord
     {
         return [
             Impersonate::workspaceOwner(),
+            ExtendTrial::action(),
             EndTrial::action(),
             EditAction::make()->action(null),
         ];

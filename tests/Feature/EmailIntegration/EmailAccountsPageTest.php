@@ -16,12 +16,12 @@ use Relaticle\EmailIntegration\Actions\DisconnectConnectedAccountAction;
 use Relaticle\EmailIntegration\Data\ConnectAccountData;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
 use Relaticle\EmailIntegration\Enums\EmailProvider;
+use Relaticle\EmailIntegration\Enums\SyncErrorReason;
 use Relaticle\EmailIntegration\Filament\Concerns\HasConnectedAccountActions;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccessRequestsPage;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountSettingsPage;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
 use Relaticle\EmailIntegration\Filament\Pages\EmailSignaturesPage;
-use Relaticle\EmailIntegration\Filament\Pages\UserEmailPrivacyPage;
 use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource;
 use Relaticle\EmailIntegration\Jobs\IncrementalEmailSyncJob;
 use Relaticle\EmailIntegration\Jobs\InitialEmailSyncJob;
@@ -343,8 +343,8 @@ it('queues mailbox history import from the account menu', function (): void {
         ->callAction('reimportHistory', arguments: ['account_id' => $this->account->id])
         ->assertNotified();
 
-    Bus::assertDispatched(RelinkMailboxHistoryJob::class, fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($this->account));
-    Bus::assertDispatched(InitialEmailSyncJob::class, fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($this->account));
+    Bus::assertDispatched(fn (RelinkMailboxHistoryJob $job): bool => $job->connectedAccount->is($this->account));
+    Bus::assertDispatched(fn (InitialEmailSyncJob $job): bool => $job->connectedAccount->is($this->account));
     Bus::assertNotDispatched(IncrementalEmailSyncJob::class);
 });
 
@@ -446,6 +446,22 @@ it('shows a sync issue badge when incremental sync could not store mail', functi
         ->assertDontSee(__('filament/pages/email-accounts.in_sync'));
 });
 
+it('explains on the sync issue badge that Gmail is switched off', function (): void {
+    $reason = SyncErrorReason::GoogleMailDisabled;
+
+    $this->account->update([
+        'status' => EmailAccountStatus::ERROR,
+        'sync_cursor' => 'mail-cursor',
+        'last_synced_at' => now(),
+        'last_error' => $reason->value,
+    ]);
+
+    livewire(EmailAccountsPage::class)
+        ->assertSee(__('filament/pages/email-accounts.sync_error.badge'))
+        ->assertSeeHtml(e($reason->getLabel()))
+        ->assertDontSee($reason->value);
+});
+
 it('stays in sync after history import store failures', function (): void {
     $batch = resolve(MailboxHistoryImportService::class)->startBatch($this->account);
 
@@ -519,14 +535,12 @@ it('keeps email settings out of the sidebar and shows only accounts and template
     expect(EmailAccountsPage::shouldRegisterNavigation())->toBeFalse()
         ->and(EmailTemplateResource::shouldRegisterNavigation())->toBeFalse()
         ->and(EmailSignaturesPage::shouldRegisterNavigation())->toBeFalse()
-        ->and(EmailAccessRequestsPage::shouldRegisterNavigation())->toBeFalse()
-        ->and(UserEmailPrivacyPage::shouldRegisterNavigation())->toBeFalse();
+        ->and(EmailAccessRequestsPage::shouldRegisterNavigation())->toBeFalse();
 
     $this->get(EmailAccountsPage::getUrl(tenant: $this->workspace))
         ->assertSuccessful()
         ->assertSee(__('filament/pages/email-accounts.navigation_label'), false)
         ->assertSee(__('filament/resources/email-template.navigation_label'), false)
         ->assertDontSee(__('filament/pages/email-access-requests.navigation_label'), false)
-        ->assertDontSee(__('filament/pages/email-privacy-settings.navigation_label'), false)
-        ->assertDontSee(__('filament/pages/user-email-privacy.navigation_label'), false);
+        ->assertDontSee(__('filament/pages/email-privacy-settings.navigation_label'), false);
 });

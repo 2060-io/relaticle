@@ -35,15 +35,27 @@ final readonly class CanonicalRecordUrl
         // swallow the UnhandledMatchError a newly added entity raises, turning a
         // missing case into a silently null URL. Only the route lookup is guarded.
         $resource = $this->resource($entity);
-        $modalManaged = $this->isModalManaged($entity);
 
         try {
-            return $modalManaged
-                ? $resource::getUrl('index', $this->modalQuery($recordId), panel: 'app', tenant: $workspace)
-                : $resource::getUrl('view', ['record' => $recordId], panel: 'app', tenant: $workspace);
+            return $this->routeTo($resource, $entity, $recordId, $workspace);
         } catch (Throwable) {
             return null;
         }
+    }
+
+    public function buildOrFail(CrmEntity $entity, string $recordId, Workspace $workspace): string
+    {
+        return $this->routeTo($this->resource($entity), $entity, $recordId, $workspace);
+    }
+
+    /**
+     * @param  class-string<FilamentResource>  $resource
+     */
+    private function routeTo(string $resource, CrmEntity $entity, string $recordId, Workspace $workspace): string
+    {
+        return $this->isModalManaged($entity)
+            ? $resource::getUrl('index', $this->modalQuery($recordId), panel: 'app', tenant: $workspace)
+            : $resource::getUrl('view', ['record' => $recordId], panel: 'app', tenant: $workspace);
     }
 
     /**

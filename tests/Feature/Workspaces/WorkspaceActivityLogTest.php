@@ -22,6 +22,10 @@ use Illuminate\Support\Str;
 use Livewire\Attributes\Url;
 use Livewire\Features\SupportTesting\Testable;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Relaticle\EmailIntegration\Actions\DenyEmailAccessRequestAction;
+use Relaticle\EmailIntegration\Models\ConnectedAccount;
+use Relaticle\EmailIntegration\Models\Email;
+use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 
 mutates(ActivityLog::class, Activity::class);
 
@@ -48,6 +52,25 @@ test('an admin sees who deleted a record and when', function (): void {
         ->assertSee('Ada Owner')
         ->assertSee('Lumen Robotics')
         ->assertSee(__('workspaces.activity.events.deleted'));
+});
+
+test('a change by a deleted account names a former member, and a change with no author names the system', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => 'admin']);
+    $byMember = Company::factory()->for($this->workspace)->create(['name' => 'Lumen Robotics']);
+    $byNobody = Company::factory()->for($this->workspace)->create(['name' => 'Harbor Freight Lines']);
+
+    Activity::withoutGlobalScopes()->delete();
+    $this->actingAs($member);
+    $byMember->delete();
+    auth()->logout();
+    $byNobody->delete();
+    $member->delete();
+    $this->actingAs($this->owner);
+
+    livewire(ActivityLog::class)
+        ->assertOk()
+        ->assertSeeInOrder([__('workspaces.activity.system'), 'Harbor Freight Lines', __('workspaces.activity.former_member'), 'Lumen Robotics']);
 });
 
 test('the audit row survives a permanent delete', function (): void {
@@ -485,6 +508,8 @@ test('a row whose only change fits inline offers no slide-over', function (): vo
 
     livewire(ActivityLog::class)
         ->assertOk()
+        ->assertDontSee(__('workspaces.activity.changes_modal.trigger'))
+        ->assertDontSee(__('workspaces.activity.changes_modal.trigger_full'))
         ->assertActionHidden(TestAction::make('viewChanges')->table($updated));
 });
 
@@ -743,4 +768,98 @@ test('a company account owner change names both owners', function (): void {
     livewire(ActivityLog::class)
         ->assertOk()
         ->assertSeeInOrder(['Owned Co', __('filament/resources/company.fields.account_owner_id.label'), 'Ada Owner', 'Bea Seller']);
+});
+
+test('a single change too long to read inline opens whole in the slide-over', function (): void {
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Long Note Co']);
+    $body = '<p>'.str_repeat('a renewal note that keeps going. ', 200).'</p><p>closing words</p>';
+
+    $activity = Activity::withoutGlobalScopes()->create([
+        'log_name' => 'crm',
+        'description' => 'custom_field_changes',
+        'event' => 'custom_field_changes',
+        'subject_type' => $company->getMorphClass(),
+        'subject_id' => $company->getKey(),
+        'causer_type' => 'user',
+        'causer_id' => $this->owner->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
+        'properties' => ['custom_field_changes' => [[
+            'code' => 'description',
+            'label' => 'Description',
+            'type' => 'rich-editor',
+            'old' => ['value' => '<p>Draft</p>', 'label' => '<p>Draft</p>'],
+            'new' => ['value' => $body, 'label' => $body],
+        ]]],
+    ]);
+
+    $component = livewire(ActivityLog::class)
+        ->assertOk()
+        ->assertDontSee('closing words')
+        ->assertSee(__('workspaces.activity.changes_modal.trigger_full'))
+        ->mountAction(TestAction::make('viewChanges')->table($activity));
+
+    expect(slideOverChanges($component))
+        ->toContain('Draft')
+        ->toContain("going.\nclosing words")
+        ->not->toContain('<p>');
+});
+
+test('a long plain text change keeps its line breaks in the slide-over', function (): void {
+    $company = Company::factory()->for($this->workspace)->create(['name' => 'Plain Note Co']);
+    $body = str_repeat("a renewal line that keeps going\n", 10)."\nclosing words";
+
+    $activity = Activity::withoutGlobalScopes()->create([
+        'log_name' => 'crm',
+        'description' => 'custom_field_changes',
+        'event' => 'custom_field_changes',
+        'subject_type' => $company->getMorphClass(),
+        'subject_id' => $company->getKey(),
+        'causer_type' => 'user',
+        'causer_id' => $this->owner->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
+        'properties' => ['custom_field_changes' => [[
+            'code' => 'summary',
+            'label' => 'Summary',
+            'type' => 'textarea',
+            'old' => ['value' => 'Draft', 'label' => 'Draft'],
+            'new' => ['value' => $body, 'label' => $body],
+        ]]],
+    ]);
+
+    $component = livewire(ActivityLog::class)
+        ->assertOk()
+        ->mountAction(TestAction::make('viewChanges')->table($activity));
+
+    expect(slideOverChanges($component))->toContain("keeps going\nclosing words");
+});
+
+test('a decided email access request is logged under its own name and stays off the audit trail', function (): void {
+    $requester = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
+    $this->workspace->users()->attach($requester, ['role' => 'member']);
+    $account = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->owner->id,
+    ]));
+    $email = Email::factory()->private()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->owner->id,
+        'connected_account_id' => $account->getKey(),
+    ]);
+    $request = EmailAccessRequest::factory()->create([
+        'requester_id' => $requester->id,
+        'owner_id' => $this->owner->id,
+        'email_id' => $email->getKey(),
+    ]);
+    Company::factory()->for($this->workspace)->create(['name' => 'Lumen Robotics'])->delete();
+
+    resolve(DenyEmailAccessRequestAction::class)->execute($request, $this->owner);
+
+    $decision = Activity::query()->where('subject_id', $request->getKey())->sole();
+    $deletion = Activity::query()->where('event', 'deleted')->sole();
+
+    expect($decision->log_name)->toBe(Activity::EMAIL_ACCESS_LOG);
+
+    livewire(ActivityLog::class)
+        ->assertCanSeeTableRecords([$deletion])
+        ->assertCanNotSeeTableRecords([$decision]);
 });

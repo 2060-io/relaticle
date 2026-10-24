@@ -19,9 +19,11 @@ use Livewire\Livewire;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Enums\PendingActionStatus;
+use Relaticle\Chat\Enums\ProposalEntity;
 use Relaticle\Chat\Livewire\Chat\ProposalCard;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\PendingActionService;
+use Relaticle\Chat\Tools\Company\ListCompaniesTool;
 use Relaticle\Chat\Tools\Workspace\RemoveSampleDataTool;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -40,7 +42,7 @@ function seedChatSampleRecords(Workspace $workspace, User $owner): void
         $model::factory()->create([
             'workspace_id' => $workspace->getKey(),
             'creator_id' => $owner->getKey(),
-            'creation_source' => CreationSource::SYSTEM,
+            'creation_source' => CreationSource::SAMPLE,
         ]);
     }
 }
@@ -50,7 +52,7 @@ function remainingSampleRecords(Workspace $workspace): int
     return collect([Company::class, People::class, Opportunity::class, Task::class, Note::class])
         ->sum(fn (string $model): int => $model::query()
             ->where('workspace_id', $workspace->getKey())
-            ->where('creation_source', CreationSource::SYSTEM)
+            ->where('creation_source', CreationSource::SAMPLE)
             ->count());
 }
 
@@ -67,9 +69,11 @@ it('proposes one removal listing the sample count of every entity', function ():
     $pending = PendingAction::query()->where('workspace_id', $this->workspace->getKey())->sole();
 
     expect($result['type'])->toBe('pending_action')
+        ->and(array_keys($result))->toBe(['type', 'pending_action_id', 'turn_id', 'action', 'entity_type', 'operation', 'data', 'display', 'meta'])
+        ->and($result['meta'])->toBe(['agent_should_stop' => true])
         ->and($pending->action_class)->toBe(RemoveSampleData::class)
         ->and($pending->operation)->toBe(PendingActionOperation::Delete)
-        ->and($pending->entity_type)->toBe('sample_data')
+        ->and($pending->entity_type)->toBe(ProposalEntity::SampleData)
         ->and($pending->display_data['summary'])->toBe('Delete 6 sample records')
         ->and(collect($pending->display_data['fields'])->pluck('value', 'label')->all())->toBe([
             'Companies' => '2',
@@ -187,4 +191,22 @@ it('offers sample removal in the setup conversation too', function (): void {
     );
 
     expect($toolClasses)->toContain(RemoveSampleDataTool::class);
+});
+
+it('points a partial removal at the filter tree form that lists only sample records', function (): void {
+    seedChatSampleRecords($this->workspace, $this->owner);
+    $own = Company::factory()->create([
+        'workspace_id' => $this->workspace->getKey(),
+        'creator_id' => $this->owner->getKey(),
+        'creation_source' => CreationSource::WEB,
+    ]);
+
+    $rows = json_decode(resolve(ListCompaniesTool::class)->handle(new Request([
+        'filter' => ['creation_source' => ['$eq' => 'sample']],
+    ])), true)['data'];
+
+    expect(resolve(RemoveSampleDataTool::class)->description())
+        ->toContain('use the list tool with filter {"creation_source": {"$eq": "sample"}}')
+        ->and(array_column($rows, 'id'))->not->toContain($own->getKey())
+        ->and($rows)->toHaveCount(2);
 });

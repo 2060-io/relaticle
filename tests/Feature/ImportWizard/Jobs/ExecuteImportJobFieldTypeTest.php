@@ -5,7 +5,9 @@ declare(strict_types=1);
 use App\Events\WorkspaceCreated;
 use App\Models\People;
 use App\Models\User;
+use Filament\Events\TenantSet;
 use Filament\Facades\Filament;
+use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Support\Facades\Event;
 use Relaticle\ImportWizard\Data\ColumnData;
 use Relaticle\ImportWizard\Enums\RowMatchAction;
@@ -16,7 +18,7 @@ use Tests\Helpers\ImportExecutionFixture;
 mutates(ExecuteImportJob::class);
 
 beforeEach(function (): void {
-    Event::fake()->except([WorkspaceCreated::class]);
+    Event::fake()->except([WorkspaceCreated::class, Authenticated::class, TenantSet::class]);
 
     $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
@@ -52,8 +54,8 @@ it('imports phone custom field with comma-separated numbers as array', function 
 
     $jsonValue = collect($cfv->json_value)->all();
     expect($jsonValue)->toBeArray()
-        ->toContain('+1-555-0101')
-        ->toContain('+44-20-7946-0958');
+        ->toContain('+15550101')
+        ->toContain('+442079460958');
 });
 
 it('imports link custom field with URL value', function (): void {
@@ -73,7 +75,7 @@ it('imports link custom field with URL value', function (): void {
     expect($cfv)->not->toBeNull();
 
     $jsonValue = collect($cfv->json_value)->all();
-    expect($jsonValue)->toContain('https://example.com');
+    expect($jsonValue)->toBe(['https://example.com']);
 });
 
 it('imports toggle custom field with truthy values', function (): void {

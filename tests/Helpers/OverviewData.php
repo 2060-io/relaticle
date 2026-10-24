@@ -57,7 +57,7 @@ final class OverviewData
             'workspace_id' => $workspace->getKey(),
             'creator_id' => null,
             'account_owner_id' => null,
-            'creation_source' => CreationSource::SYSTEM,
+            'creation_source' => CreationSource::SAMPLE,
             'created_at' => $at,
             'updated_at' => $at,
         ]));

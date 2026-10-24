@@ -81,12 +81,13 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             ['value' => 'other', 'label' => __('Other')],
         ]),
         proposalTexts: @js([
-            'createdVerb' => __('Created'),
-            'updatedVerb' => __('Updated'),
-            'deletedVerb' => __('Deleted'),
-            'countCreated' => __(':count created'),
-            'countUpdated' => __(':count updated'),
-            'countDeleted' => __(':count deleted'),
+            'createdVerb' => \Relaticle\Chat\Enums\PendingActionOperation::Create->done(),
+            'updatedVerb' => \Relaticle\Chat\Enums\PendingActionOperation::Update->done(),
+            'deletedVerb' => \Relaticle\Chat\Enums\PendingActionOperation::Delete->done(),
+            'countCreated' => \Relaticle\Chat\Enums\PendingActionOperation::Create->count(),
+            'countUpdated' => \Relaticle\Chat\Enums\PendingActionOperation::Update->count(),
+            'countDeleted' => \Relaticle\Chat\Enums\PendingActionOperation::Delete->count(),
+            'entityVerbs' => \Relaticle\Chat\Enums\ProposalEntity::receipts(),
             'countSkipped' => __(':count skipped'),
             'countKept' => __(':count kept'),
         ]),
@@ -132,6 +133,11 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             'aggregate_crm' => __('Crunching the numbers…'),
             'list_activity' => __('Reading recent activity…'),
             'list_workspace_members' => __('Looking up workspace members…'),
+            'list_emails' => __('Searching email…'),
+            'get_email' => __('Reading an email…'),
+            'list_email_accounts' => __('Checking your mailboxes…'),
+            'create_email_draft' => __('Preparing an email draft…'),
+            'send_email' => __('Preparing an email…'),
             'list_custom_fields' => __('Reading custom fields…'),
             'search_docs' => __('Searching the documentation…'),
             'guide_to_page' => __('Finding the right page…'),
@@ -194,7 +200,7 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
     pageContextConsumed: false,
 
     // Snapshot of the record this message is bound to, in the same shape
-    // ListConversationMessages returns after a reload. The optimistic bubble
+    // ConversationMessagesQuery returns after a reload. The optimistic bubble
     // and the reloaded one must render identically. `url` isn't resolvable
     // client-side, so the chip falls back to its non-clickable branch until
     // a reload fills it in from the server.
@@ -265,6 +271,7 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             this.isStreaming = true;
             this.currentToolStatus = null;
             this.startStreamTimeout();
+            this.watchTurn();
         }
 
         // Land at the latest message when reopening an existing conversation.
@@ -457,6 +464,7 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
                 this.isStreaming = true;
                 this.currentToolStatus = null;
                 this.startStreamTimeout();
+                this.watchTurn();
             }),
         ];
 
@@ -480,6 +488,7 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
         this.teardownAnchorObserver();
         this.teardownMessageSearch();
         this.clearStreamTimeout();
+        this.stopWatchingTurn();
         clearTimeout(this._copiedTimer);
         clearTimeout(this._scrollAnimationTimer);
         this.clearRateLimit();

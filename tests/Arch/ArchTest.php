@@ -19,12 +19,15 @@ use App\Mcp\Tools\BaseRelationshipTool;
 use App\Mcp\Tools\BaseShowTool;
 use App\Mcp\Tools\BaseUpdateTool;
 use App\Models\PersonalAccessToken;
+use App\Notifications\InboxNotification;
 use App\Rules\ArrayExistsForWorkspace;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseEmailsRelationManager;
 use Relaticle\EmailIntegration\Filament\RelationManagers\BaseMeetingsRelationManager;
+use Spatie\QueryBuilder\Filters\Filter;
+use Spatie\QueryBuilder\Sorts\Sort;
 
 arch()->preset()->php();
 
@@ -50,6 +53,7 @@ arch()->preset()
         'App\Http\Controllers\Mcp',
         'App\ActivityLog',
         'App\Models\ActivityLog\Scopes\WorkspaceScope',
+        'App\Notifications\Channels\\',
         // Chat tools intentionally reuse App\Http\Resources (consistent
         // LLM-facing payloads); the preset forbids resources outside Http.
         'Relaticle\Chat',
@@ -80,6 +84,7 @@ arch('avoid open for extension')
         BaseRelationshipTool::class,
         BaseCrmEntityRequest::class,
         ImportPage::class,
+        InboxNotification::class,
         PersonalAccessToken::class,
     ]);
 
@@ -105,6 +110,7 @@ arch('ensure no extends')
         BaseRelationshipTool::class,
         BaseCrmEntityRequest::class,
         ImportPage::class,
+        InboxNotification::class,
     ]);
 
 arch('avoid mutation')
@@ -139,6 +145,9 @@ arch('avoid mutation')
         'App\Notifications',
         'App\Providers',
         'App\Support\ActivityLog\CleanActivityLogAction',
+        // Extends spatie's AllowedFilter; PHP forbids a readonly class extending a
+        // non-readonly one.
+        'App\Queries\TreeAllowedFilter',
         // Request-scoped batch_uuid holder, mutable by design (lazily caches the
         // per-request id), like a value cache rather than a service.
         'App\Support\ActivityLog\RequestActivityBatch',
@@ -172,6 +181,8 @@ arch('avoid mutation')
         'App\Support\Passport\ClientRepository',
         // Extends league's BearerTokenResponse; PHP forbids a readonly class extending a non-readonly one.
         'App\Support\Passport\WorkspaceBearerTokenResponse',
+        // Extends the framework's DatabaseSessionHandler; PHP forbids a readonly class extending a non-readonly one.
+        'App\Support\Impersonation\ImpersonationSessionHandler',
         'App\View',
         'App\Services\Favicon\Drivers',
         'App\Providers\Filament',
@@ -209,6 +220,8 @@ arch('avoid inheritance')
         'App\Scribe',
         'App\View',
         'App\Support\ActivityLog\CleanActivityLogAction',
+        // Subclasses spatie's AllowedFilter, the query builder's extension point.
+        'App\Queries\TreeAllowedFilter',
         // Hooks slug uniqueness by extending sluggable's GenerateSlugAction,
         // which is the package's documented extension point.
         'App\Support\ReservedSlugAwareGenerateSlugAction',
@@ -225,6 +238,8 @@ arch('avoid inheritance')
         'App\Support\Passport\ClientRepository',
         // getExtraParams() is league's hook for extra token response fields.
         'App\Support\Passport\WorkspaceBearerTokenResponse',
+        // userId() is the framework's only hook for the id a database session row carries.
+        'App\Support\Impersonation\ImpersonationSessionHandler',
     ]);
 
 // Packages are kept final by pint (final_class, repo-wide) and strict-typed by
@@ -234,7 +249,19 @@ arch('avoid inheritance')
 // as the App rules above ignore those namespaces.
 // (tests/Arch/ConventionsTest.php forces this list to be revisited when a
 // package is added.)
+$packageRoots = [];
+$packageQueryLayers = [];
+
+foreach (glob(dirname(__DIR__, 2).'/packages/*/src', GLOB_ONLYDIR) ?: [] as $packageSource) {
+    $packageRoots[] = $packageRoot = 'Relaticle\\'.basename(dirname($packageSource));
+
+    if (is_dir($packageSource.'/Queries')) {
+        $packageQueryLayers[$packageRoot] = "{$packageRoot}\Queries";
+    }
+}
+
 $packageServiceLayers = [
+    ...array_values($packageQueryLayers),
     'Relaticle\Chat\Actions',
     'Relaticle\Chat\Agents',
     'Relaticle\Chat\Services',
@@ -317,6 +344,61 @@ arch('email integration owns its controllers, jobs, policies and timeline entrie
     ->not
     ->toUse(['App\Http\Controllers', 'App\Jobs', 'App\Policies', 'App\ActivityLog']);
 
+arch('query filters implement the query builder filter contract')
+    ->expect('App\Queries\Filters')
+    ->toImplement(Filter::class);
+
+arch('query sorts implement the query builder sort contract')
+    ->expect('App\Queries\Sorts')
+    ->toImplement(Sort::class);
+
+arch('a query filter lives in the filters folder')
+    ->expect('App\Queries')
+    ->not
+    ->toImplement(Filter::class)
+    ->ignoring('App\Queries\Filters\\');
+
+arch('a query sort lives in the sorts folder')
+    ->expect('App\Queries')
+    ->not
+    ->toImplement(Sort::class)
+    ->ignoring('App\Queries\Sorts\\');
+
+arch('the query language uses no transport')
+    ->expect('App\Queries')
+    ->not
+    ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
+
+foreach ($packageQueryLayers as $packageRoot => $packageQueryLayer) {
+    arch("{$packageQueryLayer} uses no transport of its package")
+        ->expect($packageQueryLayer)
+        ->not
+        ->toUse(["{$packageRoot}\Http", "{$packageRoot}\Livewire", "{$packageRoot}\Tools", "{$packageRoot}\Jobs"]);
+}
+
+foreach (['App\Queries', ...array_values($packageQueryLayers)] as $queryRoot) {
+    arch("{$queryRoot} takes the acting user and reads no ambient user, request or workspace")
+        ->expect($queryRoot)
+        ->not
+        ->toUse([
+            'auth',
+            'request',
+            'Illuminate\Support\Facades\Auth',
+            'Illuminate\Support\Facades\Request',
+            'Illuminate\Http\Request',
+            'Filament\Facades\Filament',
+            'App\Support\CurrentWorkspace',
+        ]);
+}
+
+foreach (['App', ...$packageRoots] as $codeRoot) {
+    arch("{$codeRoot} builds a list query only in a query layer")
+        ->expect($codeRoot)
+        ->not
+        ->toUse('Spatie\QueryBuilder\QueryBuilder')
+        ->ignoring(['App\Queries', ...array_values($packageQueryLayers)]);
+}
+
 arch('CRM API write requests share the custom field contract')
     ->expect('App\Http\Requests\Api\V1')
     ->classes()
@@ -342,6 +424,7 @@ arch('API controllers must depend on actions for write operations')
         'App\Http\Requests',
         'App\Http\Resources',
         'App\Models',
+        'App\Queries',
         'Illuminate',
         'Knuckles\Scribe',
         'response',
@@ -392,6 +475,7 @@ foreach (['App', 'Relaticle\ImportWizard', 'Relaticle\OnboardSeed', 'Relaticle\D
             'App\Models\CustomFieldOption',
             'App\Models\CustomFieldSection',
             'App\Models\CustomFieldValue',
+            'App\Filament\CustomFields\DomainFieldType',
             // Slipped past while one check spanned all four layers and could not fail
             // (found 2026-10-04). Review each, then unlist:
             'App\Filament\CustomFields\DateTimeColumn',
@@ -399,7 +483,6 @@ foreach (['App', 'Relaticle\ImportWizard', 'Relaticle\OnboardSeed', 'Relaticle\D
             'App\Filament\CustomFields\RichContentEntry',
             'App\Filament\CustomFields\RichEditorFieldType',
             'App\Http\Resources\V1\Concerns\FormatsCustomFields',
-            'App\Mcp\Filters\CustomFieldSort',
             'App\Observers\CustomFieldValueObserver',
             'App\Rules\ValidCustomFields',
             'App\Support\ActivityLog\CustomFieldChangeLog',

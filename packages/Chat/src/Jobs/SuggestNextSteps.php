@@ -10,7 +10,6 @@ use Illuminate\Queue\Attributes\MaxExceptions;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Relaticle\Chat\Agents\NextStepSuggester;
 use Relaticle\Chat\Events\NextStepsSuggested;
 use Relaticle\Chat\Services\CreditService;
@@ -72,7 +71,7 @@ final class SuggestNextSteps implements ShouldQueue
         }
 
         // The message row is the durable home: a reload reads them back through
-        // ListConversationMessages, so the strip survives a refresh exactly as
+        // ConversationMessagesQuery, so the strip survives a refresh exactly as
         // the transcript above it does.
         if (! $this->persist($steps)) {
             return;
@@ -107,10 +106,6 @@ final class SuggestNextSteps implements ShouldQueue
             rescue(function () use ($response): void {
                 resolve(CreditService::class)->recordInternalUsage($this->conversationId, $this->provider, $response->usage, $response->meta->model);
             });
-
-            if (! $response instanceof StructuredAgentResponse) {
-                return [];
-            }
 
             return $this->sanitize($response->structured['suggestions'] ?? null);
         } catch (Throwable $e) {

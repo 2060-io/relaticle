@@ -62,10 +62,6 @@ final class LogoutOtherBrowserSessions extends BaseLivewireComponent
             return;
         }
 
-        if (config('session.driver') !== 'database') {
-            return;
-        }
-
         resolve(DestroyOtherBrowserSessions::class)->execute($user, Session::getId());
 
         Session::put([

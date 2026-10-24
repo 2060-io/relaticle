@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Models;
 
+use App\Filament\Pages\Dashboard;
 use App\Models\Company;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\Opportunity;
@@ -27,7 +28,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailCategory;
 use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
@@ -140,6 +140,16 @@ final class Email extends Model
     {
         return $query->where('direction', EmailDirection::OUTBOUND)
             ->whereNotNull('sent_at');
+    }
+
+    /**
+     * @param  Builder<Email>  $query
+     * @return Builder<Email>
+     */
+    #[Scope]
+    protected function createdOverMcp(Builder $query): Builder
+    {
+        return $query->where('creation_source', EmailCreationSource::MCP);
     }
 
     /**
@@ -329,7 +339,34 @@ final class Email extends Model
     }
 
     /**
-     * Reply-all recipient addresses: the original sender PLUS the to/cc recipients
+     * @return list<string>
+     */
+    public function replyRecipients(): array
+    {
+        return array_values($this->replyParticipants()
+            ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address)
+            ->filter(fn (string $address): bool => $address !== '')
+            ->all());
+    }
+
+    /**
+     * @return EloquentCollection<int, EmailParticipant>
+     */
+    private function replyParticipants(): EloquentCollection
+    {
+        if ($this->direction === EmailDirection::OUTBOUND) {
+            return $this->participants->where('role', EmailParticipantRole::TO);
+        }
+
+        $replyTo = $this->participants->where('role', EmailParticipantRole::REPLY_TO);
+
+        return $replyTo->isNotEmpty()
+            ? $replyTo
+            : $this->participants->where('role', EmailParticipantRole::FROM);
+    }
+
+    /**
+     * Reply-all recipient addresses: the reply recipients PLUS the to/cc recipients
      * (never bcc), excluding the replying user's own account address. De-duplicated
      * case-insensitively. Operates on the loaded `participants` relation.
      *
@@ -339,9 +376,10 @@ final class Email extends Model
     {
         $normalizedExclude = $excludeAddress !== null ? strtolower($excludeAddress) : null;
 
-        return array_values($this->participants
-            ->whereIn('role', [EmailParticipantRole::FROM, EmailParticipantRole::TO, EmailParticipantRole::CC])
-            ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address)
+        return array_values(collect($this->replyRecipients())
+            ->merge($this->participants
+                ->whereIn('role', [EmailParticipantRole::TO, EmailParticipantRole::CC])
+                ->map(fn (EmailParticipant $participant): string => (string) $participant->email_address))
             ->filter(fn (string $address): bool => $address !== '' && strtolower($address) !== $normalizedExclude)
             ->unique(fn (string $address): string => strtolower($address))
             ->all());
@@ -371,11 +409,30 @@ final class Email extends Model
         return $this->hasMany(EmailAccessRequest::class);
     }
 
+    public function displaySubject(): string
+    {
+        return filled($this->subject) ? $this->subject : __('filament/pages/email-inbox.subject.none');
+    }
+
+    public function appUrlFor(User $viewer): string
+    {
+        return $this->appUrl($viewer->can('viewBody', $this));
+    }
+
+    public function appUrl(bool $openReader): string
+    {
+        return Dashboard::getUrl(
+            $openReader ? ['email' => $this->getKey()] : [],
+            panel: 'app',
+            tenant: $this->workspace,
+        );
+    }
+
     public function hasPendingAccessRequestFrom(User $viewer): bool
     {
         return $this->accessRequests()
             ->where('requester_id', $viewer->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->open()
             ->exists();
     }
 

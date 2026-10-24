@@ -24,6 +24,13 @@ still-pending single-record CREATE of the expected entity type, and
 Rejecting a step cascade-cancels its dependents (`result_data.cancelled_by`), and
 `approveAll` commits per step and stops at the first failure, a plan is a sequence
 of real CRM writes, not a transaction.
+A step whose `PendingAction::needsOwnApproval()` is true (an email send or a workspace
+invitation) is never part of that one click: `approveAll` skips it, the footer counts
+only what it will approve, and the step keeps its own Send button with every row shown.
+A collapsed email row behind a bulk button once sent CC, BCC and bodies nobody had opened.
+An invitation step may batch, because each row already shows its address and role: its
+button sends every address still listed. An email send never batches
+(`PendingAction::isEmailSend()`).
 The dock re-docks on the WHOLE pending set (`syncActiveProposal` keys on a signature
 of all pending ids): keying on the first id alone leaves the card rendering the plan
 as it looked when only step one had streamed in.
@@ -143,8 +150,9 @@ rejected by the custom-fields package's own unique rules running inside
 `CustomFieldsRequestValidator` at proposal time. Never re-implement them as
 bespoke lookups in a tool; they drift, and any escape hatch they offer is a
 lie the real rule blocks later. Two load-bearing pieces:
-- `ProcessChatMessage::bindAuth()` binds `TenantContextService` for the whole
-  job (restored in `releaseAuth()`). Without it the unique rules silently
+- `ProcessChatMessage::handle()` runs the whole job inside
+  `CurrentWorkspace::within()`, which binds the CRM workspace and the
+  custom-fields tenant and restores both. Without it the unique rules silently
   no-op in the queued job. That is the exact bug that let chat create
   duplicate emails while the panel form rejected them. Any new chat entry point that
   validates or writes custom fields needs the same binding.
@@ -345,3 +353,24 @@ duplicated the user message on retry and hid the note.
 Credits settle on the model the job requested (`$this->resolved['model']`), never `meta->model`: v1
 overwrites it with the provider's own id, and a dated snapshot misses the multiplier lookup and bills
 1.0x. `ProcessChatMessageSettlementTest` pins it.
+
+## The websocket is the fast path, never the only one
+A turn must end on screen with no websocket at all. Self-hosted installs ran for months with no
+Reverb container, and the chat sat on "Thinking..." over a reply that was already saved (#955).
+Once the server has registered a turn (`TurnPresence`), `watchTurn()` in `stream.js` asks
+`GET /chat/conversations/{id}/turn` every `turnPollMs` of stream silence, and `settleFromServer()`
+ends the turn from the database when the marker is gone. The 125 second watchdog asks the same route
+first and keeps waiting while the turn is in flight, so a slow or retried job never shows a false
+timeout. `TurnPresence`'s TTL ends a turn whose worker died. Every way a turn starts calls `watchTurn()`
+after the server confirmed it: the send response, a reload mid-turn, and `chat:resuming`. Asking
+earlier reads "not running" for a turn that has not begun.
+`applyPersisted()` adopts the latest assistant row only when no other bubble shows it. A turn that
+ends before the model answers (stopped, paused, could not start) persists nothing, so the latest row
+is then the previous turn's reply. A job that fails persists its own failure note
+(`ProcessChatMessage::persistFailedTurn()`), and the poll shows that note as the reply, with no
+Retry button. Next steps arrive by broadcast only, so without a websocket they show after a reload.
+The marker lives in the cache, so web and workers must share one store. The Docker image defaults
+`CACHE_STORE` to redis for that reason. `tests/Browser/Chat/StreamWithoutWebsocketTest.php` is the gate.
+The Echo client is Filament's own: `config/filament.php` `broadcasting.echo` is rendered per request,
+so nothing about the websocket address is baked into the built bundle. Never read `import.meta.env`
+for it: the published image is built once and runs on every host.

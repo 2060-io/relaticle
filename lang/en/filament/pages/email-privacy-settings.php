@@ -16,7 +16,7 @@ return [
     ],
     'workspace_default' => [
         'heading' => 'Workspace default sharing tier',
-        'description' => 'Applied to synced emails for members who follow the workspace default. Existing emails update when you save, except emails a member changed individually.',
+        'description' => 'Applied to mailboxes that follow the workspace default. Existing emails update when you save, except emails a member changed individually. Full access is set on each mailbox, never here.',
         'tier_label' => 'Default sharing tier for connected email accounts',
     ],
     'visibility' => [
@@ -89,7 +89,7 @@ return [
     ],
     'record_creation' => [
         'heading' => 'Automatic record creation',
-        'description' => 'Applies to every connected mailbox and calendar in the workspace. Changing this setting only affects newly synced emails and events.',
+        'description' => 'Applies to every connected mailbox and calendar in the workspace. Addresses on your workspace members\' email domains never create records. Changing this setting only affects newly synced emails and events.',
         'recommended' => 'Recommended',
         'modes' => [
             'all' => [
@@ -116,12 +116,12 @@ return [
             'description' => 'Nothing is shared. Only you can see these emails.',
         ],
         'metadata_only' => [
-            'label' => 'Metadata only',
-            'description' => 'Your workspace sees the participants and timestamp.',
+            'label' => 'Participants only',
+            'description' => 'Your workspace sees the participants and timestamp. Subject and message stay private.',
         ],
         'subject' => [
-            'label' => 'Subject line and metadata',
-            'description' => 'Your workspace sees the subject line, participants, and timestamp.',
+            'label' => 'Subject line and participants',
+            'description' => 'Your workspace sees the subject line, participants, and timestamp. The message stays private.',
         ],
         'full' => [
             'label' => 'Full access',

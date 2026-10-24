@@ -3,13 +3,21 @@
 declare(strict_types=1);
 
 use App\Enums\CreationSource;
+use App\Jobs\FetchFaviconForCompany;
 use App\Models\ActivityLog\Activity;
 use App\Models\Company;
 use App\Models\CustomField;
+use App\Models\CustomFieldValue;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
+use Relaticle\CustomFields\Services\TenantContextService;
 use Relaticle\EmailIntegration\Actions\AutoCreateCompanyAction;
 use Relaticle\EmailIntegration\Actions\AutoCreatePersonAction;
 use Relaticle\EmailIntegration\Actions\LinkEmailAction;
@@ -512,8 +520,8 @@ it('derives the company name from the registrable domain, not a mail subdomain',
 
     expect($domainsField)->not->toBeNull();
     expect($company->getCustomFieldValue($domainsField))
-        ->toContain('www.email.anthropic.com')
-        ->not->toContain('www.anthropic.com');
+        ->toContain('email.anthropic.com')
+        ->not->toContain('anthropic.com');
 });
 
 it('derives the company name from the registrable label across TLD shapes', function (string $address, string $expected): void {
@@ -614,7 +622,7 @@ it('seeds an auto-created company with a protocol-less domain and ICP set to fal
 
     if ($domainsField) {
         expect($company->getCustomFieldValue($domainsField))
-            ->toContain('www.brandnewcorp.com')
+            ->toContain('brandnewcorp.com')
             ->not->toContain('https://');
     }
 
@@ -657,8 +665,8 @@ it('creates distinct companies for different subdomains of the same apex', funct
         ->map(fn (Company $company): string => json_encode($company->getCustomFieldValue($domainsField)) ?: '')
         ->implode(' ');
 
-    expect($stored)->toContain('www.accounts.printtest.com');
-    expect($stored)->toContain('www.ideas.printtest.com');
+    expect($stored)->toContain('accounts.printtest.com');
+    expect($stored)->toContain('ideas.printtest.com');
 });
 
 it('reuses one company when the host only differs by a www prefix', function (): void {
@@ -690,8 +698,8 @@ it('reuses one company when the host only differs by a www prefix', function ():
 it('does not create a duplicate company when the domain is already owned', function (): void {
     $action = app(AutoCreateCompanyAction::class);
 
-    $first = $action->execute('brandnewcorp.com', $this->workspace->id, $this->workspace);
-    $second = $action->execute('brandnewcorp.com', $this->workspace->id, $this->workspace);
+    $first = $action->execute('brandnewcorp.com', $this->workspace->id);
+    $second = $action->execute('brandnewcorp.com', $this->workspace->id);
 
     expect($second->getKey())->toBe($first->getKey());
     expect(Company::where('workspace_id', $this->workspace->id)->where('name', 'Brandnewcorp')->count())->toBe(1);
@@ -700,8 +708,8 @@ it('does not create a duplicate company when the domain is already owned', funct
 it('creates distinct companies for a mail subdomain and the apex domain', function (): void {
     $action = app(AutoCreateCompanyAction::class);
 
-    $first = $action->execute('cap.so', $this->workspace->id, $this->workspace);
-    $second = $action->execute('send.cap.so', $this->workspace->id, $this->workspace);
+    $first = $action->execute('cap.so', $this->workspace->id);
+    $second = $action->execute('send.cap.so', $this->workspace->id);
 
     expect($second->getKey())->not->toBe($first->getKey());
     expect(Company::where('workspace_id', $this->workspace->id)->where('name', 'Cap')->count())->toBe(2);
@@ -710,8 +718,8 @@ it('creates distinct companies for a mail subdomain and the apex domain', functi
 it('creates distinct companies when a subdomain is stored before the apex', function (): void {
     $action = app(AutoCreateCompanyAction::class);
 
-    $subdomain = $action->execute('send.cap.so', $this->workspace->id, $this->workspace);
-    $apex = $action->execute('cap.so', $this->workspace->id, $this->workspace);
+    $subdomain = $action->execute('send.cap.so', $this->workspace->id);
+    $apex = $action->execute('cap.so', $this->workspace->id);
 
     expect($apex->getKey())->not->toBe($subdomain->getKey());
     expect(Company::where('workspace_id', $this->workspace->id)->where('name', 'Cap')->count())->toBe(2);
@@ -767,7 +775,7 @@ it('reuses an existing company that already owns the domain instead of creating 
     ]);
     $existing->saveCustomFieldValue($domainsField, 'https://acme.com', $this->workspace);
 
-    $resolved = app(AutoCreateCompanyAction::class)->execute('acme.com', $this->workspace->id, $this->workspace);
+    $resolved = app(AutoCreateCompanyAction::class)->execute('acme.com', $this->workspace->id);
 
     expect($resolved->getKey())->toBe($existing->getKey());
     expect(Company::where('workspace_id', $this->workspace->id)->where('name', 'Acme')->exists())->toBeFalse();
@@ -786,8 +794,8 @@ it('creates distinct companies for same-named domains with different TLDs and pr
 
     $action = app(AutoCreateCompanyAction::class);
 
-    $first = $action->execute('acme.com', $this->workspace->id, $this->workspace);
-    $second = $action->execute('acme.org', $this->workspace->id, $this->workspace);
+    $first = $action->execute('acme.com', $this->workspace->id);
+    $second = $action->execute('acme.org', $this->workspace->id);
 
     // Two distinct companies — same first label, different TLD must not dedup.
     expect($second->getKey())->not->toBe($first->getKey());
@@ -798,8 +806,8 @@ it('creates distinct companies for same-named domains with different TLDs and pr
     // acme.com's domain is intact, not clobbered by acme.org.
     $firstFresh = Company::with('customFieldValues.customField')->findOrFail($first->getKey());
     $secondFresh = Company::with('customFieldValues.customField')->findOrFail($second->getKey());
-    expect($firstFresh->getCustomFieldValue($domainsField))->toContain('www.acme.com');
-    expect($secondFresh->getCustomFieldValue($domainsField))->toContain('www.acme.org');
+    expect($firstFresh->getCustomFieldValue($domainsField))->toContain('acme.com');
+    expect($secondFresh->getCustomFieldValue($domainsField))->toContain('acme.org');
 });
 
 it('does not auto-create a person when contact_creation_mode is None', function (): void {
@@ -833,6 +841,49 @@ it('auto-creates a person when contact_creation_mode is All', function (): void 
     app(LinkEmailAction::class)->execute($email);
 
     expect(People::where('workspace_id', $this->workspace->id)->where('name', 'New Contact')->exists())->toBeTrue();
+});
+
+it('queues a logo fetch for an auto-created company', function (): void {
+    Bus::fake([FetchFaviconForCompany::class]);
+
+    $this->workspace->update([
+        'contact_creation_mode' => ContactCreationMode::All,
+        'auto_create_companies' => true,
+    ]);
+
+    $email = makeLinkEmail();
+
+    EmailParticipant::factory()->from()->create([
+        'email_id' => $email->getKey(),
+        'email_address' => 'contact@brandnewcorp.com',
+    ]);
+
+    app(LinkEmailAction::class)->execute($email);
+
+    $company = Company::query()->where('workspace_id', $this->workspace->id)->where('name', 'Brandnewcorp')->firstOrFail();
+
+    Bus::assertDispatched(FetchFaviconForCompany::class, fn (FetchFaviconForCompany $job): bool => $job->company->is($company));
+});
+
+it('writes only its own workspace fields on an auto-created company when no tenant is set', function (): void {
+    Bus::fake([FetchFaviconForCompany::class]);
+    User::factory()->withWorkspace()->create();
+    Filament::setTenant(null);
+
+    $company = app(AutoCreateCompanyAction::class)->execute('brandnewcorp.com', $this->workspace->id);
+
+    $fieldTenantIds = CustomFieldValue::query()
+        ->withoutGlobalScopes()
+        ->whereMorphedTo('entity', $company)
+        ->with(['customField' => fn (BelongsTo $field): BelongsTo => $field->withoutGlobalScopes()])
+        ->get()
+        ->map(fn (CustomFieldValue $value): string => $value->customField->tenant_id)
+        ->unique()
+        ->values()
+        ->all();
+
+    expect($fieldTenantIds)->toBe([$this->workspace->id])
+        ->and(TenantContextService::getCurrentTenantId())->toBeNull();
 });
 
 it('records auto-created people and companies and their activity as mailbox sync', function (): void {
@@ -913,6 +964,57 @@ it('still auto-creates a person for a protected address', function (): void {
     app(LinkEmailAction::class)->execute($email);
 
     expect(People::where('workspace_id', $this->workspace->id)->where('name', 'Protected Contact')->exists())->toBeTrue();
+});
+
+it('does not auto-create a person or company for a colleague on the workspace domain', function (): void {
+    $this->workspace->update([
+        'contact_creation_mode' => ContactCreationMode::All,
+        'auto_create_companies' => true,
+    ]);
+    $this->user->update(['email' => 'owner@ownco.com']);
+    $companyCountBefore = Company::where('workspace_id', $this->workspace->id)->count();
+
+    $email = makeLinkEmail();
+
+    EmailParticipant::factory()->from()->create([
+        'email_id' => $email->getKey(),
+        'email_address' => 'colleague@ownco.com',
+        'name' => 'Colleague',
+    ]);
+
+    app(LinkEmailAction::class)->execute($email);
+
+    expect(People::where('workspace_id', $this->workspace->id)->where('name', 'Colleague')->exists())->toBeFalse()
+        ->and(Company::where('workspace_id', $this->workspace->id)->count())->toBe($companyCountBefore);
+});
+
+it('still links a colleague on the workspace domain to an existing person', function (): void {
+    $this->user->update(['email' => 'owner@ownco.com']);
+
+    $emailField = CustomField::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'people')
+        ->where('code', 'emails')
+        ->firstOrFail();
+
+    $person = People::create([
+        'workspace_id' => $this->workspace->id,
+        'name' => 'Colleague',
+        'creator_id' => $this->user->id,
+    ]);
+    $person->saveCustomFieldValue($emailField, ['colleague@ownco.com'], $this->workspace);
+
+    $email = makeLinkEmail();
+
+    EmailParticipant::factory()->from()->create([
+        'email_id' => $email->getKey(),
+        'email_address' => 'colleague@ownco.com',
+    ]);
+
+    app(LinkEmailAction::class)->execute($email);
+
+    expect($email->people()->whereKey($person->getKey())->exists())->toBeTrue();
 });
 
 it('does not auto-create a person for a mailbox-blocklisted address', function (): void {
@@ -1416,4 +1518,69 @@ it('does not move last_email_at backwards when an older email is linked after a 
     app(LinkEmailAction::class)->execute($older);
 
     expect($company->fresh()->last_email_at->toDateTimeString())->toBe($newerSentAt->toDateTimeString());
+});
+
+it('advances the email counters of linked companies in id order whatever the participant order', function (): void {
+    $domainsField = CustomField::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'company')
+        ->where('code', 'domains')
+        ->firstOrFail();
+
+    $domainByCompanyId = [];
+
+    foreach (['acme.com', 'globex.com'] as $domain) {
+        $company = Company::create([
+            'workspace_id' => $this->workspace->id,
+            'name' => $domain,
+            'creator_id' => $this->user->id,
+        ]);
+        $company->saveCustomFieldValue($domainsField, "https://{$domain}", $this->workspace);
+
+        $domainByCompanyId[$company->getKey()] = $domain;
+    }
+
+    krsort($domainByCompanyId);
+
+    $email = makeLinkEmail();
+
+    foreach ($domainByCompanyId as $domain) {
+        EmailParticipant::factory()->to()->create([
+            'email_id' => $email->getKey(),
+            'email_address' => "contact@{$domain}",
+        ]);
+    }
+
+    $advancedCompanyIds = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$advancedCompanyIds): void {
+        if (str_starts_with($query->sql, 'update companies set email_count')) {
+            $advancedCompanyIds[] = Arr::last($query->bindings);
+        }
+    });
+
+    app(LinkEmailAction::class)->execute($email);
+
+    ksort($domainByCompanyId);
+
+    expect($advancedCompanyIds)->toBe(array_keys($domainByCompanyId));
+});
+
+it('counts an email toward a company and an opportunity linked before the first pass', function (): void {
+    $company = Company::create([
+        'workspace_id' => $this->workspace->id,
+        'name' => 'Linked By Hand',
+        'creator_id' => $this->user->id,
+    ]);
+    $opportunity = Opportunity::factory()->create(['workspace_id' => $this->workspace->id]);
+
+    $email = makeLinkEmail(['direction' => EmailDirection::INBOUND]);
+    $email->companies()->attach($company->getKey(), ['link_source' => 'manual']);
+    $email->opportunities()->attach($opportunity->getKey(), ['link_source' => 'manual']);
+
+    app(LinkEmailAction::class)->execute($email);
+
+    expect($company->fresh()->email_count)->toBe(1)
+        ->and($opportunity->fresh()->email_count)->toBe(1);
 });

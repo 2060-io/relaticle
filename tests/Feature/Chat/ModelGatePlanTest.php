@@ -300,7 +300,7 @@ it('refuses a premium model during a trial while the workspace holds only sample
     startTrial($user->currentWorkspace);
     Company::factory()->create([
         'workspace_id' => $user->currentWorkspace->getKey(),
-        'creation_source' => CreationSource::SYSTEM,
+        'creation_source' => CreationSource::SAMPLE,
     ]);
 
     $response = $this->actingAs($user)->postJson('/chat/'.seedGateConversation($user), [

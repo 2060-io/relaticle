@@ -11,6 +11,9 @@ use App\Models\People;
 use App\Models\User;
 use App\Models\Workspace;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\RichEditor;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Illuminate\Database\Eloquent\Factories\Sequence;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\UploadedFile;
@@ -28,8 +31,11 @@ use Relaticle\EmailIntegration\Enums\EmailFolder;
 use Relaticle\EmailIntegration\Enums\EmailParticipantRole;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
 use Relaticle\EmailIntegration\Enums\EmailStatus;
+use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource\Schemas\EmailTemplateForm;
+use Relaticle\EmailIntegration\Filament\RichContent\SignatureBlock;
 use Relaticle\EmailIntegration\Livewire\EmailAccessNotificationHandler;
 use Relaticle\EmailIntegration\Livewire\EmailComposer;
+use Relaticle\EmailIntegration\Livewire\TemplatesTable;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAttachment;
@@ -46,7 +52,7 @@ use Relaticle\EmailIntegration\Support\QueuedSendNotifier;
 
 use function Pest\Laravel\actingAs;
 
-mutates(EmailComposer::class, SaveEmailDraftAction::class, DeleteEmailDraftAction::class, RecipientSuggestionService::class, ConnectedAccount::class, QueuedSendNotifier::class, ComposerInlineImage::class);
+mutates(EmailComposer::class, SaveEmailDraftAction::class, DeleteEmailDraftAction::class, RecipientSuggestionService::class, ConnectedAccount::class, QueuedSendNotifier::class, ComposerInlineImage::class, EmailTemplateForm::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -294,6 +300,23 @@ it('queues an email through SendEmailAction on send with the persisted body and 
         ->and($email->scheduled_for)->not->toBeNull();
 });
 
+it('tells the user when the outbox is full and keeps the composer open', function (): void {
+    config(['email-integration.outbox.max_queued_per_user' => 0]);
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('to', ['lead@example.com'])
+        ->set('subject', 'Cannot queue')
+        ->set('bodyHtml', '<p>Hello there</p>')
+        ->call('send')
+        ->assertNotified(__('filament/emails/composer.notifications.outbox_full.title'))
+        ->assertSet('isOpen', true)
+        ->assertSet('subject', 'Cannot queue')
+        ->assertNotDispatched('composer:sent');
+
+    expect(Email::query()->where('subject', 'Cannot queue')->exists())->toBeFalse();
+});
+
 it('resolves merge tags from the primary To recipient when compose was not opened from a record', function (): void {
     $person = People::factory()->for($this->user->currentWorkspace)->create([
         'name' => 'Laravel Projects',
@@ -472,7 +495,7 @@ it('offers undo on the queued toast for the undo window', function (): void {
         ->call('send');
 
     $email = Email::query()->where('subject', 'Undo me')->sole();
-    $notification = collect(session('filament.claimed_notifications'))
+    $notification = flashedNotifications()
         ->firstWhere('title', __('filament/concerns/email-compose.notifications.queued.title'));
 
     expect($notification)->not->toBeNull()
@@ -1817,6 +1840,79 @@ it('falls back to the default account and warns when a draft\'s connected accoun
         ->toBe($this->account->id);
 });
 
+it('sends a reopened draft at the sharing level of the mailbox it was saved on', function (): void {
+    $this->user->currentWorkspace->update(['default_email_sharing_tier' => EmailPrivacyTier::PRIVATE]);
+    $second = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'user_id' => $this->user->id,
+        'workspace_id' => $this->user->current_workspace_id,
+        'status' => 'active',
+        'sharing_tier' => EmailPrivacyTier::FULL,
+        'created_at' => now()->addMinute(),
+    ]));
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('accountId', $second->id)
+        ->set('to', ['x@example.com'])
+        ->set('subject', 'Second mailbox draft')
+        ->set('bodyHtml', '<p>b</p>')
+        ->call('close');
+
+    $draft = Email::query()->where('status', EmailStatus::DRAFT)->sole();
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open', draftId: $draft->id)
+        ->assertSet('accountId', $second->id)
+        ->call('send');
+
+    $queued = Email::query()->where('status', EmailStatus::QUEUED)->sole();
+
+    expect($queued->connected_account_id)->toBe($second->id)
+        ->and($queued->privacy_tier)->toBe(EmailPrivacyTier::FULL)
+        ->and($queued->privacy_tier_customized)->toBeFalse();
+});
+
+it('sends a resumed reply draft at the sharing level of the mailbox it was saved on', function (): void {
+    $this->user->currentWorkspace->update(['default_email_sharing_tier' => EmailPrivacyTier::PRIVATE]);
+    $second = ConnectedAccount::withoutEvents(fn () => ConnectedAccount::factory()->create([
+        'user_id' => $this->user->id,
+        'workspace_id' => $this->user->current_workspace_id,
+        'status' => 'active',
+        'sharing_tier' => EmailPrivacyTier::FULL,
+        'created_at' => now()->addMinute(),
+    ]));
+    $inbound = Email::factory()->create([
+        'workspace_id' => $this->user->current_workspace_id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'status' => EmailStatus::SYNCED,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'rfc_message_id' => '<original@example.com>',
+    ]);
+    EmailParticipant::factory()->create([
+        'email_id' => $inbound->id,
+        'email_address' => 'sender@contact.com',
+        'role' => EmailParticipantRole::FROM,
+    ]);
+
+    Livewire::test(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', (string) $inbound->getKey(), 'reply')
+        ->set('accountId', $second->id)
+        ->set('bodyHtml', '<p>On my way</p>')
+        ->call('close');
+
+    Livewire::test(EmailComposer::class, ['dock' => 'inline'])
+        ->call('resumeDraftFor', (string) $inbound->getKey())
+        ->assertSet('accountId', $second->id)
+        ->call('send');
+
+    $queued = Email::query()->where('status', EmailStatus::QUEUED)->sole();
+
+    expect($queued->connected_account_id)->toBe($second->id)
+        ->and($queued->privacy_tier)->toBe(EmailPrivacyTier::FULL)
+        ->and($queued->privacy_tier_customized)->toBeFalse();
+});
+
 it('fills subject and body from a template and keeps the signature below it', function (): void {
     $signature = EmailSignature::factory()->create([
         'connected_account_id' => $this->account->id,
@@ -1843,6 +1939,41 @@ it('fills subject and body from a template and keeps the signature below it', fu
     $email = Email::query()->where('subject', 'Renewal options')->sole();
     expect($email->body->body_html)->toContain('Here are your options.')
         ->and($email->body->body_html)->toContain('Ada');
+});
+
+it('saves a template from the composer with the templates page message editor', function (): void {
+    $fromTemplates = null;
+
+    Livewire::test(TemplatesTable::class)
+        ->mountTableAction('create')
+        ->assertSchemaComponentExists('body_html', checkComponentUsing: function (RichEditor $editor) use (&$fromTemplates): bool {
+            $fromTemplates = [
+                'toolbar' => $editor->getToolbarButtons(),
+                'tags' => $editor->getMergeTags(),
+                'panel' => $editor->getActivePanel(),
+            ];
+
+            return $fromTemplates['panel'] === 'mergeTags';
+        });
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('subject', 'Renewal outreach')
+        ->set('bodyHtml', '<p>Here are your options.</p><div data-type="customBlock" data-id="'.SignatureBlock::ID.'"></div>')
+        ->mountAction('createTemplate')
+        ->assertSchemaComponentExists('name', checkComponentUsing: fn (TextInput $field): bool => $field->getLabel() === __('filament/resources/email-template.fields.name.label'))
+        ->assertSchemaComponentExists('subject', checkComponentUsing: fn (TextInput $field): bool => $field->getLabel() === __('filament/resources/email-template.fields.subject.label'))
+        ->assertSchemaComponentExists('is_shared', checkComponentUsing: fn (Toggle $field): bool => $field->getLabel() === __('filament/resources/email-template.fields.is_shared.label'))
+        ->assertSchemaStateSet([
+            'name' => 'Renewal outreach',
+            'subject' => 'Renewal outreach',
+            'body_html' => '<p>Here are your options.</p>',
+        ])
+        ->assertSchemaComponentExists('body_html', checkComponentUsing: function (RichEditor $editor) use ($fromTemplates): bool {
+            return $editor->getToolbarButtons() === $fromTemplates['toolbar']
+                && $editor->getMergeTags() === $fromTemplates['tags']
+                && $editor->getActivePanel() === $fromTemplates['panel'];
+        });
 });
 
 it('saves the current message as a template from the composer', function (): void {

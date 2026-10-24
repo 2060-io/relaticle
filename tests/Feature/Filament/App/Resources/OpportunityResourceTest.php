@@ -6,6 +6,7 @@ use App\Filament\Resources\OpportunityResource;
 use App\Filament\Resources\OpportunityResource\Pages\ListOpportunities;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
 use App\Filament\Resources\OpportunityResource\RelationManagers\MeetingsRelationManager;
+use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
@@ -75,6 +76,7 @@ it('can sort `:dataset` column', function (string $column): void {
         : $column;
 
     livewire(ListOpportunities::class)
+        ->toggleAllTableColumns()
         ->sortTable($column)
         ->assertCanSeeTableRecords($records->sortBy($sortingKey), inOrder: true)
         ->sortTable($column, 'desc')
@@ -138,6 +140,16 @@ it('can create an opportunity', function (): void {
     ]);
 });
 
+it('labels the contact select point of contact in the `:dataset` modal', function (string $action): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $page = livewire(ListOpportunities::class)
+        ->mountAction($action === 'edit' ? TestAction::make('edit')->table($record) : $action)
+        ->instance();
+
+    expect($page->getSchema($page->getMountedActionSchemaName())->toHtml())->toContain('Point of Contact');
+})->with(['create', 'edit']);
+
 it('can edit an opportunity', function (): void {
     $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
 
@@ -148,6 +160,29 @@ it('can edit an opportunity', function (): void {
         ->assertHasNoActionErrors();
 
     expect($record->refresh()->name)->toBe('Updated Opportunity');
+});
+
+it('saves an opportunity whose amount has more decimals than the amount field now allows', function (): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    $record->saveCustomFields(['amount' => 999.75]);
+
+    $amount = CustomField::query()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'opportunity')
+        ->where('code', 'amount')
+        ->sole();
+    $amount->update(['settings' => [...$amount->settings->toArray(), 'additional' => [...$amount->settings->additional, 'decimal_places' => 0]]]);
+
+    livewire(ListOpportunities::class)
+        ->callAction(TestAction::make('edit')->table($record), data: [
+            'name' => 'Renamed Opportunity',
+        ])
+        ->assertHasNoActionErrors();
+
+    $record->refresh()->load('customFieldValues.customField');
+
+    expect($record->name)->toBe('Renamed Opportunity')
+        ->and($record->getCustomFieldValue($amount))->toBe(999.75);
 });
 
 it('can delete an opportunity', function (): void {
