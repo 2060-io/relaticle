@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\Chat;
 
 use App\Enums\CrmEntity;
+use App\Features\Chat as ChatFeature;
 use App\Models\Company;
 use App\Models\Note;
 use App\Models\Opportunity;
@@ -31,6 +32,7 @@ use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Events\AgentFailed;
 use Laravel\Ai\Events\StepFailed;
 use Laravel\Ai\Events\ToolFailed;
+use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 use Relaticle\Chat\Commands\ChatModelsCommand;
 use Relaticle\Chat\Commands\ExpirePendingActionsCommand;
@@ -259,11 +261,21 @@ final class ChatServiceProvider extends ServiceProvider
     }
 
     /**
+     * Whether the assistant is switched on (RELATICLE_FEATURE_CHAT). Checked per
+     * render rather than once at boot, so the hooks stay registered and a test
+     * can flip the feature without rebooting the application.
+     */
+    public static function enabled(): bool
+    {
+        return Feature::for(null)->active(ChatFeature::class);
+    }
+
+    /**
      * @param  Closure(): (View|Factory|string)  $render
      * @return Closure(): (View|Factory|string)
      */
     private function inAppPanel(Closure $render): Closure
     {
-        return fn (): View|Factory|string => Filament::getCurrentPanel()?->getId() === 'app' ? $render() : '';
+        return fn (): View|Factory|string => Filament::getCurrentPanel()?->getId() === 'app' && self::enabled() ? $render() : '';
     }
 }

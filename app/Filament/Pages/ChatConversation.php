@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Features\Chat;
 use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Pages\Page;
+use Laravel\Pennant\Feature;
 use Relaticle\Chat\Queries\ConversationsQuery;
 
 final class ChatConversation extends Page
@@ -27,6 +29,11 @@ final class ChatConversation extends Page
     public ?string $initialModel = null;
 
     public ?string $conversationTitle = null;
+
+    public static function canAccess(): bool
+    {
+        return Feature::active(Chat::class) && parent::canAccess();
+    }
 
     public function mount(?string $conversationId = null): void
     {

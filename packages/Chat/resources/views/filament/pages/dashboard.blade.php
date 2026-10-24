@@ -1,6 +1,10 @@
 <x-filament-panels::page>
+    @php($chatEnabled = $this->chatEnabled())
+
     <div
-        x-data="dashboardChatInput(@js(\App\Filament\Pages\ChatConversation::getUrl()), @js(auth()->user()?->ai_preferences['default_model'] ?? 'auto'))"
+        @if ($chatEnabled)
+            x-data="dashboardChatInput(@js(\App\Filament\Pages\ChatConversation::getUrl()), @js(auth()->user()?->ai_preferences['default_model'] ?? 'auto'))"
+        @endif
         class="mx-auto w-full max-w-3xl py-16"
     >
         <div class="text-center">
@@ -20,6 +24,7 @@
         </div>
 
         {{-- Chat input --}}
+        @if ($chatEnabled)
         <form @submit.prevent="submit()" class="mt-10">
             <div
                 x-data="chatEditor({
@@ -60,12 +65,14 @@
             ></div>
 
         </form>
+        @endif
 
         {{ \Filament\Support\Facades\FilamentView::renderHook(\App\Filament\Pages\Dashboard::AFTER_COMPOSER_RENDER_HOOK) }}
 
         @include('chat::filament.pages.partials.my-tasks')
     </div>
 
+    @if ($chatEnabled)
     @script
     <script>
         Alpine.data('dashboardChatInput', (chatUrl, defaultModel) => ({
@@ -126,4 +133,5 @@
         }));
     </script>
     @endscript
+    @endif
 </x-filament-panels::page>

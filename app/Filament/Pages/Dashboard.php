@@ -6,6 +6,7 @@ namespace App\Filament\Pages;
 
 use App\Actions\Task\CompleteTask;
 use App\Enums\WorkspaceCapability;
+use App\Features\Chat;
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Actions\EditTaskAction;
 use App\Filament\Resources\TaskResource;
@@ -19,6 +20,7 @@ use Filament\Panel;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Relaticle\Chat\Data\MyTaskItem;
 use Relaticle\Chat\Queries\ConversationsQuery;
@@ -61,6 +63,10 @@ final class Dashboard extends Page
 
     public function mount(): void
     {
+        if (! $this->chatEnabled()) {
+            return;
+        }
+
         /** @var User $user */
         $user = Filament::auth()->user();
 
@@ -70,6 +76,16 @@ final class Dashboard extends Page
             $this->recentChatId = $recentChat->id;
             $this->recentChatTitle = $recentChat->title;
         }
+    }
+
+    /**
+     * The home page doubles as the assistant's entry point (composer, recent
+     * chat); with RELATICLE_FEATURE_CHAT off it keeps only the greeting, the
+     * widgets and the task list.
+     */
+    public function chatEnabled(): bool
+    {
+        return Feature::active(Chat::class);
     }
 
     public function getGreeting(): string

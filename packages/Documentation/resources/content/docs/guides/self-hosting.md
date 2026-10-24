@@ -209,6 +209,7 @@ Toggle features on or off. All are enabled by default unless noted. Useful for f
 | `RELATICLE_FEATURE_DOCUMENTATION` | `true` | Enable the `/developers` and `/help` documentation module. Set to `false` to remove documentation routes and navigation links. |
 | `RELATICLE_FEATURE_EMAIL_INTEGRATION` | `false` | Enable email and calendar sync for Google and Microsoft accounts, the email composer, and the Email & calendar help pages. Requires `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET`. Microsoft accounts also need `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`. |
 | `RELATICLE_FEATURE_SIGNUP_CHALLENGE` | `false` | Ask new sign-ups to pass a Cloudflare Turnstile check. Stays hidden for normal browsers and shows a checkbox only when Cloudflare needs one. Requires `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`. |
+| `RELATICLE_FEATURE_CHAT` | `true` | Enable the AI assistant: the chat list in the sidebar, the side panel and its topbar toggle, the dashboard composer, the conversation page and the `/chat` endpoints. Set to `false` to remove all of them (for example while no model provider is configured); it also turns the setup conversation off. MCP and the REST API are unaffected. |
 
 ### Access Control
 
