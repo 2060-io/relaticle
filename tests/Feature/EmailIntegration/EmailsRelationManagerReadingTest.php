@@ -69,7 +69,7 @@ describe('requestAccess action', function (): void {
             ->assertNotified('Access request sent.');
 
         expect(
-            EmailAccessRequest::where('email_id', $email->getKey())
+            EmailAccessRequest::query()->where('email_id', $email->getKey())
                 ->where('requester_id', $this->viewer->id)
                 ->where('owner_id', $this->owner->id)
                 ->where('status', 'pending')
@@ -104,10 +104,39 @@ describe('requestAccess action', function (): void {
             ->assertActionHidden('requestAccess', ['emailId' => $email->getKey()]);
 
         expect(
-            EmailAccessRequest::where('email_id', $email->getKey())
+            EmailAccessRequest::query()->where('email_id', $email->getKey())
                 ->where('requester_id', $this->viewer->id)
                 ->count()
         )->toBe(1);
+    });
+
+    it('is offered again once the previous request is overdue', function (): void {
+        $this->actingAs($this->viewer);
+
+        $email = Email::factory()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->owner->id,
+            'connected_account_id' => $this->account->getKey(),
+            'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,
+        ]);
+
+        $this->person->emails()->attach($email->getKey());
+
+        EmailAccessRequest::factory()->overdue()->create([
+            'email_id' => $email->getKey(),
+            'requester_id' => $this->viewer->id,
+            'owner_id' => $this->owner->id,
+        ]);
+
+        $component = livewire(EmailsRelationManager::class, [
+            'ownerRecord' => $this->person,
+            'pageClass' => ViewPeople::class,
+        ])
+            ->assertActionVisible('requestAccess', ['emailId' => $email->getKey()]);
+
+        $row = collect($component->instance()->emails()->items())->firstWhere('id', $email->getKey());
+
+        expect($row->viewer_has_pending_access_request)->toBeFalsy();
     });
 
     it('is hidden when the authenticated user is the email owner', function (): void {
@@ -414,8 +443,6 @@ describe('access request approve and deny from the reader overlay', function ():
             'owner_id' => $this->owner->id,
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
-
         livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,
             'pageClass' => ViewPeople::class,
@@ -429,8 +456,7 @@ describe('access request approve and deny from the reader overlay', function ():
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
     });
 
     it('denies a pending request from the relation manager overlay', function (): void {
@@ -449,8 +475,6 @@ describe('access request approve and deny from the reader overlay', function ():
             'owner_id' => $this->owner->id,
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
-
         livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,
             'pageClass' => ViewPeople::class,
@@ -462,8 +486,7 @@ describe('access request approve and deny from the reader overlay', function ():
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
     });
 });
 

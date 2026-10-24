@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration\Models;
 
+use App\Filament\Pages\Dashboard;
 use App\Models\Company;
 use App\Models\Concerns\HasWorkspace;
 use App\Models\Opportunity;
@@ -27,7 +28,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailCategory;
 use Relaticle\EmailIntegration\Enums\EmailCreationSource;
 use Relaticle\EmailIntegration\Enums\EmailDirection;
@@ -409,11 +409,30 @@ final class Email extends Model
         return $this->hasMany(EmailAccessRequest::class);
     }
 
+    public function displaySubject(): string
+    {
+        return filled($this->subject) ? $this->subject : __('filament/pages/email-inbox.subject.none');
+    }
+
+    public function appUrlFor(User $viewer): string
+    {
+        return $this->appUrl($viewer->can('viewBody', $this));
+    }
+
+    public function appUrl(bool $openReader): string
+    {
+        return Dashboard::getUrl(
+            $openReader ? ['email' => $this->getKey()] : [],
+            panel: 'app',
+            tenant: $this->workspace,
+        );
+    }
+
     public function hasPendingAccessRequestFrom(User $viewer): bool
     {
         return $this->accessRequests()
             ->where('requester_id', $viewer->getKey())
-            ->where('status', EmailAccessRequestStatus::PENDING)
+            ->open()
             ->exists();
     }
 

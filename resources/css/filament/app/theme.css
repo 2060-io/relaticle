@@ -170,6 +170,66 @@ html.fi:has(body.fi-panel-app) {
     @apply absolute -end-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[0.625rem] font-semibold leading-4 text-white;
 }
 
+/* `--inbox-left` is the sidebar's measured right edge, set each time the panel opens. */
+.fi-inbox-panel {
+    @apply fixed inset-0 z-40 flex flex-col overflow-hidden bg-white text-sm dark:bg-gray-900;
+}
+
+@media (width >= 64rem) {
+    .fi-inbox-panel {
+        @apply inset-auto top-2 max-h-[calc(100dvh-1rem)] w-96 rounded-xl shadow-lg ring-1 ring-gray-950/10 dark:ring-white/10;
+
+        left: var(--inbox-left, 0.5rem);
+    }
+}
+
+.fi-inbox-header {
+    @apply shrink-0 border-b border-gray-200/60 bg-white dark:border-white/10 dark:bg-gray-900;
+}
+
+.fi-inbox-tab {
+    @apply inline-flex items-center gap-1.5 border-b-2 border-transparent pb-2 text-sm font-medium text-gray-500 transition hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:text-gray-200;
+}
+
+.fi-inbox-tab-active {
+    @apply border-primary-600 text-gray-950 dark:border-primary-400 dark:text-white;
+}
+
+.fi-inbox-tab-count {
+    @apply rounded-full bg-primary-50 px-1.5 text-xs/5 font-semibold text-primary-700 dark:bg-primary-400/10 dark:text-primary-400;
+}
+
+.fi-inbox-group-heading {
+    @apply px-4 pt-3 pb-1 text-xs font-medium text-gray-500 dark:text-gray-400;
+}
+
+.fi-inbox-icon-btn {
+    @apply flex size-6 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200;
+}
+
+.fi-inbox-row {
+    @apply flex w-full gap-3 px-4 py-3 text-start transition;
+}
+
+.fi-inbox-row-interactive {
+    @apply cursor-pointer hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500 dark:hover:bg-white/5 dark:focus-visible:bg-white/5;
+}
+
+/* Touch screens have no hover or focus, so the controls sit under the row
+   instead of over its title. */
+.fi-inbox-row-controls {
+    @apply absolute end-3 top-2 flex gap-0.5 rounded-lg bg-white p-0.5 opacity-0 shadow-xs ring-1 ring-gray-950/10 transition dark:bg-gray-900 dark:ring-white/10;
+
+    .group:hover &,
+    .group:focus-within & {
+        @apply opacity-100;
+    }
+
+    @media (hover: none) {
+        @apply static ms-auto me-3 mb-2 w-max opacity-100;
+    }
+}
+
 /* Collapsed rail: only the trigger remains (the search field is hidden by the
    sidebar store), so drop the gutter and let it centre. */
 .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-search-ctn {
@@ -953,35 +1013,6 @@ a.fi-linked-records-chip {
     .fi-modal-footer-actions {
         @apply flex-row-reverse;
     }
-}
-
-/* Notifications keep their unread count and actions on that one bar row, and the
-   list runs flush under it. */
-.fi-modal.fi-no-database.fi-modal-slide-over.fi-modal-has-sticky-header > .fi-modal-window-ctn > .fi-modal-window {
-    & > .fi-modal-header > div {
-        @apply flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 pe-10;
-    }
-
-    .fi-modal-heading {
-        @apply flex items-center gap-x-1.5;
-
-        .fi-badge {
-            @apply static ms-0;
-        }
-    }
-
-    .fi-modal-header .fi-ac {
-        @apply ms-auto mt-0;
-    }
-
-    .fi-modal-content {
-        @apply py-0;
-    }
-}
-
-/* The empty state's icon bleeds 8px above its header, past the bar's py-3. */
-.fi-modal.fi-no-database.fi-modal-slide-over:not(.fi-modal-has-sticky-header) > .fi-modal-window-ctn > .fi-modal-window > .fi-modal-header {
-    @apply pt-6;
 }
 
 .fi-modal.fi-modal-slide-over > .fi-modal-close-overlay {

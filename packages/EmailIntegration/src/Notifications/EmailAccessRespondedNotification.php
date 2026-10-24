@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace Relaticle\EmailIntegration\Notifications;
 
 use App\Enums\Notifications\NotificationReason;
+use App\Enums\Notifications\NotificationType;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\InboxNotification;
 use Filament\Notifications\Notification as FilamentNotification;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Notifications\Messages\MailMessage;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Support\MarkdownText;
 
 final class EmailAccessRespondedNotification extends InboxNotification
 {
@@ -22,7 +25,7 @@ final class EmailAccessRespondedNotification extends InboxNotification
 
     public function workspace(): Workspace
     {
-        return $this->request->emailIncludingHidden->workspace;
+        return $this->request->workspace ?? $this->request->emailIncludingHidden->workspace;
     }
 
     public function subject(): EmailAccessRequest
@@ -40,25 +43,68 @@ final class EmailAccessRespondedNotification extends InboxNotification
         return NotificationReason::Requested;
     }
 
+    public function preference(): NotificationType
+    {
+        return NotificationType::EmailAccess;
+    }
+
     /** @return array<string, mixed> */
     public function facts(): array
     {
-        return ['approved' => $this->request->status === EmailAccessRequestStatus::APPROVED];
+        return ['outcome' => $this->request->status->value];
+    }
+
+    public function toMail(User $notifiable): MailMessage
+    {
+        $outcome = $this->request->status->value;
+        $email = $this->request->emailIncludingHidden;
+        $ownerName = $this->request->owner->name;
+
+        $mail = (new MailMessage)
+            ->subject(__(self::LANG.".{$outcome}.title"))
+            ->line(__(self::LANG.".{$outcome}.body", ['owner' => MarkdownText::escape($ownerName)]));
+
+        if ($notifiable->can('viewSubject', $email)) {
+            $mail->line(__(self::LANG.'.mail.subject_line', [
+                'subject' => MarkdownText::escape($email->displaySubject()),
+            ]));
+        }
+
+        return $mail->action(
+            __(self::LANG.($notifiable->can('viewBody', $email) ? '.mail.action_view' : '.mail.action_open')),
+            $email->appUrlFor($notifiable),
+        );
     }
 
     public static function present(NotificationRow $row): FilamentNotification
     {
-        $outcome = data_get($row->data, 'approved') === true ? 'approved' : 'denied';
+        $outcome = self::outcomeOf($row);
         $ownerName = $row->actor?->name;
 
         $notification = FilamentNotification::make((string) $row->getKey())
-            ->title(__(self::LANG.".{$outcome}.title"))
+            ->title(__(self::LANG.".{$outcome->value}.title"))
             ->body($ownerName === null
-                ? __(self::LANG.".{$outcome}.body_without_owner")
-                : __(self::LANG.".{$outcome}.body", ['owner' => e($ownerName)]));
+                ? __(self::LANG.".{$outcome->value}.body_without_owner")
+                : __(self::LANG.".{$outcome->value}.body", ['owner' => e($ownerName)]));
 
-        return $outcome === 'approved'
-            ? $notification->success()->icon(Heroicon::OutlinedCheckCircle)
-            : $notification->danger()->icon(Heroicon::OutlinedXCircle);
+        return match ($outcome) {
+            EmailAccessRequestStatus::APPROVED => $notification->success()->icon(Heroicon::OutlinedCheckCircle),
+            EmailAccessRequestStatus::EXPIRED => $notification->color('gray')->icon(Heroicon::OutlinedClock),
+            default => $notification->danger()->icon(Heroicon::OutlinedXCircle),
+        };
+    }
+
+    private static function outcomeOf(NotificationRow $row): EmailAccessRequestStatus
+    {
+        $stored = data_get($row->data, 'outcome');
+        $outcome = is_string($stored) ? EmailAccessRequestStatus::tryFrom($stored) : null;
+
+        if ($outcome instanceof EmailAccessRequestStatus) {
+            return $outcome;
+        }
+
+        return data_get($row->data, 'approved') === true
+            ? EmailAccessRequestStatus::APPROVED
+            : EmailAccessRequestStatus::DENIED;
     }
 }

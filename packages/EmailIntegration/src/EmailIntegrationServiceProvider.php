@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\EmailIntegration;
 
+use App\Contracts\Inbox\RequestSource;
 use App\Features\EmailIntegration;
 use App\Filament\Pages\Dashboard;
 use App\Models\CustomFieldValue;
@@ -26,11 +27,14 @@ use Relaticle\EmailIntegration\Actions\PurgeStoredMailboxData;
 use Relaticle\EmailIntegration\Console\Commands\BackfillEmailThreadsCommand;
 use Relaticle\EmailIntegration\Console\Commands\DisconnectFormerMemberMailboxesCommand;
 use Relaticle\EmailIntegration\Console\Commands\DispatchOutboxCommand;
+use Relaticle\EmailIntegration\Console\Commands\ExpireEmailAccessRequestsCommand;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalCalendarSyncCommand;
 use Relaticle\EmailIntegration\Console\Commands\IncrementalEmailSyncCommand;
 use Relaticle\EmailIntegration\Console\Commands\RemoveOwnDomainRecordsCommand;
 use Relaticle\EmailIntegration\Console\Commands\RenewCalendarPushChannelsCommand;
 use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource\Pages\ManageEmailTemplates;
+use Relaticle\EmailIntegration\Inbox\EmailAccessRequestSource;
+use Relaticle\EmailIntegration\Listeners\CancelRemovedMemberAccessRequestsListener;
 use Relaticle\EmailIntegration\Listeners\DisconnectRemovedMemberMailboxesListener;
 use Relaticle\EmailIntegration\Livewire\AccessRequestsTable;
 use Relaticle\EmailIntegration\Livewire\DraftsTable;
@@ -75,6 +79,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         $this->app->scoped(MailboxDisplayNameDirectory::class);
         $this->app->scoped(EmailVisibilityService::class);
         $this->app->scoped(QueueRecordHistoryRelink::class);
+        $this->app->tag([EmailAccessRequestSource::class], RequestSource::class);
 
         // Not gated by the feature flag: these are inert while the feature is off, and
         // static analysis (which runs with it off) can only resolve
@@ -165,20 +170,28 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
             },
         );
 
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                BackfillEmailThreadsCommand::class,
-                DispatchOutboxCommand::class,
-                IncrementalCalendarSyncCommand::class,
-                IncrementalEmailSyncCommand::class,
-                RenewCalendarPushChannelsCommand::class,
-            ]);
-        }
+        $this->registerCommands();
     }
 
     public static function enabled(): bool
     {
         return Feature::for(null)->active(EmailIntegration::class);
+    }
+
+    private function registerCommands(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([
+            BackfillEmailThreadsCommand::class,
+            DispatchOutboxCommand::class,
+            ExpireEmailAccessRequestsCommand::class,
+            IncrementalCalendarSyncCommand::class,
+            IncrementalEmailSyncCommand::class,
+            RenewCalendarPushChannelsCommand::class,
+        ]);
     }
 
     private function registerCleanupThatIgnoresTheFeatureFlag(): void
@@ -196,6 +209,7 @@ final class EmailIntegrationServiceProvider extends ServiceProvider
         Workspace::deleting(fn (Workspace $workspace) => resolve(PurgeStoredMailboxData::class)->execute($workspace));
 
         Event::listen(TeamMemberRemoved::class, DisconnectRemovedMemberMailboxesListener::class);
+        Event::listen(TeamMemberRemoved::class, CancelRemovedMemberAccessRequestsListener::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([

@@ -51,7 +51,7 @@ beforeEach(function (): void {
 });
 
 describe('EmailAccessRequestedNotification', function (): void {
-    it('opens the emails-tab reader overlay from view without dismissing the notification', function (): void {
+    it('presents a request notice as the requester and the subject, with no actions', function (): void {
         $this->requester->update(['name' => 'Dana Whitfield']);
 
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
@@ -60,53 +60,34 @@ describe('EmailAccessRequestedNotification', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        inboxAccessRequestNotice($this->owner, $request);
         $notification = $this->owner->unreadNotifications()->latest()->first();
 
         $payload = EmailAccessRequestedNotification::present($notification)->getDatabaseMessage();
-        $actions = collect($payload['actions'] ?? [])->keyBy('name');
 
-        expect($actions->keys()->all())->toBe(['viewEmail', 'accept', 'decline'])
+        expect($payload['actions'] ?? [])->toBe([])
             ->and($payload['body'])->toBe('Q4 pipeline review')
-            ->and($payload['title'])->toBe('Dana Whitfield requested email access')
-            ->and($actions['viewEmail']['label'])->toBe('View')
-            ->and($actions['viewEmail']['shouldMarkAsRead'] ?? false)->toBeFalse()
-            ->and($actions['viewEmail']['shouldClose'] ?? false)->toBeFalse()
-            ->and($actions['viewEmail']['event'])->toBe('open-email-from-access-request')
-            ->and($actions['viewEmail']['eventData'])->toBe(['emailId' => $this->email->getKey()])
-            ->and($actions['accept']['event'])->toBe('approve-email-access-request')
-            ->and($actions['accept']['eventData'])->toBe(['requestId' => $request->getKey()])
-            ->and($actions['accept']['shouldClose'] ?? false)->toBeFalse()
-            ->and($actions['accept']['shouldMarkAsRead'] ?? false)->toBeFalse()
-            ->and($actions['decline']['event'])->toBe('deny-email-access-request')
-            ->and($actions['decline']['eventData'])->toBe(['requestId' => $request->getKey()])
-            ->and($actions['decline']['shouldClose'] ?? false)->toBeFalse()
-            ->and($actions['decline']['shouldMarkAsRead'] ?? false)->toBeFalse()
-            ->and($notification->read_at)->toBeNull();
-
-        Livewire::test(EmailAccessNotificationHandler::class)
-            ->dispatch('open-email-from-access-request', emailId: $this->email->getKey());
-
-        expect($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1)
-            ->and($notification->fresh()->read_at)->toBeNull();
+            ->and($payload['title'])->toBe('Dana Whitfield requested email access');
     });
 
-    it('shows the access request in the bell with its actions', function (): void {
+    it('shows an access request notice written before this change in the bell', function (): void {
         $this->requester->update(['name' => 'Dana Whitfield']);
         resolve(CurrentWorkspace::class)->set($this->workspace);
-        app(RequestEmailAccessAction::class)->execute($this->email, $this->requester, EmailPrivacyTier::FULL);
+        inboxAccessRequestNotice($this->owner, EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]));
 
         Livewire::actingAs($this->owner)->test(AppDatabaseNotifications::class)
             ->assertSee('Dana Whitfield requested email access')
-            ->assertSee('Q4 pipeline review')
-            ->assertSee(__('filament/notifications/email-access-requested.actions.accept'))
-            ->assertSee(__('filament/notifications/email-access-requested.actions.decline'));
+            ->assertSee('Q4 pipeline review');
     });
 
     it('is sent when a teammate requests access', function (): void {
         NotificationFacade::fake();
 
-        app(RequestEmailAccessAction::class)->execute(
+        resolve(RequestEmailAccessAction::class)->execute(
             $this->email,
             $this->requester,
             EmailPrivacyTier::FULL,
@@ -124,7 +105,39 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertSee(__('filament/pages/email-inbox.reader.heading'))
             ->assertSee('Q4 pipeline review')
             ->assertSee('fi-email-reader-panel')
-            ->assertDispatched('close-modal', id: 'database-notifications');
+            ->assertDispatched('inbox:close');
+    });
+
+    it('opens the reader from the email query parameter for a viewer with full access', function (): void {
+        Livewire::withQueryParams(['email' => $this->email->getKey()])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', $this->email->getKey())
+            ->assertSee('Q4 pipeline review');
+    });
+
+    it('opens nothing from the email query parameter for a member who cannot read the email', function (): void {
+        $this->actingAs($this->requester);
+
+        Livewire::withQueryParams(['email' => $this->email->getKey()])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', null)
+            ->assertDontSee('Q4 pipeline review');
+    });
+
+    it('opens nothing from the email query parameter for an outsider', function (): void {
+        $outsider = User::factory()->withWorkspace()->create();
+        $this->actingAs($outsider);
+
+        Livewire::withQueryParams(['email' => $this->email->getKey()])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', null)
+            ->assertDontSee('Q4 pipeline review');
+    });
+
+    it('ignores an unknown email query parameter', function (): void {
+        Livewire::withQueryParams(['email' => 'not-an-email'])
+            ->test(EmailAccessNotificationHandler::class)
+            ->assertSet('selectedEmailId', null);
     });
 
     it('shows approve and deny controls in the overlay for a pending request', function (): void {
@@ -141,48 +154,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertSee(__('filament/pages/email-inbox.pending_access.deny'));
     });
 
-    it('approves a pending request from the notification event', function (): void {
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
-        NotificationFacade::fake();
-
-        Livewire::test(EmailAccessNotificationHandler::class)
-            ->dispatch('approve-email-access-request', requestId: $request->getKey())
-            ->assertSet('selectedEmailId', null)
-            ->assertDispatched('close-modal', id: 'database-notifications')
-            ->assertDispatched('databaseNotificationsSent')
-            ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
-
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
-    });
-
-    it('denies a pending request from the notification event', function (): void {
-        $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
-            'requester_id' => $this->requester->id,
-            'owner_id' => $this->owner->id,
-            'email_id' => $this->email->getKey(),
-        ]);
-
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
-        NotificationFacade::fake();
-
-        Livewire::test(EmailAccessNotificationHandler::class)
-            ->dispatch('deny-email-access-request', requestId: $request->getKey())
-            ->assertSet('selectedEmailId', null)
-            ->assertDispatched('close-modal', id: 'database-notifications')
-            ->assertDispatched('databaseNotificationsSent')
-            ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
-
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
-    });
-
     it('closes the overlay after approving from the reader bar', function (): void {
         $request = EmailAccessRequest::factory()->forTier(EmailPrivacyTier::FULL)->create([
             'requester_id' => $this->requester->id,
@@ -190,7 +161,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -202,8 +172,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.approved'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED);
     });
 
     it('closes the overlay after denying from the reader bar', function (): void {
@@ -213,7 +182,6 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
@@ -225,8 +193,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             ->assertDispatched('databaseNotificationsSent')
             ->assertNotified(__('filament/pages/email-access-requests.notifications.denied'));
 
-        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED)
-            ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(0);
+        expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::DENIED);
     });
 
     it('ignores approve for requests the viewer does not own', function (): void {
@@ -236,7 +203,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        inboxAccessRequestNotice($this->owner, $request);
 
         $intruder = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
         $this->actingAs($intruder);
@@ -244,7 +211,7 @@ describe('EmailAccessNotificationHandler', function (): void {
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
-            ->dispatch('approve-email-access-request', requestId: $request->getKey())
+            ->callAction(TestAction::make('approveAccessRequest')->arguments(['requestId' => $request->getKey()]))
             ->assertNotNotified();
 
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
@@ -258,7 +225,7 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        inboxAccessRequestNotice($this->owner, $request);
 
         $intruder = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
         $this->actingAs($intruder);
@@ -266,7 +233,7 @@ describe('EmailAccessNotificationHandler', function (): void {
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
-            ->dispatch('deny-email-access-request', requestId: $request->getKey())
+            ->callAction(TestAction::make('denyAccessRequest')->arguments(['requestId' => $request->getKey()]))
             ->assertNotNotified();
 
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING)
@@ -280,18 +247,36 @@ describe('EmailAccessNotificationHandler', function (): void {
             'email_id' => $this->email->getKey(),
         ]);
 
-        $this->owner->notify(new EmailAccessRequestedNotification($request));
+        inboxAccessRequestNotice($this->owner, $request);
         $request->update(['status' => EmailAccessRequestStatus::APPROVED]);
         NotificationFacade::fake();
 
         Livewire::test(EmailAccessNotificationHandler::class)
             ->dispatch('open-email-from-access-request', emailId: $this->email->getKey())
-            ->dispatch('approve-email-access-request', requestId: $request->getKey())
+            ->callAction(TestAction::make('approveAccessRequest')->arguments(['requestId' => $request->getKey()]))
             ->assertSet('selectedEmailId', $this->email->getKey())
             ->assertNotNotified();
 
         expect($request->fresh()->status)->toBe(EmailAccessRequestStatus::APPROVED)
             ->and($this->owner->notifications()->where('type', EmailAccessRequestedNotification::class)->count())->toBe(1);
+    });
+
+    it('offers no overdue request to approve', function (): void {
+        $request = EmailAccessRequest::factory()->overdue()->forTier(EmailPrivacyTier::FULL)->create([
+            'requester_id' => $this->requester->id,
+            'owner_id' => $this->owner->id,
+            'email_id' => $this->email->getKey(),
+        ]);
+
+        NotificationFacade::fake();
+
+        $component = Livewire::test(EmailAccessNotificationHandler::class)
+            ->dispatch('open-email-from-access-request', emailId: $this->email->getKey())
+            ->callAction(TestAction::make('approveAccessRequest')->arguments(['requestId' => $request->getKey()]))
+            ->assertNotNotified();
+
+        expect($component->instance()->pendingAccessRequests)->toHaveCount(0)
+            ->and($request->fresh()->status)->toBe(EmailAccessRequestStatus::PENDING);
     });
 
     it('dismisses the inline composer when selectedEmailId is cleared', function (): void {

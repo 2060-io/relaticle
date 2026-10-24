@@ -57,7 +57,7 @@ final class EmailAccessRequestsPage extends Page implements HasTable
             return null;
         }
 
-        $count = EmailAccessRequest::query()->pendingIncomingFor($user)->count();
+        $count = EmailAccessRequest::countPendingIncomingFor($user, $user->currentWorkspace);
 
         return $count > 0 ? (string) $count : null;
     }

@@ -232,6 +232,8 @@ it('hydrates notification toggles from the enum defaults', function (): void {
         ->assertFormSet([
             'notification_preferences' => [
                 'task_assigned' => ['in_app' => true, 'email' => false],
+                'email_access' => ['in_app' => true, 'email' => true],
+                'email_shared' => ['in_app' => true, 'email' => true],
                 'task_digest' => ['email' => true],
             ],
         ]);
