@@ -6,9 +6,9 @@ namespace Relaticle\Chat\Tools;
 
 use App\Enums\WorkspaceCapability;
 use App\Models\User;
+use App\Queries\ViewerZone;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
 use Relaticle\Chat\Enums\PendingActionOperation;
@@ -82,7 +82,7 @@ abstract class BaseWriteUpdateTool implements Tool
 
         $customFieldsDescription = $user instanceof User
             ? resolve(CustomFieldsSchemaDescriber::class)->describe($user->currentWorkspace, $this->entityType())
-            : 'Custom field values as key-value pairs.';
+            : 'Custom attribute (custom field) values as key-value pairs.';
 
         $label = strtolower($this->entityLabel());
 
@@ -172,7 +172,7 @@ abstract class BaseWriteUpdateTool implements Tool
                 return (string) json_encode(['error' => "records[{$index}]: {$nameError}"], JSON_UNESCAPED_SLASHES);
             }
 
-            $validation = $validator->validate($user, $this->entityType(), $record['custom_fields'] ?? null, ignoreEntityId: $model->getKey(), viewerZone: $user->effectiveTimezone());
+            $validation = $validator->validate($user, $this->entityType(), $record['custom_fields'] ?? null, ignoreEntityId: $model->getKey(), viewerZone: ViewerZone::strict($user->effectiveTimezone()));
 
             if ($validation->error !== null) {
                 return (string) json_encode(['error' => "records[{$index}]: {$validation->error}"], JSON_UNESCAPED_SLASHES);
@@ -199,6 +199,7 @@ abstract class BaseWriteUpdateTool implements Tool
             }
 
             $displayData = $this->buildDisplayData($recordRequest, $model);
+            $displayData['name'] = (string) $model->getAttribute($this->proposalEntity()->titleKey());
             $customFieldRows = $formatter->format($user, $this->entityType(), $validation->cleanFields, oldModel: $model);
 
             if ($customFieldRows !== []) {
@@ -236,7 +237,6 @@ abstract class BaseWriteUpdateTool implements Tool
         }
 
         $isBatch = count($actionRecords) > 1;
-        $entityNoun = strtolower($label);
 
         $pending = resolve(PendingActionService::class)->createProposal(
             user: $user,
@@ -247,11 +247,8 @@ abstract class BaseWriteUpdateTool implements Tool
             actionData: $isBatch ? ['_batch' => true, 'records' => $actionRecords] : $actionRecords[0],
             displayData: $isBatch
                 ? [
-                    'title' => __('Update :entities', ['entities' => Str::plural($label, count($items))]),
-                    'summary' => __('Update :count :entities', [
-                        'count' => count($items),
-                        'entities' => Str::plural($entityNoun, count($items)),
-                    ]),
+                    'title' => $this->proposalEntity()->batchTitle(PendingActionOperation::Update, count($items)),
+                    'summary' => $this->proposalEntity()->batchSummary(PendingActionOperation::Update, count($items)),
                     'items' => $items,
                 ]
                 : $items[0],

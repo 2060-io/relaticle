@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use App\Enums\CrmEntity;
+use App\Enums\CustomFields\CompanyField;
 use App\Filament\Components\Forms\RecordSelect;
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Filament\Components\RecordChip;
-use App\Filament\Components\Tables\Filters\RecordSelectFilter;
 use App\Filament\Components\Tables\RecordChipColumn;
 use App\Filament\Resources\CompanyResource;
 use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
@@ -14,7 +14,6 @@ use App\Filament\Resources\NoteResource\Pages\ManageNotes;
 use App\Filament\Resources\PeopleResource;
 use App\Filament\Resources\PeopleResource\Pages\ListPeople;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
-use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Models\Company;
 use App\Models\Note;
 use App\Models\People;
@@ -29,7 +28,6 @@ mutates(
     RecordChipColumn::class,
     RecordChipEntry::class,
     RecordSelect::class,
-    RecordSelectFilter::class,
 );
 
 beforeEach(function (): void {
@@ -56,37 +54,6 @@ function peoplePicker(string $name): Select
     throw new RuntimeException("No `{$name}` picker on the people form.");
 }
 
-function assigneesFilterField(ManageTasks $page): Select
-{
-    foreach ($page->getTableFiltersForm()->getComponents(withHidden: true) as $component) {
-        foreach ($component->getChildComponentContainers() as $container) {
-            foreach ($container->getComponents(withHidden: true) as $child) {
-                if ($child instanceof Select && $child->hasRelationship() && $child->getRelationshipName() === 'assignees') {
-                    return $child;
-                }
-            }
-        }
-    }
-
-    throw new RuntimeException('No assignees filter field on the tasks table.');
-}
-
-/**
- * @param  array<string|int, string>  $options
- * @return array<int, string>
- */
-function pickerLabelText(array $options): array
-{
-    return array_values(array_map(
-        fn (string $label): string => html_entity_decode(
-            trim((string) preg_replace('/\s+/', ' ', strip_tags($label))),
-            ENT_QUOTES,
-            'UTF-8',
-        ),
-        $options,
-    ));
-}
-
 function mediaQueryCount(): int
 {
     return collect(DB::getQueryLog())
@@ -94,12 +61,12 @@ function mediaQueryCount(): int
         ->count();
 }
 
-it('renders the person avatar in the people list name column', function (): void {
-    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Adam Clark']);
+it('renders the person icon in the people list name column', function (): void {
+    People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Adam Clark']);
 
     livewire(ListPeople::class)
         ->assertSee('Adam Clark')
-        ->assertSee($person->avatar, escape: false);
+        ->assertSee(CrmEntity::People->iconPath(), escape: false);
 });
 
 it('renders the company entity icon in the people list company column', function (): void {
@@ -118,23 +85,21 @@ it('renders the company entity icon in the companies list name column', function
         ->assertSee(CrmEntity::Company->iconPath(), escape: false);
 });
 
-it('renders an avatar for every related person in a multi-record column', function (): void {
+it('renders the person icon for every related person in a multi-record column', function (): void {
     $note = Note::factory()->recycle([$this->user, $this->workspace])->create();
     $people = People::factory(2)->recycle([$this->user, $this->workspace])->create();
     $note->people()->attach($people);
 
-    $rendered = livewire(ManageNotes::class);
+    $html = livewire(ManageNotes::class)->html();
 
-    foreach ($people as $person) {
-        $rendered->assertSee($person->avatar, escape: false);
-    }
+    expect(substr_count($html, CrmEntity::People->iconPath()))->toBeGreaterThanOrEqual(2);
 });
 
-it('renders the person avatar on the view page', function (): void {
+it('renders the person icon on the view page', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
 
     livewire(ViewPeople::class, ['record' => $person->getKey()])
-        ->assertSee($person->avatar, escape: false);
+        ->assertSee(CrmEntity::People->iconPath(), escape: false);
 });
 
 it('renders the company entity icon in a picker option label', function (): void {
@@ -191,21 +156,6 @@ it('loads company logos in one query on the people list', function (): void {
     expect(mediaQueryCount())->toBeLessThanOrEqual(1);
 });
 
-it('renders member chips in the assignees filter and lets the caller order win', function (): void {
-    $this->user->update(['name' => "Sheila O'Kon"]);
-    $mate = User::factory()->create(['name' => 'Aaron Ant']);
-    $this->workspace->users()->attach($mate, ['role' => 'member']);
-
-    $page = livewire(ManageTasks::class)->instance();
-    $field = assigneesFilterField($page);
-
-    expect($field->isHtmlAllowed())->toBeTrue()
-        ->and($field->getOptionLabelFromRecord($this->user))->toContain($this->user->getFilamentAvatarUrl());
-
-    expect(pickerLabelText($field->getOptionsFromRelationship()))
-        ->toBe(["Sheila O'Kon", 'Aaron Ant']);
-});
-
 it('falls back to the shared entity icon for a company with no logo', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme Corp']);
 
@@ -217,6 +167,30 @@ it('falls back to the shared entity icon for a company with no logo', function (
         ->and($chip->toHtml())->not->toContain('<img');
 });
 
+it('falls back to the company icon when the logo image fails', function (): void {
+    config()->set('services.brandfetch.client_id', 'test-client');
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
+        'name' => 'Acme Corp',
+        'custom_fields' => [CompanyField::DOMAINS->value => ['acme.com']],
+    ]);
+
+    $html = RecordChip::forRecord($company->fresh())->toHtml();
+
+    expect($html)->toContain('src="https://cdn.brandfetch.io/domain/acme.com/')
+        ->and($html)->toContain('x-on:error="broken = true"')
+        ->and($html)->toContain('x-show="! broken"')
+        ->and($html)->toContain('x-show="broken"')
+        ->and($html)->toContain(CrmEntity::Company->iconPath());
+});
+
+it('renders a chip with a logo and no icon as a plain image', function (): void {
+    $html = (new RecordChip(name: 'Ada', imageUrl: 'https://example.test/ada.png'))->toHtml();
+
+    expect($html)->toContain('<img')
+        ->and($html)->not->toContain('x-data')
+        ->and($html)->not->toContain('<svg');
+});
+
 it('gives two logoless companies the same icon, so colour only ever means a real logo', function (): void {
     $acme = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Acme Corp']);
     $zeta = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Zeta Industries']);
@@ -224,13 +198,12 @@ it('gives two logoless companies the same icon, so colour only ever means a real
     expect(RecordChip::forRecord($acme)->iconPath)->toBe(RecordChip::forRecord($zeta)->iconPath);
 });
 
-it('still colours people by name so two of them stay distinguishable', function (): void {
-    $adam = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Adam Clark']);
-    $zoe = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Zoe Baker']);
+it('draws every person with the shared person icon, keeping initials for workspace members', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Adam Clark']);
 
-    expect($adam->avatar)->not->toBe($zoe->avatar)
-        ->and(RecordChip::forRecord($adam)->iconPath)->toBeNull()
-        ->and(RecordChip::forRecord($adam)->imageUrl)->toBe($adam->avatar);
+    expect(RecordChip::forRecord($person)->imageUrl)->toBeNull()
+        ->and(RecordChip::forRecord($person)->iconPath)->toBe(CrmEntity::People->iconPath())
+        ->and(RecordChip::forRecord($this->user)->imageUrl)->toBe($this->user->getFilamentAvatarUrl());
 });
 
 it('carries the avatar in a global search result title', function (): void {

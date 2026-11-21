@@ -27,12 +27,14 @@ final class TaskForm
         return $schema
             ->components([
                 TextInput::make('title')
+                    ->label(__('filament/resources/task.fields.title.label'))
                     ->required(),
                 self::customFieldRow(array_values(array_diff($propertyCodes, $excludeFields))),
                 Grid::make(['default' => 1, 'sm' => 3])
                     ->schema([
                         WorkspaceMemberSelect::make('assignees')
                             ->label(__('filament/resources/task.fields.assignees.label'))
+                            ->placeholder(__('filament/resources/task.fields.assignees.placeholder'))
                             ->multiple()
                             ->relationship('assignees', 'name')
                             ->nullable(),

@@ -20,7 +20,7 @@
         <div class="flex h-full items-center justify-center px-6">
             <div class="mx-auto max-w-md text-center">
                 <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400">
-                    <x-heroicon-o-sparkles class="h-6 w-6" />
+                    <x-lucide-sparkles class="h-6 w-6" />
                 </div>
                 <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ __('What do you need to know?') }}
@@ -90,7 +90,7 @@
                     :disabled="loadingEarlier"
                     class="inline-flex items-center gap-1.5 rounded-full border border-[var(--surface-card-border)] bg-[var(--surface-card-bg)] px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-wait dark:text-gray-300 dark:hover:bg-white/5"
                 >
-                    <x-heroicon-o-arrow-path x-show="loadingEarlier" x-cloak class="h-3 w-3 motion-safe:animate-spin" aria-hidden="true" />
+                    <x-lucide-refresh-cw x-show="loadingEarlier" x-cloak class="h-3 w-3 motion-safe:animate-spin" aria-hidden="true" />
                     <span x-text="loadingEarlier ? @js(__('Loading earlier messages…')) : @js(__('Load earlier messages'))"></span>
                 </button>
             </div>
@@ -146,13 +146,13 @@
                             <template x-if="msg.attachment && !msg.editing">
                                 <div
                                     data-user-attachment
-                                    :title="msg.created_at ? new Date(msg.created_at).toLocaleString() : ''"
+                                    :title="msg.created_at ? new Date(msg.created_at).toLocaleString(document.documentElement.lang || undefined) : ''"
                                     class="flex max-w-full items-center gap-2.5 rounded-2xl bg-gray-100 px-3 py-2 dark:bg-white/10"
                                     :class="showsTextBubble(msg) ? '' : 'rounded-br-md'"
                                 >
                                     <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 ring-1 ring-gray-900/5 dark:bg-white/10 dark:text-gray-300 dark:ring-white/10">
-                                        <x-heroicon-o-table-cells x-show="msg.attachment.kind !== 'text'" class="h-4 w-4" aria-hidden="true" />
-                                        <x-heroicon-o-document-text x-show="msg.attachment.kind === 'text'" class="h-4 w-4" aria-hidden="true" />
+                                        <x-lucide-table x-show="msg.attachment.kind !== 'text'" class="h-4 w-4" aria-hidden="true" />
+                                        <x-lucide-file-text x-show="msg.attachment.kind === 'text'" class="h-4 w-4" aria-hidden="true" />
                                     </span>
                                     <span class="flex min-w-0 flex-col text-start">
                                         <span class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="msg.attachment.name"></span>
@@ -168,7 +168,7 @@
                                      without a brand tint. --}}
                                 <div
                                     data-user-text
-                                    :title="msg.created_at ? new Date(msg.created_at).toLocaleString() : ''"
+                                    :title="msg.created_at ? new Date(msg.created_at).toLocaleString(document.documentElement.lang || undefined) : ''"
                                     class="[overflow-wrap:anywhere] break-words rounded-2xl rounded-br-md bg-gray-100 px-4 py-2.5 text-sm text-gray-900 dark:bg-white/10 dark:text-gray-100"
                                 >
                                     <span x-html="renderMessageContent(msg)" class="whitespace-pre-wrap"></span>
@@ -182,7 +182,7 @@
                                     :class="msg.page_context.url ? '' : 'pointer-events-none'"
                                     class="inline-flex max-w-full items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-[length:var(--text-micro)] font-medium text-primary-700 ring-1 ring-primary-600/20 transition hover:bg-primary-100 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-400/30 dark:hover:bg-primary-500/20"
                                 >
-                                    <x-heroicon-m-at-symbol class="h-3 w-3 shrink-0" aria-hidden="true" />
+                                    <x-lucide-at-sign class="h-3 w-3 shrink-0" aria-hidden="true" />
                                     <span class="truncate" x-text="msg.page_context.label"></span>
                                 </a>
                             </template>
@@ -195,7 +195,7 @@
                             <template x-if="msg.sendState === 'failed' && !msg.editing">
                                 <div class="flex items-center gap-1 px-1 text-[length:var(--text-micro)] text-red-500 dark:text-red-400">
                                     <span class="inline-flex items-center gap-1" role="alert">
-                                        <x-heroicon-o-exclamation-triangle class="h-3 w-3 shrink-0" aria-hidden="true" />
+                                        <x-lucide-triangle-exclamation-point class="h-3 w-3 shrink-0" aria-hidden="true" />
                                         <span>{{ __('Not sent') }}</span>
                                         <button
                                             type="button"
@@ -287,7 +287,7 @@
                                  bubble changes height mid-turn. --}}
                             <template x-if="!msg.editing">
                                 <div
-                                    class="flex items-center gap-1 px-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100"
+                                    class="flex items-center gap-1 px-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100"
                                     :class="{ 'invisible': isStreaming }"
                                 >
                                     <button
@@ -299,10 +299,10 @@
                                         class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                                     >
                                         <template x-if="copiedKey === msg.clientKey">
-                                            <x-heroicon-s-check class="h-3.5 w-3.5 text-green-600 dark:text-green-400" aria-hidden="true" />
+                                            <x-lucide-check class="h-3.5 w-3.5 text-green-600 dark:text-green-400" aria-hidden="true" />
                                         </template>
                                         <template x-if="copiedKey !== msg.clientKey">
-                                            <x-heroicon-o-document-duplicate class="h-3.5 w-3.5" aria-hidden="true" />
+                                            <x-lucide-copy class="h-3.5 w-3.5" aria-hidden="true" />
                                         </template>
                                     </button>
                                     <button
@@ -315,7 +315,7 @@
                                         :aria-label="editButtonLabel(index)"
                                         class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                                     >
-                                        <x-heroicon-o-pencil-square class="h-3.5 w-3.5" aria-hidden="true" />
+                                        <x-lucide-square-pen class="h-3.5 w-3.5" aria-hidden="true" />
                                     </button>
                                 </div>
                             </template>
@@ -331,7 +331,7 @@
                     <div class="flex flex-col items-start" data-assistant-bubble :data-grouped="decorations(index).grouped">
                         <div class="flex w-full justify-start" x-show="msg.content || !msg.rendered || displayBlocks(msg).length > 0 || (index === messages.length - 1 && isStreaming && currentToolStatus)">
                             <div
-                                :title="msg.created_at ? @js(__('Completed :time')).replace(':time', new Date(msg.created_at).toLocaleString()) : ''"
+                                :title="msg.created_at ? @js(__('Completed :time')).replace(':time', new Date(msg.created_at).toLocaleString(document.documentElement.lang || undefined)) : ''"
                                 class="w-full min-w-0"
                             >
                                 {{-- Rendered reply: text and display blocks interleaved in
@@ -345,6 +345,7 @@
                                                 <template x-if="seg.type === 'html'">
                                                     <div
                                                         x-html="seg.html"
+                                                        x-effect="seg.html; $nextTick(() => decorateReply($el))"
                                                         class="{{ $proseClasses }}"
                                                     ></div>
                                                 </template>
@@ -386,9 +387,29 @@
                             </div>
                         </div>
 
+                        <template x-if="(msg.sources || []).length > 0">
+                            <div data-web-sources class="mt-2 flex w-full flex-wrap items-center gap-1.5 px-1" role="group" aria-label="{{ __('Sources') }}">
+                                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('Sources') }}</span>
+                                <template x-for="source in msg.sources" :key="source.url">
+                                    <a
+                                        data-web-source
+                                        :href="source.url"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        :title="source.title || source.url"
+                                        :aria-label="sourceLabel(msg.sources, source)"
+                                        class="inline-flex max-w-[14rem] items-center gap-1 rounded-md border border-gray-200 bg-[var(--surface-card-bg)] px-1.5 py-0.5 text-xs text-gray-600 transition hover:border-gray-300 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:border-white/10 dark:text-gray-300 dark:hover:border-white/20 dark:hover:text-white"
+                                    >
+                                        <x-lucide-globe class="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                                        <span class="truncate" x-text="sourceLabel(msg.sources, source)"></span>
+                                    </a>
+                                </template>
+                            </div>
+                        </template>
+
                         <template x-if="msg.streamError">
                             <div class="mt-2 flex max-w-[85%] items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-900/20" role="alert">
-                                <x-heroicon-o-exclamation-triangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                                <x-lucide-triangle-exclamation-point class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
                                 <span class="flex-1 text-xs text-amber-800 [overflow-wrap:anywhere] dark:text-amber-200" x-text="msg.streamError"></span>
                                 <button
                                     type="button"
@@ -413,7 +434,7 @@
 
                         <template x-if="msg.content">
                             <div
-                                class="mt-1 flex items-center gap-1 px-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100"
+                                class="mt-1 flex items-center gap-1 px-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100"
                                 :class="{ 'invisible': !msg.rendered }"
                             >
                                 <button
@@ -425,10 +446,10 @@
                                     class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                                 >
                                     <template x-if="copiedKey === msg.clientKey">
-                                        <x-heroicon-s-check class="h-3.5 w-3.5 text-green-600 dark:text-green-400" aria-hidden="true" />
+                                        <x-lucide-check class="h-3.5 w-3.5 text-green-600 dark:text-green-400" aria-hidden="true" />
                                     </template>
                                     <template x-if="copiedKey !== msg.clientKey">
-                                        <x-heroicon-o-document-duplicate class="h-3.5 w-3.5" aria-hidden="true" />
+                                        <x-lucide-copy class="h-3.5 w-3.5" aria-hidden="true" />
                                     </template>
                                 </button>
                                 {{-- Icon-only like its copy/thumbs siblings (ChatGPT's action-row
@@ -443,7 +464,7 @@
                                     :title="regenerateButtonLabel(index)"
                                     class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200 dark:disabled:hover:bg-transparent dark:disabled:hover:text-gray-400"
                                 >
-                                    <x-heroicon-o-arrow-path class="h-3.5 w-3.5" aria-hidden="true" />
+                                    <x-lucide-refresh-cw class="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                                 <template x-if="msg.id">
                                     <span class="flex items-center gap-0.5">
@@ -457,10 +478,10 @@
                                             :class="msg.feedback?.rating === 'up' ? 'text-green-600 dark:text-green-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
                                         >
                                             <template x-if="msg.feedback?.rating === 'up'">
-                                                <x-heroicon-s-hand-thumb-up class="h-3.5 w-3.5" aria-hidden="true" />
+                                                <x-lucide-thumbs-up class="h-3.5 w-3.5" aria-hidden="true" />
                                             </template>
                                             <template x-if="msg.feedback?.rating !== 'up'">
-                                                <x-heroicon-o-hand-thumb-up class="h-3.5 w-3.5" aria-hidden="true" />
+                                                <x-lucide-thumbs-up class="h-3.5 w-3.5" aria-hidden="true" />
                                             </template>
                                         </button>
                                         <button
@@ -473,10 +494,10 @@
                                             :class="msg.feedback?.rating === 'down' ? 'text-red-600 dark:text-red-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
                                         >
                                             <template x-if="msg.feedback?.rating === 'down'">
-                                                <x-heroicon-s-hand-thumb-down class="h-3.5 w-3.5" aria-hidden="true" />
+                                                <x-lucide-thumbs-down class="h-3.5 w-3.5" aria-hidden="true" />
                                             </template>
                                             <template x-if="msg.feedback?.rating !== 'down'">
-                                                <x-heroicon-o-hand-thumb-down class="h-3.5 w-3.5" aria-hidden="true" />
+                                                <x-lucide-thumbs-down class="h-3.5 w-3.5" aria-hidden="true" />
                                             </template>
                                         </button>
                                     </span>
@@ -536,7 +557,7 @@
                     <div class="flex justify-start">
                         <div class="flex max-w-[85%] flex-col gap-3 rounded-2xl rounded-bl-md border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-900/50 dark:bg-amber-900/10">
                             <div class="flex items-center gap-2">
-                                <x-heroicon-o-sparkles class="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                                <x-lucide-sparkles class="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
                                 <h4 class="text-sm font-semibold text-amber-900 dark:text-amber-100" x-text="msg.paywall.heading"></h4>
                             </div>
                             <p class="text-sm text-amber-800 dark:text-amber-200" x-text="msg.paywall.body"></p>
@@ -549,32 +570,17 @@
                     </div>
                 </template>
 
-                {{-- Action cards: resolved cards stay inline as the audit trail.
+                {{-- Receipts: a decided proposal stays inline as its receipt lines.
                      A still-pending batch that already has some resolved items
-                     ALSO renders inline as a compact progress card (the editor
+                     ALSO renders inline as a compact progress line (the editor
                      for the unresolved items lives docked at the composer; see
                      input area). A fully-unresolved proposal is dock-only. --}}
                 <template x-if="msg.pending_actions && msg.pending_actions.length > 0">
                     <div class="mt-3 space-y-3">
                         <template x-for="group in proposalGroups(msg)" :key="group.key">
-                            <div class="space-y-2">
-                                {{-- A plan: one card for the whole decision, its steps in order. --}}
-                                <template x-if="isPlanGroup(group)">
-                                    <div class="space-y-2">
-                                        <template x-if="group.actions.some((a) => a.status !== 'pending')">
-                                            @include('chat::livewire.chat.partials._proposal-plan-card')
-                                        </template>
-                                    </div>
-                                </template>
-
-                                <template x-if="!isPlanGroup(group)">
-                                    <template x-for="action in group.actions" :key="action.pending_action_id">
-                                        <div class="space-y-2">
-                                            <template x-if="action.status !== 'pending' || hasItemResults(action)">
-                                                @include('chat::livewire.chat.partials._proposal-card')
-                                            </template>
-                                        </div>
-                                    </template>
+                            <div>
+                                <template x-if="group.actions.some((a) => a.status !== 'pending' || hasItemResults(a))">
+                                    @include('chat::livewire.chat.partials._proposal-receipt')
                                 </template>
                             </div>
                         </template>
@@ -603,29 +609,66 @@
              out-specifies a margin utility on one of its children; x-show only
              ever writes `display`, so it leaves this alone. --}}
         <div
-            x-show="!hasPendingProposal && nextSteps.length > 0"
+            x-show="!hasPendingProposal && !isStreaming && nextSteps.length > 0"
             {{-- The panel ships no `[x-cloak]` rule (see the jump-to-latest
                  button below), so the pre-Alpine hidden state is an inline
                  style; x-show clears it when it flips true. --}}
-            style="display: none; margin-top: auto"
+            style="display: none"
+            :style="{ marginTop: showsSetupButtons() ? '' : 'auto' }"
             x-transition:enter="motion-safe:transition motion-safe:duration-[var(--duration-base)] motion-safe:ease-[var(--ease-out-expo)]"
             x-transition:enter-start="motion-safe:translate-y-1 motion-safe:opacity-0"
             x-transition:enter-end="motion-safe:translate-y-0 motion-safe:opacity-100"
-            class="flex flex-col items-start gap-0.5 pt-5"
+            class="flex flex-col items-start gap-0.5"
+            :class="showsSetupButtons() ? 'pt-0' : 'pt-5'"
             role="group"
             aria-label="{{ __('Suggested next steps') }}"
         >
-            <template x-for="step in nextSteps" :key="step.prompt">
-                <button
-                    type="button"
-                    data-next-step
-                    x-on:click="sendNextStep(step)"
-                    class="group/step flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-gray-500 transition hover:bg-[var(--surface-card-bg)] hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:text-gray-100"
-                >
-                    <x-heroicon-m-arrow-turn-down-right class="h-4 w-4 shrink-0 text-gray-400 transition group-hover/step:text-primary-500 dark:text-gray-500" aria-hidden="true" />
+            <template x-for="step in nextSteps" :key="step.id ?? step.prompt ?? step.url">
+                <div class="contents">
+                    <template x-if="!showsSetupButtons()">
+                        <button
+                            type="button"
+                            data-next-step
+                            x-on:click="sendNextStep(step)"
+                            class="group/step flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-gray-500 transition hover:bg-[var(--surface-card-bg)] hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:text-gray-100"
+                        >
+                            <x-lucide-corner-down-right class="h-4 w-4 shrink-0 text-gray-400 transition group-hover/step:text-primary-500 dark:text-gray-500" aria-hidden="true" />
 
-                    <span class="truncate" x-text="step.label"></span>
-                </button>
+                            <span class="truncate" x-text="step.label"></span>
+                        </button>
+                    </template>
+
+                    <template x-if="showsSetupButtons() && step.kind !== 'link'">
+                        <button
+                            type="button"
+                            data-next-step
+                            x-on:click="sendNextStep(step)"
+                            class="group/step flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-gray-500 transition hover:bg-[var(--surface-card-bg)] hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:text-gray-100"
+                        >
+                            <span class="contents text-gray-400 transition group-hover/step:text-primary-500 dark:text-gray-500" aria-hidden="true" x-html="setupButtonIcons[step.icon] ?? ''"></span>
+
+                            <span class="truncate" x-text="step.label"></span>
+                        </button>
+                    </template>
+
+                    <template x-if="showsSetupButtons() && nextStepLink(step)">
+                        <a
+                            data-next-step
+                            :href="nextStepLink(step).href"
+                            :target="nextStepLink(step).external ? '_blank' : null"
+                            :rel="nextStepLink(step).external ? 'noopener noreferrer' : null"
+                            class="group/step flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-gray-500 transition hover:bg-[var(--surface-card-bg)] hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:text-gray-100 no-underline"
+                        >
+                            <span class="contents text-gray-400 transition group-hover/step:text-primary-500 dark:text-gray-500" aria-hidden="true" x-html="setupButtonIcons[step.icon] ?? ''"></span>
+
+                            <span class="truncate" x-text="step.label"></span>
+
+                            <template x-if="nextStepLink(step).external">
+                                <span class="sr-only">{{ __('onboarding/setup.opens_in_new_tab') }}</span>
+                            </template>
+                        </a>
+                    </template>
+                </div>
             </template>
         </div>
     </div>
@@ -672,7 +715,7 @@
             x-transition:leave-start="motion-safe:opacity-100 motion-safe:translate-y-0"
             x-transition:leave-end="motion-safe:opacity-0 motion-safe:translate-y-1"
         >
-            <x-heroicon-m-arrow-down class="h-4 w-4" aria-hidden="true" />
+            <x-lucide-arrow-down class="h-4 w-4" aria-hidden="true" />
         </button>
     </div>
 </div>

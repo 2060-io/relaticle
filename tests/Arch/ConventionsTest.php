@@ -7,10 +7,16 @@ use App\Mcp\Servers\RelaticleServer;
 use App\Notifications\InboxNotification;
 use Illuminate\Contracts\Database\Eloquent\Builder as EloquentBuilderContract;
 use Illuminate\Contracts\Database\Query\Builder as QueryBuilderContract;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Mail\Mailable;
+use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Attributes\Backoff;
+use Illuminate\Queue\Attributes\Tries;
 
 /**
  * Guards documented conventions that pest-arch and PHPStan cannot express.
@@ -38,6 +44,18 @@ function migrationFiles(): array
     return $files;
 }
 
+/** @return list<string> */
+function actionDirectories(): array
+{
+    $root = dirname(__DIR__, 2);
+
+    return [
+        $root.'/app/Actions',
+        ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: [],
+        ...glob($root.'/packages/Cloud/src/*/Actions', GLOB_ONLYDIR) ?: [],
+    ];
+}
+
 /**
  * @param  list<string>  $directories
  * @return list<string>
@@ -57,6 +75,102 @@ function phpFilesUnder(array $directories): array
     }
 
     return $files;
+}
+
+/**
+ * @param  ReflectionClass<object>  $class
+ * @param  class-string  $attribute
+ */
+function declaresQueueAttribute(ReflectionClass $class, string $attribute): bool
+{
+    do {
+        if ($class->getAttributes($attribute) !== []) {
+            return true;
+        }
+    } while ($class = $class->getParentClass());
+
+    return false;
+}
+
+function isEnglishCopy(string $relativePath): bool
+{
+    static $pattern = null;
+
+    if ($pattern === null) {
+        $config = require dirname(__DIR__, 2).'/config/app.php';
+        $others = implode('|', array_diff($config['available_locales'], ['en']));
+        $pattern = "#(^|/)({$others})(/|\\.json\$)#";
+    }
+
+    return preg_match($pattern, $relativePath) !== 1;
+}
+
+/**
+ * @param  list<string>  $directories
+ * @return list<string>
+ */
+function retiredRecordWordOffenders(string $root, array $directories): array
+{
+    $labelPathsNamingSomethingElse = [
+        'packages/Cloud/src/Marketing/Support/MarketingNavigation.php',
+        'packages/Cloud/resources/views/marketing/alternatives/',
+    ];
+
+    $labelLinesNamingSomethingElse = [
+        'packages/Cloud/lang/en.json' => ['"Contact": "Contact",', '"Deals": "Deals",'],
+    ];
+
+    $emailParticipantPaths = [
+        'lang/en/filament/pages/email-privacy-settings.php',
+        'packages/Cloud/resources/markdown/policy.md',
+        'packages/Documentation/resources/content/help/email-and-calendar/set-workspace-email-privacy.md',
+    ];
+
+    $offenders = [];
+
+    foreach ($directories as $directory) {
+        $files = new RegexIterator(
+            new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory)),
+            '/\.(php|md|js|json)$/',
+        );
+
+        /** @var SplFileInfo $file */
+        foreach ($files as $file) {
+            $relativePath = str_replace($root.'/', '', $file->getPathname());
+
+            if (! isEnglishCopy($relativePath)) {
+                continue;
+            }
+
+            $checksLabels = ! array_any($labelPathsNamingSomethingElse, fn (string $path): bool => str_starts_with($relativePath, $path));
+            $checksProse = preg_match('#^(lang|resources/views|resources/js|packages/\w+/(resources|lang))/#', $relativePath) === 1
+                && ! in_array($relativePath, $emailParticipantPaths, true);
+
+            foreach (explode("\n", (string) file_get_contents($file->getPathname())) as $index => $line) {
+                $retired = [];
+
+                $namesSomethingElse = in_array(trim($line), $labelLinesNamingSomethingElse[$relativePath] ?? [], true);
+
+                if ($checksLabels && ! $namesSomethingElse && preg_match('/([\'"])(?:Contacts?|Deals?)\1/', $line, $label) === 1) {
+                    $retired[] = $label[0];
+                }
+
+                if ($checksProse && preg_match('/\bcontacts\b|\ba contact\b(?! form)/i', $line, $recordNoun) === 1) {
+                    $retired[] = $recordNoun[0];
+                }
+
+                if ($checksProse && preg_match('/\b[Yy]our people\b(?! export)/', $line, $possessive) === 1) {
+                    $retired[] = $possessive[0];
+                }
+
+                foreach ($retired as $word) {
+                    $offenders[] = $relativePath.':'.($index + 1).' '.$word;
+                }
+            }
+        }
+    }
+
+    return $offenders;
 }
 
 it('keeps migrations forward-only (no down methods)', function (): void {
@@ -139,25 +253,59 @@ it('keeps migrations off the database clock (no useCurrent, CURRENT_TIMESTAMP, o
 it('keeps migrations out of the test suite', function (): void {
     $root = dirname(__DIR__, 2);
 
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/tests', FilesystemIterator::SKIP_DOTS));
+    $testDirectories = array_filter([$root.'/tests', $root.'/packages/Cloud/tests'], is_dir(...));
 
     $offenders = [];
 
-    foreach ($files as $file) {
-        $path = $file->getPathname();
+    foreach ($testDirectories as $testDirectory) {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testDirectory, FilesystemIterator::SKIP_DOTS));
 
-        if ($file->getExtension() !== 'php' || str_starts_with($path, $root.'/tests/Arch/')) {
-            continue;
-        }
+        foreach ($files as $file) {
+            $path = $file->getPathname();
 
-        if (preg_match('#database/migrations/|database_path\(\s*[\'"]migrations#', (string) file_get_contents($path)) === 1) {
-            $offenders[] = str_replace($root.'/', '', $path);
+            if ($file->getExtension() !== 'php' || str_starts_with($path, $root.'/tests/Arch/')) {
+                continue;
+            }
+
+            if (preg_match('#database/migrations/|database_path\(\s*[\'"]migrations#', (string) file_get_contents($path)) === 1) {
+                $offenders[] = str_replace($root.'/', '', $path);
+            }
         }
     }
 
     expect($offenders)->toBe(
         [],
         'Migrations are not tested (.ai/guidelines/relaticle/testing.md). Remove the migration test from: '.implode(', ', $offenders),
+    );
+});
+
+it('signs browser tests in with visitAs outside the tests about signing in', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $keepTheLoginForm = [
+        'tests/Browser/CRM/ResizableColumnsTest.php',
+        'tests/Browser/EmailIntegration/AccessRequestOpenEmailBrowserTest.php',
+        'tests/Browser/EmailIntegration/ComposerRecipientsBrowserTest.php',
+        'tests/Browser/EmailIntegration/EmailAccountSyncErrorBrowserTest.php',
+        'tests/Browser/EmailIntegration/MailboxImportNotificationBrowserTest.php',
+        'tests/Browser/EmailIntegration/MailboxImportProgressBrowserTest.php',
+    ];
+
+    $callers = array_values(array_filter(
+        phpFilesUnder([$root.'/tests/Browser']),
+        fn (string $path): bool => ! str_starts_with($path, 'tests/Browser/Auth/')
+            && ! str_starts_with($path, 'tests/Browser/Onboarding/')
+            && str_contains((string) file_get_contents($root.'/'.$path), 'loginViaBrowser('),
+    ));
+
+    sort($callers);
+
+    expect(array_values(array_diff($callers, $keepTheLoginForm)))->toBe(
+        [],
+        'A browser test signs in with visitAs() (.ai/guidelines/relaticle/testing.md). The login form costs every test 0.71s in CI. Replace loginViaBrowser() in: '.implode(', ', array_diff($callers, $keepTheLoginForm)),
+    )->and(array_values(array_diff($keepTheLoginForm, $callers)))->toBe(
+        [],
+        'The login form list only shrinks. Remove the files that no longer call loginViaBrowser(): '.implode(', ', array_diff($keepTheLoginForm, $callers)),
     );
 });
 
@@ -187,7 +335,6 @@ it('keeps each Boost guideline override a copy of the bundled file minus its pin
 
     $removedLines = [
         'laravel/core' => ["- When creating tests, make use of `{{ \$assist->artisanCommand('make:test [options] {name}') }}` to create a feature test, and pass `--unit` to create a unit test. Most tests should be feature tests."],
-        'pest/core' => ["- After the feature tests pass, ask the user to run the complete suite with `{{ \$assist->artisanCommand('test --compact') }}`."],
         'php/core' => ['- Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.'],
     ];
 
@@ -222,7 +369,6 @@ it('keeps every action on the canonical single-execute() shape', function (): vo
 
     $predatesTheCheck = [
         'Relaticle\Chat\Actions\StoreChatAttachment',
-        'Relaticle\EmailIntegration\Actions\ApplyDefaultSharingTierToExistingEmailsAction',
         'Relaticle\EmailIntegration\Actions\CompleteMailboxHistoryImportAction',
         'Relaticle\EmailIntegration\Actions\DeleteEmailDraftAction',
         'Relaticle\EmailIntegration\Actions\LinkEmailAction',
@@ -230,7 +376,7 @@ it('keeps every action on the canonical single-execute() shape', function (): vo
 
     $violations = [];
 
-    foreach (phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]) as $path) {
+    foreach (phpFilesUnder(actionDirectories()) as $path) {
         if (str_contains($path, '/Actions/Fortify/') || str_contains($path, '/Actions/Jetstream/')) {
             continue;
         }
@@ -313,7 +459,6 @@ it('names an action for what it does, with no Action suffix', function (): void 
         'RetryFailedEmailAction',
         'RetryMailboxHistoryImportFailuresAction',
         'SaveEmailDraftAction',
-        'SaveWorkspaceEmailSharingDefaultAction',
         'SendEmailAction',
         'SendEmailBatchAction',
         'SetDefaultConnectedAccountAction',
@@ -329,7 +474,6 @@ it('names an action for what it does, with no Action suffix', function (): void 
         'UpdateEmailSharingAction',
         'UpdateSignatureAction',
         'UpdateWorkspaceContactCreationSettingsAction',
-        'UpdateWorkspaceEmailPrivacySettingsAction',
         'UpdateWorkspaceEmailVisibilityAction',
         'UpdateWorkspaceEmailVisibilityEntryAction',
         'UpdateWorkspaceEmailVisibilityEntrySubdomainsAction',
@@ -339,7 +483,7 @@ it('names an action for what it does, with no Action suffix', function (): void 
     $suffixed = array_values(array_filter(
         array_map(
             static fn (string $file): string => basename($file, '.php'),
-            phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]),
+            phpFilesUnder(actionDirectories()),
         ),
         static fn (string $name): bool => str_ends_with($name, 'Action'),
     ));
@@ -445,6 +589,7 @@ it('forces a conscious arch-coverage decision when a package is added', function
     expect($packageNamespaces)->toBe(
         [
             'Relaticle\Chat',
+            'Relaticle\Cloud',
             'Relaticle\Documentation',
             'Relaticle\EmailIntegration',
             'Relaticle\ImportWizard',
@@ -453,6 +598,46 @@ it('forces a conscious arch-coverage decision when a package is added', function
         ],
         'Package list changed. Wire the new namespace into tests/Arch/ArchTest.php (boundary + structure rules), '.
         'the package table in .ai/guidelines/relaticle/architecture.md, and then update this list.',
+    );
+});
+
+it('keeps the cloud package out of core code, config, routes, views and lang', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    $directories = ['app', 'bootstrap', 'config', 'database', 'lang', 'packages', 'resources', 'routes'];
+
+    $allowedPrefixes = [
+        $root.'/bootstrap/providers.php',
+        $root.'/bootstrap/cache/',
+        $root.'/packages/Cloud/',
+    ];
+
+    $extensions = ['php', 'js', 'ts', 'css', 'json', 'md', 'yml', 'yaml', 'xml', 'txt', 'html'];
+
+    $offenders = [];
+
+    foreach ($directories as $directory) {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+            $path = $file->getPathname();
+
+            if (! in_array($file->getExtension(), $extensions, true)) {
+                continue;
+            }
+
+            if (array_any($allowedPrefixes, fn (string $prefix): bool => str_starts_with($path, $prefix))) {
+                continue;
+            }
+
+            if (preg_match('/Relaticle\\\\{1,2}Cloud|\bcloud::/i', (string) file_get_contents($path)) === 1) {
+                $offenders[] = str_replace($root.'/', '', $path);
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'Core never references Relaticle\Cloud or its cloud:: views and lang namespace (.ai/guidelines/relaticle/architecture.md). '.
+        'Only bootstrap/providers.php may name the provider. Offending files: '.implode(', ', $offenders),
     );
 });
 
@@ -528,7 +713,6 @@ it('reads workspace authorization only through the capability map', function ():
         'app/Enums/WorkspaceRole.php',
         'app/Actions/Jetstream/RemoveWorkspaceMember.php',
         'tests/Feature/CRM/WorkspaceAuthorizationTest.php',
-        'tests/Feature/Workspaces/InviteLinkTokenTest.php',
         'tests/Feature/Workspaces/RemoveWorkspaceMemberTest.php',
         'tests/Feature/Workspaces/UpdateWorkspaceMemberRoleTest.php',
         'tests/Feature/Workspaces/WorkspaceMembersCrossTenantTest.php',
@@ -616,6 +800,7 @@ it('keeps the retired editor role key out of everything but its historic migrati
         'database/migrations/2026_08_18_100000_',
         'database/migrations/2026_09_01_203744_',
         'database/migrations/2026_09_18_000000_',
+        'lang/vendor/filament-forms/',
     ];
 
     $directories = [
@@ -684,8 +869,10 @@ it('keeps the retired team word out of identifiers', function (): void {
     ];
 
     $stripeMetadataKeyPaths = [
-        'app/Actions/Billing/CreateCreditPackCheckout.php',
-        'app/Http/Controllers/Billing/StripeWebhookController.php',
+        'packages/Cloud/src/Billing/Actions/CreateCreditPackCheckout.php',
+        'packages/Cloud/src/Billing/Http/StripeWebhookController.php',
+        'packages/Cloud/tests/Feature/Billing/CheckoutOptionsTest.php',
+        'packages/Cloud/tests/Feature/Billing/StripeWebhookTest.php',
     ];
 
     $offenders = [];
@@ -740,21 +927,58 @@ it('keeps the retired team word out of identifiers', function (): void {
 });
 
 it('keeps the retired contact and deal words out of record copy', function (): void {
+    $offenders = retiredRecordWordOffenders(
+        dirname(__DIR__, 2),
+        ['app', 'config', 'database/factories', 'database/seeders', 'lang', 'packages', 'resources', 'routes'],
+    );
+
+    expect($offenders)->toBe(
+        [],
+        'A person record is a person or people, and Opportunity labels the record (.ai/guidelines/relaticle/architecture.md, '.
+        'Business language). "Your people" reads as the reader\'s staff (.ai/guidelines/relaticle/writing.md). '.
+        'Offending lines: '.implode(', ', array_slice($offenders, 0, 40)),
+    );
+});
+
+it('applies the English retired-word checks to English copy only', function (): void {
+    $root = sys_get_temp_dir().'/'.uniqid('english-copy-', true);
+
+    foreach (['lang/en', 'lang/fr'] as $directory) {
+        mkdir("{$root}/{$directory}", 0777, true);
+        file_put_contents("{$root}/{$directory}/people.php", "<?php\n\nreturn ['list' => 'Vos contacts'];\n");
+    }
+
+    file_put_contents("{$root}/lang/fr.json", '{"list": "Vos contacts"}');
+    file_put_contents("{$root}/lang/en.json", '{"list": "Your contacts"}');
+
+    $offenders = retiredRecordWordOffenders($root, ['lang']);
+    sort($offenders);
+
+    (new Filesystem)->deleteDirectory($root);
+
+    expect($offenders)->toBe([
+        'lang/en.json:1 contacts',
+        'lang/en/people.php:3 contacts',
+    ]);
+});
+
+it('keeps the retired custom field words out of published copy', function (): void {
     $root = dirname(__DIR__, 2);
 
-    $labelPathsNamingSomethingElse = [
-        'app/Support/MarketingNavigation.php',
-        'resources/views/alternatives/',
+    $filesCarryingTheSynonym = [
+        'lang/en/validation.php',
+        'packages/Documentation/resources/content/docs/guides/contributing.md',
+        'packages/Documentation/resources/content/docs/guides/mcp.md',
+        'packages/Documentation/resources/content/docs/guides/rest-api.md',
+        'resources/views/scribe/index.blade.php',
     ];
 
-    $emailParticipantPaths = [
-        'lang/en/filament/pages/email-privacy-settings.php',
-        'packages/Documentation/resources/content/help/email-and-calendar/set-workspace-email-privacy.md',
-    ];
+    $spaced = '/\bcustom\s+fields?\b/i';
+    $hyphenated = '/(?<![\w\/.:\-\'"`])custom-fields?(?![\w\-\/:\'"`]|\.(?:php|js|json|css|png|md)\b)/i';
 
     $offenders = [];
 
-    foreach (['app', 'config', 'database/factories', 'database/seeders', 'lang', 'packages', 'resources', 'routes'] as $directory) {
+    foreach (['lang', 'resources/views', 'resources/js', 'packages'] as $directory) {
         $files = new RegexIterator(
             new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory)),
             '/\.(php|md|js|json)$/',
@@ -764,27 +988,21 @@ it('keeps the retired contact and deal words out of record copy', function (): v
         foreach ($files as $file) {
             $relativePath = str_replace($root.'/', '', $file->getPathname());
 
-            $checksLabels = ! array_any($labelPathsNamingSomethingElse, fn (string $path): bool => str_starts_with($relativePath, $path));
-            $checksProse = preg_match('#^(lang|resources/views|resources/js|packages/\w+/resources)/#', $relativePath) === 1
-                && ! in_array($relativePath, $emailParticipantPaths, true);
+            $isPublishedCopy = isEnglishCopy($relativePath)
+                && preg_match('#^(lang|resources/views|resources/js|packages/\w+/(resources|lang))/#', $relativePath) === 1
+                && ! in_array($relativePath, $filesCarryingTheSynonym, true);
 
-            foreach (explode("\n", (string) file_get_contents($file->getPathname())) as $index => $line) {
-                $retired = [];
+            if (! $isPublishedCopy) {
+                continue;
+            }
 
-                if ($checksLabels && preg_match('/([\'"])(?:Contacts?|Deals?)\1/', $line, $label) === 1) {
-                    $retired[] = $label[0];
-                }
+            $contents = (string) file_get_contents($file->getPathname());
 
-                if ($checksProse && preg_match('/\bcontacts\b|\ba contact\b(?! form)/i', $line, $recordNoun) === 1) {
-                    $retired[] = $recordNoun[0];
-                }
+            foreach ([$spaced, $hyphenated] as $pattern) {
+                preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE);
 
-                if ($checksProse && preg_match('/\b[Yy]our people\b(?! export)/', $line, $possessive) === 1) {
-                    $retired[] = $possessive[0];
-                }
-
-                foreach ($retired as $word) {
-                    $offenders[] = $relativePath.':'.($index + 1).' '.$word;
+                foreach ($matches[0] as [, $offset]) {
+                    $offenders[] = $relativePath.':'.(substr_count($contents, "\n", 0, $offset) + 1);
                 }
             }
         }
@@ -792,8 +1010,8 @@ it('keeps the retired contact and deal words out of record copy', function (): v
 
     expect($offenders)->toBe(
         [],
-        'A person record is a person or people, and Opportunity labels the record (.ai/guidelines/relaticle/architecture.md, '.
-        'Business language). "Your people" reads as the reader\'s staff (.ai/guidelines/relaticle/writing.md). '.
+        'A property a record carries beyond the built-in ones is a custom attribute in published copy (.ai/guidelines/relaticle/architecture.md, '.
+        'Business language). "Custom field" survives in code, the API and tool names, and in the listed files that carry it as a synonym. '.
         'Offending lines: '.implode(', ', array_slice($offenders, 0, 40)),
     );
 });
@@ -807,14 +1025,14 @@ it('names the assistant one way and keeps the documented MCP tool count true', f
     foreach (['lang', 'resources/views', 'resources/data', 'packages'] as $directory) {
         $files = new RegexIterator(
             new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory)),
-            '/\.(php|md|js)$/',
+            '/\.(php|md|js|json)$/',
         );
 
         /** @var SplFileInfo $file */
         foreach ($files as $file) {
             $relativePath = str_replace($root.'/', '', $file->getPathname());
 
-            if ($directory !== 'packages' || preg_match('#^packages/\w+/resources/#', $relativePath) === 1) {
+            if ($directory !== 'packages' || preg_match('#^packages/\w+/(resources|lang)/#', $relativePath) === 1) {
                 $paths[] = $file->getPathname();
             }
         }
@@ -828,7 +1046,7 @@ it('names the assistant one way and keeps the documented MCP tool count true', f
         foreach (explode("\n", (string) file_get_contents($path)) as $index => $line) {
             $location = $relativePath.':'.($index + 1).' ';
 
-            if (preg_match('/\bAI chat\b/i', $line, $retiredName) === 1) {
+            if (isEnglishCopy($relativePath) && preg_match('/\bAI chat\b/i', $line, $retiredName) === 1) {
                 $offenders[] = $location.$retiredName[0];
             }
 
@@ -867,7 +1085,7 @@ it('keeps published copy and source free of em-dashes', function (): void {
     foreach ($directories as $directory) {
         $files = new RegexIterator(
             new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory)),
-            '/\.(php|md|js|css)$/',
+            '/\.(php|md|js|css|json)$/',
         );
 
         /** @var SplFileInfo $file */
@@ -1047,7 +1265,11 @@ it('keeps the role suffix on classes whose directory carries one', function (): 
 
     foreach ($suffixes as $directory => $suffix) {
         $paths = array_filter(
-            [$root.'/app/'.$directory, ...glob($root.'/packages/*/src/'.$directory, GLOB_ONLYDIR) ?: []],
+            [
+                $root.'/app/'.$directory,
+                ...glob($root.'/packages/*/src/'.$directory, GLOB_ONLYDIR) ?: [],
+                ...glob($root.'/packages/Cloud/src/*/'.$directory, GLOB_ONLYDIR) ?: [],
+            ],
             is_dir(...),
         );
 
@@ -1084,7 +1306,11 @@ it('names a class in a domain folder of Queries with the Query suffix', function
     );
 
     $offenders = array_filter(
-        phpFilesUnder([...$domainFolders, ...glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: []]),
+        phpFilesUnder([
+            ...$domainFolders,
+            ...glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
+            ...glob($root.'/packages/*/src/*/Queries', GLOB_ONLYDIR) ?: [],
+        ]),
         static fn (string $file): bool => ! str_ends_with(basename($file, '.php'), 'Query'),
     );
 
@@ -1097,7 +1323,7 @@ it('keeps reads out of the Actions folders', function (): void {
     $root = dirname(__DIR__, 2);
 
     $offenders = array_filter(
-        phpFilesUnder([$root.'/app/Actions', ...glob($root.'/packages/*/src/Actions', GLOB_ONLYDIR) ?: []]),
+        phpFilesUnder(actionDirectories()),
         static fn (string $file): bool => preg_match('/^(List|Find|Search|Get|Aggregate)[A-Z]/', basename($file, '.php')) === 1,
     );
 
@@ -1113,8 +1339,11 @@ it('guards every Queries folder against writes in phpstan.neon', function (): vo
     $namespaces = [
         'App\\Queries',
         ...array_map(
-            static fn (string $folder): string => 'Relaticle\\'.basename(dirname($folder, 2)).'\\Queries',
-            glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
+            static fn (string $folder): string => 'Relaticle\\'.str_replace('/', '\\', str_replace('/src/', '/', substr($folder, strlen($root.'/packages/')))),
+            [
+                ...glob($root.'/packages/*/src/Queries', GLOB_ONLYDIR) ?: [],
+                ...glob($root.'/packages/*/src/*/Queries', GLOB_ONLYDIR) ?: [],
+            ],
         ),
     ];
 
@@ -1175,6 +1404,40 @@ it('sends in-app notifications only through the inbox base', function (): void {
     );
 });
 
+it('retries every queued mail and notification after a provider failure', function (): void {
+    $root = dirname(__DIR__, 2);
+    $withoutRetries = [];
+
+    foreach (phpFilesUnder([$root.'/app', ...glob($root.'/packages/*/src', GLOB_ONLYDIR) ?: []]) as $path) {
+        $source = (string) file_get_contents($root.'/'.$path);
+
+        if (preg_match('/^namespace\s+([^;]+);/m', $source, $namespace) !== 1
+            || preg_match('/^(?:final\s+|readonly\s+)*class\s+(\w+)/m', $source, $class) !== 1) {
+            continue;
+        }
+
+        $reflection = new ReflectionClass($namespace[1].'\\'.$class[1]);
+
+        if (! $reflection->implementsInterface(ShouldQueue::class)) {
+            continue;
+        }
+
+        if (! $reflection->isSubclassOf(Mailable::class) && ! $reflection->isSubclassOf(Notification::class)) {
+            continue;
+        }
+
+        if (! declaresQueueAttribute($reflection, Tries::class) || ! declaresQueueAttribute($reflection, Backoff::class)) {
+            $withoutRetries[] = $path;
+        }
+    }
+
+    expect($withoutRetries)->toBe(
+        [],
+        'Queued mail runs on the default queue, which tries a job once, so one provider 502 loses the message. '.
+        'Declare #[Tries] and #[Backoff] on: '.implode(', ', $withoutRetries),
+    );
+});
+
 it('keeps each negated arch expectation to one layer', function (): void {
     $root = dirname(__DIR__, 2);
     $offenders = [];
@@ -1204,7 +1467,7 @@ it('keeps each negated arch expectation to one layer', function (): void {
     );
 });
 
-it('keeps every Tailwind source on disk and inside the Docker frontend stage', function (): void {
+it('keeps every Tailwind source on disk, and every core one inside the Docker frontend stage', function (): void {
     $root = dirname(__DIR__, 2);
 
     preg_match('/^FROM \S+ AS frontend$(.*?)^FROM /ms', (string) file_get_contents($root.'/Dockerfile'), $stage);
@@ -1230,8 +1493,17 @@ it('keeps every Tailwind source on disk and inside the Docker frontend stage', f
     foreach ($stylesheets as $stylesheet) {
         $css = (string) file_get_contents($stylesheet);
         $name = str_replace($root.'/', '', $stylesheet);
+        $isCloudStylesheet = str_starts_with($name, 'packages/Cloud/');
 
         preg_match_all('/^@import\s+([\'"])tailwindcss\1(.*)$/m', $css, $imports);
+
+        preg_match_all('/^@(?:import|source)\s+([\'"])(.+?)\1/m', $css, $references);
+
+        foreach ($references[2] as $reference) {
+            if (! $isCloudStylesheet && str_contains($reference, 'packages/Cloud')) {
+                $problems[] = "{$name}: {$reference} names the cloud package, which the image and self-hosted builds do not contain";
+            }
+        }
 
         foreach ($imports[2] as $modifiers) {
             if (! str_contains($modifiers, 'source(none)')) {
@@ -1252,6 +1524,10 @@ it('keeps every Tailwind source on disk and inside the Docker frontend stage', f
 
             $relative = str_replace($root.'/', '', $path);
 
+            if ($isCloudStylesheet) {
+                continue;
+            }
+
             if (! array_any($copied, static fn (string $directory): bool => $relative === $directory || str_starts_with($relative, $directory.'/'))) {
                 $problems[] = "{$name}: {$source} is not copied or mounted in the Dockerfile frontend stage";
             }
@@ -1259,8 +1535,54 @@ it('keeps every Tailwind source on disk and inside the Docker frontend stage', f
     }
 
     expect($copied)->not->toBeEmpty()
+        ->and((string) file_get_contents($root.'/.dockerignore'))->toContain('/packages/Cloud')
         ->and($problems)->toBe(
             [],
-            'Self-hosted images would ship CSS that differs from production (.ai/guidelines/relaticle/ui.md): '.implode(', ', $problems),
+            'Self-hosted images would ship CSS that differs from production (.ai/guidelines/relaticle/ui.md). '.
+            'The cloud package ships its own stylesheet, which the image never builds, so only core stylesheets must stay inside the frontend stage and none may name the cloud package: '.implode(', ', $problems),
         );
+});
+
+it('builds scripts with Vite, never with a bin script or a committed dist bundle', function (): void {
+    $root = dirname(__DIR__, 2);
+    $problems = [];
+
+    foreach ([$root.'/resources', ...glob($root.'/packages/*/resources', GLOB_ONLYDIR) ?: []] as $directory) {
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $file) {
+            if ($file->isDir() && $file->getFilename() === 'dist') {
+                $problems[] = str_replace($root.'/', '', $file->getPathname()).' holds a built bundle';
+            }
+        }
+    }
+
+    foreach (glob($root.'/bin/*') ?: [] as $script) {
+        if (preg_match('/(?:from\s+|import\s*\(\s*|require\s*\(\s*)([\'"])(?:vite|esbuild|rollup|rolldown|webpack)\1/', (string) file_get_contents($script)) === 1) {
+            $problems[] = str_replace($root.'/', '', $script).' runs a bundler';
+        }
+    }
+
+    expect($problems)->toBe(
+        [],
+        'vite.config.js builds every script that imports a package (.ai/guidelines/relaticle/ui.md): '.implode(', ', $problems),
+    );
+});
+
+it('draws UI icons from Lucide, never from Heroicons', function (): void {
+    $root = dirname(__DIR__, 2);
+    $offenders = [];
+
+    foreach (['app', 'resources/views'] as $directory) {
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/'.$directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if (preg_match('/Heroicon::|heroicon-/', (string) file_get_contents($file->getPathname())) === 1) {
+                $offenders[] = str_replace($root.'/', '', $file->getPathname());
+            }
+        }
+    }
+
+    expect($offenders)->toBe(
+        [],
+        'UI icons are Lucide (.ai/guidelines/relaticle/ui.md). Use lucide-<name>. Offending files: '.implode(', ', $offenders),
+    );
 });

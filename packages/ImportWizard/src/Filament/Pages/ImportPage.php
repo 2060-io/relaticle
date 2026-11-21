@@ -9,6 +9,9 @@ use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Pages\Page;
+use Filament\Resources\Resource as FilamentResource;
+use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\HtmlString;
 use Override;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use UnitEnum;
@@ -20,7 +23,7 @@ abstract class ImportPage extends Page
 {
     protected string $view = 'import-wizard-new::filament.pages.import-page';
 
-    protected static string|null|BackedEnum $navigationIcon = 'heroicon-o-arrow-up-tray';
+    protected static string|null|BackedEnum $navigationIcon = 'lucide-upload';
 
     protected static string|null|UnitEnum $navigationGroup = null;
 
@@ -42,40 +45,37 @@ abstract class ImportPage extends Page
     /**
      * Get the resource class to redirect back to after import.
      *
-     * @return class-string
+     * @return class-string<FilamentResource>
      */
     abstract public static function getResourceClass(): string;
 
     #[Override]
     public function getTitle(): string
     {
-        return 'Import '.static::getEntityType()->label();
+        return __('Import :entity', ['entity' => static::getEntityType()->label()]);
     }
 
     #[Override]
     public function getSubheading(): string
     {
-        return 'Import '.strtolower(static::getEntityType()->label()).' from a CSV file';
+        return __('Import :entity from a CSV file', ['entity' => static::getEntityType()->label()]);
     }
 
-    /**
-     * Get breadcrumbs for navigation context.
-     *
-     * @return array<string, string>
-     */
-    public function getBreadcrumbs(): array
+    #[Override]
+    public function getHeading(): string
     {
-        $resourceClass = static::getResourceClass();
+        return __('import-wizard-new::pages.heading');
+    }
 
-        $breadcrumbs = [];
+    public function getHeadingStart(): Htmlable
+    {
+        $resource = static::getResourceClass();
 
-        if (method_exists($resourceClass, 'getUrl')) {
-            $breadcrumbs[$resourceClass::getUrl()] = static::getEntityType()->label();
-        }
-
-        $breadcrumbs[] = 'Import';
-
-        return $breadcrumbs;
+        return new HtmlString(view('filament.app.record-breadcrumb', [
+            'url' => $resource::getUrl('index'),
+            'icon' => $resource::getNavigationIcon(),
+            'label' => $resource::getTitleCasePluralModelLabel(),
+        ])->render());
     }
 
     /**

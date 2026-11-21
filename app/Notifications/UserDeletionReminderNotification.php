@@ -9,7 +9,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Attributes\Backoff;
+use Illuminate\Queue\Attributes\Tries;
 
+#[Tries(3)]
+#[Backoff(60, 300)]
 final class UserDeletionReminderNotification extends Notification implements ShouldQueue
 {
     use Queueable;
@@ -27,7 +31,7 @@ final class UserDeletionReminderNotification extends Notification implements Sho
     public function toMail(object $notifiable): MailMessage
     {
         $days = (int) config('relaticle.deletion.reminder_days_before');
-        $date = $this->user->scheduled_deletion_at?->copy()->setTimezone($this->user->effectiveTimezone())->format('M j, Y') ?? '';
+        $date = $this->user->scheduled_deletion_at?->copy()->setTimezone($this->user->effectiveTimezone())->settings(['locale' => app()->getLocale()])->isoFormat('ll') ?? '';
 
         return (new MailMessage)
             ->subject(trans_choice('mail.account_deletion_reminder.subject', $days, ['days' => $days]))

@@ -13,7 +13,6 @@ use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ViewColumn;
 use Filament\Tables\Filters\Filter;
@@ -34,9 +33,22 @@ abstract class BaseMeetingsRelationManager extends RelationManager
 {
     protected static string $relationship = 'meetings';
 
-    protected static ?string $title = 'Meetings';
+    protected static string|\BackedEnum|null $icon = 'lucide-calendar';
 
-    protected static string|\BackedEnum|null $icon = Heroicon::Calendar;
+    public static function getTitle(Model $ownerRecord, string $pageClass): string
+    {
+        return __('filament/relation-managers/meetings.title');
+    }
+
+    protected static function getModelLabel(): ?string
+    {
+        return __('filament/relation-managers/meetings.label');
+    }
+
+    protected static function getPluralModelLabel(): ?string
+    {
+        return __('filament/relation-managers/meetings.plural_label');
+    }
 
     public function table(Table $table): Table
     {
@@ -68,34 +80,11 @@ abstract class BaseMeetingsRelationManager extends RelationManager
 
                 return $query->with(['workspace', 'attendees.contact', 'connectedAccount.user']);
             })
-            ->columns([
-                TextColumn::make('title')
-                    ->searchable()
-                    ->limit(60),
-                TextColumn::make('starts_at')
-                    ->label(__('filament/relation-managers/meetings.columns.starts_at.label'))
-                    ->dateTime('M j, Y · g:i a')
-                    ->sortable(),
-                ViewColumn::make('attendees')
-                    ->label(__('filament/relation-managers/meetings.columns.attendees_count.label'))
-                    ->view('email-integration::filament.tables.columns.meeting-participants-stack'),
-                TextColumn::make('status')
-                    ->badge(),
-                TextColumn::make('response_status')
-                    ->label(__('filament/relation-managers/meetings.columns.response_status.label'))
-                    ->state(function (Meeting $record): ?AttendeeResponseStatus {
-                        $user = auth()->user();
-
-                        return $user instanceof User
-                            ? resolve(MeetingRespondentResolver::class)->viewerResponseStatus($user, $record)
-                            : null;
-                    })
-                    ->badge(),
-            ])
+            ->columns($this->meetingColumns())
             ->defaultSort('starts_at', 'desc')
-            ->emptyStateIcon(fn (): Heroicon => $this->hidesOwnerMailbox()
-                ? Heroicon::OutlinedShieldCheck
-                : Heroicon::Calendar)
+            ->emptyStateIcon(fn (): string => $this->hidesOwnerMailbox()
+                ? 'lucide-shield-check'
+                : 'lucide-calendar')
             ->emptyStateHeading(fn (): ?string => $this->recordMailboxHiddenCopy()['heading'] ?? null)
             ->emptyStateDescription(fn (): ?string => $this->recordMailboxHiddenCopy()['description'] ?? null)
             ->filters([
@@ -109,7 +98,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                     MeetingDetailInfolist::viewAction(),
                     Action::make('linkToRecord')
                         ->label(__('filament/relation-managers/meetings.actions.link_to_record.label'))
-                        ->icon(Heroicon::Link)
+                        ->icon('lucide-link')
                         ->color('gray')
                         ->authorize(fn (Meeting $record): bool => $this->authUser()->hasWorkspaceCapability($record->workspace_id, WorkspaceCapability::RecordsUpdate))
                         ->schema(MeetingDetailInfolist::linkRecordFields())
@@ -124,7 +113,7 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                         }),
                     Action::make('unlinkFromRecord')
                         ->label(__('filament/relation-managers/meetings.actions.unlink_from_record.label'))
-                        ->icon(Heroicon::LinkSlash)
+                        ->icon('lucide-unlink')
                         ->color('danger')
                         ->visible(fn (Meeting $record): bool => $record->isLinkedTo($this->getOwnerRecord()))
                         ->authorize(fn (): bool => $this->authUser()->can('update', $this->getOwnerRecord()))
@@ -140,6 +129,36 @@ abstract class BaseMeetingsRelationManager extends RelationManager
                         }),
                 ]),
             ]);
+    }
+
+    /** @return list<TextColumn|ViewColumn> */
+    private function meetingColumns(): array
+    {
+        return [
+            TextColumn::make('title')
+                ->label(__('filament/relation-managers/meetings.columns.title.label'))
+                ->searchable()
+                ->limit(60),
+            TextColumn::make('starts_at')
+                ->label(__('filament/relation-managers/meetings.columns.starts_at.label'))
+                ->isoDateTime('ll · LT')
+                ->sortable(),
+            ViewColumn::make('attendees')
+                ->label(__('filament/relation-managers/meetings.columns.attendees_count.label'))
+                ->view('email-integration::filament.tables.columns.meeting-participants-stack'),
+            TextColumn::make('status')
+                ->badge(),
+            TextColumn::make('response_status')
+                ->label(__('filament/relation-managers/meetings.columns.response_status.label'))
+                ->state(function (Meeting $record): ?AttendeeResponseStatus {
+                    $user = auth()->user();
+
+                    return $user instanceof User
+                        ? resolve(MeetingRespondentResolver::class)->viewerResponseStatus($user, $record)
+                        : null;
+                })
+                ->badge(),
+        ];
     }
 
     private function resolveRecord(string $type, string $id): Model

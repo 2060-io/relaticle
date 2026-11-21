@@ -10,7 +10,7 @@ use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Routing\Router;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final readonly class LoginDestination
 {
@@ -30,7 +30,7 @@ final readonly class LoginDestination
             return $fallback;
         }
 
-        return $this->isAccessible($intended, $user) ? $intended : $fallback;
+        return $this->isAccessible($user, $intended) ? $intended : $fallback;
     }
 
     private function fallback(User $user): string
@@ -40,7 +40,7 @@ final readonly class LoginDestination
             : url()->getAppUrl();
     }
 
-    private function isAccessible(string $intended, User $user): bool
+    public function isAccessible(User $user, string $intended): bool
     {
         if (! $this->isSameSite($intended)) {
             return false;
@@ -87,7 +87,7 @@ final readonly class LoginDestination
 
         try {
             return resolve(Router::class)->getRoutes()->match($request);
-        } catch (NotFoundHttpException) {
+        } catch (HttpException) {
             return null;
         }
     }

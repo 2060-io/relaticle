@@ -6,6 +6,7 @@ use App\Actions\CustomFields\CreateCustomField;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\User;
+use App\Support\Locales;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -76,7 +77,7 @@ it('creates a pending proposal for a select field with options', function (): vo
         ->and($decoded['operation'])->toBe('create')
         ->and($decoded['entity_type'])->toBe('custom_field')
         ->and($decoded['meta']['agent_should_stop'])->toBeTrue()
-        ->and(array_keys($decoded))->toBe(['type', 'pending_action_id', 'turn_id', 'action', 'entity_type', 'operation', 'data', 'display', 'meta']);
+        ->and(array_keys($decoded))->toBe(['type', 'pending_action_id', 'turn_id', 'action', 'entity_type', 'operation', 'data', 'display', 'summary', 'meta']);
 
     $pending = PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail();
 
@@ -142,6 +143,37 @@ it('refuses a member with the role error and creates no proposal', function (): 
     expect($decoded['error'])->toContain('workspace role does not allow that')
         ->and($decoded['error'])->toContain('Do not link to any page')
         ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
+});
+
+it('titles the card from the proposal entity in the user language', function (): void {
+    Locales::within('fr', fn (): array => proposeCustomFields($this->convId, [
+        'entity_type' => 'company',
+        'name' => 'Priority',
+        'type' => 'text',
+    ]));
+
+    $pending = PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail();
+
+    expect($pending->display_data['title'])->toBe("Créer l'attribut personnalisé");
+});
+
+it('keeps the role error in English for a German member', function (): void {
+    $member = User::factory()->create();
+    $member->workspaces()->attach($this->workspace, ['role' => 'member']);
+    $member->switchWorkspace($this->workspace);
+
+    Auth::guard('web')->setUser($member);
+    $this->actingAs($member);
+
+    $decoded = Locales::within('de', fn (): array => proposeCustomFields($this->convId, [
+        'entity_type' => 'company',
+        'name' => 'Priority',
+        'type' => 'select',
+        'options' => [['name' => 'High']],
+    ]));
+
+    expect($decoded['error'])->toContain('Tell them a workspace owner or admin can do it')
+        ->and($decoded['error'])->toContain('Do not link to any page');
 });
 
 it('lets an admin propose a field that lands on approval', function (): void {
@@ -232,6 +264,18 @@ it('refuses a setting the field type does not take', function (): void {
     ]);
 
     expect($decoded['error'])->toContain('A text field does not accept: currency_code.')
+        ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
+});
+
+it('refuses the retired searchable setting', function (): void {
+    $decoded = proposeCustomFields($this->convId, [
+        'entity_type' => 'company',
+        'name' => 'Region',
+        'type' => 'text',
+        'settings' => ['searchable' => true],
+    ]);
+
+    expect($decoded['error'])->toContain('does not accept: searchable')
         ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
 });
 
@@ -568,13 +612,13 @@ it('rejects a field name that differs from an existing one only by case', functi
 it('rejects a recased duplicate at approval time, not just at proposal time', function (): void {
     $tenantKey = config('custom-fields.database.column_names.tenant_foreign_key');
 
-    expect(fn () => app(CreateCustomField::class)->execute($this->owner, [
+    expect(fn () => resolve(CreateCustomField::class)->execute($this->owner, [
         'entity_type' => 'people',
         'name' => 'Renewal Date',
         'type' => 'date',
     ]))->not->toThrow(ValidationException::class);
 
-    expect(fn () => app(CreateCustomField::class)->execute($this->owner, [
+    expect(fn () => resolve(CreateCustomField::class)->execute($this->owner, [
         'entity_type' => 'people',
         'name' => 'RENEWAL DATE',
         'type' => 'date',
@@ -620,7 +664,7 @@ it('proposes fields across two entities as one batch approved item by item', fun
     expect($decoded['data']['_batch'])->toBeTrue()
         ->and($decoded)->not->toHaveKey('skipped_records')
         ->and($pending->action_data['records'])->toHaveCount(3)
-        ->and($pending->display_data['summary'])->toBe('Create 3 custom fields')
+        ->and($pending->display_data['summary'])->toBe('Create 3 custom attributes')
         ->and($pending->display_data['items'][2]['summary'])->toBe('Create "Tier" (Select) on people with options: Gold, Silver');
 
     $service = resolve(PendingActionService::class);
@@ -744,7 +788,7 @@ it('skips the fields that would cross the per-entity cap', function (): void {
     expect($decoded['data']['_batch'])->toBeTrue()
         ->and(array_column($pending->action_data['records'], 'name'))->toBe(['Region', 'Industry'])
         ->and($decoded['skipped_records'])->toBe([
-            ['record' => 'Segment', 'reason' => "Cannot create more than {$cap} custom fields for entity type \"company\"."],
+            ['record' => 'Segment', 'reason' => "Cannot create more than {$cap} custom attributes for entity type \"company\"."],
         ]);
 
     $service = resolve(PendingActionService::class);

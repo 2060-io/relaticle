@@ -12,7 +12,6 @@ use Closure;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\RequestInterface;
 use Symfony\Component\HttpFoundation\IpUtils;
 
@@ -38,7 +37,14 @@ final readonly class SsrfGuard
         '2001:20::/28',
         '2001:db8::/32',
         '::/96',
+        '::ffff:0:0:0/96',
+        '100::/64',
+        '2001:2::/48',
+        '2001:10::/28',
+        '3fff::/20',
+        '5f00::/16',
         'fec0::/10',
+        'ff00::/8',
     ];
 
     public static function isAllowed(string $url): bool
@@ -113,26 +119,6 @@ final readonly class SsrfGuard
         }
 
         return $options;
-    }
-
-    public static function pinnedClient(string $url): PendingRequest
-    {
-        $parts = parse_url($url);
-        $scheme = is_array($parts) ? ($parts['scheme'] ?? null) : null;
-        $port = is_array($parts) ? ($parts['port'] ?? 443) : null;
-
-        throw_unless($scheme === 'https' && $port === 443, SsrfGuardException::class, 'Only https URLs on port 443 are allowed');
-
-        $pin = self::pin(trim((string) ($parts['host'] ?? ''), '[]'), 443);
-
-        return Http::withOptions([
-            'allow_redirects' => false,
-            'decode_content' => false,
-            'connect_timeout' => 10,
-            'timeout' => 30,
-            'curl' => $pin === null ? [] : [CURLOPT_RESOLVE => [$pin]],
-            'progress' => self::abortPastUploadLimit(...),
-        ]);
     }
 
     public static function assertPublicHost(string $url): void

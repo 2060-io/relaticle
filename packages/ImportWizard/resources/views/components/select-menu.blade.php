@@ -2,7 +2,7 @@
     'options' => [],
     'multiple' => false,
     'searchable' => true,
-    'placeholder' => 'Select...',
+    'placeholder' => null,
     'disabled' => false,
     'label' => null,
     'inlineLabel' => null,
@@ -12,6 +12,8 @@
 ])
 
 @php
+    $placeholder ??= __('Select...');
+
     // Normalize options to consistent format: [{value, label, description?, invalid?}]
     $normalizedOptions = collect($options)->map(function ($option, $key) {
         if (is_array($option) && isset($option['value'])) {
@@ -328,12 +330,12 @@
         announceSelection(value) {
             const option = this.getOption(value);
             if (option && this.$refs.announcer) {
-                const action = this.isSelected(value) ? 'selected' : 'deselected';
+                const action = this.isSelected(value) ? @js(__('selected')) : @js(__('deselected'));
                 let message = option.label + ' ' + action;
 
                 if (this.multiple && Array.isArray(this.selected)) {
                     const count = this.selected.length;
-                    message += `. ${count} item${count !== 1 ? 's' : ''} total`;
+                    message += '. ' + (count === 1 ? @js(__(':count item total')) : @js(__(':count items total'))).replace(':count', count);
                 }
 
                 this.$refs.announcer.textContent = message;
@@ -402,7 +404,7 @@
             {{-- Missing single-select: show warning badge --}}
             <template x-if="isMissingSingleSelect">
                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning-50 text-warning-700 dark:bg-warning-950/50 dark:text-warning-400">
-                    Missing select option
+                    {{ __('Missing select option') }}
                 </span>
             </template>
             {{-- Normal display --}}
@@ -410,13 +412,13 @@
                 <span
                     :class="hasValue ? 'text-gray-900 dark:text-white' : 'text-gray-400'"
                     :title="displayText"
-                    x-text="displayText || '{{ $placeholder }}'"
+                    x-text="displayText || {{ Js::from($placeholder) }}"
                 ></span>
             </template>
         </span>
 
         <x-filament::icon
-            icon="heroicon-o-chevron-down"
+            icon="lucide-chevron-down"
             class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-150"
             x-bind:class="open && 'rotate-180'"
             aria-hidden="true"
@@ -436,11 +438,11 @@
     >
         @if ($searchable)
             <div class="relative border-b border-gray-200 dark:border-gray-700">
-                <x-filament::icon icon="heroicon-o-magnifying-glass" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" aria-hidden="true" />
+                <x-filament::icon icon="lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" aria-hidden="true" />
                 <input
                     type="text"
-                    placeholder="Search..."
-                    aria-label="Search options"
+                    placeholder="{{ __('Search...') }}"
+                    aria-label="{{ __('Search options') }}"
                     :aria-controls="$id('listbox')"
                     :aria-activedescendant="activeDescendant"
                     class="w-full h-8 pl-8 pr-2 text-xs bg-transparent text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
@@ -484,7 +486,7 @@
                                 class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-danger-50 text-danger-700 dark:bg-danger-950/50 dark:text-danger-400 min-w-0 max-w-[70%]"
                                 :title="option.label + ' - ' + option.description"
                             >
-                                <x-heroicon-o-exclamation-triangle class="size-3 shrink-0" aria-hidden="true" />
+                                <x-lucide-triangle-exclamation-point class="size-3 shrink-0" aria-hidden="true" />
                                 <span class="truncate" x-text="option.label"></span>
                             </span>
                         </template>
@@ -510,7 +512,7 @@
                             :class="isSelected(option.value) ? 'opacity-100' : 'opacity-0'"
                             aria-hidden="true"
                         >
-                            <x-filament::icon icon="heroicon-s-check" class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                            <x-filament::icon icon="lucide-check" class="w-4 h-4 text-primary-600 dark:text-primary-400" />
                         </span>
                     </div>
                 </li>
@@ -518,13 +520,13 @@
 
             <template x-if="filteredOptions.length === 0 && options.length > 0">
                 <li role="option" aria-disabled="true" class="px-2 py-3 text-xs text-gray-500 dark:text-gray-400 text-center">
-                    No matching options
+                    {{ __('No matching options') }}
                 </li>
             </template>
 
             <template x-if="options.length === 0">
                 <li role="option" aria-disabled="true" class="px-2 py-3 text-xs text-gray-500 dark:text-gray-400 text-center">
-                    No options available
+                    {{ __('No options available') }}
                 </li>
             </template>
         </ul>

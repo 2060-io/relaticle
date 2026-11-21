@@ -24,7 +24,7 @@ trait CancelsWorkspaceDeletion
             return;
         }
 
-        $this->sendNotification('Workspace deletion cancelled');
+        $this->sendNotification(__('workspaces.notifications.workspace_deletion_cancelled.success'));
         $this->reloadPage();
     }
 
@@ -35,7 +35,7 @@ trait CancelsWorkspaceDeletion
             ->requiresConfirmation()
             ->modalHeading(__('workspaces.modals.cancel_deletion.heading'))
             ->modalDescription(__('workspaces.modals.cancel_deletion.notice'))
-            ->modalIcon('heroicon-o-arrow-uturn-left')
+            ->modalIcon('lucide-undo-2')
             ->modalIconColor('primary')
             ->modalSubmitAction(fn (Action $action): Action => $action->color('primary'))
             ->action(fn () => $this->cancelWorkspaceDeletion());

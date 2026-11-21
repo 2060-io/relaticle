@@ -14,11 +14,16 @@ declare(strict_types=1);
  * Conventions: see CLAUDE.md -> Testing section
  */
 
+use App\Enums\CrmEntity;
 use App\Enums\Notifications\NotificationReason;
 use App\Enums\WorkspaceSetupStep;
+use App\Features\Billing;
 use App\Filament\Pages\CreateWorkspace;
 use App\Filament\Pages\SetupWorkspace;
+use App\Filament\Resources\NoteResource\Pages\NotesCards;
 use App\Models\Notification as NotificationRow;
+use App\Models\SavedView;
+use App\Models\TablePreference;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\Http\HostResolver;
@@ -38,10 +43,14 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Passport\AccessToken;
 use Laravel\Passport\Client;
+use Laravel\Pennant\Feature;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Pest\Browser\Api\AwaitableWebpage;
 use Pest\Browser\Playwright\Playwright;
+use Pest\Evals\Drivers\LaravelAiJudge;
+use Pest\Evals\Plugin;
+use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\EmailIntegration\Controllers\RedirectController;
 use Relaticle\EmailIntegration\Enums\EmailAccessRequestStatus;
 use Relaticle\EmailIntegration\Enums\EmailPrivacyTier;
@@ -52,6 +61,15 @@ use Relaticle\EmailIntegration\Models\EmailAccessRequest;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Services\MailboxHistoryImportService;
 use Relaticle\EmailIntegration\Support\MailboxOAuthWorkspace;
+use Tests\Evals\EvalTestCase;
+use Tests\Evals\Support\ClaudeCode\ClaudeCodeJudge;
+use Tests\Evals\Support\EvalModels;
+use Tests\Evals\Support\EvalReport;
+use Tests\Evals\Support\RecordingJudge;
+use Tests\Evals\Support\RelaTurn;
+use Tests\Evals\Support\Splits;
+use Tests\Evals\Support\TurnEnvelope;
+use Tests\Helpers\ChatCatalog;
 use Tests\Helpers\PestTiaRuntime;
 use Tests\TestCase;
 
@@ -59,7 +77,65 @@ PestTiaRuntime::configure(dirname(__DIR__), array_slice($_SERVER['argv'], 1));
 
 pest()->extend(TestCase::class)
     ->use(LazilyRefreshDatabase::class)
-    ->in('Feature', 'Smoke', 'Browser');
+    ->in('Feature', 'Smoke', 'Browser', '../packages/Cloud/tests');
+
+pest()->extend(EvalTestCase::class)
+    ->use(LazilyRefreshDatabase::class)
+    ->in('Evals');
+
+pest()->beforeAll(function (): void {
+    Splits::assertComplete();
+})->in('Evals');
+
+pest()->evals()->judgeUsing(new RecordingJudge(EvalModels::runner() === 'plan'
+    ? new ClaudeCodeJudge(EvalReport::JUDGE_MODEL)
+    : new LaravelAiJudge(provider: 'anthropic', model: EvalReport::JUDGE_MODEL)));
+
+pest()->afterEach(function (): void {
+    if (! Plugin::isEvalMode()) {
+        return;
+    }
+
+    $status = $this->status();
+    $judged = RecordingJudge::$used;
+    RecordingJudge::$used = false;
+    $verdicts = RecordingJudge::$verdicts;
+    $history = in_array('history', $this->groups(), true);
+    $clock = in_array('clock', $this->groups(), true);
+    RecordingJudge::$verdicts = [];
+
+    if ($status->isSkipped()) {
+        return;
+    }
+
+    $failure = $status->isSuccess() ? null : $status->message();
+    $split = current(array_intersect($this->groups(), Splits::NAMES)) ?: null;
+
+    if (! RelaTurn::$last instanceof TurnEnvelope) {
+        EvalReport::record($this->getPrintableTestCaseMethodName(), false, null, ['no turn ran: '.($failure ?? 'the test finished without a turn')], judged: $judged, file: basename(self::$__filename, '.php'), split: $split, verdicts: $verdicts, history: $history, clock: $clock, skippedTurns: RelaTurn::$skipped);
+        EvalReport::flushOnShutdown(RelaTurn::model(), EvalReport::JUDGE_MODEL);
+
+        return;
+    }
+
+    EvalReport::record(
+        $this->getPrintableTestCaseMethodName(),
+        $status->isSuccess(),
+        RelaTurn::$last,
+        array_values(array_filter([$failure, RelaTurn::$last->error])),
+        count(RelaTurn::$turns),
+        $judged,
+        RelaTurn::$turns,
+        basename(self::$__filename, '.php'),
+        $split,
+        $verdicts,
+        $history,
+        $clock,
+        RelaTurn::$skipped,
+    );
+    EvalReport::flushOnShutdown(RelaTurn::model(), EvalReport::JUDGE_MODEL);
+    RelaTurn::forget();
+})->in('Evals');
 
 if (class_exists(Playwright::class)) {
     Playwright::setTimeout(30_000);
@@ -74,6 +150,24 @@ if (class_exists(Playwright::class)) {
 function livewire(string $component, array $params = []): Testable
 {
     return Livewire::test($component, $params);
+}
+
+/**
+ * @param  class-string  $page
+ */
+function openList(string $page): Testable
+{
+    return Livewire::withQueryParams(['view' => SavedView::BUILT_IN_LIST_LINK])->test($page);
+}
+
+function openCards(): Testable
+{
+    return Livewire::withQueryParams(['view' => 'cards'])->test(NotesCards::class);
+}
+
+function openOpportunitiesOnTheList(User $user, Workspace $workspace): void
+{
+    TablePreference::factory()->for($user)->for($workspace)->create(['entity' => CrmEntity::Opportunity, 'view_order' => ['list', 'board']]);
 }
 
 /**
@@ -328,13 +422,18 @@ function assertActionHasMailboxOAuthUrl(
     );
 }
 
+function filterRowSaveControlCount(): string
+{
+    return '[...document.querySelectorAll("[data-filter-bar] button, [data-filter-bar] a")].filter((control) => /^(save|save for everyone|discard changes)$/i.test((control.getAttribute("aria-label") ?? control.textContent).trim())).length';
+}
+
 /**
  * Log in through the real two-step login form: type the email and submit to
  * reveal the password field, then type the password and submit again.
  */
-function loginViaBrowser(User $user, ?string $theme = null): AwaitableWebpage
+function loginViaBrowser(User $user, ?string $theme = null, ?AwaitableWebpage $page = null): AwaitableWebpage
 {
-    $page = test()->visit('/app/login');
+    $page ??= test()->visit('/app/login');
 
     if ($theme !== null) {
         $page = $page->{$theme}();
@@ -347,6 +446,15 @@ function loginViaBrowser(User $user, ?string $theme = null): AwaitableWebpage
         ->assertScript(asyncAlpineComponentsLoaded())
         ->type('[id="form.password"]', 'password')
         ->click('button[type="submit"]');
+}
+
+function visitAs(User $user, string $path, ?int $width = null, ?int $height = null): AwaitableWebpage
+{
+    test()->actingAs($user);
+
+    $viewport = $width === null || $height === null ? [] : ['viewport' => ['width' => $width, 'height' => $height]];
+
+    return test()->visit($path, $viewport)->assertPathIsNot('/app/login');
 }
 
 function asyncAlpineComponentsLoaded(): string
@@ -482,7 +590,7 @@ function onboardWorkspace(User $user, array $workspace, array $useCase = ['onboa
     $setup = livewire(SetupWorkspace::class);
 
     if ($created->onboarding_step === WorkspaceSetupStep::Email) {
-        $setup->callAction('skipMailbox');
+        $setup->call('skipMailbox');
     }
 
     $setup->fillForm($useCase)->call('saveUseCase')->assertHasNoFormErrors();
@@ -492,4 +600,23 @@ function onboardWorkspace(User $user, array $workspace, array $useCase = ['onboa
     }
 
     return $created->fresh();
+}
+
+function useProFirstAutoChain(): void
+{
+    config()->set('chat.models', [
+        ChatCatalog::entry(['label' => 'Opus 5', 'model' => 'claude-opus-5', 'min_plan' => 'pro', 'credit_multiplier' => 3.0]),
+        ChatCatalog::entry(),
+    ]);
+    app()->forgetInstance(ModelRegistry::class);
+}
+
+function withHostedBilling(): void
+{
+    if (! class_exists('Relaticle\Cloud\CloudServiceProvider')) {
+        test()->markTestSkipped('Hosted billing needs the cloud package.');
+    }
+
+    Feature::define(Billing::class, true);
+    Feature::purge(Billing::class);
 }

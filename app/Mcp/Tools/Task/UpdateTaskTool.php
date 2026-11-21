@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Title;
 
 #[Title('Update Task')]
-#[Description('Update an existing task in the CRM. Use the crm-schema resource to discover available custom fields.')]
+#[Description('Update an existing task in the CRM. Use the crm-schema resource to discover available custom attributes (custom fields).')]
 final class UpdateTaskTool extends BaseUpdateTool
 {
     use OperatesOnCrmEntity;
@@ -47,10 +47,10 @@ final class UpdateTaskTool extends BaseUpdateTool
     {
         return [
             'title' => $schema->string()->description('The task title.'),
-            'company_ids' => $schema->array()->description('Company IDs to link. Omit to leave unchanged, pass [] to remove all.'),
-            'people_ids' => $schema->array()->description('People IDs to link. Omit to leave unchanged, pass [] to remove all.'),
-            'opportunity_ids' => $schema->array()->description('Opportunity IDs to link. Omit to leave unchanged, pass [] to remove all.'),
-            'assignee_ids' => $schema->array()->description('User IDs to assign this task to. Use whoami tool to discover valid user IDs.'),
+            'company_ids' => $schema->array()->items($schema->string())->description('Company IDs to link. Omit to leave unchanged, pass [] to remove all.'),
+            'people_ids' => $schema->array()->items($schema->string())->description('People IDs to link. Omit to leave unchanged, pass [] to remove all.'),
+            'opportunity_ids' => $schema->array()->items($schema->string())->description('Opportunity IDs to link. Omit to leave unchanged, pass [] to remove all.'),
+            'assignee_ids' => $schema->array()->items($schema->string())->description('User IDs to assign this task to. Use whoami tool to discover valid user IDs.'),
         ];
     }
 

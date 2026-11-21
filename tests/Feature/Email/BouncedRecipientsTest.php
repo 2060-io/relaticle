@@ -2,25 +2,30 @@
 
 declare(strict_types=1);
 
-use App\Data\DigestPayload;
+use App\Data\TaskDigest;
 use App\Enums\Plan;
 use App\Listeners\Email\DropBouncedRecipientsListener;
 use App\Listeners\Email\ParkInactiveRecipientsListener;
-use App\Mail\ProEndedMail;
-use App\Mail\ProTrialEndingSoonMail;
 use App\Mail\SetupNudgeMail;
 use App\Mail\TaskAssignedMail;
 use App\Mail\TaskDigestMail;
 use App\Mail\WorkspaceInvitationMail;
+use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
+use App\Notifications\TaskAssignedNotification;
 use App\Support\Mail\ParksInactiveRecipientsTransport;
 use Illuminate\Contracts\Mail\Mailable;
 use Illuminate\Mail\Message;
+use Illuminate\Mail\SendQueuedMailable;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Queue;
+use Relaticle\Cloud\Billing\Mail\ProEndedMail;
+use Relaticle\Cloud\Billing\Mail\ProTrialEndingSoonMail;
 use Spatie\MailcoachMailer\Exceptions\InvalidMailerConfig;
 use Spatie\MailcoachMailer\MailcoachApiTransport;
 use Symfony\Component\HttpClient\Exception\TransportException;
@@ -37,11 +42,16 @@ function useMailcoachAnswering(MockHttpClient $client): void
     ));
 }
 
+function emptyDigestMail(User $user): TaskDigestMail
+{
+    return new TaskDigestMail($user, Workspace::factory()->create(), new TaskDigest([], []));
+}
+
 function queueDigestThrough(MockHttpClient $client, User $user, string $expectedException): void
 {
     useMailcoachAnswering($client);
 
-    expect(fn () => Mail::mailer('array')->to($user)->queue(new TaskDigestMail($user, new DigestPayload([]))))
+    expect(fn () => Mail::mailer('array')->to($user)->queue(emptyDigestMail($user)))
         ->toThrow($expectedException);
 }
 
@@ -50,7 +60,7 @@ it('parks the recipient when the provider reports an inactive address', function
 
     useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
 
-    Mail::mailer('array')->to($user)->queue(new TaskDigestMail($user, new DigestPayload([])));
+    Mail::mailer('array')->to($user)->queue(emptyDigestMail($user));
 
     expect($user->fresh()->email_bounced_at)->not->toBeNull();
 });
@@ -73,11 +83,13 @@ it('keeps the recipient when the provider cannot be reached', function (): void 
 });
 
 it('parks the owner when the trial notice bounces', function (): void {
+    withHostedBilling();
+
     $owner = User::factory()->create();
     $workspace = Workspace::factory()->create(['user_id' => $owner->id, 'trial_ends_at' => now()->addDays(3)]);
     useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
 
-    Mail::mailer('array')->to($owner)->queue(new ProTrialEndingSoonMail($workspace));
+    Mail::mailer('array')->to($owner)->queue(new ProTrialEndingSoonMail($workspace, now()->addDays(3)));
 
     expect($owner->fresh()->email_bounced_at)->not->toBeNull();
 });
@@ -85,7 +97,7 @@ it('parks the owner when the trial notice bounces', function (): void {
 it('drops a parked recipient of parkable mail before the message reaches the transport', function (): void {
     $parked = User::factory()->withPersonalWorkspace()->create(['email_bounced_at' => now()]);
 
-    Mail::mailer('array')->to($parked)->send(new TaskDigestMail($parked, new DigestPayload([])));
+    Mail::mailer('array')->to($parked)->send(emptyDigestMail($parked));
 
     expect(Mail::mailer('array')->getSymfonyTransport()->messages())->toBeEmpty();
 });
@@ -102,7 +114,7 @@ it('still delivers parkable mail to the other recipients of a message', function
     $parked = User::factory()->create(['email_bounced_at' => now()]);
     $active = User::factory()->withPersonalWorkspace()->create();
 
-    Mail::mailer('array')->to([$parked, $active])->send(new TaskDigestMail($active, new DigestPayload([])));
+    Mail::mailer('array')->to([$parked, $active])->send(emptyDigestMail($active));
 
     $sent = Mail::mailer('array')->getSymfonyTransport()->messages();
 
@@ -119,8 +131,21 @@ it('delivers again once the user changes their email', function (): void {
 });
 
 dataset('non-essential mailables', [
-    'trial ended' => fn (User $user, Workspace $workspace): Mailable => ProEndedMail::afterTrial($workspace),
-    'subscription ended' => fn (User $user, Workspace $workspace): Mailable => ProEndedMail::afterSubscription($workspace),
+    'trial ended' => function (User $user, Workspace $workspace): Mailable {
+        withHostedBilling();
+
+        return ProEndedMail::afterTrial($workspace);
+    },
+    'subscription ended' => function (User $user, Workspace $workspace): Mailable {
+        withHostedBilling();
+
+        return ProEndedMail::afterSubscription($workspace);
+    },
+    'managed plan ended' => function (User $user, Workspace $workspace): Mailable {
+        withHostedBilling();
+
+        return ProEndedMail::afterManagedPlan($workspace, Plan::Enterprise);
+    },
     'setup nudge' => fn (User $user, Workspace $workspace): Mailable => new SetupNudgeMail($user, $workspace, 'first_record', 'https://relaticle.test/chat'),
     'task assigned' => fn (User $user, Workspace $workspace): Mailable => new TaskAssignedMail('Call back', 'https://relaticle.test/tasks', $workspace->name),
 ]);
@@ -143,6 +168,8 @@ it('parks the recipient when any non-essential mailable bounces', function (Clos
 })->with('non-essential mailables');
 
 it('does not send the trial ended notice to an owner parked by the trial reminder', function (): void {
+    withHostedBilling();
+
     $owner = User::factory()->withPersonalWorkspace()->create(['email_bounced_at' => now()]);
     $owner->currentWorkspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->subHour()])->save();
 
@@ -156,7 +183,7 @@ it('does not fail or report the queued mailable when the provider rejects an ina
     $user = User::factory()->withPersonalWorkspace()->create();
     useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
 
-    Mail::mailer('array')->to($user)->queue(new TaskDigestMail($user, new DigestPayload([])));
+    Mail::mailer('array')->to($user)->queue(emptyDigestMail($user));
 
     Exceptions::assertNotReported(HttpTransportException::class);
     expect($user->fresh()->email_bounced_at)->not->toBeNull();
@@ -202,7 +229,7 @@ it('parks nobody and keeps failing when a message with several recipients bounce
     $second = User::factory()->create();
     useMailcoachAnswering(new MockHttpClient(new MockResponse('', ['http_code' => 406])));
 
-    expect(fn () => Mail::mailer('array')->to([$first, $second])->send(new TaskDigestMail($first, new DigestPayload([]))))
+    expect(fn () => Mail::mailer('array')->to([$first, $second])->send(emptyDigestMail($first)))
         ->toThrow(HttpTransportException::class);
 
     expect($first->fresh()->email_bounced_at)->toBeNull()
@@ -231,4 +258,26 @@ it('names the missing mailcoach setting when the mailer is not configured', func
     Mail::purge('mailcoach');
 
     expect(fn () => Mail::mailer('mailcoach'))->toThrow(InvalidMailerConfig::class);
+});
+
+it('queues mail with retries so a provider outage does not lose it', function (): void {
+    Queue::fake();
+    $user = User::factory()->withPersonalWorkspace()->create();
+
+    Mail::to($user)->queue(emptyDigestMail($user));
+
+    Queue::assertPushed(SendQueuedMailable::class, fn (SendQueuedMailable $job): bool => $job->tries === 3
+        && $job->backoff() === [60, 300]);
+});
+
+it('queues an inbox notification mail with the retries its base declares', function (): void {
+    Queue::fake();
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $task = Task::factory()->for($user->currentWorkspace, 'workspace')->create();
+
+    $user->notify(new TaskAssignedNotification($task, null));
+
+    Queue::assertPushed(SendQueuedNotifications::class, fn (SendQueuedNotifications $job): bool => $job->channels === ['mail']
+        && $job->tries === 3
+        && $job->backoff() === [60, 300]);
 });

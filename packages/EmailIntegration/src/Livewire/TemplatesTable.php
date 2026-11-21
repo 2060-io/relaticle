@@ -10,7 +10,6 @@ use Filament\Actions\CreateAction;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
@@ -22,8 +21,7 @@ use Relaticle\EmailIntegration\Models\EmailTemplate;
 
 /**
  * The email templates table, rendered inside the Templates tab of the email page.
- * Columns and row actions come from {@see EmailTemplateResource::table()}, the same
- * definition the standalone templates page uses.
+ * Columns and row actions come from {@see EmailTemplateResource::table()}.
  */
 final class TemplatesTable extends Component implements HasActions, HasSchemas, HasTable
 {
@@ -41,7 +39,7 @@ final class TemplatesTable extends Component implements HasActions, HasSchemas, 
             ->headerActions([$createTemplate])
             ->emptyStateHeading(__('filament/resources/email-template.empty.heading'))
             ->emptyStateDescription(__('filament/resources/email-template.empty.description'))
-            ->emptyStateIcon(Heroicon::OutlinedDocumentDuplicate)
+            ->emptyStateIcon('lucide-copy')
             ->emptyStateActions([$createTemplate]);
     }
 
@@ -50,7 +48,7 @@ final class TemplatesTable extends Component implements HasActions, HasSchemas, 
         return CreateAction::make()
             ->model(EmailTemplate::class)
             ->label(__('filament/resources/email-template.actions.create.label'))
-            ->icon('heroicon-o-plus')
+            ->icon('lucide-plus')
             ->schema(fn (Schema $schema): Schema => EmailTemplateForm::configure($schema))
             ->mutateFormDataUsing(function (array $data): array {
                 $data['workspace_id'] = filament()->getTenant()?->getKey();

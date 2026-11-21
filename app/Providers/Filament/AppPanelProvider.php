@@ -6,10 +6,10 @@ namespace App\Providers\Filament;
 
 use App\ActivityLog\AppEventPalette;
 use App\ActivityLog\AppEventRenderer;
+use App\Contracts\Billing;
 use App\Enums\AccentColor;
 use App\Enums\SupportFormType;
 use App\Enums\WorkspaceCapability;
-use App\Features\Billing as BillingFeature;
 use App\Features\EmailIntegration;
 use App\Features\SupportMenu;
 use App\Filament\Clusters\Settings;
@@ -18,17 +18,19 @@ use App\Filament\Pages\Auth\EmailVerificationPrompt;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Auth\RequestPasswordReset;
 use App\Filament\Pages\Auth\ResetPassword;
-use App\Filament\Pages\Billing;
 use App\Filament\Pages\CreateWorkspace;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\EditWorkspace;
 use App\Filament\Pages\Workspace\ActivityLog;
 use App\Filament\Pages\Workspace\CustomFields;
 use App\Filament\Pages\Workspace\Members;
+use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
+use App\Filament\Resources\NoteResource\Pages\ManageNotes;
 use App\Filament\Resources\OpportunityResource;
-use App\Filament\Resources\OpportunityResource\Pages\OpportunitiesBoard;
+use App\Filament\Resources\OpportunityResource\Pages\ListOpportunities;
+use App\Filament\Resources\PeopleResource\Pages\ListPeople;
 use App\Filament\Resources\TaskResource;
-use App\Filament\Resources\TaskResource\Pages\TasksBoard;
+use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Http\Controllers\SyncUserTimezoneController;
 use App\Http\Middleware\ApplyTenantScopes;
 use App\Http\Middleware\CheckScheduledDeletion;
@@ -36,9 +38,9 @@ use App\Http\Middleware\DenySearchIndexing;
 use App\Http\Middleware\EnsureAuthenticationComplete;
 use App\Http\Middleware\EnsureHostedWorkspaceAccess;
 use App\Http\Middleware\RedirectToWorkspaceSetup;
+use App\Http\Middleware\SetUserLocale;
 use App\Http\Middleware\StopImpersonationOnLogout;
 use App\Http\Middleware\SuperviseImpersonation;
-use App\Listeners\SwitchWorkspace;
 use App\Livewire\App\AppDatabaseNotifications;
 use App\Livewire\App\AppSidebar;
 use App\Livewire\App\Profile\ScheduledDeletionInterstitial;
@@ -46,9 +48,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\BrandColors;
 use App\Support\Impersonation\Impersonator;
-use App\Support\OutlinedIcons;
 use App\Support\SupportForms;
-use Asmit\ResizedColumn\ResizedColumnPlugin;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
@@ -57,7 +57,6 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Enums\DatabaseNotificationsPosition;
 use Filament\Enums\GlobalSearchPosition;
-use Filament\Events\TenantSet;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -76,7 +75,6 @@ use Filament\Support\Enums\Platform;
 use Filament\Support\Enums\Size;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentTimezone;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Filament\Tables\View\TablesRenderHook;
@@ -85,6 +83,7 @@ use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Middleware\SubstituteBindings;
@@ -109,36 +108,17 @@ use Throwable;
 
 final class AppPanelProvider extends PanelProvider
 {
-    /**
-     * Datetime format for this panel, and the only place it is decided. Columns and
-     * entries call `->dateTime()` with no argument so they resolve to this; a resource
-     * that passes its own literal instead is drift, not a local preference.
-     *
-     * No seconds. Nobody reading a CRM list cares which second a note was written, and
-     * DateTimePicker offers minutes anyway, so keeping them made every value read back
-     * one field longer than it was entered. Sysadmin keeps its seconds on purpose: that
-     * panel exists to line rows up against Horizon and server logs.
-     *
-     * No zone suffix either, unlike sysadmin: every timestamp here is already in the
-     * reader's own zone, so there is nothing for them to correlate against.
-     */
-    private const string DATE_TIME_FORMAT = 'M j, Y H:i';
+    public const string SIDEBAR_FOOTER_ACTIONS = 'app::sidebar.footer.actions';
 
     private const int DEFAULT_PAGINATION_PAGE_OPTION = 25;
+
+    private const array LIST_PAGES = [ListCompanies::class, ListPeople::class, ListOpportunities::class, ManageTasks::class, ManageNotes::class];
 
     /**
      * Perform post-registration booting of components.
      */
     public function boot(): void
     {
-        /**
-         * Listen and switch workspace if tenant was changed
-         */
-        Event::listen(
-            TenantSet::class,
-            SwitchWorkspace::class,
-        );
-
         Action::configureUsing(fn (Action $action): Action => $action
             ->size(Size::Small)
             ->iconPosition('before')
@@ -174,15 +154,7 @@ final class AppPanelProvider extends PanelProvider
 
         // Table and Schema configuration is global, so both callbacks have to check
         // which panel is actually serving the request before they touch the format.
-        Table::configureUsing(fn (Table $table): Table => $this->isCurrentPanel()
-            ? $table
-                ->defaultDateTimeDisplayFormat(self::DATE_TIME_FORMAT)
-                ->reorderableColumns()
-                ->columnManager(! $table->getLivewire() instanceof RelationManager)
-                ->defaultPaginationPageOption(self::DEFAULT_PAGINATION_PAGE_OPTION)
-                ->paginationPageOptions(fn (HasTable $livewire): array => $this->paginationPageOptions($livewire))
-            : $table);
-
+        $this->configureTables();
         $this->formatDateTimesInSchemas();
 
         /**
@@ -205,13 +177,38 @@ final class AppPanelProvider extends PanelProvider
             : $picker);
     }
 
+    private function configureTables(): void
+    {
+        Table::configureUsing(fn (Table $table): Table => $this->isCurrentPanel()
+            ? $table
+                ->defaultDateDisplayFormat(fn (): string => __('formats.php.date'))
+                ->defaultDateTimeDisplayFormat(fn (): string => __('formats.php.date_time'))
+                ->reorderableColumns()
+                ->stackedOnMobile()
+                ->columnManager(! $table->getLivewire() instanceof RelationManager)
+                ->defaultPaginationPageOption(self::DEFAULT_PAGINATION_PAGE_OPTION)
+                ->paginationPageOptions(fn (HasTable $livewire): array => $this->paginationPageOptions($livewire))
+                ->contentFooter(fn (HasTable $livewire, Table $table): ?View => $this->isListPage($livewire)
+                    ? view('filament.app.tables.pagination-footer', ['table' => $table])
+                    : null)
+                ->persistColumnsInSession(false)
+            : $table);
+    }
+
+    private function useCustomFieldDateFormats(string $locale): void
+    {
+        CustomFieldsConfig::useDateDisplayFormat(trans('formats.php.date', [], $locale));
+        CustomFieldsConfig::useDateTimeDisplayFormat(trans('formats.php.date_time', [], $locale));
+    }
+
     private function formatDateTimesInSchemas(): void
     {
         Schema::configureUsing(fn (Schema $schema): Schema => $this->isCurrentPanel()
-            ? $schema->defaultDateTimeDisplayFormat(self::DATE_TIME_FORMAT)
+            ? $schema->defaultDateDisplayFormat(fn (): string => __('formats.php.date'))->defaultDateTimeDisplayFormat(fn (): string => __('formats.php.date_time'))
             : $schema);
 
-        CustomFieldsConfig::useDateTimeDisplayFormat(self::DATE_TIME_FORMAT);
+        $this->useCustomFieldDateFormats(app()->getLocale());
+        Event::listen(LocaleUpdated::class, fn (LocaleUpdated $event) => $this->useCustomFieldDateFormats($event->locale));
     }
 
     /**
@@ -235,11 +232,16 @@ final class AppPanelProvider extends PanelProvider
             JS;
     }
 
+    private function isListPage(HasTable $livewire): bool
+    {
+        return in_array($livewire::class, self::LIST_PAGES, true);
+    }
+
     /** @return list<int> */
     private function paginationPageOptions(HasTable $livewire): array
     {
-        $onePage = (int) $livewire->getTable()->getDefaultPaginationPageOption();
-        $pageOptions = [$onePage, $onePage * 2, $onePage * 4];
+        $pageOptions = self::pageSizeOptions($livewire->getTable());
+        $onePage = $pageOptions[0];
 
         // Mount reads these before any query runs; afterwards the count comes from the
         // already-fetched paginator, and a single option is what hides the select.
@@ -252,6 +254,14 @@ final class AppPanelProvider extends PanelProvider
         }
 
         return [$onePage];
+    }
+
+    /** @return list<int> */
+    public static function pageSizeOptions(Table $table): array
+    {
+        $onePage = (int) $table->getDefaultPaginationPageOption();
+
+        return [$onePage, $onePage * 2, $onePage * 4];
     }
 
     /**
@@ -269,6 +279,28 @@ final class AppPanelProvider extends PanelProvider
     private function isCurrentPanel(): bool
     {
         return Filament::getCurrentPanel()?->getId() === 'app';
+    }
+
+    /**
+     * @return list<class-string|string>
+     */
+    private function middlewareStack(): array
+    {
+        return [
+            EncryptCookies::class,
+            AddQueuedCookiesToResponse::class,
+            StartSession::class,
+            'auth.context',
+            'auth.lifetime',
+            AuthenticateSession::class,
+            SetUserLocale::class,
+            ShareErrorsFromSession::class,
+            PreventRequestForgery::class,
+            SubstituteBindings::class,
+            DisableBladeIconComponents::class,
+            DispatchServingFilamentEvent::class,
+            DenySearchIndexing::class,
+        ];
     }
 
     /**
@@ -309,12 +341,31 @@ final class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): View|Factory => view('filament.app.analytics')
             )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View|Factory => view('filament.app.web-app-meta')
+            )
             // Filament loads the reveal script on demand, and the password field binds only then,
             // overwriting anything typed or autofilled before it arrived.
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): View|Factory => view('filament.app.password-reveal-preload'),
                 scopes: [Login::class, ResetPassword::class],
+            );
+    }
+
+    private function registerSidebarToggles(Panel $panel): void
+    {
+        // Collapse sits in the sidebar, level with the workspace switcher.
+        // Expand sits at the start of the top bar while the rail is collapsed.
+        $panel
+            ->renderHook(
+                PanelsRenderHook::TENANT_MENU_AFTER,
+                fn (): View|Factory => view('filament.app.sidebar-toggle', ['placement' => 'sidebar'])
+            )
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_START,
+                fn (): View|Factory => view('filament.app.sidebar-toggle', ['placement' => 'topbar'])
             );
     }
 
@@ -367,6 +418,31 @@ final class AppPanelProvider extends PanelProvider
             ->databaseNotificationsPolling('120s');
     }
 
+    private function registerTableHooks(Panel $panel): void
+    {
+        $panel
+            ->renderHook(
+                PanelsRenderHook::PAGE_START,
+                fn (): string => '<span class="fi-ta-fill-screen" hidden></span>',
+                scopes: self::LIST_PAGES,
+            )
+            ->renderHook(
+                TablesRenderHook::TOOLBAR_BEFORE,
+                fn (): View|Factory => view('filament.app.tables.filter-bar'),
+                scopes: self::LIST_PAGES,
+            )
+            ->renderHook(
+                TablesRenderHook::TOOLBAR_BEFORE,
+                fn (): View|Factory => view('filament.app.tables.column-menu'),
+                scopes: self::LIST_PAGES,
+            )
+            ->renderHook(
+                TablesRenderHook::TOOLBAR_BEFORE,
+                fn (): View|Factory => view('filament.app.tables.add-column-menu-hook'),
+                scopes: self::LIST_PAGES,
+            );
+    }
+
     private function registerInvitationHooks(Panel $panel): void
     {
         $panel
@@ -388,16 +464,11 @@ final class AppPanelProvider extends PanelProvider
             );
     }
 
-    private function upgradeModal(): string
+    private function billingUrl(): ?string
     {
         $workspace = Filament::getTenant();
-        $user = $this->signedInUser();
 
-        if (! Feature::active(BillingFeature::class) || ! $workspace instanceof Workspace || ! $user instanceof User || ! $user->hasWorkspaceCapability($workspace->getKey(), WorkspaceCapability::BillingManage)) {
-            return '';
-        }
-
-        return Blade::render('@livewire(\App\Livewire\App\Billing\UpgradeModal::class)');
+        return $workspace instanceof Workspace ? resolve(Billing::class)->url($workspace) : null;
     }
 
     private function inviteMembersModal(): string
@@ -457,7 +528,6 @@ final class AppPanelProvider extends PanelProvider
             ->globalSearchFieldSuffix(fn (): string => Platform::detect() === Platform::Mac ? '⌘K' : 'Ctrl K')
             ->colors($this->panelColors())
             ->viteTheme('resources/css/filament/app/theme.css')
-            ->icons(OutlinedIcons::aliases())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverPages(in: base_path('packages/ImportWizard/src/Filament/Pages'), for: 'Relaticle\\ImportWizard\\Filament\\Pages')
@@ -466,7 +536,7 @@ final class AppPanelProvider extends PanelProvider
             ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\\Filament\\Clusters')
             ->readOnlyRelationManagersOnResourceViewPagesByDefault(false)
             ->spa()
-            ->sidebarWidth('16rem')
+            ->sidebarWidth('18rem')
             ->maxContentWidth(Width::Full)
             // The socialite entry points answer with a 302 to the provider's own
             // domain, and wire:navigate cannot follow a cross-origin redirect.
@@ -508,22 +578,10 @@ final class AppPanelProvider extends PanelProvider
             ->collapsedSidebarWidth('3rem')
             ->navigationGroups([
                 NavigationGroup::make()
-                    ->label(__('filament/panel.navigation_groups.tasks'))
-                    ->icon('heroicon-o-shopping-cart'),
+                    ->label(fn (): string => __('filament/panel.navigation_groups.tasks'))
+                    ->icon('lucide-shopping-cart'),
             ])
-            ->middleware([
-                EncryptCookies::class,
-                AddQueuedCookiesToResponse::class,
-                StartSession::class,
-                'auth.context',
-                AuthenticateSession::class,
-                ShareErrorsFromSession::class,
-                PreventRequestForgery::class,
-                SubstituteBindings::class,
-                DisableBladeIconComponents::class,
-                DispatchServingFilamentEvent::class,
-                DenySearchIndexing::class,
-            ])
+            ->middleware($this->middlewareStack())
             ->authGuard('web')
             ->authPasswordBroker('users')
             ->authMiddleware($this->authMiddleware())
@@ -540,7 +598,6 @@ final class AppPanelProvider extends PanelProvider
                             && $user->hasWorkspaceCapability(Filament::getTenant()?->getKey(), WorkspaceCapability::FieldsManage);
                     })
                     ->managementPage(CustomFields::class),
-                ResizedColumnPlugin::make(),
                 ActivityLogPlugin::make()
                     ->renderers(array_fill_keys(
                         array_column(AppEventPalette::cases(), 'value'),
@@ -587,18 +644,9 @@ final class AppPanelProvider extends PanelProvider
         }
 
         $this->registerHeadHooks($panel);
+        $this->registerSidebarToggles($panel);
 
         $panel
-            /**
-             * The sidebar collapse toggle is panel chrome, so the panel owns it.
-             * TENANT_MENU_AFTER puts it inside the sidebar, level with the
-             * workspace switcher; `.fi-sidebar-toggle-btn` places it in both the
-             * open and the collapsed rail.
-             */
-            ->renderHook(
-                PanelsRenderHook::TENANT_MENU_AFTER,
-                fn (): View|Factory => view('filament.app.sidebar-toggle')
-            )
             // STYLES_AFTER renders past the panel stylesheet, which is what lets the
             // `html[data-accent]` ramps outrank the `:root` defaults it emits.
             ->renderHook(
@@ -606,11 +654,6 @@ final class AppPanelProvider extends PanelProvider
                 fn (): View|Factory => view('filament.app.accent-palettes', [
                     'accents' => AccentColor::cases(),
                 ])
-            )
-            ->renderHook(
-                TablesRenderHook::FILTER_INDICATORS,
-                fn (): View|Factory => view('filament.app.board-filter-clear'),
-                scopes: [OpportunitiesBoard::class, TasksBoard::class],
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_START,
@@ -655,36 +698,15 @@ final class AppPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): View|Factory => view('filament.scripts.identity-confirmation'),
-            )
-            ->renderHook(
-                PanelsRenderHook::BODY_END,
-                $this->upgradeModal(...),
             );
 
         $this->registerBanners($panel);
         $this->registerInvitationHooks($panel);
+        $this->registerTableHooks($panel);
         $this->registerNotifications($panel);
 
-        // Hidden without a bound tenant: the old panel-root fallback sent these
-        // to the dashboard, silently abandoning the create-workspace wizard.
-        $accountMenuItems = [
-            Action::make('settings')
-                ->label(__('filament/panel.user_menu.settings'))
-                ->icon('heroicon-m-cog-6-tooth')
-                ->visible(fn (): bool => $this->shouldRegisterMenuItem())
-                ->url(fn (): string => url(Settings::getUrl())),
-        ];
-
-        if (Features::hasApiFeatures()) {
-            $accountMenuItems[] = Action::make('api_tokens')
-                ->label(__('access-tokens.user_menu'))
-                ->icon('heroicon-o-key')
-                ->visible(fn (): bool => $this->shouldRegisterMenuItem())
-                ->url(fn (): string => url(AccessTokens::getUrl()));
-        }
-
         $panel->userMenuItems([
-            $accountMenuItems,
+            $this->accountMenuItems(),
             $this->supportMenuItems(),
             [],
         ]);
@@ -698,14 +720,40 @@ final class AppPanelProvider extends PanelProvider
             // of stranding it below the workspace list.
             ->tenantMenuItems([
                 Action::make('billing')
-                    ->label(__('billing.title'))
-                    ->icon(Heroicon::OutlinedCreditCard)
+                    ->label(fn (): string => __('billing.title'))
+                    ->icon('lucide-credit-card')
                     ->sort(-1)
-                    ->url(fn (): string => Billing::getUrl())
-                    ->visible(fn (): bool => Feature::active(BillingFeature::class)),
+                    ->url(fn (): ?string => $this->billingUrl())
+                    ->visible(fn (): bool => $this->billingUrl() !== null),
             ]);
 
         return $panel;
+    }
+
+    /**
+     * @return list<Action>
+     */
+    private function accountMenuItems(): array
+    {
+        // Hidden without a bound tenant: the old panel-root fallback sent these
+        // to the dashboard, silently abandoning the create-workspace wizard.
+        $items = [
+            Action::make('settings')
+                ->label(fn (): string => __('filament/panel.user_menu.settings'))
+                ->icon('lucide-settings')
+                ->visible(fn (): bool => $this->shouldRegisterMenuItem())
+                ->url(fn (): string => url(Settings::getUrl())),
+        ];
+
+        if (Features::hasApiFeatures()) {
+            $items[] = Action::make('api_tokens')
+                ->label(fn (): string => __('access-tokens.user_menu'))
+                ->icon('lucide-key')
+                ->visible(fn (): bool => $this->shouldRegisterMenuItem())
+                ->url(fn (): string => url(AccessTokens::getUrl()));
+        }
+
+        return $items;
     }
 
     /**

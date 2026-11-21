@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Jetstream;
 
+use App\Enums\WorkspaceRole;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
@@ -14,9 +15,9 @@ use Laravel\Jetstream\Jetstream;
 
 /**
  * Callers confirm the invitation is valid and the email matches, because each
- * surface renders a mismatch differently. Deletion state and the revoked-or-
- * expired race are enforced here so no caller can report a join that did not
- * happen; both refuse with an HttpException the caller may catch.
+ * surface renders a mismatch differently. A verified email, deletion state and
+ * the revoked-or-expired race are enforced here so no caller can report a join
+ * that did not happen; each refuses with an HttpException the caller may catch.
  */
 final readonly class AcceptWorkspaceInvitation
 {
@@ -28,8 +29,9 @@ final readonly class AcceptWorkspaceInvitation
     {
         $workspace = $invitation->workspace;
 
+        abort_unless($user->hasVerifiedEmail(), 403, __('workspaces.accept.email_unverified'));
         abort_if($user->isScheduledForDeletion(), 403, __('workspaces.accept.account_deleting'));
-        abort_if($workspace->isScheduledForDeletion(), 410, __('workspaces.accept.workspace_deleting'));
+        abort_if($workspace->isScheduledOnRequest(), 410, __('workspaces.accept.workspace_deleting'));
 
         $joined = DB::transaction(function () use ($user, $workspace, $invitation): bool {
             $locked = WorkspaceInvitation::query()->lockForUpdate()->find($invitation->id);
@@ -45,7 +47,7 @@ final readonly class AcceptWorkspaceInvitation
             }
 
             if (! $user->belongsToWorkspace($workspace)) {
-                $this->addMember($user, $workspace, $this->registeredRole($workspace, $locked->role));
+                $this->addMember($user, $workspace, $this->registeredRole($locked->role));
             }
 
             $locked->delete();
@@ -63,13 +65,13 @@ final readonly class AcceptWorkspaceInvitation
 
     // An unregistered or absent role key fails AddWorkspaceMember's validation from
     // inside the transaction, dead-ending the invitee on a page that never completes.
-    private function registeredRole(Workspace $workspace, ?string $role): string
+    private function registeredRole(?string $role): string
     {
         if ($role !== null && Jetstream::findRole($role) !== null) {
             return $role;
         }
 
-        return $workspace->invite_link_default_role;
+        return WorkspaceRole::Member->value;
     }
 
     /**

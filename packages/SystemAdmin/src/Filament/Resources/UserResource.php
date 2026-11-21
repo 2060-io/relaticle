@@ -30,6 +30,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\Rules\Password;
 use Override;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\CreateUser;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\EditUser;
@@ -50,7 +51,7 @@ final class UserResource extends Resource
 {
     protected static ?string $model = User::class;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user';
+    protected static string|\BackedEnum|null $navigationIcon = 'lucide-user';
 
     protected static string|\UnitEnum|null $navigationGroup = 'User Management';
 
@@ -90,6 +91,7 @@ final class UserResource extends Resource
                 TextInput::make('password')
                     ->disabled(fn (string $operation): bool => $operation === 'edit' && ! auth('sysadmin')->user()?->role->canManageCustomerAccess())
                     ->password()
+                    ->rule(Password::default())
                     ->maxLength(255)
                     ->dehydrated(fn (?string $state): bool => filled($state))
                     ->required(fn (string $operation): bool => $operation === 'create'),
@@ -174,8 +176,8 @@ final class UserResource extends Resource
                 IconColumn::make('email_verified_at')
                     ->label('Verified')
                     ->boolean()
-                    ->trueIcon('heroicon-o-check-badge')
-                    ->falseIcon('heroicon-o-x-mark'),
+                    ->trueIcon('lucide-badge-check')
+                    ->falseIcon('lucide-x'),
                 TextColumn::make('signup_method')
                     ->label('Signup method')
                     ->state(fn (User $record): string => SignupMethod::for($record))
@@ -203,9 +205,9 @@ final class UserResource extends Resource
                     ->label('Mailcoach Rejected')
                     ->state(fn (User $record): bool => $record->rejected_subscriber_profile_hash !== null)
                     ->boolean()
-                    ->trueIcon('heroicon-o-exclamation-triangle')
+                    ->trueIcon('lucide-triangle-exclamation-point')
                     ->trueColor('warning')
-                    ->falseIcon('heroicon-o-minus-small')
+                    ->falseIcon('lucide-minus')
                     ->falseColor('gray')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('email_bounced_at')

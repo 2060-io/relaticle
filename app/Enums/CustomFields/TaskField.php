@@ -5,11 +5,19 @@ declare(strict_types=1);
 namespace App\Enums\CustomFields;
 
 use App\Enums\CustomFieldType;
+use App\Enums\OptionColor;
+use App\Models\CustomFieldOption;
+use App\Support\ChecklistHtml;
+use Illuminate\Support\Collection;
 use Relaticle\CustomFields\Enums\CustomFieldWidth;
 
 enum TaskField: string
 {
-    public const string DONE_STATUS = 'Done';
+    public const string DONE_LABEL_KEY = 'enums/custom-fields.task.status.options.done';
+
+    public const string CHECKLIST_INPUT_FORMAT = 'bulleted markdown items "- [ ]" and "- [x]" become a checklist, while numbered items such as "1. [ ]" stay a numbered list';
+
+    public const string CHECKLIST_HTML_READ_FORMAT = 'read back as '.ChecklistHtml::ITEM.' with data-checked="true" or "false"';
 
     use CustomFieldTrait;
 
@@ -41,10 +49,10 @@ enum TaskField: string
     public function getDisplayName(): string
     {
         return match ($this) {
-            self::STATUS => 'Status',
-            self::PRIORITY => 'Priority',
-            self::DESCRIPTION => 'Description',
-            self::DUE_DATE => 'Due Date',
+            self::STATUS => __('enums/custom-fields.task.status.name'),
+            self::PRIORITY => __('enums/custom-fields.task.priority.name'),
+            self::DESCRIPTION => __('enums/custom-fields.task.description.name'),
+            self::DUE_DATE => __('enums/custom-fields.task.due_date.name'),
         };
     }
 
@@ -102,51 +110,54 @@ enum TaskField: string
     }
 
     /**
-     * Get available options for this field
-     *
-     * @return array<int|string, string>|null Array of options for select/multi-select fields or null if not applicable
+     * @return array<string, string>|null
      */
-    public function getOptions(): ?array
+    public function optionKeyColors(): ?array
     {
         return match ($this) {
             self::STATUS => [
-                'To do',
-                'In progress',
-                self::DONE_STATUS,
+                'enums/custom-fields.task.status.options.to_do' => OptionColor::Purple->value,
+                'enums/custom-fields.task.status.options.in_progress' => OptionColor::Blue->value,
+                self::DONE_LABEL_KEY => OptionColor::Green->value,
             ],
             self::PRIORITY => [
-                'Low',
-                'Medium',
-                'High',
+                'enums/custom-fields.task.priority.options.low' => OptionColor::Gray->value,
+                'enums/custom-fields.task.priority.options.medium' => OptionColor::Amber->value,
+                'enums/custom-fields.task.priority.options.high' => OptionColor::Red->value,
             ],
             default => null,
         };
     }
 
     /**
-     * Get color mapping for select field options
-     *
-     * 2024 sophisticated color psychology system - completely unique colors designed for
-     * emotional resonance and semantic meaning. Based on latest color trends including
-     * Digital Lavender, Mocha Mousse sophistication, and retro-futuristic aesthetics.
-     *
-     * @return array<string, string>|null Array of option => color mappings or null if not applicable
+     * @return list<string>
      */
-    public function getOptionColors(): ?array
+    public static function doneNames(): array
     {
-        return match ($this) {
-            self::STATUS => [
-                'To do' => '#c4b5fd',       // Soft Periwinkle - Digital Lavender inspired calm potential
-                'In progress' => '#0A80EA', // Professional Blue - Clear active progress state
-                self::DONE_STATUS => '#2A9764',        // Success Green - Confident completion achievement
-            ],
-            self::PRIORITY => [
-                'Low' => '#94a3b8',         // Sage Whisper - Natural earth tone, subtle presence
-                'Medium' => '#d4a574',      // Burnished Gold - Mocha Mousse warmth & confidence
-                'High' => '#dc2626',        // Crimson Velvet - Sophisticated urgent command
-            ],
-            default => null,
-        };
+        return array_values(array_unique(array_map(
+            fn (string $locale): string => __(self::DONE_LABEL_KEY, [], $locale),
+            config('app.available_locales'),
+        )));
+    }
+
+    /**
+     * The done option of a status field is the earliest-created one named like a done label.
+     *
+     * @template TKey of array-key
+     *
+     * @param  Collection<TKey, CustomFieldOption>  $options
+     */
+    public static function doneOption(Collection $options): ?CustomFieldOption
+    {
+        return $options
+            ->filter(fn (CustomFieldOption $option): bool => self::isDone($option->name))
+            ->sortBy(fn (CustomFieldOption $option): string => (string) $option->getKey())
+            ->first();
+    }
+
+    public static function isDone(string $name): bool
+    {
+        return in_array($name, self::doneNames(), true);
     }
 
     /**

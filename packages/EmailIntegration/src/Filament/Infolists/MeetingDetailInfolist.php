@@ -23,10 +23,10 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
 use Filament\Support\Enums\Width;
-use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 use Relaticle\EmailIntegration\Actions\LinkMeetingToRecordAction;
 use Relaticle\EmailIntegration\Actions\UnlinkMeetingFromRecordAction;
 use Relaticle\EmailIntegration\Enums\MeetingLinkedRecordType;
@@ -152,7 +152,7 @@ final class MeetingDetailInfolist
                                         ->visible(fn (Meeting $record): bool => self::linkedCount($record) > 0),
                                     EmptyState::make(__('filament/resources/meeting.sections.linked_records.empty.heading'))
                                         ->description(__('filament/resources/meeting.sections.linked_records.empty.description'))
-                                        ->icon(Heroicon::OutlinedLink)
+                                        ->icon('lucide-link')
                                         ->contained(false)
                                         ->footer([
                                             self::linkRecordsAction('linkRecords')->button()->size(Size::ExtraSmall),
@@ -189,7 +189,7 @@ final class MeetingDetailInfolist
     private static function descriptionHtml(string $description): string
     {
         if ($description !== strip_tags($description)) {
-            return $description;
+            return Str::sanitizeHtml($description);
         }
 
         $lines = array_filter(
@@ -204,7 +204,7 @@ final class MeetingDetailInfolist
     {
         $action = Action::make($name)
             ->label(__('filament/resources/meeting.actions.link_records.label'))
-            ->icon(Heroicon::Plus)
+            ->icon('lucide-plus')
             ->authorize(fn (Meeting $record): bool => self::authUser()->hasWorkspaceCapability($record->workspace_id, WorkspaceCapability::RecordsUpdate))
             ->overlayParentActions()
             ->schema(self::linkRecordFields())
@@ -229,7 +229,7 @@ final class MeetingDetailInfolist
     {
         return Action::make('unlinkRecord')
             ->label(fn (array $arguments): string => __('filament/resources/meeting.actions.unlink_record.label', ['name' => $arguments['name'] ?? '']))
-            ->icon(Heroicon::LinkSlash)
+            ->icon('lucide-unlink')
             ->iconButton()
             ->color('gray')
             ->size(Size::Small)
@@ -259,7 +259,7 @@ final class MeetingDetailInfolist
     {
         return Action::make('joinMeeting')
             ->label(__('filament/resources/meeting.actions.join.label'))
-            ->icon(Heroicon::VideoCamera)
+            ->icon('lucide-video')
             ->button()
             ->size(Size::ExtraSmall)
             ->url(fn (Meeting $record): ?string => $record->join_url, shouldOpenInNewTab: true)

@@ -24,8 +24,8 @@ use Laravel\Pennant\Feature;
  *
  * Read-only and derived. Nothing persists it. It is the one owner of billing
  * state: the access gate, the sidebar, the paused screen, and the ended email
- * all read it. `HostedWorkspaceAccess` only layers the billing feature flag on
- * top of `grantsAccess()`.
+ * all read it. `PlanEntitlements::allowsAccess()` returns `grantsAccess()`; with the
+ * billing flag off, `SelfHostedEntitlements` grants every workspace access.
  */
 enum BillingStatus: string implements HasColor, HasDescription, HasLabel
 {
@@ -59,6 +59,10 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
      */
     public static function fromWorkspace(Workspace $workspace): self
     {
+        if ($workspace->managedSubscription()?->pastDue() === true) {
+            return self::PastDue;
+        }
+
         $subscription = $workspace->subscription();
 
         if ($subscription?->pastDue() === true && ! $subscription->ended()) {
@@ -89,7 +93,7 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
             return self::TrialEnded;
         }
 
-        // The nightly downgrade clears trial_ends_at, so only the trial marker is left.
+        // The trial downgrade clears trial_ends_at, so only the trial marker is left.
         if ($workspace->plan === Plan::Free && $workspace->pro_trial_used_at !== null) {
             return self::TrialEnded;
         }
@@ -165,15 +169,15 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
     public function getLabel(): string
     {
         return match ($this) {
-            self::PastDue => 'Past due',
-            self::Subscribed => 'Pro',
-            self::Enterprise => 'Enterprise',
-            self::Trialing => 'Trial',
-            self::Grandfathered => 'Free (legacy)',
-            self::SubscriptionEnded => 'Subscription ended',
-            self::TrialEnded => 'Trial ended',
-            self::Granted => 'Granted',
-            self::Free => 'Free',
+            self::PastDue => __('enums/billing-status.past_due'),
+            self::Subscribed => __('enums/billing-status.subscribed'),
+            self::Enterprise => __('enums/billing-status.enterprise'),
+            self::Trialing => __('enums/billing-status.trialing'),
+            self::Grandfathered => __('enums/billing-status.grandfathered'),
+            self::SubscriptionEnded => __('enums/billing-status.subscription_ended'),
+            self::TrialEnded => __('enums/billing-status.trial_ended'),
+            self::Granted => __('enums/billing-status.granted'),
+            self::Free => __('enums/billing-status.free'),
         };
     }
 
@@ -185,15 +189,15 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
     public function getDescription(): string
     {
         return match ($this) {
-            self::PastDue => 'Paid subscription whose latest charge failed. Access stays open until Stripe cancels it.',
-            self::Subscribed => 'Paying for Pro through a live Stripe subscription.',
-            self::Enterprise => 'Put on the Enterprise plan by hand. No self-serve price exists for it.',
-            self::Trialing => 'Running an unexpired Pro trial. Nothing has been charged yet.',
-            self::Grandfathered => 'Existed before billing shipped, so hosted access stays free for good.',
-            self::SubscriptionEnded => 'Paid subscription ended with nothing behind it. Hosted access is paused until the owner subscribes again.',
-            self::TrialEnded => 'Pro trial expired with no subscription. Hosted access is paused until the owner subscribes.',
-            self::Granted => 'Given a paid plan by hand, with no subscription or trial behind it.',
-            self::Free => 'No subscription, trial, or grandfathering. Hosted access is paused while billing is on.',
+            self::PastDue => __('enums/billing-status.descriptions.past_due'),
+            self::Subscribed => __('enums/billing-status.descriptions.subscribed'),
+            self::Enterprise => __('enums/billing-status.descriptions.enterprise'),
+            self::Trialing => __('enums/billing-status.descriptions.trialing'),
+            self::Grandfathered => __('enums/billing-status.descriptions.grandfathered'),
+            self::SubscriptionEnded => __('enums/billing-status.descriptions.subscription_ended'),
+            self::TrialEnded => __('enums/billing-status.descriptions.trial_ended'),
+            self::Granted => __('enums/billing-status.descriptions.granted'),
+            self::Free => __('enums/billing-status.descriptions.free'),
         };
     }
 
@@ -219,7 +223,9 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
     private function constrain(Builder $query): Builder
     {
         return match ($this) {
-            self::PastDue => $query->whereHas('latestDefaultSubscription', self::pastDue(...)),
+            self::PastDue => $query->where(fn (Builder $overdue): Builder => $overdue
+                ->whereHas('latestDefaultSubscription', self::pastDue(...))
+                ->orWhere(self::managedPlanPastDue(...))),
             self::Subscribed => $query->whereHas('latestDefaultSubscription', self::valid(...)),
             self::Enterprise => $query->where('plan', Plan::Enterprise),
             self::Trialing => $query->onGenericTrial(),
@@ -238,6 +244,7 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
     {
         return $workspace->subscriptions->contains(
             fn (Model $subscription): bool => $subscription instanceof Subscription
+                && $subscription->type !== SubscriptionType::ManagedPending->value
                 && ! in_array($subscription->stripe_status, StripeSubscriptionStatus::neverGranted(), true),
         );
     }
@@ -248,7 +255,31 @@ enum BillingStatus: string implements HasColor, HasDescription, HasLabel
      */
     private static function charged(Builder $query): Builder
     {
-        return $query->whereNotIn('stripe_status', StripeSubscriptionStatus::neverGranted());
+        return $query
+            ->where('type', '!=', SubscriptionType::ManagedPending->value)
+            ->whereNotIn('stripe_status', StripeSubscriptionStatus::neverGranted());
+    }
+
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    private static function managedPlanPastDue(Builder $query): Builder
+    {
+        foreach (Plan::cases() as $plan) {
+            $product = $plan->stripeProduct();
+
+            if ($product === null) {
+                continue;
+            }
+
+            $query->orWhere(fn (Builder $held): Builder => $held
+                ->where('plan', $plan)
+                ->whereHas('managedSubscriptions', fn (Builder $subscription): Builder => self::pastDue($subscription)
+                    ->whereHas('items', fn (Builder $item): Builder => $item->where('stripe_product', $product))));
+        }
+
+        return $query;
     }
 
     /**

@@ -22,7 +22,7 @@
     <x-slot name="trigger">
         <button
             type="button"
-            class="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200"
+            class="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 [@media(hover:hover)]:aria-expanded:bg-gray-100 [@media(hover:hover)]:aria-expanded:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200 dark:[@media(hover:hover)]:aria-expanded:bg-white/10 dark:[@media(hover:hover)]:aria-expanded:text-gray-200"
             aria-label="{{ $label }}"
             x-tooltip="{ content: @js($label), theme: $store.theme }"
         >
@@ -49,7 +49,7 @@
 
     @if (filled($createLabel))
         <x-filament::dropdown.list>
-            <x-filament::dropdown.list.item wire:click="{{ $createClick }}" icon="heroicon-m-plus" color="gray">
+            <x-filament::dropdown.list.item wire:click="{{ $createClick }}" icon="lucide-plus" color="gray">
                 {{ $createLabel }}
             </x-filament::dropdown.list.item>
         </x-filament::dropdown.list>

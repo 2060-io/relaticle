@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 use App\Actions\Company\UpdateCompany;
 use App\Enums\CreationSource;
-use App\Filament\Resources\CompanyResource\Pages\ListCompanies;
+use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Http\Middleware\SetCurrentSource;
+use App\Listeners\BindCommandSourceListener;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\Company\UpdateCompanyTool;
 use App\Models\ActivityLog\Activity;
@@ -16,6 +17,8 @@ use App\Support\ActivityLog\MergedActivityRenderer;
 use App\Support\CurrentSource;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Foundation\Testing\WithConsoleEvents;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Laravel\Sanctum\Sanctum;
 use Relaticle\Chat\Enums\PendingActionOperation;
@@ -23,7 +26,9 @@ use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\PendingActionService;
 
-mutates(CurrentSource::class, SetCurrentSource::class, RelaticleServer::class, PendingActionService::class, HasCreator::class, MergedActivityRenderer::class);
+pest()->use(WithConsoleEvents::class);
+
+mutates(CurrentSource::class, SetCurrentSource::class, BindCommandSourceListener::class, RelaticleServer::class, PendingActionService::class, HasCreator::class, MergedActivityRenderer::class);
 
 beforeEach(function (): void {
     Bus::fake();
@@ -48,6 +53,15 @@ function sourcesOfCompanyUpdates(Company $company): array
         ->all();
 }
 
+function runAsArtisanCommand(Closure $work): void
+{
+    Artisan::command('relaticle:test-work', function () use ($work): void {
+        $work();
+    });
+
+    expect(Artisan::call('relaticle:test-work'))->toBe(0);
+}
+
 function approveCompanyRenameInChat(User $user, Company $company, string $name): void
 {
     $proposal = PendingAction::query()->create([
@@ -67,8 +81,8 @@ function approveCompanyRenameInChat(User $user, Company $company, string $name):
 }
 
 it('stamps each channel that edits one record with its own source', function (): void {
-    livewire(ListCompanies::class)
-        ->callAction(TestAction::make('edit')->table($this->company), data: ['name' => 'Via Panel'])
+    livewire(ViewCompany::class, ['record' => $this->company->getKey()])
+        ->callAction(TestAction::make('edit')->schemaComponent('recordActions', schema: 'infolist'), data: ['name' => 'Via Panel'])
         ->assertHasNoActionErrors();
 
     Sanctum::actingAs($this->user);
@@ -101,8 +115,8 @@ it('stamps a panel write after an api request in the same process as web', funct
     $this->putJson("/api/v1/companies/{$this->company->getKey()}", ['name' => 'Via Api'])->assertOk();
 
     $this->actingAs($this->user, 'web');
-    livewire(ListCompanies::class)
-        ->callAction(TestAction::make('edit')->table($this->company), data: ['name' => 'Via Panel'])
+    livewire(ViewCompany::class, ['record' => $this->company->getKey()])
+        ->callAction(TestAction::make('edit')->schemaComponent('recordActions', schema: 'infolist'), data: ['name' => 'Via Panel'])
         ->assertHasNoActionErrors();
 
     expect(sourcesOfCompanyUpdates($this->company))->toBe(['api', 'web']);
@@ -226,4 +240,30 @@ it('leaves the channel line off web and legacy timeline entries', function (): v
 
     expect($webHtml)->not->toContain('Via ')
         ->and($legacyHtml)->not->toContain('Via ');
+});
+
+it('stamps writes from an artisan command as system and writes after it as web again', function (): void {
+    runAsArtisanCommand(fn (): bool => $this->company->update(['name' => 'By Command']));
+    $this->company->update(['name' => 'By Hand']);
+
+    expect(sourcesOfCompanyUpdates($this->company))->toBe(['system', 'web']);
+});
+
+it('keeps the source a command runs under when one is already bound', function (): void {
+    CurrentSource::during(CreationSource::API, function (): void {
+        runAsArtisanCommand(fn (): bool => $this->company->update(['name' => 'Inside Api']));
+    });
+
+    expect(sourcesOfCompanyUpdates($this->company))->toBe(['api']);
+});
+
+it('records a record an artisan command creates as system created', function (): void {
+    $company = null;
+
+    runAsArtisanCommand(function () use (&$company): void {
+        $company = Company::factory()->for($this->workspace)->create();
+    });
+
+    expect($company->creation_source)->toBe(CreationSource::SYSTEM)
+        ->and($company->isSystemCreated())->toBeTrue();
 });

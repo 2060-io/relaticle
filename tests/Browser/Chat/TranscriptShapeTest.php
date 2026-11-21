@@ -411,6 +411,121 @@ it('paints a cited record as the same chip on the streamed and the reloaded pipe
         ->and($chips['navigating'])->toBeFalse();
 });
 
+it('renders line breaks, strikethrough, bare links and checklists the same on the streamed and the reloaded pipeline', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+
+    $markdown = "Ship to:\nAnn Lee\n12 Main Street\n\n- [x] Confirm budget\n- [ ] Draft quote\n\n~~Old quote~~ replaced, see https://example.com/pricing";
+    $markdownJson = json_encode($markdown, JSON_THROW_ON_ERROR);
+    $serverHtmlJson = json_encode((new MarkdownRenderer)->render($markdown), JSON_THROW_ON_ERROR);
+
+    $page = ChatBrowser::logIn($user, $workspace->slug)
+        ->navigate("/app/{$workspace->slug}/chats")
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $page->script(<<<JS
+        (() => {
+            {$resolveInterface}
+
+            const base = { role: 'assistant', rendered: true, editing: false, editText: '' };
+
+            data.messages.push({ ...base, content: {$markdownJson}, prerendered: false });
+            data.messages.push({ ...base, content: {$serverHtmlJson}, prerendered: true });
+
+            return true;
+        })();
+    JS);
+
+    $page->assertCount('[data-assistant-bubble] .chat-md-task', 4);
+
+    $bubbles = json_decode((string) $page->script(<<<'JS'
+        (() => {
+            const bubbles = Array.from(document.querySelectorAll('[data-assistant-bubble]')).slice(-2);
+
+            const textOf = (bubble) => {
+                const copy = bubble.cloneNode(true);
+                copy.querySelectorAll('br').forEach((node) => node.replaceWith(' '));
+
+                return copy.textContent.replace(/\s+/g, ' ').trim();
+            };
+
+            return JSON.stringify(bubbles.map((bubble) => ({
+                text: textOf(bubble),
+                breaks: bubble.querySelectorAll('br').length,
+                struck: Array.from(bubble.querySelectorAll('del')).map((node) => node.textContent),
+                links: Array.from(bubble.querySelectorAll('a')).map((node) => node.getAttribute('href')),
+                tasks: Array.from(bubble.querySelectorAll('.chat-md-task')).map((node) => node.getAttribute('aria-checked')),
+                taskItems: Array.from(bubble.querySelectorAll('li')).map((node) => node.innerHTML.trim()),
+                inputs: bubble.querySelectorAll('input').length,
+            })));
+        })();
+    JS), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($bubbles[0])->toBe($bubbles[1])
+        ->and($bubbles[0]['breaks'])->toBe(2)
+        ->and($bubbles[0]['struck'])->toBe(['Old quote'])
+        ->and($bubbles[0]['links'])->toBe(['https://example.com/pricing'])
+        ->and($bubbles[0]['tasks'])->toBe(['true', 'false'])
+        ->and($bubbles[0]['inputs'])->toBe(0)
+        ->and($bubbles[0]['text'])->not->toContain('[x]');
+});
+
+it('styles inline code and tables in a reply with the chat prose classes', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+
+    $markdownJson = json_encode("Run `php artisan migrate` first.\n\n| Stage | Count |\n| - | - |\n| Lead | 4 |\n\n```\nphp artisan migrate --force\n```", JSON_THROW_ON_ERROR);
+
+    $page = ChatBrowser::logIn($user, $workspace->slug)
+        ->navigate("/app/{$workspace->slug}/chats")
+        ->assertSourceHas('placeholder="Ask anything..."');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $page->script(<<<JS
+        (() => {
+            {$resolveInterface}
+
+            data.messages.push({ role: 'assistant', rendered: true, editing: false, editText: '', content: {$markdownJson}, prerendered: false });
+
+            return true;
+        })();
+    JS);
+
+    $page->assertCount('[data-assistant-bubble] td', 2);
+
+    $styles = json_decode((string) $page->script(<<<'JS'
+        (() => {
+            const bubble = Array.from(document.querySelectorAll('[data-assistant-bubble]')).pop();
+            const code = bubble.querySelector('p code');
+            const blockCode = bubble.querySelector('pre code');
+            const prose = code.closest('.prose');
+            const styles = {
+                codeBefore: getComputedStyle(code, '::before').content,
+                codeBackground: getComputedStyle(code).backgroundColor,
+                firstChildMarginTop: getComputedStyle(prose.firstElementChild).marginTop,
+                cellPaddingLeft: getComputedStyle(bubble.querySelector('td')).paddingLeft,
+                blockCodeBackground: getComputedStyle(blockCode).backgroundColor,
+            };
+
+            document.documentElement.classList.add('dark');
+            styles.darkBlockBackground = getComputedStyle(blockCode.closest('pre')).backgroundColor;
+            styles.darkPageBackground = getComputedStyle(document.body).backgroundColor;
+
+            return JSON.stringify(styles);
+        })();
+    JS), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($styles['codeBefore'])->toBe('none')
+        ->and($styles['codeBackground'])->not->toBe('rgba(0, 0, 0, 0)')
+        ->and($styles['firstChildMarginTop'])->toBe('0px')
+        ->and($styles['cellPaddingLeft'])->toBe('8px')
+        ->and($styles['blockCodeBackground'])->toBe('rgba(0, 0, 0, 0)')
+        ->and($styles['darkBlockBackground'])->not->toBe($styles['darkPageBackground']);
+});
+
 /**
  * `msg.content` is markdown for a reply rendered in this session and server
  * HTML for one rehydrated on reload, so copying it verbatim pasted raw tags
@@ -461,6 +576,69 @@ it('copies both message shapes as the same plain text with absolute record urls'
     expect($result['copied'])->toBe([$expected, $expected]);
 });
 
+it('gives each code block its own copy button and opens outside links in a new tab, from both pipelines', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+
+    $markdown = "Open the [plugin page](https://plugins.example.test/relaticle) or [your tasks](/app/{$workspace->slug}/tasks).\n\n```\nhttps://mcp.example.test\n```\n\n```\nMove my current clients into the workspace, with every open opportunity.\n```";
+    $markdownJson = json_encode($markdown, JSON_THROW_ON_ERROR);
+    $conversationId = (string) Str::uuid7();
+    ChatBrowser::seedConversation($user, $workspace->getKey(), 'code blocks', $conversationId);
+    transcriptShapeInsertMessage($conversationId, $user, $markdown, now()->toImmutable());
+    DB::table('agent_conversation_messages')->where('conversation_id', $conversationId)->update(['role' => 'assistant']);
+
+    $page = ChatBrowser::logIn($user, $workspace->slug, $conversationId)
+        ->assertSourceHas('plugin page');
+
+    $resolveInterface = ChatBrowser::resolveInterface();
+
+    $result = json_decode((string) $page->script(<<<JS
+        (async () => {
+            {$resolveInterface}
+
+            const copied = [];
+            Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: { writeText: (text) => { copied.push(text); return Promise.resolve(); } },
+            });
+
+            data.messages.push({ role: 'assistant', rendered: true, editing: false, editText: '', content: {$markdownJson}, prerendered: false });
+
+            await data.\$nextTick();
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+            const bubbles = Array.from(document.querySelectorAll('[data-assistant-bubble]')).slice(-2);
+            const buttons = bubbles.flatMap((bubble) => Array.from(bubble.querySelectorAll('pre [data-code-copy]')));
+            const idleLabels = buttons.map((button) => button.getAttribute('aria-label'));
+
+            for (const button of buttons) {
+                button.click();
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+
+            return JSON.stringify({
+                copied,
+                idleLabels,
+                copiedLabels: buttons.map((button) => button.getAttribute('aria-label')),
+                iconWidths: buttons.map((button) => Math.round(button.querySelector('svg')?.getBoundingClientRect().width ?? 0)),
+                overflowing: bubbles.flatMap((bubble) => Array.from(bubble.querySelectorAll('pre'))).filter((pre) => pre.scrollWidth > pre.clientWidth).length,
+                links: bubbles.flatMap((bubble) => Array.from(bubble.querySelectorAll('a')).map((link) => [link.textContent, link.target, link.rel])),
+            });
+        })();
+    JS), true, 512, JSON_THROW_ON_ERROR);
+
+    $url = 'https://mcp.example.test';
+    $prompt = 'Move my current clients into the workspace, with every open opportunity.';
+    $links = [['plugin page', '_blank', 'noopener noreferrer'], ['your tasks', '', '']];
+
+    expect($result['copied'])->toBe([$url, $prompt, $url, $prompt])
+        ->and($result['idleLabels'])->toBe(array_fill(0, 4, 'Copy code'))
+        ->and($result['copiedLabels'])->toBe(array_fill(0, 4, 'Copied'))
+        ->and($result['iconWidths'])->toBe([14, 14, 14, 14])
+        ->and($result['overflowing'])->toBe(0)
+        ->and($result['links'])->toBe([...$links, ...$links]);
+});
+
 /**
  * The structure guard for the copy serializer. Copy runs off the SAME html the
  * transcript paints (see messageCopyText), so a reply has to come back out as
@@ -489,6 +667,12 @@ it('copies every markdown structure back as text, identically from both pipeline
         ```php
         echo 'hi';
         ```
+
+        - [x] Confirm budget
+        - [ ] Draft quote
+
+        Ship to:
+        Ann Lee, ~~old~~ new address
         MD;
 
     $markdownJson = json_encode($markdown, JSON_THROW_ON_ERROR);
@@ -529,6 +713,12 @@ it('copies every markdown structure back as text, identically from both pipeline
         '```php',
         "echo 'hi';",
         '```',
+        '',
+        '- [x] Confirm budget',
+        '- [ ] Draft quote',
+        '',
+        'Ship to:',
+        'Ann Lee, ~~old~~ new address',
     ]);
 
     expect($copied)->toBe([$expected, $expected]);
@@ -813,6 +1003,33 @@ it('keeps every message the same height while a reply streams and after it ends'
  * what it holds: the caret lands in the box without a second click, and the
  * frame grows with the text instead of sitting at one fixed width.
  */
+it('shows the message actions without hover on a touch screen and keeps them hidden on a desktop', function (): void {
+    $this->withVite();
+
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $conversationId = ChatBrowser::seedConversation($user, $workspace->getKey(), 'touch actions');
+    $askedAt = Date::parse('2026-08-19 10:00:00', 'UTC');
+
+    transcriptShapeInsertMessage($conversationId, $user, 'How many companies do I have?', $askedAt);
+    transcriptShapeInsertMessage($conversationId, $user, 'You have twelve companies.', $askedAt->addMinute());
+    DB::table('agent_conversation_messages')->where('content', 'You have twelve companies.')->update(['role' => 'assistant']);
+
+    $path = "/app/{$workspace->slug}/chats/{$conversationId}";
+    $rowOpacities = "Array.from(document.querySelectorAll('[data-copy-button]')).map((button) => getComputedStyle(button.parentElement).opacity)";
+
+    $this->actingAs($user);
+
+    $touch = $this->visit($path, ['viewport' => ['width' => 390, 'height' => 844], 'hasTouch' => true, 'isMobile' => true])
+        ->assertSourceHas('You have twelve companies.');
+
+    expect($touch->script($rowOpacities))->toBe(['1', '1']);
+
+    $desktop = visitAs($user, $path)->assertSourceHas('You have twelve companies.');
+
+    expect($desktop->script($rowOpacities))->toBe(['0', '0']);
+});
+
 it('focuses the message editor on open and grows its width with the text', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();

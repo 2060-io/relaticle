@@ -5,10 +5,15 @@ declare(strict_types=1);
 return [
     'title' => 'Notifications',
 
+    'throttled' => [
+        'title' => 'Too Many Requests',
+        'body' => 'Please wait :seconds seconds before trying again.',
+    ],
+
     'digest' => [
         'heading' => 'Daily digest',
         'title' => 'Enable daily digest',
-        'description' => 'Includes tasks overdue and due today. Sent every morning if any tasks are due or overdue.',
+        'description' => 'Includes tasks overdue and due today. Each workspace sends its own email every morning when it has tasks due or overdue.',
     ],
 
     'collaboration' => [

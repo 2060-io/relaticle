@@ -2,30 +2,40 @@
 
 declare(strict_types=1);
 
+use App\Contracts\Billing as BillingContract;
+use App\Data\StageOptionSettings;
+use App\Enums\CustomFields\OpportunityField;
 use App\Enums\WorkspaceRole;
 use App\Features\Billing as BillingFeature;
-use App\Filament\Pages\Billing;
 use App\Filament\Pages\EditWorkspace;
 use App\Filament\Pages\Workspace\ActivityLog;
 use App\Filament\Pages\Workspace\CustomFields;
 use App\Filament\Pages\Workspace\Members;
+use App\Models\Company;
 use App\Models\CustomField;
+use App\Models\CustomFieldValue;
+use App\Models\Opportunity;
 use App\Models\User;
 use App\Providers\Filament\AppPanelProvider;
+use App\Services\NoBilling;
+use App\Support\Locales;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Navigation\NavigationItem;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Livewire\Features\SupportTesting\Testable;
+use Livewire\Livewire;
+use Relaticle\Cloud\Billing\StripeBilling;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Livewire\ManageFieldsTable;
+use Relaticle\EmailIntegration\Filament\Pages\EmailAccountSettingsPage;
 use Relaticle\EmailIntegration\Filament\Pages\EmailAccountsPage;
 use Relaticle\EmailIntegration\Filament\Pages\EmailPrivacySettingsPage;
-use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource;
-use Relaticle\EmailIntegration\Filament\Resources\EmailTemplateResource\Pages\ManageEmailTemplates;
 use Relaticle\ImportWizard\Filament\Pages\ImportHistory;
 
-mutates(AppPanelProvider::class, Members::class, CustomFields::class, EmailAccountsPage::class, EmailPrivacySettingsPage::class, ActivityLog::class, ImportHistory::class);
+mutates(AppPanelProvider::class, Members::class, CustomFields::class, EmailAccountsPage::class, EmailPrivacySettingsPage::class, ActivityLog::class, ImportHistory::class, NoBilling::class, StripeBilling::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -55,7 +65,7 @@ function activeWorkspaceTabLabels(object $page): array
 }
 
 test('every workspace settings page renders the same tab strip', function (): void {
-    Feature::define(BillingFeature::class, true);
+    withHostedBilling();
 
     $expected = [
         __('workspaces.tabs.general'),
@@ -67,7 +77,7 @@ test('every workspace settings page renders the same tab strip', function (): vo
         __('workspaces.tabs.billing'),
     ];
 
-    foreach ([EditWorkspace::class, Members::class, CustomFields::class, EmailAccountsPage::class, ManageEmailTemplates::class, EmailPrivacySettingsPage::class, ImportHistory::class, ActivityLog::class, Billing::class] as $page) {
+    foreach ([EditWorkspace::class, Members::class, CustomFields::class, EmailAccountsPage::class, EmailPrivacySettingsPage::class, ImportHistory::class, ActivityLog::class] as $page) {
         expect(workspaceTabLabels(resolve($page)))
             ->toBe($expected, "[{$page}] should render the full tab strip");
     }
@@ -77,7 +87,6 @@ test('workspace settings tabs live under the workspace url without duplicate sta
     expect(CustomFields::getSlug())->toBe('workspace/custom-fields')
         ->and(Members::getSlug())->toBe('workspace/members')
         ->and(EmailAccountsPage::getSlug())->toBe('workspace/email')
-        ->and(EmailTemplateResource::getSlug())->toBe('workspace/email/templates')
         ->and(EmailPrivacySettingsPage::getSlug())->toBe('workspace/email/privacy')
         ->and(ActivityLog::getSlug())->toBe('workspace/activity')
         ->and(Route::has('filament.app.pages.custom-fields'))->toBeFalse()
@@ -86,9 +95,13 @@ test('workspace settings tabs live under the workspace url without duplicate sta
         ->and(Route::has('filament.app.pages.workspace.email'))->toBeTrue();
 });
 
-test('billing keeps its own url so the paywall allowlist keeps matching', function (): void {
-    expect(Billing::getSlug())->toBe('billing')
-        ->and(Route::has('filament.app.pages.billing'))->toBeTrue();
+test('the custom attributes page reads custom attributes in its tab, title and heading', function (): void {
+    $response = $this->get(CustomFields::getUrl(tenant: $this->workspace))
+        ->assertSuccessful()
+        ->assertDontSee('Custom Fields');
+
+    expect($response->getContent())->toMatch('/<title[^>]*>\s*Custom attributes/')
+        ->and(__('workspaces.tabs.custom_fields'))->toBe('Custom attributes');
 });
 
 test('a workspace admin can open every tab', function (): void {
@@ -97,7 +110,6 @@ test('a workspace admin can open every tab', function (): void {
         Members::getUrl(tenant: $this->workspace),
         CustomFields::getUrl(tenant: $this->workspace),
         EmailAccountsPage::getUrl(tenant: $this->workspace),
-        EmailTemplateResource::getUrl(tenant: $this->workspace),
         EmailPrivacySettingsPage::getUrl(tenant: $this->workspace),
         ImportHistory::getUrl(tenant: $this->workspace),
         ActivityLog::getUrl(tenant: $this->workspace),
@@ -117,7 +129,7 @@ test('a user outside the workspace cannot open the members tab', function (): vo
 });
 
 test('the tab strip hides admin-only tabs from members without the admin role', function (): void {
-    Feature::define(BillingFeature::class, true);
+    withHostedBilling();
 
     $member = User::factory()->create();
     $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
@@ -132,7 +144,17 @@ test('the tab strip hides admin-only tabs from members without the admin role', 
         ->not->toContain(__('workspaces.tabs.activity'));
 });
 
-test('a workspace member reaches their email accounts and templates but not the workspace email privacy', function (): void {
+test('the tab strip hides import history from a viewer', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+
+    $this->actingAs($viewer);
+
+    expect(workspaceTabLabels(resolve(EditWorkspace::class)))
+        ->not->toContain(__('workspaces.tabs.import_history'));
+});
+
+test('a workspace member reaches their email accounts without the workspace email tabs', function (): void {
     $member = User::factory()->create();
     $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
 
@@ -142,25 +164,25 @@ test('a workspace member reaches their email accounts and templates but not the 
 
     $this->get(EmailAccountsPage::getUrl(tenant: $this->workspace))
         ->assertSuccessful()
-        ->assertSee(__('filament/resources/email-template.navigation_label'))
-        ->assertDontSee(__('filament/pages/email-privacy-settings.tabs.sharing'));
-
-    $this->get(EmailTemplateResource::getUrl(tenant: $this->workspace))->assertSuccessful();
+        ->assertDontSee(__('filament/pages/email-privacy-settings.tabs.aria'))
+        ->assertDontSee(__('filament/pages/email-privacy-settings.tabs.record_creation'));
 
     $this->get(EmailPrivacySettingsPage::getUrl(tenant: $this->workspace))->assertForbidden();
 });
 
-test('a workspace admin sees the workspace email privacy tabs next to accounts and templates', function (): void {
+test('a workspace admin sees the workspace email tabs next to accounts', function (): void {
     $this->get(EmailAccountsPage::getUrl(tenant: $this->workspace))
         ->assertSuccessful()
         ->assertSeeInOrder([
             __('filament/pages/email-accounts.navigation_label'),
-            __('filament/resources/email-template.navigation_label'),
             __('filament/pages/email-privacy-settings.tabs.visibility'),
-            __('filament/pages/email-privacy-settings.tabs.sharing'),
             __('filament/pages/email-privacy-settings.tabs.record_creation'),
         ])
-        ->assertSee(EmailPrivacySettingsPage::getUrl(['tab' => 'sharing'], tenant: $this->workspace), escape: false);
+        ->assertSee(EmailPrivacySettingsPage::getUrl(['tab' => 'record_creation'], tenant: $this->workspace), escape: false);
+});
+
+test('the workspace email settings no longer serve a templates page', function (): void {
+    $this->get("/app/{$this->workspace->slug}/workspace/email/templates")->assertNotFound();
 });
 
 test('a workspace admin can open the members tab', function (): void {
@@ -211,6 +233,130 @@ test('the custom fields form refuses the domain type and still creates a text fi
     expect($created->all())->toBe(['Plain probe' => 'text']);
 });
 
+test('the custom fields create form offers no searchable toggle', function (): void {
+    livewire(ManageFieldsTable::class, ['entityType' => 'company'])
+        ->mountAction('createField')
+        ->fillForm(['type' => 'text'])
+        ->assertSchemaComponentExists('settings.visible_in_list', 'mountedActionSchema0')
+        ->assertSchemaComponentHidden('settings.searchable', 'mountedActionSchema0');
+});
+
+test('the custom fields edit form offers no searchable toggle and keeps a stored value', function (): void {
+    $field = CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'entity_type' => 'company',
+        'type' => 'text',
+        'code' => 'edit_probe',
+        'name' => 'Edit probe',
+        'settings' => new CustomFieldSettingsData(searchable: true),
+    ]);
+
+    livewire(ManageFieldsTable::class, ['entityType' => 'company'])
+        ->mountAction('editField', ['fieldId' => $field->getKey()])
+        ->assertSchemaComponentExists('settings.visible_in_list', 'mountedActionSchema0')
+        ->assertSchemaComponentHidden('settings.searchable', 'mountedActionSchema0')
+        ->fillForm(['settings.visible_in_list' => false])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    $settings = $field->fresh()->settings;
+
+    expect($settings->visible_in_list)->toBeFalse()
+        ->and($settings->searchable)->toBeTrue();
+});
+
+test('the custom fields edit form keeps a stage celebration while it saves colors and names', function (bool $colorsOn): void {
+    $field = CustomField::query()->forEntity(Opportunity::class)->where('code', OpportunityField::STAGE)->sole();
+    $field->update(['settings' => [...$field->settings->toArray(), 'enable_option_colors' => $colorsOn]]);
+    $option = $field->options->first();
+    $option->update(['settings' => new StageOptionSettings(color: '#ef4444', celebrate: true)]);
+
+    $table = livewire(ManageFieldsTable::class, ['entityType' => 'opportunity'])
+        ->mountAction('editField', ['fieldId' => $field->getKey()])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    $stored = fn (): StageOptionSettings => $option->fresh()->settings;
+
+    expect($stored()->celebrate)->toBeTrue()
+        ->and($stored()->color)->toBe('#ef4444');
+
+    if ($colorsOn) {
+        $table->mountAction('editField', ['fieldId' => $field->getKey()])
+            ->fillForm(['options' => $field->options->mapWithKeys(fn ($item): array => ["record-{$item->getKey()}" => [
+                'name' => $item->name,
+                'settings' => ['color' => $item->is($option) ? '#22c55e' : $item->settings->color],
+            ]])->all()])
+            ->callMountedAction()
+            ->assertHasNoActionErrors();
+
+        expect($stored()->color)->toBe('#22c55e')
+            ->and($stored()->celebrate)->toBeTrue();
+    }
+})->with(['option colors off' => [false], 'option colors on' => [true]]);
+
+function mountFieldsTableThenDemoteAdmin(object $test): array
+{
+    $admin = User::factory()->create(['current_workspace_id' => $test->workspace->getKey()]);
+    $test->workspace->users()->attach($admin, ['role' => WorkspaceRole::Admin->value]);
+    $test->actingAs($admin);
+    Filament::setTenant($test->workspace);
+
+    $field = CustomField::factory()->create([
+        'tenant_id' => $test->workspace->getKey(),
+        'entity_type' => 'company',
+        'type' => 'text',
+        'code' => 'demotion_probe',
+        'name' => 'Demotion probe',
+        'sort_order' => 5,
+    ]);
+    $company = Company::factory()->recycle([$test->user, $test->workspace])->create();
+    $value = CustomFieldValue::query()->create([
+        'id' => (string) Str::ulid(),
+        'entity_type' => 'company',
+        'entity_id' => $company->getKey(),
+        'custom_field_id' => $field->getKey(),
+        'tenant_id' => $test->workspace->getKey(),
+        'text_value' => 'kept',
+    ]);
+
+    $table = livewire(ManageFieldsTable::class, ['entityType' => 'company']);
+
+    $test->workspace->users()->updateExistingPivot($admin->id, ['role' => WorkspaceRole::Viewer->value]);
+    $admin->unsetRelation('workspaces');
+    $admin->refresh();
+    Filament::setTenant($test->workspace);
+
+    livewire(CustomFields::class)->assertForbidden();
+
+    return [$table, $field, $value];
+}
+
+test('an admin demoted after mounting the fields table cannot delete a field definition', function (): void {
+    [$table, $field, $value] = mountFieldsTableThenDemoteAdmin($this);
+
+    $table->call('mountAction', 'deleteField', ['fieldId' => $field->getKey()])->assertForbidden();
+
+    expect(CustomField::query()->whereKey($field->getKey())->exists())->toBeTrue()
+        ->and(CustomFieldValue::query()->whereKey($value->getKey())->exists())->toBeTrue();
+});
+
+test('an admin demoted after mounting the fields table cannot edit a field definition', function (): void {
+    [$table, $field] = mountFieldsTableThenDemoteAdmin($this);
+
+    $table->call('mountAction', 'editField', ['fieldId' => $field->getKey()])->assertForbidden();
+
+    expect($field->fresh()->name)->toBe('Demotion probe');
+});
+
+test('an admin demoted after mounting the fields table cannot reorder field definitions', function (): void {
+    [$table, $field] = mountFieldsTableThenDemoteAdmin($this);
+
+    $table->call('updateFieldsOrder', [$field->getKey()])->assertForbidden();
+
+    expect($field->fresh()->sort_order)->toBe(5);
+});
+
 test('the custom fields table renders a field name as text, never as markup', function (string $name, string $escaped): void {
     CustomField::factory()->create([
         'tenant_id' => $this->workspace->getKey(),
@@ -235,19 +381,40 @@ test('the tab strip drops billing when the feature is off', function (): void {
         ->not->toContain(__('workspaces.tabs.billing'));
 });
 
+test('the tab strip drops billing when no provider offers a billing page', function (): void {
+    withHostedBilling();
+    app()->instance(BillingContract::class, new NoBilling);
+
+    expect(workspaceTabLabels(resolve(EditWorkspace::class)))
+        ->not->toContain(__('workspaces.tabs.billing'));
+});
+
+test('the tenant menu drops billing when the feature is off', function (): void {
+    Feature::define(BillingFeature::class, false);
+
+    $panel = Filament::getPanel('app');
+    Filament::setCurrentPanel($panel);
+
+    $items = collect($panel->getTenantMenuItems())
+        ->filter(fn (Action $item): bool => $item->isVisible())
+        ->keys()
+        ->all();
+
+    expect($items)->not->toContain('billing');
+});
+
 test('each page highlights its own tab even when no page route is current', function (): void {
-    Feature::define(BillingFeature::class, true);
+    withHostedBilling();
 
     $tabs = [
         EditWorkspace::class => __('workspaces.tabs.general'),
         Members::class => __('workspaces.tabs.members'),
         CustomFields::class => __('workspaces.tabs.custom_fields'),
         EmailAccountsPage::class => __('workspaces.tabs.email'),
-        ManageEmailTemplates::class => __('workspaces.tabs.email'),
         EmailPrivacySettingsPage::class => __('workspaces.tabs.email'),
+        EmailAccountSettingsPage::class => __('workspaces.tabs.email'),
         ImportHistory::class => __('workspaces.tabs.import_history'),
         ActivityLog::class => __('workspaces.tabs.activity'),
-        Billing::class => __('workspaces.tabs.billing'),
     ];
 
     foreach ($tabs as $page => $label) {
@@ -257,7 +424,7 @@ test('each page highlights its own tab even when no page route is current', func
 });
 
 test('the tenant menu lists billing directly under workspace settings', function (): void {
-    Feature::define(BillingFeature::class, true);
+    withHostedBilling();
 
     $panel = Filament::getPanel('app');
     Filament::setCurrentPanel($panel);
@@ -284,4 +451,18 @@ test('the legacy team urls redirect permanently to their workspace pages', funct
 
 test('the legacy team url only redirects known pages', function (): void {
     $this->get("/app/{$this->workspace->slug}/team/billing")->assertNotFound();
+});
+
+test('custom attribute tabs name each record type in the user language', function (): void {
+    Locales::apply('de');
+
+    $tabs = Livewire::test(CustomFields::class)->instance()->entityTypes();
+
+    expect($tabs->all())->toBe([
+        'opportunity' => 'Verkaufschancen',
+        'people' => 'Personen',
+        'company' => 'Unternehmen',
+        'note' => 'Notizen',
+        'task' => 'Aufgaben',
+    ]);
 });

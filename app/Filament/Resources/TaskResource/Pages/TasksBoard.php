@@ -5,197 +5,274 @@ declare(strict_types=1);
 namespace App\Filament\Resources\TaskResource\Pages;
 
 use App\Actions\Task\UpdateTask;
+use App\Contracts\OrdersBoardStages;
+use App\Enums\CrmEntity;
 use App\Enums\CustomFields\TaskField as TaskCustomField;
+use App\Enums\OptionColor;
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Actions\EditTaskAction;
-use App\Filament\Components\Forms\WorkspaceMemberSelect;
-use App\Filament\Components\Tables\Filters\RecordSelectFilter;
+use App\Filament\Actions\MoveCardAction;
+use App\Filament\Concerns\HasBoardCards;
+use App\Filament\Concerns\HasBoardStageOrder;
+use App\Filament\Concerns\HasBoardViews;
 use App\Filament\Concerns\HasViewSwitcher;
+use App\Filament\Concerns\KeepsOpenTaskInUrl;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
+use App\Filament\Tables\Concerns\CreatesTableAttribute;
+use App\Filament\Tables\FilterBar\ConditionsFilter;
 use App\Models\CustomField;
-use App\Models\CustomFieldOption;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workspace;
-use Exception;
+use App\Support\ChecklistHtml;
+use App\Support\PlainText;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Infolists\Components\Entry;
 use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\Size;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentTimezone;
+use Filament\Tables\Enums\FiltersLayout;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Relaticle\CustomFields\Facades\CustomFields;
+use Illuminate\Support\Str;
 use Relaticle\Flowforge\Board;
-use Relaticle\Flowforge\Column;
-use Relaticle\Flowforge\Components\CardFlex;
-use Relaticle\Flowforge\Exceptions\CardMoveRejectedException;
 use Relaticle\Flowforge\Grouping;
 use Relaticle\Flowforge\Lane;
 use Relaticle\Flowforge\Modern\BoardResourcePage;
+use WeakMap;
 
-final class TasksBoard extends BoardResourcePage
+final class TasksBoard extends BoardResourcePage implements OrdersBoardStages
 {
+    use CreatesTableAttribute;
+    use HasBoardCards;
+    use HasBoardStageOrder;
+    use HasBoardViews;
     use HasViewSwitcher;
+    use KeepsOpenTaskInUrl;
 
     protected static string $resource = TaskResource::class;
+
+    /** @var WeakMap<Task, array{preview: string, progress: array{checked: int, total: int}|null}>|null */
+    private ?WeakMap $cardSummaries = null;
 
     public function getTitle(): string
     {
         return __('filament/pages/boards.tasks.title');
     }
 
-    /**
-     * Configure the board using the new Filament V4 architecture.
-     */
+    protected function getHeaderActions(): array
+    {
+        return $this->prefillingFirstVisibleColumn(TaskResource::collectionActions());
+    }
+
     public function board(Board $board): Board
     {
-        $statusField = self::statusCustomField();
-        $valueColumn = $statusField->getValueColumn();
-
-        $customFields = CustomFields::infolist()
-            ->forModel(Task::class)
-            ->only(['description', 'priority', 'due_date'])
-            ->hiddenLabels()
-            ->visibleWhenFilled()
-            ->withoutSections()
-            ->values()
-            ->keyBy(fn (mixed $field): string => $field->getName());
+        $columnField = $this->boardColumnField();
+        $card = $this->boardCardComponents();
 
         return $board
-            ->query(
-                Task::query()
-                    ->leftJoin('custom_field_values as cfv', function (JoinClause $join) use ($statusField): void {
-                        $join->on('tasks.id', '=', 'cfv.entity_id')
-                            ->where('cfv.custom_field_id', '=', $statusField->getKey());
-                    })
-                    ->with(['assignees'])
-                    ->select('tasks.*', 'cfv.'.$valueColumn)
-            )
+            ->query($this->boardColumnQuery(Task::query()->with($this->cardEagerLoads()), $columnField))
             ->recordTitleAttribute('title')
-            ->columnIdentifier($valueColumn)
+            ->columnIdentifier($this->boardColumnIdentifier())
             ->positionIdentifier('order_column')
-            ->searchable(['title'])
-            ->columns($this->getColumns())
-            ->cardSchema(function (Schema $schema) use ($customFields): Schema {
-                $descriptionCustomField = $customFields->get('custom_fields.description')
-                    ?->columnSpanFull()
-                    ->visible(fn (?string $state): bool => filled($state))
-                    ->formatStateUsing(fn (string $state): string => str($state)->stripTags()->limit()->toString())
-                    ->extraAttributes(['class' => 'mb-4']);
-
-                $priorityField = $customFields->get('custom_fields.priority')
-                    ?->visible(fn (?string $state): bool => filled($state))
-                    ->grow(false)
-                    ->badge()
-                    ->hiddenLabel()
-                    ->icon('heroicon-o-flag');
-
-                $dueDateField = $customFields->get('custom_fields.due_date')
-                    ?->visible(fn (?string $state): bool => filled($state))
-                    ->badge()
-                    ->color('gray')
-                    ->icon('heroicon-o-calendar')
-                    ->grow(false)
-                    ->hiddenLabel()
-                    ->formatStateUsing(fn (?string $state): string => $this->formatDueDateBadge($state));
-
-                return $schema
-                    ->inline()
-                    ->gap(false)
-                    ->components([
-                        $descriptionCustomField,
-                        CardFlex::make([
-                            $priorityField,
-                            $dueDateField,
-                            ImageEntry::make('assignees.profile_photo_url')
-                                ->hiddenLabel()
-                                ->alignLeft()
-                                ->imageHeight(20)
-                                ->circular()
-                                ->visible(fn (mixed $state): bool => filled($state))
-                                ->stacked(),
-                        ])->align('center'),
-                    ]);
-            })
+            ->columns($this->boardColumns())
+            ->collapsedColumns(fn (): array => $this->collapsedBoardColumnIds())
+            ->collapseAllColumns(fn (): bool => $this->storedBoardState()->columnsCollapsed)
+            ->collapsibleColumns(fn (string $columnId, bool $collapsed) => $this->setBoardColumnCollapsed($columnId, $collapsed))
+            ->columnActions($this->boardStageActions())
+            ->columnHeaderMenu(fn (array $column): Htmlable => $this->boardStageMenu($column))
+            ->addColumnUsing($this->addBoardStageUsing())
+            ->addColumnColors(fn (): array => $this->boardStageColors())
+            ->addColumnDefaultColor(OptionColor::Gray->value)
+            ->addColumnLabel(fn (): string => __('filament/pages/boards.stage_menu.add', ['noun' => $this->boardStageNoun()]))
+            ->addColumnPlaceholder(fn (): string => __('filament/pages/boards.stage_menu.add_placeholder', ['noun' => $this->boardStageNoun()]))
+            ->cardSchema(fn (Schema $schema): Schema => $schema->gap(false)->components($card))
             ->createCardAction($this->cardCreation())
             ->cardAction('edit')
-            ->cardActions([
-                EditTaskAction::make('edit')
-                    ->authorize('update')
-                    ->label(__('filament/pages/boards.tasks.actions.edit'))
-                    ->slideOver()
-                    ->modalWidth(Width::ThreeExtraLarge)
-                    ->icon('heroicon-o-pencil-square')
-                    ->schema(fn (Schema $schema): Schema => TaskForm::get($schema)),
-                Action::make('delete')
-                    ->authorize(fn (?Task $record): bool => $record instanceof Task && Gate::allows('delete', $record))
-                    ->label(__('filament/pages/boards.tasks.actions.delete'))
-                    ->icon('heroicon-o-trash')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->action(function (Task $record): void {
-                        $record->delete();
-                    }),
-            ])
+            ->cardActions($this->cardActions())
             ->groupings([$this->assigneeGrouping()])
-            ->filters($this->boardFilters())
-            ->filtersFormWidth(Width::Medium)
-            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->labeledFrom('sm')->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
+            ->filters([ConditionsFilter::make($this->healedFilterRules(...))])
+            ->deferFilters(false)
+            ->filtersLayout(FiltersLayout::Hidden)
             ->headerToolbar();
     }
 
     /**
-     * @return array<int, RecordSelectFilter>
+     * @return list<string>
      */
-    private function boardFilters(): array
+    protected function blockCardAttributes(): array
     {
-        return [
-            RecordSelectFilter::make('assignees')
-                ->label(__('filament/pages/boards.tasks.filters.assignee'))
-                ->relationship('assignees', 'name', WorkspaceMemberSelect::currentWorkspaceMembers())
-                ->searchable()
-                ->preload()
-                ->multiple(),
-        ];
-    }
-
-    protected function authorizeCardMove(Model $card, string $targetColumnId, ?string $toLaneId = null): void
-    {
-        if (Gate::denies('update', $card)) {
-            throw CardMoveRejectedException::because(__('filament/pages/boards.move_denied'));
-        }
-    }
-
-    protected function persistCardMove(Model $card, mixed $columnValue, string $position): void
-    {
-        $card->update([$this->getBoard()->getPositionIdentifierAttribute() => $position]);
-
-        /** @var Task $card */
-        $card->saveCustomFieldValue(self::statusCustomField(), $columnValue);
+        return ['description'];
     }
 
     /**
-     * Get columns for the board.
-     *
-     * @return array<Column>
-     *
-     * @throws Exception
+     * @return list<string>
      */
-    private function getColumns(): array
+    protected function stackedCardAttributes(): array
     {
-        return $this->statuses()->map(fn (array $status): Column => Column::make((string) $status['id'])
-            ->color($status['color'])
-            ->label($status['name'])
-        )->toArray();
+        return ['description'];
+    }
+
+    protected function cardEntry(string $key, ?Entry $customEntry): ?Component
+    {
+        return match ($key) {
+            'description' => $this->descriptionPreview(),
+            'checklist' => $this->checklistProgressEntry(),
+            'assignees' => $this->assigneeAvatarsEntry(),
+            'custom_fields.'.TaskCustomField::PRIORITY->value => $this->priorityBadge($customEntry),
+            'custom_fields.'.TaskCustomField::DUE_DATE->value => $this->dueDateBadge($customEntry),
+            default => null,
+        };
+    }
+
+    private function priorityBadge(?Entry $entry): ?TextEntry
+    {
+        return $entry instanceof TextEntry
+            ? $entry
+                ->visible(fn (?string $state): bool => filled($state))
+                ->grow(false)
+                ->badge()
+                ->hiddenLabel()
+                ->icon('lucide-flag')
+            : null;
+    }
+
+    private function dueDateBadge(?Entry $entry): ?TextEntry
+    {
+        return $entry instanceof TextEntry
+            ? $entry
+                ->visible(fn (?string $state): bool => filled($state))
+                ->badge()
+                ->color('gray')
+                ->icon('lucide-calendar')
+                ->grow(false)
+                ->hiddenLabel()
+                ->formatStateUsing(fn (?string $state): string => $this->formatDueDateBadge($state))
+            : null;
+    }
+
+    protected function derivedCardAttributeIsEmpty(Model $record, string $key): bool
+    {
+        if (! $record instanceof Task) {
+            return false;
+        }
+
+        $summary = $this->cardSummary($record);
+
+        return match ($key) {
+            'description' => blank($summary['preview']),
+            'checklist' => $summary['progress'] === null,
+            default => false,
+        };
+    }
+
+    private function assigneeAvatarsEntry(): ImageEntry
+    {
+        return ImageEntry::make('assignees.profile_photo_url')
+            ->hiddenLabel()
+            ->alignLeft()
+            ->imageHeight(20)
+            ->circular()
+            ->visible(fn (mixed $state): bool => filled($state))
+            ->stacked();
+    }
+
+    private function descriptionPreview(): TextEntry
+    {
+        return TextEntry::make('description')
+            ->hiddenLabel()
+            ->columnSpanFull()
+            ->html(false)
+            ->state(fn (Task $record): string => $this->cardSummary($record)['preview'])
+            ->visible(fn (?string $state): bool => filled($state));
+    }
+
+    /** @return array{preview: string, progress: array{checked: int, total: int}|null} */
+    private function cardSummary(Task $record): array
+    {
+        $this->cardSummaries ??= new WeakMap;
+
+        return $this->cardSummaries[$record] ??= $this->summarizeCard($record);
+    }
+
+    /** @return array{preview: string, progress: array{checked: int, total: int}|null} */
+    private function summarizeCard(Task $record): array
+    {
+        $field = $this->descriptionCustomField();
+        $description = $field instanceof CustomField ? $record->getCustomFieldValue($field) : null;
+        $description = is_string($description) ? $description : '';
+
+        return [
+            'preview' => Str::limit(PlainText::fromHtmlWithoutTaskMarkers($description)),
+            'progress' => ChecklistHtml::progress($description),
+        ];
+    }
+
+    private function checklistProgressEntry(): TextEntry
+    {
+        return TextEntry::make('checklist_progress')
+            ->label(__('filament/pages/boards.tasks.checklist_progress'))
+            ->hiddenLabel()
+            ->badge()
+            ->color(fn (Task $record): string => $this->checklistIsDone($record) ? 'success' : 'gray')
+            ->icon('lucide-circle-check')
+            ->grow(false)
+            ->extraAttributes(['data-checklist-progress' => ''])
+            ->state(function (Task $record): ?string {
+                $progress = $this->cardSummary($record)['progress'];
+
+                return $progress === null ? null : "{$progress['checked']}/{$progress['total']}";
+            })
+            ->tooltip(function (Task $record): ?string {
+                $progress = $this->cardSummary($record)['progress'];
+
+                return $progress === null ? null : trans_choice('filament/pages/boards.tasks.checklist_progress_tooltip', $progress['total'], $progress);
+            })
+            ->visible(fn (?string $state): bool => filled($state));
+    }
+
+    private function checklistIsDone(Task $record): bool
+    {
+        $progress = $this->cardSummary($record)['progress'];
+
+        return $progress !== null && $progress['checked'] === $progress['total'];
+    }
+
+    /**
+     * @return array<int, Action|ActionGroup>
+     */
+    private function cardActions(): array
+    {
+        return [
+            TaskResource::copyActions(),
+            EditTaskAction::make('edit')
+                ->authorize('update')
+                ->label(__('filament/pages/boards.tasks.actions.edit'))
+                ->slideOver()
+                ->modalWidth(Width::ThreeExtraLarge)
+                ->icon('lucide-square-pen')
+                ->schema(fn (Schema $schema): Schema => TaskForm::get($schema)),
+            MoveCardAction::make(),
+            Action::make('delete')
+                ->authorize(fn (?Task $record): bool => $record instanceof Task && Gate::allows('delete', $record))
+                ->label(__('filament/pages/boards.tasks.actions.delete'))
+                ->icon('lucide-trash')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->action(function (Task $record): void {
+                    $record->delete();
+                }),
+        ];
     }
 
     /**
@@ -219,24 +296,24 @@ final class TasksBoard extends BoardResourcePage
         $date = Date::parse($state)->setTimezone(FilamentTimezone::get());
 
         return match (true) {
-            $date->isPast() => $date->format('M j, Y').' (Overdue)',
-            $date->isToday() => 'Due Today',
-            $date->isTomorrow() => 'Due Tomorrow',
-            default => $date->format('M j, Y'),
+            $date->isPast() => __('filament/pages/boards.tasks.badges.overdue', ['date' => $date->isoFormat('ll')]),
+            $date->isToday() => __('filament/pages/boards.tasks.badges.today'),
+            $date->isTomorrow() => __('filament/pages/boards.tasks.badges.tomorrow'),
+            default => $date->isoFormat('ll'),
         };
     }
 
     private function cardCreation(): CreateTaskAction
     {
-        return CreateTaskAction::make()
+        return CreateTaskAction::make('addCard')
             ->authorize(fn (): bool => Gate::allows('create', Task::class))
             ->label(__('filament/pages/boards.tasks.actions.add'))
-            ->icon('heroicon-o-plus')
+            ->icon('lucide-plus')
             ->iconButton()
             ->modalWidth(Width::TwoExtraLarge)
             ->slideOver(false)
             ->model(Task::class)
-            ->schema(fn (Schema $schema): Schema => TaskForm::get($schema, ['status']))
+            ->schema(fn (Schema $schema): Schema => TaskForm::get($schema, [$this->boardColumnField()->code]))
             ->using($this->createCard(...));
     }
 
@@ -245,7 +322,8 @@ final class TasksBoard extends BoardResourcePage
         return Grouping::make('assignee')
             ->label(__('filament/pages/boards.tasks.groupings.assignee'))
             ->lanes(fn (Builder $boardQuery): array => User::query()
-                ->memberOf($this->currentUser()->currentWorkspace)
+                ->select('users.id', 'users.name', 'users.profile_photo_path')
+                ->memberOf($this->viewSwitcherUser()->currentWorkspace)
                 ->whereIn('users.id', DB::table('task_user')->whereIn('task_id', (clone $boardQuery)->select('tasks.id'))->select('user_id'))
                 ->orderBy('name')
                 ->get()
@@ -270,73 +348,42 @@ final class TasksBoard extends BoardResourcePage
             ->values()
             ->all();
 
-        resolve(UpdateTask::class)->execute($this->currentUser(), $record, ['assignee_ids' => $assigneeIds]);
-    }
-
-    private function currentUser(): User
-    {
-        /** @var User */
-        return Auth::guard('web')->user();
+        resolve(UpdateTask::class)->execute($this->viewSwitcherUser(), $record, ['assignee_ids' => $assigneeIds]);
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private function createCard(array $data, CreateTaskAction $action): Task
+    protected function createBoardRecord(Workspace $workspace, array $data): Task
     {
-        $columnId = $action->getArguments()['column'] ?? null;
-
-        abort_unless(blank($columnId) || $this->ownsColumn((string) $columnId), 422);
-
-        /** @var Workspace $currentWorkspace */
-        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
-
-        /** @var Task $task */
-        $task = $currentWorkspace->tasks()->create($data);
-
-        if (filled($columnId)) {
-            $task->saveCustomFieldValue(self::statusCustomField(), $columnId);
-            $task->order_column = (float) $this->getBoardPositionInColumn($columnId);
-            $task->saveQuietly();
-        }
-
-        return $task;
+        return $workspace->tasks()->create($data);
     }
 
-    private function ownsColumn(string $id): bool
+    private function descriptionCustomField(): ?CustomField
     {
-        return $this->statuses()->contains(fn (array $status): bool => (string) $status['id'] === $id);
+        return self::cardCustomFields()->get(TaskCustomField::DESCRIPTION->value);
     }
 
     private static function statusCustomField(): ?CustomField
     {
-        /** @var CustomField|null */
-        return once(fn () => CustomField::query()
-            ->forEntity(Task::class)
-            ->where('code', TaskCustomField::STATUS)
-            ->first());
+        return self::cardCustomFields()->get(CrmEntity::Task->boardFieldCode());
     }
 
-    /**
-     * @return Collection<int, array{id: mixed, custom_field_id: mixed, name: mixed, color: string}>
-     */
-    private function statuses(): Collection
+    /** @return Collection<string, CustomField> */
+    private static function cardCustomFields(): Collection
     {
-        $field = self::statusCustomField();
+        /** @var Collection<string, CustomField> */
+        return once(fn (): Collection => CustomField::query()
+            ->forEntity(Task::class)
+            ->whereIn('code', [CrmEntity::Task->boardFieldCode(), TaskCustomField::DESCRIPTION])
+            ->with('options')
+            ->get()
+            ->keyBy('code'));
+    }
 
-        if (! $field instanceof CustomField) {
-            return collect();
-        }
-
-        // Check if color options are enabled for this field
-        $colorsEnabled = $field->settings->enable_option_colors ?? false;
-
-        return $field->options->map(fn (CustomFieldOption $option): array => [
-            'id' => $option->getKey(),
-            'custom_field_id' => $option->getAttribute('custom_field_id'),
-            'name' => $option->getAttribute('name'),
-            'color' => $colorsEnabled ? ($option->settings->color ?? 'gray') : 'gray',
-        ]);
+    protected function defaultBoardColumnField(): ?CustomField
+    {
+        return self::statusCustomField();
     }
 
     /**

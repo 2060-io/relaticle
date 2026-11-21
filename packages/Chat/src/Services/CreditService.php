@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Relaticle\Chat\Services;
 
 use App\Actions\Chat\SeedWorkspaceCreditBalance;
-use App\Enums\Plan;
+use App\Contracts\Entitlements;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\DB;
@@ -13,13 +13,15 @@ use Illuminate\Support\Str;
 use Laravel\Ai\Ai;
 use Laravel\Ai\Responses\Data\TextUsage;
 use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Enums\RefundCause;
+use Relaticle\Chat\Enums\WebAccess;
 use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 
 final readonly class CreditService
 {
-    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods) {}
+    public function __construct(private ModelRegistry $registry, private CreditPeriodResolver $periods, private Entitlements $entitlements) {}
 
     public function hasCredits(Workspace $workspace): bool
     {
@@ -40,18 +42,15 @@ final readonly class CreditService
      */
     public function reserveCredit(Workspace $workspace, ?string $reservationKey = null, ?string $conversationId = null, ?string $userId = null): bool
     {
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return true;
+        }
+
         $this->ensureBalance($workspace);
 
         return DB::transaction(function () use ($workspace, $reservationKey, $conversationId, $userId): bool {
-            if ($reservationKey !== null) {
-                $alreadyReserved = AiCreditTransaction::query()
-                    ->where('workspace_id', $workspace->getKey())
-                    ->where('idempotency_key', $reservationKey)
-                    ->exists();
-
-                if ($alreadyReserved) {
-                    return true;
-                }
+            if ($this->isRecorded($workspace, $reservationKey)) {
+                return true;
             }
 
             $balance = AiCreditBalance::query()
@@ -97,8 +96,12 @@ final readonly class CreditService
      * work. Idempotent on $resolutionKey and mutually exclusive with settlement
      * (both write the same unique key).
      */
-    public function refundReservation(Workspace $workspace, int $credits = 1, string $resolutionKey = '', ?string $conversationId = null): void
+    public function refundReservation(Workspace $workspace, RefundCause $cause, int $credits = 1, string $resolutionKey = '', ?string $conversationId = null): void
     {
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return;
+        }
+
         $this->recordResolution(
             workspace: $workspace,
             resolutionKey: $resolutionKey,
@@ -111,8 +114,20 @@ final readonly class CreditService
             usedDelta: -$credits,
             userId: null,
             conversationId: $conversationId,
-            metadata: ['reason' => 'reservation_refund'],
+            metadata: ['reason' => 'reservation_refund', 'cause' => $cause->value],
         );
+    }
+
+    // The turn's own credit is already reserved, so what remains pays for searches.
+    public function affordableWebSearches(Workspace $workspace): int
+    {
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return WebAccess::MAX_SEARCHES;
+        }
+
+        $cost = (int) config('chat.web_search_credit_cost');
+
+        return min(WebAccess::MAX_SEARCHES, intdiv(max(0, $this->getBalance($workspace)), max(1, $cost)));
     }
 
     public function getBalance(Workspace $workspace): int
@@ -207,6 +222,14 @@ final readonly class CreditService
         return resolve(SeedWorkspaceCreditBalance::class)->execute($workspace);
     }
 
+    private function isRecorded(Workspace $workspace, ?string $idempotencyKey): bool
+    {
+        return $idempotencyKey !== null && AiCreditTransaction::query()
+            ->where('workspace_id', $workspace->getKey())
+            ->where('idempotency_key', $idempotencyKey)
+            ->exists();
+    }
+
     public function deduct(
         Workspace $workspace,
         User $user,
@@ -218,11 +241,11 @@ final readonly class CreditService
         ?string $conversationId = null,
         ?string $idempotencyKey = null,
     ): void {
-        if ($idempotencyKey !== null && AiCreditTransaction::query()
-            ->where('workspace_id', $workspace->getKey())
-            ->where('idempotency_key', $idempotencyKey)
-            ->exists()
-        ) {
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return;
+        }
+
+        if ($this->isRecorded($workspace, $idempotencyKey)) {
             return;
         }
 
@@ -280,14 +303,18 @@ final readonly class CreditService
         User $user,
         AiCreditType $type,
         string $model,
-        int $inputTokens,
-        int $outputTokens,
+        TextUsage $usage,
         int $toolCallsCount = 0,
+        int $webSearchCount = 0,
         ?string $conversationId = null,
         int $reservedCredits = 1,
         string $resolutionKey = '',
     ): void {
-        $creditsCharged = $this->calculateCredits($model, $toolCallsCount);
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return;
+        }
+
+        $creditsCharged = $this->calculateCredits($model, $toolCallsCount, $webSearchCount);
         $adjustment = $creditsCharged - $reservedCredits;
 
         $this->recordResolution(
@@ -295,14 +322,14 @@ final readonly class CreditService
             resolutionKey: $resolutionKey,
             type: $type,
             model: $model,
-            inputTokens: $inputTokens,
-            outputTokens: $outputTokens,
+            inputTokens: $usage->uncachedInputTokens(),
+            outputTokens: $usage->outputTokens,
             creditsCharged: $creditsCharged,
             remainingDelta: -$adjustment,
             usedDelta: $adjustment,
             userId: (string) $user->getKey(),
             conversationId: $conversationId,
-            metadata: ['tool_calls_count' => $toolCallsCount],
+            metadata: ['tool_calls_count' => $toolCallsCount, 'web_searches_count' => $webSearchCount, 'tokens' => $this->tokenDetail($usage)],
         );
     }
 
@@ -321,6 +348,10 @@ final readonly class CreditService
         ?string $model = null,
         ?TextUsage $usage = null,
     ): void {
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return;
+        }
+
         if ($model === null || ! $usage instanceof TextUsage) {
             $this->recordResolution(
                 workspace: $workspace,
@@ -352,7 +383,7 @@ final readonly class CreditService
             usedDelta: 0,
             userId: (string) $user->getKey(),
             conversationId: $conversationId,
-            metadata: ['reason' => $reason],
+            metadata: ['reason' => $reason, 'tokens' => $this->tokenDetail($usage)],
         );
     }
 
@@ -376,19 +407,30 @@ final readonly class CreditService
             'input_tokens' => $usage->uncachedInputTokens(),
             'output_tokens' => $usage->outputTokens,
             'credits_charged' => 0,
-            'metadata' => [],
+            'metadata' => ['tokens' => $this->tokenDetail($usage)],
             'created_at' => now(),
         ]);
     }
 
-    public function calculateCredits(string $model, int $toolCallsCount): int
+    /** @return array{prompt: int, cache_read: int|null, cache_write: int|null} */
+    private function tokenDetail(TextUsage $usage): array
+    {
+        return [
+            'prompt' => $usage->inputTokens,
+            'cache_read' => $usage->cacheReadInputTokens,
+            'cache_write' => $usage->cacheWriteInputTokens,
+        ];
+    }
+
+    public function calculateCredits(string $model, int $toolCallsCount, int $webSearchCount = 0): int
     {
         $multiplier = $this->registry->multiplierFor($model);
         $toolBonus = (float) config('chat.tool_call_credit_bonus', 0.5);
+        $searchCost = (int) config('chat.web_search_credit_cost');
 
         $raw = ($multiplier) + ($toolCallsCount * $toolBonus);
 
-        return max(1, (int) ceil($raw));
+        return max(1, (int) ceil($raw)) + ($webSearchCount * $searchCost);
     }
 
     /**
@@ -470,17 +512,15 @@ final readonly class CreditService
 
     public function allowanceFor(Workspace $workspace): int
     {
-        $workspace->loadMissing('subscriptions');
-
-        if ($workspace->plan !== Plan::Enterprise && $workspace->subscription()?->pastDue() === true) {
-            return Plan::Free->credits();
-        }
-
-        return $workspace->plan->credits();
+        return $this->entitlements->creditAllowance($workspace);
     }
 
     public function resetPeriod(Workspace $workspace, ?string $sysadminId = null): void
     {
+        if (! $this->entitlements->metersCredits($workspace)) {
+            return;
+        }
+
         DB::transaction(function () use ($workspace, $sysadminId): void {
             $plan = $workspace->plan;
             $allowance = $this->allowanceFor($workspace);

@@ -134,7 +134,7 @@ function snapshotMessages(messages) {
     }
 }
 
-export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messageSearchUnreachableText, messageSearchStalledText, todayLabel, yesterdayLabel, feedbackDeleteConfirmText, blockTitles, blockColumnLabels, blockFooterTemplate, blockShowAllTemplate, blockShowFewerText, blockOpenUrlTemplate, attachmentRowText, attachmentRowsTemplate, feedbackCategories = null, proposalTexts = {} }) => ({
+export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messageSearchUnreachableText, messageSearchStalledText, todayLabel, yesterdayLabel, feedbackDeleteConfirmText, blockTitles, blockColumnLabels, blockFooterTemplate, blockShowAllTemplate, blockShowFewerText, blockOpenUrlTemplate, attachmentRowText, attachmentRowsTemplate, feedbackCategories, proposalTexts }) => ({
     messageSearchUrlTemplate,
     messageSearchUnreachableText,
     messageSearchStalledText,
@@ -244,7 +244,33 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         if (!step?.prompt || this.isStreaming || this.rateLimit) return;
         this.input = step.prompt;
         this.localEditor()?.setText(step.prompt);
-        this.$nextTick(() => this.sendMessage());
+        this.$nextTick(() => {
+            // sendMessage() reads the id before its first await, so clearing it
+            // right after the call keeps a send it refused from tagging the next one.
+            this.pendingNextStepId = step.id ?? null;
+            this.sendMessage();
+            this.pendingNextStepId = null;
+        });
+    },
+
+    // Setup options carry an id, their own icon and sit under the reply.
+    // Plain suggester chips in the same conversation carry no id.
+    showsSetupButtons() {
+        return this.isSetupConversation
+            && this.nextSteps.length > 0
+            && this.nextSteps.every((step) => !!step.id);
+    },
+
+    // Only an http(s) address becomes a link: the row comes from stored meta.
+    nextStepLink(step) {
+        if (step?.kind !== 'link' || !step.url) return null;
+        try {
+            const url = new URL(step.url, window.location.href);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+            return { href: step.url, external: url.origin !== window.location.origin };
+        } catch {
+            return null;
+        }
     },
 
     // Normalizes a server-fetched message row for the transcript: stable
@@ -260,6 +286,9 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
             if (!Array.isArray(m.next_steps)) {
                 m.next_steps = [];
             }
+            if (!Array.isArray(m.sources)) {
+                m.sources = [];
+            }
             m.feedback = m.feedback ?? null;
             m.feedbackPanelOpen = false;
             m.feedbackCategory = m.feedback?.category ?? null;
@@ -268,6 +297,24 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         if (m.role === 'user') {
             m.editing = false;
             m.editText = '';
+        }
+    },
+
+    sourceLabel(sources, source) {
+        if (sources.filter((s) => s.domain === source.domain).length < 2) {
+            return source.domain;
+        }
+
+        if (source.title) {
+            return source.title;
+        }
+
+        try {
+            const path = new URL(source.url).pathname;
+
+            return path === '/' ? source.domain : source.domain + path;
+        } catch {
+            return source.domain;
         }
     },
 
@@ -298,7 +345,7 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         if (this.sameCalendarDay(iso, yesterday)) return yesterdayLabel;
-        return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+        return new Date(iso).toLocaleDateString(document.documentElement.lang || undefined, { month: 'long', day: 'numeric', year: 'numeric' });
     },
 
     // Per-message render decorations, keyed by position in `messages`.
@@ -408,9 +455,9 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
     },
 
     // Only columns THIS build named are ours to translate, and the map is
-    // keyed by block type so a workspace's own custom field can share a key with
+    // keyed by block type so a workspace's own custom attribute can share a key with
     // one of ours without inheriting our label: a records_table's non-core
-    // columns are custom fields, named by the workspace in the workspace's own words,
+    // columns are custom attributes, named by the workspace in the workspace's own words,
     // while an activity table's columns are all ours.
     blockColumnLabel(block, column) {
         return blockColumnLabels[block?.type]?.[column?.key] ?? (column?.label || '');
@@ -907,7 +954,7 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         for (const message of this.messages) {
             for (const action of (message.pending_actions || [])) {
                 if (action.status === 'pending' && this.proposalHasLapsed(action, now)) {
-                    action.status = 'expired';
+                    this.settleLocally(action, 'expired');
                 }
             }
         }
@@ -1044,6 +1091,8 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
             }
         }
 
+        this.applyReceipts(payload.receipts);
+
         if (!isNewResolution) return;
 
         if (payload.decision === 'approved' && window.Livewire?.dispatch) {
@@ -1164,26 +1213,60 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         } catch (_) { /* clipboard blocked, silently ignore */ }
     },
 
-    // Injected translated labels (chat-interface.blade.php); defaults keep the
-    // module standalone.
-    feedbackCategories: feedbackCategories || [
-        { value: 'inaccurate', label: 'Inaccurate' },
-        { value: 'did_not_follow', label: "Didn't do what I asked" },
-        { value: 'too_slow', label: 'Too slow' },
-        { value: 'other', label: 'Other' },
-    ],
+    // Runs after sanitizing, which drops every <button> and every `target` a
+    // reply carries: the copy button and the new-tab links are ours alone.
+    decorateReply(root) {
+        root.querySelectorAll('a[href]').forEach((link) => {
+            if (new URL(link.href, window.location.href).origin === window.location.origin) return;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+        });
 
-    // Injected translated copy for the resolved-item chips.
+        root.querySelectorAll('pre').forEach((pre) => {
+            if (pre.querySelector('[data-code-copy]')) return;
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.codeCopy = '';
+            button.className = 'absolute end-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500';
+            this.showCodeCopyState(button, false);
+            button.addEventListener('click', () => this.copyCode(pre, button));
+
+            pre.classList.add('relative', 'pe-10');
+            pre.append(button);
+        });
+    },
+
+    showCodeCopyState(button, copied) {
+        const label = copied ? this.codeCopy.copied : this.codeCopy.copy;
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        button.innerHTML = copied ? this.codeCopy.copiedIcon : this.codeCopy.copyIcon;
+    },
+
+    async copyCode(pre, button) {
+        try {
+            await navigator.clipboard.writeText((pre.querySelector('code')?.innerText ?? '').trimEnd());
+            this.showCodeCopyState(button, true);
+            setTimeout(() => this.showCodeCopyState(button, false), 1500);
+        } catch (_) { /* clipboard blocked, silently ignore */ }
+    },
+
+    feedbackCategories,
+
+    // Injected copy for decided proposals: outcome icons and words come from
+    // ProposalOutcome, the per-entity verbs from ProposalEntity::receipts().
     proposalTexts: {
-        createdVerb: 'Created',
-        updatedVerb: 'Updated',
-        deletedVerb: 'Deleted',
-        countCreated: ':count created',
-        countUpdated: ':count updated',
-        countDeleted: ':count deleted',
-        countSkipped: ':count skipped',
-        countKept: ':count kept',
-        entityVerbs: {},
+        outcomes: {},
+        head: { one: '', other: '' },
+        justNow: '',
+        leftOut: '',
+        localOutcomes: {},
+        settleOrder: [],
+        changes: { one: '', other: '' },
+        receipts: {},
+        proposeAgain: '',
+        proposeAgainPrompt: '',
         ...proposalTexts,
     },
 
@@ -1362,7 +1445,7 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
             for (const action of msg.pending_actions) {
                 if (action.status !== 'pending') continue;
                 if (idFilter && !idFilter.has(action.pending_action_id)) continue;
-                action.status = 'superseded';
+                this.settleLocally(action, 'superseded');
             }
         }
     },
@@ -1375,33 +1458,249 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         return (action.itemResults && action.itemResults[index]) || null;
     },
 
-    // Derived receipt for a finalized batch. The row-level status 'approved'
-    // hides a mixed outcome (approving 2 of 3 records still finalizes the row
-    // as approved), so the header chip is computed from the per-item results
-    // instead of echoing it. Only that status: a batch that wrote nothing
-    // finalizes as 'rejected' and keeps the plain red Rejected chip, which is
-    // both truthful and the stronger signal that nothing happened. Undecided,
-    // expired and superseded cards keep their status chip too.
-    batchOutcome(action) {
-        if (!action || action.status !== 'approved') return null;
+    plural(forms, count) {
+        return (count === 1 ? forms.one : forms.other).replace(':count', () => String(count));
+    },
 
-        const results = Object.values(action.itemResults || {});
-        if (results.length === 0) return null;
+    outcomeIcon(key) {
+        return this.proposalTexts.outcomes[key]?.icon ?? '';
+    },
 
-        const done = results.filter((r) => r?.status === 'approved').length;
-        const skipped = results.length - done;
+    outcomeLabel(key) {
+        return this.proposalTexts.outcomes[key]?.label ?? '';
+    },
 
-        const t = this.proposalTexts;
-        const op = action.operation;
-        const doneTemplate = t.entityVerbs[action.entity_type]?.count
-            ?? (op === 'delete' ? t.countDeleted : (op === 'update' ? t.countUpdated : t.countCreated));
-        const skippedTemplate = op === 'delete' ? t.countKept : t.countSkipped;
+    fieldValue(fields, label, code = null) {
+        const labels = Array.isArray(label) ? label : [label];
+        const field = (Array.isArray(fields) ? fields : []).find((f) => (code && f.code === code) || labels.includes(f.label));
+        return field ? String(field.new ?? field.value ?? '') : '';
+    },
+
+    batchItems(action) {
+        return Array.isArray(action?.display?.items) ? action.display.items : [];
+    },
+
+    isSkipped(action, index) {
+        return action.itemResults?.[index]?.status === 'skipped';
+    },
+
+    // Records a decided step wrote. A batch approved in one go reports no
+    // per-row results, so only a row reported skipped is subtracted.
+    writtenCount(action) {
+        const items = this.batchItems(action);
+        return items.length === 0 ? 1 : items.filter((_, i) => !this.isSkipped(action, i)).length;
+    },
+
+    // A transition only the browser sees (a lapse, a newer message): the server
+    // broadcasts nothing for it, so the outcome comes from the enum's table and a
+    // plan with nothing approved re-reads as the one outcome its steps share.
+    settleLocally(action, status) {
+        action.status = status;
+        action.outcome = this.proposalTexts.localOutcomes[status] ?? null;
+
+        const group = this.messages
+            .flatMap((m) => this.proposalGroups(m))
+            .find((g) => g.actions.some((a) => a.pending_action_id === action.pending_action_id));
+
+        if (!group || this.receiptApplied(group)) return;
+
+        const outcomes = group.actions.map((a) => a.outcome).filter(Boolean);
+        const settled = this.proposalTexts.settleOrder.find((o) => outcomes.includes(o));
+
+        for (const step of group.actions) {
+            if (step.outcome) step.outcome = settled;
+        }
+    },
+
+    isExcluded(excluded, field) {
+        return !!field?.code && Array.isArray(excluded) && excluded.includes(field.code);
+    },
+
+    // "(Name left out)": the fields the user unchecked, named the way the card
+    // showed them.
+    leftOutNote(excluded, fields) {
+        const labels = (Array.isArray(fields) ? fields : []).filter((f) => this.isExcluded(excluded, f)).map((f) => f.label);
+        if (labels.length === 0) return '';
+
+        const list = new Intl.ListFormat(document.documentElement.lang || undefined, { style: 'long', type: 'conjunction' }).format(labels);
+
+        return this.proposalTexts.leftOut.replace(':fields', () => list);
+    },
+
+    // Folds the server's receipt facts for a plan into the actions on screen,
+    // keeping the record a row already resolved.
+    applyReceipts(receipts) {
+        for (const [id, receipt] of Object.entries(receipts || {})) {
+            const action = this.findPendingAction(id);
+            if (!action) continue;
+
+            const { itemResults, ...facts } = receipt;
+            Object.assign(action, facts);
+
+            if (Object.keys(itemResults || {}).length > 0) {
+                action.itemResults = {
+                    ...action.itemResults,
+                    ...Object.fromEntries(Object.entries(itemResults).map(([index, result]) => [
+                        index,
+                        { record: null, ...(action.itemResults?.[index] ?? {}), ...result },
+                    ])),
+                };
+            }
+        }
+    },
+
+    receiptApplied(group) {
+        return group.actions.some((a) => a.status === 'approved');
+    },
+
+    receiptSettled(group) {
+        return !this.receiptApplied(group) && group.actions.every((a) => a.status !== 'pending');
+    },
+
+    receiptHead(group) {
+        const approved = group.actions.filter((a) => a.status === 'approved');
+        const written = approved.reduce((sum, a) => sum + this.writtenCount(a), 0);
+        const resolvedAt = approved.map((a) => a.resolved_at).filter(Boolean).sort().at(-1);
+
+        return this.plural(this.proposalTexts.head, written).replace(':when', () => this.relativeWhen(resolvedAt));
+    },
+
+    relativeWhen(iso) {
+        const seconds = iso ? Math.round((Date.parse(iso) - Date.now()) / 1000) : 0;
+        if (!iso || Number.isNaN(seconds) || seconds > -60) return this.proposalTexts.justNow;
+
+        const units = [['day', 86400], ['hour', 3600], ['minute', 60]];
+        const [unit, size] = units.find(([, length]) => -seconds >= length);
+        const locale = document.documentElement.lang || undefined;
+
+        return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(Math.round(seconds / size), unit);
+    },
+
+    // The outcome of a wholly undone proposal: the server gives every step of
+    // it the same one.
+    settledOutcome(group) {
+        return group.actions.map((a) => a.outcome).find(Boolean) ?? null;
+    },
+
+    settledSummary(group) {
+        if (group.actions.length === 1) return group.actions[0].display?.summary ?? '';
+
+        const records = group.actions.reduce((sum, a) => sum + Math.max(1, this.batchItems(a).length), 0);
+        return this.plural(this.proposalTexts.changes, records);
+    },
+
+    latestDecidedGroupKey() {
+        for (let i = this.messages.length - 1; i >= 0; i--) {
+            const groups = this.proposalGroups(this.messages[i]);
+
+            for (let j = groups.length - 1; j >= 0; j--) {
+                if (groups[j].actions.every((a) => a.status !== 'pending')) return groups[j].key;
+            }
+        }
+
+        return null;
+    },
+
+    canProposeAgain(group) {
+        return !!this.proposalTexts.outcomes[this.settledOutcome(group)]?.again
+            && !this.hasPendingProposal
+            && !this.isStreaming
+            && this.latestDecidedGroupKey() === group.key;
+    },
+
+    proposeAgain(group) {
+        const summary = group.actions.map((a) => a.display?.summary).filter(Boolean).join('; ');
+        this.sendNextStep({ prompt: this.proposalTexts.proposeAgainPrompt.replace(':summary', () => summary) });
+    },
+
+    // The lines a decided step prints in its receipt. A line is data (outcome
+    // key, verb, chip, label, meta) so the template carries no per-outcome
+    // branching.
+    receiptLines(action) {
+        if (action.status === 'pending') return [];
+
+        if (action.status !== 'approved') {
+            return [this.offLine(`${action.pending_action_id}:step`, action.outcome, this.proposalRecordLabel(action) || action.display?.summary || '', action)];
+        }
+
+        const items = this.batchItems(action);
+        if (items.length === 0) return [this.appliedLine(action)];
+
+        return [
+            this.batchLine(action, items),
+            ...items.flatMap((item, index) => this.isSkipped(action, index)
+                ? [this.offLine(`${action.pending_action_id}:${index}`, action.itemResults[index].outcome, this.proposalItemLabel(item, action) || item.summary || '', null)]
+                : []),
+        ];
+    },
+
+    offLine(key, outcome, label, action) {
+        const leads = !!this.proposalTexts.outcomes[outcome]?.leads;
+        const receipt = this.proposalTexts.receipts[action?.entity_type] ?? {};
+        const text = leads && action ? (this.fieldValue(action.display?.fields, receipt.titleLabels, receipt.titleKey) || label) : label;
 
         return {
-            done,
-            skipped,
-            doneLabel: doneTemplate.replace(':count', String(done)),
-            skippedLabel: skippedTemplate.replace(':count', String(skipped)),
+            key,
+            outcome,
+            struck: true,
+            expandable: false,
+            verb: leads ? `${this.outcomeLabel(outcome)}:` : '',
+            chip: null,
+            label: text,
+            meta: leads ? '' : `· ${this.outcomeLabel(outcome)}`,
+        };
+    },
+
+    appliedLine(action) {
+        const receipt = this.proposalTexts.receipts[action.entity_type] ?? {};
+        const fields = action.display?.fields;
+        const record = action.record?.url ? action.record : null;
+        const target = receipt.target ? this.fieldValue(fields, receipt.target) : '';
+        const label = target || record?.label || this.proposalRecordLabel(action) || this.fieldValue(fields, receipt.titleLabels, receipt.titleKey) || action.display?.summary || '';
+        const showChip = !!record && !!label && !!window.ChatModules.recordChipIcon(action.entity_type);
+        const kept = (Array.isArray(fields) ? fields : []).filter((f) => !this.isExcluded(action.excluded, f));
+        const meta = [
+            receipt.target
+                ? this.fieldValue(fields, receipt.titleLabels, receipt.titleKey)
+                : (action.operation === 'update' ? kept.map((f) => f.label).join(', ') : ''),
+            this.leftOutNote(action.excluded, fields),
+        ].filter(Boolean).join(' ');
+
+        return {
+            key: `${action.pending_action_id}:step`,
+            outcome: 'applied',
+            struck: false,
+            expandable: true,
+            verb: receipt.verbs?.[action.operation] ?? '',
+            chip: showChip ? { label, url: record.url, type: action.entity_type } : null,
+            label: showChip ? '' : label,
+            meta: meta ? `· ${meta}` : '',
+        };
+    },
+
+    batchLine(action, items) {
+        const receipt = this.proposalTexts.receipts[action.entity_type] ?? {};
+        const operation = action.operation;
+        const done = items.filter((_, index) => !this.isSkipped(action, index));
+        let text = this.plural(receipt.batch?.[operation] ?? { one: ':count', other: ':count' }, done.length);
+
+        if (operation === 'update' && action.moved_to) {
+            text = this.plural(receipt.moved, done.length).replace(':value', () => action.moved_to);
+        }
+
+        const names = operation === 'delete'
+            ? done.map((item) => this.proposalItemLabel(item, action) || item.summary).filter(Boolean).join(', ')
+            : (action.moved_total ?? '');
+
+        return {
+            key: `${action.pending_action_id}:step`,
+            outcome: 'applied',
+            struck: false,
+            expandable: true,
+            verb: '',
+            chip: null,
+            label: text,
+            meta: names ? `· ${names}` : '',
         };
     },
 
@@ -1414,13 +1713,9 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         return Object.keys(action?.itemResults || {}).length > 0;
     },
 
-    // Past-tense verb for a resolved item's chip, by entity type then operation.
+    // Past-tense verb for a resolved item's outcome, by entity then operation.
     itemVerb(action) {
-        const op = action?.operation;
-        return this.proposalTexts.entityVerbs[action?.entity_type]?.done
-            ?? (op === 'delete'
-                ? this.proposalTexts.deletedVerb
-                : (op === 'update' ? this.proposalTexts.updatedVerb : this.proposalTexts.createdVerb));
+        return this.proposalTexts.receipts[action?.entity_type]?.verbs?.[action?.operation] ?? '';
     },
 
     // Keep resolved proposal identity aligned with the record pills used in
@@ -1431,20 +1726,18 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         const resolvedLabel = action?.record?.label;
         if (typeof resolvedLabel === 'string' && resolvedLabel !== '') return resolvedLabel;
 
-        return this.quotedSummaryTitle(action?.display?.summary);
+        return action?.display?.name || this.proposalTitleValue(action?.entity_type, action?.display?.fields);
     },
 
-    // A batch item's record identity: its display title holds the operation
-    // ("Create Task"), so the record name only exists inside the quoted summary.
-    proposalItemLabel(item) {
-        return this.quotedSummaryTitle(item?.summary);
+    // A batch item's display title holds the operation ("Create Task"), so the
+    // record name is the value of its title row.
+    proposalItemLabel(item, action) {
+        return item?.name || this.proposalTitleValue(action?.entity_type, item?.fields);
     },
 
-    quotedSummaryTitle(summary) {
-        if (typeof summary !== 'string') return '';
-
-        const match = summary.match(/"(.*)"/u);
-        return match?.[1] || '';
+    proposalTitleValue(entityType, fields) {
+        const receipt = this.proposalTexts.receipts[entityType] ?? {};
+        return this.fieldValue(fields, receipt.titleLabels ?? [], receipt.titleKey);
     },
 
     // Proposals from one assistant turn are ONE decision, so the transcript shows
@@ -1474,10 +1767,6 @@ export const transcriptModule = ({ messagesUrl, messageSearchUrlTemplate, messag
         }
 
         return groups;
-    },
-
-    isPlanGroup(group) {
-        return !!group && Array.isArray(group.actions) && group.actions.length > 1;
     },
 
     // Follows streaming only while the reader is pinned near the bottom, and never

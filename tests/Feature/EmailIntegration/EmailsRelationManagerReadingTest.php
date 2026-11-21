@@ -6,6 +6,7 @@ use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
 use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager;
 use App\Models\People;
 use App\Models\User;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
@@ -16,12 +17,13 @@ use Relaticle\EmailIntegration\Filament\RelationManagers\BaseEmailsRelationManag
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAccessRequest;
+use Relaticle\EmailIntegration\Models\EmailParticipant;
 use Relaticle\EmailIntegration\Models\EmailRead;
 use Relaticle\EmailIntegration\Models\EmailShare;
 use Relaticle\EmailIntegration\Notifications\EmailAccessRequestedNotification;
 use Relaticle\EmailIntegration\Services\EmailVisibilityService;
 
-mutates(BaseEmailsRelationManager::class, EmailVisibilityService::class);
+mutates(BaseEmailsRelationManager::class, EmailVisibilityService::class, Email::class);
 
 beforeEach(function (): void {
     $this->owner = User::factory()->withWorkspace()->create();
@@ -664,26 +666,10 @@ describe('subject privacy enforcement', function (): void {
     it('returns no emails when a client calls the table records method directly', function (): void {
         $this->actingAs($this->viewer);
 
-        foreach ([EmailPrivacyTier::METADATA_ONLY, EmailPrivacyTier::PRIVATE] as $tier) {
-            $email = Email::factory()->create([
-                'workspace_id' => $this->workspace->id,
-                'user_id' => $this->owner->id,
-                'connected_account_id' => $this->account->getKey(),
-                'subject' => "Secret {$tier->value} subject",
-                'privacy_tier' => $tier,
-            ]);
-
-            $this->person->emails()->attach($email->getKey());
-        }
-
-        $component = livewire(EmailsRelationManager::class, [
+        livewire(EmailsRelationManager::class, [
             'ownerRecord' => $this->person,
             'pageClass' => ViewPeople::class,
-        ])->call('getTableRecords');
-
-        expect(json_encode($component->effects['returns']))
-            ->not->toContain('Secret metadata_only subject')
-            ->not->toContain('Secret private subject');
+        ])->call('getTableRecords')->assertForbidden();
     });
 
     it('matches the subject when searching as a viewer who can view it', function (): void {
@@ -751,4 +737,93 @@ it('omits the emails tab badge when the viewer cannot see the linked mail', func
     $this->actingAs($this->viewer);
 
     expect(EmailsRelationManager::getBadge($this->person, ViewPeople::class))->toBeNull();
+});
+
+describe('sender avatar', function (): void {
+    it('shows the person silhouette for an email from outside the workspace', function (): void {
+        $email = Email::factory()->inbound()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->owner->id,
+            'connected_account_id' => $this->account->getKey(),
+        ]);
+        EmailParticipant::factory()->from()->create([
+            'email_id' => $email->getKey(),
+            'email_address' => 'lena@northwind.test',
+            'name' => 'Lena Ortiz',
+        ]);
+        $this->person->emails()->attach($email->getKey());
+
+        livewire(EmailsRelationManager::class, [
+            'ownerRecord' => $this->person,
+            'pageClass' => ViewPeople::class,
+        ])
+            ->assertSee('person-silhouette', escape: false)
+            ->assertDontSee('member-avatar', escape: false);
+    });
+
+    it('shows the mailbox owner avatar for an email the workspace sent', function (): void {
+        $email = Email::factory()->outbound()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->owner->id,
+            'connected_account_id' => $this->account->getKey(),
+        ]);
+        EmailParticipant::factory()->from()->create([
+            'email_id' => $email->getKey(),
+            'email_address' => 'sales@owner-alias.test',
+            'name' => 'Sales',
+        ]);
+        $this->person->emails()->attach($email->getKey());
+
+        livewire(EmailsRelationManager::class, [
+            'ownerRecord' => $this->person,
+            'pageClass' => ViewPeople::class,
+        ])
+            ->assertSee('member-avatar', escape: false)
+            ->assertSee($this->owner->profile_photo_url, escape: false)
+            ->assertDontSee('person-silhouette', escape: false);
+    });
+
+    it('shows the member avatar for an email a workspace member sent to the mailbox', function (): void {
+        $email = Email::factory()->inbound()->create([
+            'workspace_id' => $this->workspace->id,
+            'user_id' => $this->owner->id,
+            'connected_account_id' => $this->account->getKey(),
+        ]);
+        EmailParticipant::factory()->from()->create([
+            'email_id' => $email->getKey(),
+            'email_address' => mb_strtoupper($this->viewer->email),
+            'name' => $this->viewer->name,
+        ]);
+        $this->person->emails()->attach($email->getKey());
+
+        livewire(EmailsRelationManager::class, [
+            'ownerRecord' => $this->person,
+            'pageClass' => ViewPeople::class,
+        ])
+            ->assertSee($this->viewer->profile_photo_url, escape: false)
+            ->assertDontSee('person-silhouette', escape: false);
+    });
+});
+
+it('writes the row timestamp in the language of the viewer', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-11-25 12:00:00', 'UTC'));
+    $this->owner->forceFill(['locale' => 'fr', 'timezone' => 'UTC'])->save();
+
+    $email = Email::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $this->owner->id,
+        'connected_account_id' => $this->account->getKey(),
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'sent_at' => CarbonImmutable::parse('2026-11-02 12:00:00', 'UTC'),
+    ]);
+    $this->person->emails()->attach($email->getKey());
+
+    Locales::apply('fr');
+
+    livewire(EmailsRelationManager::class, [
+        'ownerRecord' => $this->person,
+        'pageClass' => ViewPeople::class,
+    ])
+        ->assertSee('2 nov.')
+        ->assertDontSee('Nov 2');
 });

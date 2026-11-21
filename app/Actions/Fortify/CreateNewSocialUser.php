@@ -8,6 +8,7 @@ use App\Contracts\User\CreatesNewSocialUsers;
 use App\Models\User;
 use App\Rules\InvitedEmail;
 use App\Rules\RegistrableEmail;
+use App\Support\Locales;
 use Filament\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,7 @@ final readonly class CreateNewSocialUser implements CreatesNewSocialUsers
         return DB::transaction(fn () => tap(User::query()->create([
             'name' => $input['name'],
             'email' => $input['email'],
+            'locale' => Locales::fromRequest(request()),
         ]), function (User $user): void {
             event(new Registered($user));
             if ($user->markEmailAsVerified()) {

@@ -28,7 +28,7 @@ final class AccessTokens extends Page
 
     protected static ?int $navigationSort = 4;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-key';
+    protected static string|\BackedEnum|null $navigationIcon = 'lucide-key';
 
     /** @var class-string<Cluster>|null */
     protected static ?string $cluster = Settings::class;
@@ -40,6 +40,11 @@ final class AccessTokens extends Page
     }
 
     public static function getNavigationLabel(): string
+    {
+        return __('access-tokens.title');
+    }
+
+    public function getTitle(): string
     {
         return __('access-tokens.title');
     }

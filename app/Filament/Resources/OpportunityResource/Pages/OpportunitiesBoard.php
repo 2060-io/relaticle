@@ -5,47 +5,55 @@ declare(strict_types=1);
 namespace App\Filament\Resources\OpportunityResource\Pages;
 
 use App\Actions\Opportunity\UpdateOpportunity;
+use App\Contracts\OrdersBoardStages;
+use App\Enums\CrmEntity;
 use App\Enums\CustomFields\OpportunityField as OpportunityCustomField;
+use App\Enums\OptionColor;
+use App\Filament\Actions\MoveCardAction;
+use App\Filament\Actions\PreviewRecordAction;
 use App\Filament\Components\Forms\RecordSelect;
 use App\Filament\Components\Infolists\RecordChipEntry;
-use App\Filament\Components\Tables\Filters\RecordSelectFilter;
+use App\Filament\Concerns\HasBoardCards;
+use App\Filament\Concerns\HasBoardStageOrder;
+use App\Filament\Concerns\HasBoardViews;
 use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\OpportunityResource;
 use App\Filament\Resources\OpportunityResource\Forms\OpportunityForm;
+use App\Filament\Tables\Concerns\CreatesTableAttribute;
+use App\Filament\Tables\FilterBar\ConditionsFilter;
 use App\Models\Company;
 use App\Models\CustomField;
-use App\Models\CustomFieldOption;
 use App\Models\Opportunity;
-use App\Models\User;
 use App\Models\Workspace;
-use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\Entry;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Schemas\Components\Component;
+use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\Size;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentTimezone;
-use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Enums\FiltersLayout;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Query\JoinClause;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Gate;
 use Relaticle\CustomFields\Facades\CustomFields;
 use Relaticle\Flowforge\Board;
-use Relaticle\Flowforge\Column;
 use Relaticle\Flowforge\Components\CardFlex;
-use Relaticle\Flowforge\Exceptions\CardMoveRejectedException;
 use Relaticle\Flowforge\Grouping;
 use Relaticle\Flowforge\Lane;
 use Relaticle\Flowforge\Modern\BoardResourcePage;
 
-final class OpportunitiesBoard extends BoardResourcePage
+final class OpportunitiesBoard extends BoardResourcePage implements OrdersBoardStages
 {
+    use CreatesTableAttribute;
+    use HasBoardCards;
+    use HasBoardStageOrder;
+    use HasBoardViews;
     use HasViewSwitcher;
 
     protected static string $resource = OpportunityResource::class;
@@ -55,147 +63,161 @@ final class OpportunitiesBoard extends BoardResourcePage
         return __('filament/pages/boards.opportunities.title');
     }
 
+    protected function getHeaderActions(): array
+    {
+        return $this->prefillingFirstVisibleColumn(OpportunityResource::collectionActions());
+    }
+
     public function board(Board $board): Board
     {
-        $stageField = self::stageCustomField();
-        $valueColumn = $stageField->getValueColumn();
-
-        $customFields = CustomFields::infolist()
-            ->forModel(Opportunity::class)
-            ->only([OpportunityCustomField::AMOUNT, OpportunityCustomField::CLOSE_DATE])
-            ->hiddenLabels()
-            ->visibleWhenFilled()
-            ->withoutSections()
-            ->values()
-            ->keyBy(fn (mixed $field): string => $field->getName());
+        $columnField = $this->boardColumnField();
+        $card = $this->boardCardComponents();
 
         return $board
-            ->query(
-                Opportunity::query()
-                    ->leftJoin('custom_field_values as cfv', function (JoinClause $join) use ($stageField): void {
-                        $join->on('opportunities.id', '=', 'cfv.entity_id')
-                            ->where('cfv.custom_field_id', '=', $stageField->getKey());
-                    })
-                    ->select('opportunities.*', 'cfv.'.$valueColumn)
-                    ->with(['company.media', 'contact'])
-            )
+            ->query($this->boardColumnQuery(Opportunity::query()->with($this->cardEagerLoads()), $columnField))
             ->recordTitleAttribute('name')
-            ->columnIdentifier($valueColumn)
+            ->columnIdentifier($this->boardColumnIdentifier())
             ->positionIdentifier('order_column')
-            ->searchable(['name'])
-            ->columns($this->getColumns())
-            ->cardSchema(function (Schema $schema) use ($customFields): Schema {
-                $amountField = $customFields->get('custom_fields.'.OpportunityCustomField::AMOUNT->value)
-                    ?->visible(fn (?string $state): bool => filled($state))
-                    ->badge()
-                    ->color('success')
-                    ->icon(Heroicon::OutlinedCurrencyDollar)
-                    ->grow(false)
-                    ->hiddenLabel();
-
-                $closeDateField = $customFields->get('custom_fields.'.OpportunityCustomField::CLOSE_DATE->value)
-                    ?->visible(fn (?string $state): bool => filled($state))
-                    ->badge()
-                    ->color('gray')
-                    ->icon(Heroicon::OutlinedCalendar)
-                    ->grow(false)
-                    ->hiddenLabel()
-                    ->formatStateUsing(fn (?string $state): string => $this->formatCloseDateBadge($state));
-
-                return $schema
-                    ->components([
-                        CardFlex::make([
-                            RecordChipEntry::make('company.name')
-                                ->chipSize('sm')
-                                ->hiddenLabel()
-                                ->visible(fn (?string $state): bool => filled($state))
-                                ->color('gray')
-                                ->size(TextSize::ExtraSmall)
-                                ->grow(),
-                        ]),
-                        CardFlex::make([
-                            $amountField,
-                            $closeDateField,
-                        ])->align('center'),
-                    ]);
-            })
+            ->columns($this->boardColumns())
+            ->collapsedColumns(fn (): array => $this->collapsedBoardColumnIds())
+            ->collapseAllColumns(fn (): bool => $this->storedBoardState()->columnsCollapsed)
+            ->collapsibleColumns(fn (string $columnId, bool $collapsed) => $this->setBoardColumnCollapsed($columnId, $collapsed))
+            ->columnActions($this->boardStageActions())
+            ->columnHeaderMenu(fn (array $column): Htmlable => $this->boardStageMenu($column))
+            ->addColumnUsing($this->addBoardStageUsing())
+            ->addColumnColors(fn (): array => $this->boardStageColors())
+            ->addColumnDefaultColor(OptionColor::Gray->value)
+            ->addColumnLabel(fn (): string => __('filament/pages/boards.stage_menu.add', ['noun' => $this->boardStageNoun()]))
+            ->addColumnPlaceholder(fn (): string => __('filament/pages/boards.stage_menu.add_placeholder', ['noun' => $this->boardStageNoun()]))
+            ->cardSchema(fn (Schema $schema): Schema => $schema->components($card))
             ->createCardAction($this->cardCreation())
             ->cardAction('edit')
-            ->cardActions([
-                Action::make('edit')
-                    ->authorize(fn (?Opportunity $record): bool => $record instanceof Opportunity && Gate::allows('update', $record))
-                    ->label(__('filament/pages/boards.opportunities.actions.edit'))
-                    ->slideOver()
-                    ->modalWidth(Width::ExtraLarge)
-                    ->icon('heroicon-o-pencil-square')
-                    ->schema(OpportunityForm::get(...))
-                    ->fillForm(fn (Opportunity $record): array => [
-                        'name' => $record->name,
-                        'company_id' => $record->company_id,
-                        'contact_id' => $record->contact_id,
-                    ])
-                    ->action(function (Opportunity $record, array $data): void {
-                        $record->update($data);
-                    }),
-                Action::make('delete')
-                    ->authorize(fn (?Opportunity $record): bool => $record instanceof Opportunity && Gate::allows('delete', $record))
-                    ->label(__('filament/pages/boards.opportunities.actions.delete'))
-                    ->icon('heroicon-o-trash')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->action(function (Opportunity $record): void {
-                        $record->delete();
-                    }),
-            ])
+            ->cardActions($this->cardActions())
             ->groupings([$this->companyGrouping()])
-            ->filters($this->boardFilters())
-            ->filtersFormWidth(Width::Medium)
-            ->filtersTriggerAction(fn (Action $action): Action => $action->button()->labeledFrom('sm')->size(Size::Small)->label(__('filament/pages/boards.filters_button.label')))
+            ->filters([ConditionsFilter::make($this->healedFilterRules(...))])
+            ->deferFilters(false)
+            ->filtersLayout(FiltersLayout::Hidden)
             ->headerToolbar();
     }
 
     /**
-     * @return array<int, RecordSelectFilter>
+     * @return list<Component>
      */
-    private function boardFilters(): array
+    protected function cardLeadingComponents(): array
     {
         return [
-            RecordSelectFilter::make('companies')
-                ->label(__('filament/pages/boards.opportunities.filters.company'))
-                ->relationship('company', 'name')
-                ->searchable()
-                ->preload()
-                ->multiple(),
-            RecordSelectFilter::make('contacts')
-                ->label(__('filament/pages/boards.opportunities.filters.contact'))
-                ->relationship('contact', 'name')
-                ->searchable()
-                ->preload()
-                ->multiple(),
+            View::make('filament.app.board-card-preview-trigger')
+                ->viewData(fn (Opportunity $record): array => [
+                    'open' => PreviewRecordAction::openForRecord($record),
+                ]),
         ];
     }
 
-    protected function authorizeCardMove(Model $card, string $targetColumnId, ?string $toLaneId = null): void
+    /**
+     * @return list<string>
+     */
+    protected function blockCardAttributes(): array
     {
-        if (Gate::denies('update', $card)) {
-            throw CardMoveRejectedException::because(__('filament/pages/boards.move_denied'));
-        }
+        return ['company'];
     }
 
-    protected function persistCardMove(Model $card, mixed $columnValue, string $position): void
+    protected function cardEntry(string $key, ?Entry $customEntry): ?Component
     {
-        $card->update([$this->getBoard()->getPositionIdentifierAttribute() => $position]);
+        return match ($key) {
+            'company' => $this->companyChip(),
+            'custom_fields.'.OpportunityCustomField::AMOUNT->value => $this->amountBadge($customEntry),
+            'custom_fields.'.OpportunityCustomField::CLOSE_DATE->value => $this->closeDateBadge($customEntry),
+            default => null,
+        };
+    }
 
-        /** @var Opportunity $card */
-        $card->saveCustomFieldValue(self::stageCustomField(), $columnValue);
+    private function companyChip(): CardFlex
+    {
+        return CardFlex::make([
+            RecordChipEntry::make('company.name')
+                ->chipSize('sm')
+                ->hiddenLabel()
+                ->visible(fn (?string $state): bool => filled($state))
+                ->color('gray')
+                ->size(TextSize::ExtraSmall)
+                ->grow(),
+        ]);
+    }
+
+    private function amountBadge(?Entry $entry): ?TextEntry
+    {
+        return $entry instanceof TextEntry
+            ? $entry
+                ->visible(fn (?string $state): bool => filled($state))
+                ->badge()
+                ->color('success')
+                ->icon('lucide-circle-dollar-sign')
+                ->grow(false)
+                ->hiddenLabel()
+            : null;
+    }
+
+    private function closeDateBadge(?Entry $entry): ?TextEntry
+    {
+        return $entry instanceof TextEntry
+            ? $entry
+                ->visible(fn (?string $state): bool => filled($state))
+                ->badge()
+                ->color('gray')
+                ->icon('lucide-calendar')
+                ->grow(false)
+                ->hiddenLabel()
+                ->formatStateUsing(fn (?string $state): string => $this->formatCloseDateBadge($state))
+            : null;
+    }
+
+    public function previewAction(): PreviewRecordAction
+    {
+        return PreviewRecordAction::make()
+            ->page(ViewOpportunity::class)
+            ->record(fn (array $arguments): ?Opportunity => once(fn (): ?Opportunity => Opportunity::query()->whereKey($arguments['record'] ?? null)->first()));
+    }
+
+    /**
+     * @return array<int, Action>
+     */
+    private function cardActions(): array
+    {
+        return [
+            Action::make('edit')
+                ->authorize(fn (?Opportunity $record): bool => $record instanceof Opportunity && Gate::allows('update', $record))
+                ->label(__('filament/pages/boards.opportunities.actions.edit'))
+                ->slideOver()
+                ->modalWidth(Width::ExtraLarge)
+                ->icon('lucide-square-pen')
+                ->schema(OpportunityForm::get(...))
+                ->fillForm(fn (Opportunity $record): array => [
+                    'name' => $record->name,
+                    'company_id' => $record->company_id,
+                    'contact_id' => $record->contact_id,
+                ])
+                ->action(function (Opportunity $record, array $data): void {
+                    $record->update($data);
+                }),
+            MoveCardAction::make(),
+            Action::make('delete')
+                ->authorize(fn (?Opportunity $record): bool => $record instanceof Opportunity && Gate::allows('delete', $record))
+                ->label(__('filament/pages/boards.opportunities.actions.delete'))
+                ->icon('lucide-trash')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->action(function (Opportunity $record): void {
+                    $record->delete();
+                }),
+        ];
     }
 
     private function cardCreation(): CreateAction
     {
-        return CreateAction::make()
+        return CreateAction::make('addCard')
             ->authorize(fn (): bool => Gate::allows('create', Opportunity::class))
             ->label(__('filament/pages/boards.opportunities.actions.add'))
-            ->icon('heroicon-o-plus')
+            ->icon('lucide-plus')
             ->iconButton()
             ->modalWidth(Width::Large)
             ->slideOver(false)
@@ -209,6 +231,7 @@ final class OpportunitiesBoard extends BoardResourcePage
         return Grouping::make('company')
             ->label(__('filament/pages/boards.opportunities.groupings.company'))
             ->lanes(fn (Builder $boardQuery): array => Company::query()
+                ->select('companies.id', 'companies.name')
                 ->whereIn('companies.id', (clone $boardQuery)->select('opportunities.company_id'))
                 ->orderBy('name')
                 ->get()
@@ -221,16 +244,10 @@ final class OpportunitiesBoard extends BoardResourcePage
                 fn (Builder $query): Builder => $query->whereNull('opportunities.company_id'),
             )
             ->moveUsing(fn (Opportunity $record, Lane $to): Opportunity => resolve(UpdateOpportunity::class)->execute(
-                $this->currentUser(),
+                $this->viewSwitcherUser(),
                 $record,
                 ['company_id' => $to->getName() === Grouping::EMPTY_LANE ? null : $to->getName()],
             ));
-    }
-
-    private function currentUser(): User
-    {
-        /** @var User */
-        return Auth::guard('web')->user();
     }
 
     private function quickCreateForm(Schema $schema): Schema
@@ -251,27 +268,12 @@ final class OpportunitiesBoard extends BoardResourcePage
                     ->searchable()
                     ->preload(),
                 CustomFields::form()
-                    ->except([OpportunityCustomField::STAGE])
+                    ->except([$this->boardColumnField()->code])
                     ->build()
                     ->columnSpanFull()
                     ->columns(1),
             ])
             ->columns(2);
-    }
-
-    /**
-     * Get columns for the board.
-     *
-     * @return array<Column>
-     *
-     * @throws Exception
-     */
-    private function getColumns(): array
-    {
-        return $this->stages()->map(fn (array $stage): Column => Column::make((string) $stage['id'])
-            ->color($stage['color'])
-            ->label($stage['name'])
-        )->toArray();
     }
 
     /**
@@ -293,45 +295,25 @@ final class OpportunitiesBoard extends BoardResourcePage
         $date = Date::parse($state);
         $viewerToday = Date::now(FilamentTimezone::get())->startOfDay();
 
+        $shortDate = $date->isoFormat(__('formats.iso.date_without_year'));
         $closesOn = $date->toDateString();
         $today = $viewerToday->toDateString();
         $tomorrow = $viewerToday->copy()->addDay()->toDateString();
 
         return match (true) {
-            $closesOn < $today => $date->format('M j').' (Overdue)',
-            $closesOn === $today => 'Closes Today',
-            $closesOn === $tomorrow => 'Closes Tomorrow',
-            default => $date->format('M j'),
+            $closesOn < $today => __('filament/pages/boards.opportunities.badges.overdue', ['date' => $shortDate]),
+            $closesOn === $today => __('filament/pages/boards.opportunities.badges.today'),
+            $closesOn === $tomorrow => __('filament/pages/boards.opportunities.badges.tomorrow'),
+            default => $shortDate,
         };
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private function createCard(array $data, CreateAction $action): Opportunity
+    protected function createBoardRecord(Workspace $workspace, array $data): Opportunity
     {
-        $columnId = $action->getArguments()['column'] ?? null;
-
-        abort_unless(blank($columnId) || $this->ownsColumn((string) $columnId), 422);
-
-        /** @var Workspace $currentWorkspace */
-        $currentWorkspace = Auth::guard('web')->user()->currentWorkspace;
-
-        /** @var Opportunity $opportunity */
-        $opportunity = $currentWorkspace->opportunities()->create($data);
-
-        if (filled($columnId)) {
-            $opportunity->saveCustomFieldValue(self::stageCustomField(), $columnId);
-            $opportunity->order_column = (float) $this->getBoardPositionInColumn($columnId);
-            $opportunity->saveQuietly();
-        }
-
-        return $opportunity;
-    }
-
-    private function ownsColumn(string $id): bool
-    {
-        return $this->stages()->contains(fn (array $stage): bool => (string) $stage['id'] === $id);
+        return $workspace->opportunities()->create($data);
     }
 
     private static function stageCustomField(): ?CustomField
@@ -339,29 +321,13 @@ final class OpportunitiesBoard extends BoardResourcePage
         /** @var CustomField|null */
         return once(fn () => CustomField::query()
             ->forEntity(Opportunity::class)
-            ->where('code', OpportunityCustomField::STAGE)
+            ->where('code', CrmEntity::Opportunity->boardFieldCode())
             ->first());
     }
 
-    /**
-     * @return Collection<int, array{id: mixed, custom_field_id: mixed, name: mixed, color: string}>
-     */
-    private function stages(): Collection
+    protected function defaultBoardColumnField(): ?CustomField
     {
-        $field = self::stageCustomField();
-
-        if (! $field instanceof CustomField) {
-            return collect();
-        }
-
-        $colorsEnabled = $field->settings->enable_option_colors ?? false;
-
-        return $field->options->map(fn (CustomFieldOption $option): array => [
-            'id' => $option->getKey(),
-            'custom_field_id' => $option->getAttribute('custom_field_id'),
-            'name' => $option->getAttribute('name'),
-            'color' => $colorsEnabled ? ($option->settings->color ?? 'gray') : 'gray',
-        ]);
+        return self::stageCustomField();
     }
 
     /**

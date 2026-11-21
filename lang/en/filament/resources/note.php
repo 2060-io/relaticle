@@ -30,6 +30,9 @@ return [
         'updated_at' => [
             'label' => 'Updated At',
         ],
+        'deleted_at' => [
+            'label' => 'Deleted at',
+        ],
     ],
 
     'filters' => [
@@ -54,6 +57,10 @@ return [
         'deleted' => 'Deleted',
     ],
 
+    'empty_state' => [
+        'description' => 'Notes you add appear here.',
+    ],
+
     'pages' => [
         'list' => [
             'actions' => [
@@ -62,6 +69,10 @@ return [
                 ],
                 'import_export' => [
                     'label' => 'Import / Export',
+                ],
+                'export' => [
+                    'label' => 'Export notes',
+                    'heading' => 'Export Notes',
                 ],
             ],
         ],

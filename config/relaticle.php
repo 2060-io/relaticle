@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
 
+    'cloud' => filter_var(env('RELATICLE_CLOUD', false), FILTER_VALIDATE_BOOLEAN),
+
     'contact' => [
         'email' => env('CONTACT_EMAIL', 'hello@relaticle.com'),
     ],
@@ -12,9 +14,25 @@ return [
         'starting_price_yearly' => 20_000,
     ],
 
+    'scale' => [
+        'price_monthly' => 59,
+        'price_yearly' => 588,
+    ],
+
+    'pro' => [
+        'price_monthly' => 24,
+        'price_yearly' => 228,
+    ],
+
     'company' => [
         'name' => env('RELATICLE_COMPANY_NAME', 'Relaticle'),
         'address' => env('RELATICLE_COMPANY_ADDRESS', ''),
+    ],
+
+    'legal' => [
+        'privacy_url' => env('RELATICLE_PRIVACY_URL') ?: null,
+        'terms_url' => env('RELATICLE_TERMS_URL') ?: null,
+        'contact_url' => env('RELATICLE_CONTACT_URL') ?: null,
     ],
 
     'deletion' => [
@@ -48,15 +66,32 @@ return [
     |--------------------------------------------------------------------------
     |
     | When invitation_only is true, a new account can only be opened for an
-    | email that holds an unexpired workspace invitation, or by a visitor who
-    | arrived through an active workspace invite link. Password and social
-    | sign-up are both covered; existing users are unaffected. Off by default
-    | so the first account of a fresh instance can be created.
+    | email that holds an unexpired workspace invitation (shareable join links
+    | were removed in 3.11). Password and social sign-up are both covered;
+    | existing users are unaffected. Off by default so the first account of a
+    | fresh instance can be created.
     |
     */
 
     'registration' => [
         'invitation_only' => (bool) env('RELATICLE_REGISTRATION_INVITATION_ONLY', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sign-up Ceilings
+    |--------------------------------------------------------------------------
+    |
+    | How many accounts email sign-up may create: from one IP address in a
+    | day, and across the whole install in an hour. They apply only while the
+    | sign-up challenge feature is on. Google and Microsoft sign-in never
+    | count. Zero turns a ceiling off.
+    |
+    */
+
+    'signup' => [
+        'max_per_ip_per_day' => (int) env('RELATICLE_SIGNUP_MAX_PER_IP_PER_DAY', 3),
+        'max_per_hour' => (int) env('RELATICLE_SIGNUP_MAX_PER_HOUR', 5),
     ],
 
     /*

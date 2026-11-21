@@ -5,12 +5,17 @@
         'gmail' => __('filament/pages/workspaces.setup_workspace.email.google'),
         'azure' => __('filament/pages/workspaces.setup_workspace.email.microsoft'),
     ];
+    $analyticsEvents = [
+        'gmail' => 'mailbox_google_started',
+        'azure' => 'mailbox_microsoft_started',
+    ];
+    $secondaryButton = 'bg-white text-gray-950 shadow-xs ring-1 ring-gray-950/10 hover:bg-gray-50 dark:bg-gray-950 dark:text-gray-100 dark:ring-white/15 dark:hover:bg-white/5';
 @endphp
 
 <div class="flex flex-1 flex-col">
-    <h3 class="text-xl font-bold tracking-tight text-gray-950 dark:text-white">
+    <x-onboarding.step-heading wire:key="setup-step-heading-email">
         {{ __('filament/pages/workspaces.setup_workspace.email.heading') }}
-    </h3>
+    </x-onboarding.step-heading>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
         {{ __('filament/pages/workspaces.setup_workspace.email.description') }}
     </p>
@@ -20,6 +25,7 @@
             <button
                 type="button"
                 wire:click="connectMailbox('{{ $provider }}')"
+                x-on:click="$dispatch('analytics-event', { name: '{{ $analyticsEvents[$provider] }}', id: crypto.randomUUID() })"
                 wire:loading.attr="disabled"
                 wire:target="connectMailbox"
                 data-provider="{{ $provider }}"
@@ -27,25 +33,32 @@
                 @class([
                     'flex h-11 w-full items-center justify-center gap-2.5 rounded-lg text-sm font-medium transition',
                     'bg-gray-900 text-white shadow-sm hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100' => $emphasized === $provider,
-                    'bg-white text-gray-950 shadow-xs ring-1 ring-gray-950/10 hover:bg-gray-50 dark:bg-gray-950 dark:text-gray-100 dark:ring-white/15 dark:hover:bg-white/5' => $emphasized !== $provider,
+                    $secondaryButton => $emphasized !== $provider,
                 ])
             >
                 @include('filament.pages.setup-workspace.provider-logo', ['provider' => $provider])
                 <span>{{ $labels[$provider] }}</span>
             </button>
         @endforeach
+
+        <button
+            type="button"
+            wire:click="skipMailbox"
+            x-on:click="$dispatch('analytics-event', { name: 'mailbox_skipped', id: crypto.randomUUID() })"
+            wire:loading.attr="disabled"
+            wire:target="skipMailbox"
+            @class(['flex h-11 w-full items-center justify-center rounded-lg text-sm font-medium transition', $secondaryButton])
+        >
+            {{ __('filament/pages/workspaces.setup_workspace.email.skip') }}
+        </button>
     </div>
 
     <p class="mt-3.5 flex items-start gap-2 text-xs/5 text-gray-500 dark:text-gray-400">
-        <x-filament::icon icon="ri-lock-line" class="mt-0.5 size-4 shrink-0" />
+        <x-filament::icon icon="lucide-lock" class="mt-0.5 size-4 shrink-0" />
         <span>{{ __('filament/pages/workspaces.setup_workspace.email.privacy') }}</span>
     </p>
 
     <div class="mt-7">
         @include('filament.pages.setup-workspace.benefits')
-    </div>
-
-    <div class="mt-auto pt-6 text-center">
-        {{ $this->skipMailboxAction }}
     </div>
 </div>

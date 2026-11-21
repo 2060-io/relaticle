@@ -70,13 +70,20 @@ Use a recovery code if you cannot access your authenticator app.
 and last activity. **Log Out Other Browser Sessions** signs out every device
 except the one you're using; do this whenever you've used a shared machine.
 
+Changing or resetting your password also signs out your other devices.
+
+On a self-hosted install that keeps sessions in Redis, **Log Out Other
+Browser Sessions** works differently. It signs a device out only after the
+device sits idle for two hours, the default session lifetime. A device with
+Relaticle open stays signed in. Change your password to sign it out at once.
+
 ## Notifications
 
 The **Notifications** page beside your profile settings controls task
 assignment alerts and the daily digest, described in
 [Work with tasks](/help/tasks-and-notes/work-with-tasks).
 
-## Deleting your account
+## Delete your account
 
 To request account deletion, email [privacy@relaticle.com](mailto:privacy@relaticle.com) or [contact us](/contact).
 For a self-hosted installation, contact the person who manages it.

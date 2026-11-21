@@ -7,6 +7,8 @@ use App\Features\Chat;
 use App\Features\SetupConversation;
 use App\Filament\Pages\ChatConversation;
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\EditWorkspace;
+use App\Livewire\App\Workspaces\WorkspaceAssistantSettings;
 use App\Models\User;
 use App\Onboarding\ActivationSteps;
 use Filament\Facades\Filament;
@@ -16,10 +18,11 @@ use Illuminate\Foundation\Testing\CachedState;
 use Illuminate\Support\Facades\Route;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\ChatServiceProvider;
+use Relaticle\Chat\Filament\Pages\AssistantSettings;
 use Spatie\Onboard\OnboardingStep;
 use Spatie\Onboard\OnboardingSteps;
 
-mutates(Chat::class, SetupConversation::class, ChatServiceProvider::class, Dashboard::class, ChatConversation::class, ActivationSteps::class);
+mutates(Chat::class, SetupConversation::class, ChatServiceProvider::class, Dashboard::class, ChatConversation::class, ActivationSteps::class, AssistantSettings::class, EditWorkspace::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withPersonalWorkspace()->create();
@@ -84,6 +87,30 @@ it('denies the conversation page when the feature is off', function (): void {
     Feature::define(Chat::class, false);
 
     $this->get(ChatConversation::getUrl(tenant: $this->workspace))->assertForbidden();
+});
+
+it('serves the assistant settings page while the feature is on', function (): void {
+    $this->get(AssistantSettings::getUrl(tenant: $this->workspace))->assertOk();
+});
+
+it('denies the assistant settings page when the feature is off', function (): void {
+    Feature::define(Chat::class, false);
+
+    $this->get(AssistantSettings::getUrl(tenant: $this->workspace))->assertForbidden();
+});
+
+it('shows the workspace assistant settings while the feature is on', function (): void {
+    $this->get(EditWorkspace::getUrl(tenant: $this->workspace))
+        ->assertOk()
+        ->assertSeeLivewire(WorkspaceAssistantSettings::class);
+});
+
+it('hides the workspace assistant settings when the feature is off', function (): void {
+    Feature::define(Chat::class, false);
+
+    $this->get(EditWorkspace::getUrl(tenant: $this->workspace))
+        ->assertOk()
+        ->assertDontSeeLivewire(WorkspaceAssistantSettings::class);
 });
 
 it('lists the ask-the-assistant onboarding step while the feature is on', function (): void {

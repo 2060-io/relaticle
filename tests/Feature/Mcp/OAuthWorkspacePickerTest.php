@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Features\Billing;
 use App\Features\EmailIntegration;
 use App\Http\Controllers\Mcp\ApproveAuthorizationController;
 use App\Http\Middleware\RequireConsent;
@@ -14,6 +13,9 @@ use App\Models\Passport\AuthCode;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\Passport\WorkspaceBearerTokenResponse;
+use Defuse\Crypto\Crypto;
+use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Passport\Client;
@@ -69,6 +71,41 @@ function authorizeUrl(Client $client, array $overrides = []): string
         ...$overrides,
     ]);
 }
+
+it('refuses an authorization request meant for another server with an oauth invalid_target error', function (): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'resource' => 'https://attacker.example/mcp']))
+        ->assertBadRequest()
+        ->assertExactJson([
+            'error' => 'invalid_target',
+            'error_description' => __('mcp.consent.invalid_resource'),
+        ]);
+});
+
+it('authorizes a request that names this MCP server as its resource', function (string $resource): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'resource' => $resource]))
+        ->assertOk();
+})->with([
+    'as published' => fn (): string => url()->getMcpUrl(),
+    'with a trailing slash' => fn (): string => url()->getMcpUrl().'/',
+    'with the scheme and host in upper case' => fn (): string => strtoupper(url('/')).'/mcp',
+    'with the default port spelled out' => fn (): string => preg_replace(
+        '#^(https?)://([^/]+)#',
+        '$1://$2:'.(str_starts_with(url('/'), 'https') ? 443 : 80),
+        url()->getMcpUrl(),
+    ),
+]);
+
+it('authorizes the resource production MCP clients send', function (): void {
+    config(['app.url' => 'https://relaticle.com', 'app.mcp_domain' => 'mcp.relaticle.com']);
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'resource' => 'https://mcp.relaticle.com']))
+        ->assertOk();
+});
 
 it('lists the email access the role allows on the consent screen', function (): void {
     $this->actingAs($this->user);
@@ -203,7 +240,7 @@ it('spells out what the connector will be able to do, including deletion', funct
     $response->assertOk();
     $response->assertSee('Read and search your records');
     $response->assertSee('Create and update them');
-    $response->assertSee('Delete them permanently');
+    $response->assertSee('Delete them. You can restore deleted records.');
 });
 
 it('lists only the permissions a REST client asks for', function (): void {
@@ -270,8 +307,40 @@ it('rejects the approve POST when the user does not belong to the workspace', fu
     $response->assertForbidden();
 });
 
+it('sends an account without a verified email to verify before it approves a connector', function (): void {
+    $this->user->forceFill(['email_verified_at' => null])->save();
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']));
+
+    $this->post('/oauth/authorize', [
+        'state' => 'test-state',
+        'client_id' => $this->client->getKey(),
+        'auth_token' => session('authToken'),
+        'workspace_id' => $this->otherWorkspace->getKey(),
+    ])->assertRedirect();
+
+    expect(AuthCode::query()->where('user_id', $this->user->getKey())->exists())->toBeFalse();
+});
+
+it('refuses an account without a verified email in the approve controller itself', function (): void {
+    $this->user->forceFill(['email_verified_at' => null])->save();
+    $this->actingAs($this->user)->withoutMiddleware(EnsureEmailIsVerified::class);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']));
+
+    $this->post('/oauth/authorize', [
+        'state' => 'test-state',
+        'client_id' => $this->client->getKey(),
+        'auth_token' => session('authToken'),
+        'workspace_id' => $this->otherWorkspace->getKey(),
+    ])->assertForbidden();
+
+    expect(AuthCode::query()->where('user_id', $this->user->getKey())->exists())->toBeFalse();
+});
+
 it('marks a billing-paused workspace as unselectable on the consent screen', function (): void {
-    Feature::define(Billing::class, true);
+    withHostedBilling();
 
     $this->actingAs($this->user);
 
@@ -282,7 +351,7 @@ it('marks a billing-paused workspace as unselectable on the consent screen', fun
 });
 
 it('refuses to approve a connector for a billing-paused workspace', function (): void {
-    Feature::define(Billing::class, true);
+    withHostedBilling();
 
     $this->actingAs($this->user);
 
@@ -382,7 +451,7 @@ it('rejects an MCP request when a Passport token has no workspace_id', function 
     // resolveWorkspace() returned null. The exact failure mode depends on how
     // SetApiWorkspaceContext handles a null workspace (read its handle() method).
     // The contract: not a 200 OK. Most likely 403 or 422.
-    expect($response->status())->not->toBe(200);
+    expect($response->getStatusCode())->not->toBe(200);
 });
 
 it('still honors a Sanctum personal access token with its own workspace_id', function (): void {
@@ -415,7 +484,16 @@ it('still honors a Sanctum personal access token with its own workspace_id', fun
  */
 it('rejects a personal access token minted for a tokenable outside the users provider', function (): void {
     $admin = SystemAdministrator::factory()->create(['role' => SystemAdministratorRole::SuperAdministrator]);
-    $token = $admin->createToken('blog-token', ['posts:read'])->plainTextToken;
+    $token = Str::random(40);
+    DB::table('personal_access_tokens')->insert([
+        'tokenable_type' => $admin->getMorphClass(),
+        'tokenable_id' => $admin->getKey(),
+        'name' => 'blog-token',
+        'token' => hash('sha256', $token),
+        'abilities' => '["posts:read"]',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
 
     $this->withHeaders(['Authorization' => 'Bearer '.$token])
         ->postJson('/mcp', [
@@ -437,7 +515,7 @@ it('rejects a personal access token minted for a tokenable outside the users pro
 it('fails closed with 403 instead of a type error when the resolved caller is not a User', function (): void {
     $admin = SystemAdministrator::factory()->create(['role' => SystemAdministratorRole::SuperAdministrator]);
 
-    Sanctum::actingAs($admin, ['posts:read']);
+    $this->actingAs($admin, 'sanctum');
 
     $this->postJson('/mcp', [
         'jsonrpc' => '2.0',
@@ -1136,4 +1214,70 @@ it('keeps the email tools away from a connector while the email feature is off',
 
     expect(listedTools($tokens['access_token']))->not->toContain('list-emails-tool')
         ->not->toContain('get-email-tool');
+});
+
+it('answers every bad refresh token with the same body and no hint', function (): void {
+    $tokens = completeOauthFlow($this->user, $this->client, $this->personalWorkspace);
+    $otherClient = Client::query()->forceCreate([
+        'id' => (string) Str::uuid(),
+        'name' => 'Other MCP Client',
+        'redirect_uris' => ['https://example.com/callback'],
+        'grant_types' => ['authorization_code', 'refresh_token'],
+        'revoked' => false,
+        'owner_type' => $this->user->getMorphClass(),
+        'owner_id' => $this->user->getKey(),
+    ]);
+    $stored = DB::table('oauth_refresh_tokens')->sole();
+    $expiredToken = Crypto::encryptWithPassword((string) json_encode([
+        'client_id' => $this->client->getKey(),
+        'refresh_token_id' => $stored->id,
+        'access_token_id' => $stored->access_token_id,
+        'scopes' => ['mcp:use'],
+        'user_id' => $this->user->getKey(),
+        'expire_time' => time() - 60,
+    ]), Passport::tokenEncryptionKey(resolve(Encrypter::class)));
+    $refresh = fn (Client $client, string $token) => $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'client_id' => $client->getKey(),
+        'refresh_token' => $token,
+    ]);
+
+    $tampered = $refresh($this->client, strrev($tokens['refresh_token']));
+    $foreign = $refresh($otherClient, $tokens['refresh_token']);
+    $expired = $refresh($this->client, $expiredToken);
+    DB::table('oauth_refresh_tokens')->update(['revoked' => true]);
+    $revoked = $refresh($this->client, $tokens['refresh_token']);
+
+    foreach ([$tampered, $foreign, $expired, $revoked] as $response) {
+        $response->assertStatus(400)->assertExactJson([
+            'error' => 'invalid_grant',
+            'error_description' => 'The refresh token is invalid.',
+        ]);
+    }
+});
+
+it('keeps the error and description but drops the hint on a malformed token request', function (): void {
+    $this->postJson('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'client_id' => $this->client->getKey(),
+    ])
+        ->assertStatus(400)
+        ->assertExactJson([
+            'error' => 'invalid_request',
+            'error_description' => 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.',
+        ]);
+});
+
+it('drops the hint from an authorization request rejected before any redirect', function (): void {
+    $this->actingAs($this->user);
+
+    $this->getJson('/oauth/authorize?'.http_build_query([
+        'client_id' => $this->client->getKey(),
+        'resource' => url('/mcp'),
+    ]))
+        ->assertStatus(400)
+        ->assertExactJson([
+            'error' => 'invalid_request',
+            'error_description' => 'The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed.',
+        ]);
 });

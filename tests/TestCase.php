@@ -6,6 +6,7 @@ namespace Tests;
 
 use App\Features\OnboardSeed;
 use App\Features\SetupConversation;
+use App\Support\Email\MailExchangers;
 use App\Support\Http\HostResolver;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Knuckles\Scribe\ScribeServiceProvider;
 use Laravel\Pennant\Feature;
+use Livewire\Features\SupportDisablingBackButtonCache\SupportDisablingBackButtonCache;
 use Spatie\Activitylog\Actions\LogActivityAction;
 
 abstract class TestCase extends BaseTestCase
@@ -47,7 +49,16 @@ abstract class TestCase extends BaseTestCase
         // fakes production would otherwise answer every later request in the worker with a 400.
         Request::setTrustedHosts([]);
 
+        // Livewire sets this static at every component boot and only a finished response clears
+        // it, so a test whose component throws stamps no-cache headers on the next test's response.
+        SupportDisablingBackButtonCache::$disableBackButtonCache = false;
+
         return parent::createApplication();
+    }
+
+    protected function fakeExceptions(): void
+    {
+        Exceptions::fake();
     }
 
     protected function setUp(): void
@@ -62,8 +73,9 @@ abstract class TestCase extends BaseTestCase
         $this->app->instance(HostResolver::class, new HostResolver(
             fn (string $host): array => filter_var($host, FILTER_VALIDATE_IP) !== false ? [$host] : [],
         ));
+        $this->app->instance(MailExchangers::class, new MailExchangers(fn (): array => []));
         Sleep::fake(syncWithCarbon: true);
-        Exceptions::fake();
+        $this->fakeExceptions();
 
         // InstallCommand shells out to composer, npm and vite. Running those for
         // real cost ~110s and rewrote public/build on every suite run, so any new

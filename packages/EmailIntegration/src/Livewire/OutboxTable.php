@@ -13,10 +13,10 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\Indicator;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Date;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Relaticle\EmailIntegration\Actions\CancelQueuedEmailAction;
 use Relaticle\EmailIntegration\Actions\RescheduleQueuedEmailAction;
@@ -44,24 +45,20 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
     use InteractsWithSchemas;
     use InteractsWithTable;
 
-    public ?EmailStatus $lockedStatus = null;
-
-    public bool $includeFailedFilter = true;
+    /**
+     * @var array<string, mixed>|null
+     */
+    #[Url]
+    public ?array $tableFilters = null;
 
     public function table(Table $table): Table
     {
         return $table
             ->query($this->buildQuery())
-            ->filters($this->lockedStatus instanceof EmailStatus ? [] : [$this->statusFilter()])
-            ->emptyStateHeading(fn (): string => $this->lockedStatus === EmailStatus::FAILED
-                ? __('filament/pages/email-inbox.failed.empty.heading')
-                : __('filament/pages/email-inbox.outbox.empty.heading'))
-            ->emptyStateDescription(fn (): string => $this->lockedStatus === EmailStatus::FAILED
-                ? __('filament/pages/email-inbox.failed.empty.description')
-                : __('filament/pages/email-inbox.outbox.empty.description'))
-            ->emptyStateIcon(fn (): Heroicon => $this->lockedStatus === EmailStatus::FAILED
-                ? Heroicon::OutlinedExclamationCircle
-                : Heroicon::OutlinedClock)
+            ->filters([$this->statusFilter()])
+            ->emptyStateHeading(__('filament/pages/email-inbox.outbox.empty.heading'))
+            ->emptyStateDescription(__('filament/pages/email-inbox.outbox.empty.description'))
+            ->emptyStateIcon('lucide-clock')
             ->columns([
                 TextColumn::make('subject')->limit(50)->searchable(),
                 TextColumn::make('participants_to')
@@ -72,51 +69,15 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
                 TextColumn::make('scheduled_for')->dateTime()->label(__('filament/pages/email-outbox.columns.scheduled_for')),
                 TextColumn::make('priority')->label(__('filament/pages/email-outbox.columns.type'))->badge(),
                 TextColumn::make('last_error')
-                    ->toggleable(isToggledHiddenByDefault: $this->lockedStatus !== EmailStatus::FAILED)
+                    ->visible(fn (): bool => $this->isShowingFailed())
                     ->wrap(),
             ])
-            ->recordActions([
-                Action::make('cancel')
-                    ->icon(Heroicon::OutlinedXMark)
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->visible(fn (Email $record): bool => $record->status === EmailStatus::QUEUED)
-                    ->action(function (Email $record): void {
-                        resolve(CancelQueuedEmailAction::class)->execute($record);
-                        $this->dispatch('outbox:changed');
-                        Notification::make()->title(__('filament/pages/email-outbox.notifications.cancelled'))->success()->send();
-                    }),
-                Action::make('reschedule')
-                    ->icon(Heroicon::OutlinedClock)
-                    ->visible(fn (Email $record): bool => $record->status === EmailStatus::QUEUED)
-                    ->schema([
-                        DateTimePicker::make('scheduled_for')
-                            ->label(__('filament/pages/email-outbox.actions.reschedule_field'))
-                            ->native(false)
-                            ->seconds(false)
-                            ->minDate(now())
-                            ->required(),
-                    ])
-                    ->fillForm(fn (Email $record): array => ['scheduled_for' => $record->scheduled_for])
-                    ->action(function (Email $record, array $data): void {
-                        resolve(RescheduleQueuedEmailAction::class)->execute($record, Date::parse((string) $data['scheduled_for']));
-                        Notification::make()->title(__('filament/pages/email-outbox.notifications.rescheduled'))->success()->send();
-                    }),
-                Action::make('retry')
-                    ->icon(Heroicon::OutlinedArrowPath)
-                    ->color('warning')
-                    ->visible(fn (Email $record): bool => $record->status === EmailStatus::FAILED)
-                    ->action(function (Email $record): void {
-                        resolve(RetryFailedEmailAction::class)->execute($record);
-                        $this->dispatch('outbox:changed');
-                        Notification::make()->title(__('filament/pages/email-outbox.notifications.retry_queued'))->success()->send();
-                    }),
-            ])
+            ->recordActions($this->rowActions())
             ->toolbarActions([
                 BulkAction::make('bulkCancel')
                     ->label(__('filament/pages/email-outbox.actions.bulk_cancel'))
                     ->color('danger')
-                    ->icon(Heroicon::OutlinedXMark)
+                    ->icon('lucide-x')
                     ->requiresConfirmation()
                     ->action(function (Collection $records): void {
                         $cancelled = 0;
@@ -150,6 +111,53 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
     }
 
     /**
+     * @return list<Action>
+     */
+    private function rowActions(): array
+    {
+        return [
+            Action::make('cancel')
+                ->label(__('filament/pages/email-outbox.actions.cancel'))
+                ->icon('lucide-x')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->visible(fn (Email $record): bool => $record->status === EmailStatus::QUEUED)
+                ->action(function (Email $record): void {
+                    resolve(CancelQueuedEmailAction::class)->execute($record);
+                    $this->dispatch('outbox:changed');
+                    Notification::make()->title(__('filament/pages/email-outbox.notifications.cancelled'))->success()->send();
+                }),
+            Action::make('reschedule')
+                ->label(__('filament/pages/email-outbox.actions.reschedule'))
+                ->icon('lucide-clock')
+                ->visible(fn (Email $record): bool => $record->status === EmailStatus::QUEUED)
+                ->schema([
+                    DateTimePicker::make('scheduled_for')
+                        ->label(__('filament/pages/email-outbox.actions.reschedule_field'))
+                        ->native(false)
+                        ->seconds(false)
+                        ->minDate(now())
+                        ->required(),
+                ])
+                ->fillForm(fn (Email $record): array => ['scheduled_for' => $record->scheduled_for])
+                ->action(function (Email $record, array $data): void {
+                    resolve(RescheduleQueuedEmailAction::class)->execute($record, Date::parse((string) $data['scheduled_for']));
+                    Notification::make()->title(__('filament/pages/email-outbox.notifications.rescheduled'))->success()->send();
+                }),
+            Action::make('retry')
+                ->label(__('filament/pages/email-outbox.actions.retry'))
+                ->icon('lucide-refresh-cw')
+                ->color('warning')
+                ->visible(fn (Email $record): bool => $record->status === EmailStatus::FAILED)
+                ->action(function (Email $record): void {
+                    resolve(RetryFailedEmailAction::class)->execute($record);
+                    $this->dispatch('outbox:changed');
+                    Notification::make()->title(__('filament/pages/email-outbox.notifications.retry_queued'))->success()->send();
+                }),
+        ];
+    }
+
+    /**
      * Re-render when a send is queued or cancelled, so the list matches the
      * outbox badge without a page reload.
      */
@@ -170,23 +178,32 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
             ->with(['participants'])
             ->where('workspace_id', filament()->getTenant()?->getKey())
             ->where('user_id', auth()->id())
-            ->where('direction', EmailDirection::OUTBOUND)
-            ->when(
-                $this->lockedStatus instanceof EmailStatus,
-                fn (Builder $query): Builder => $query->where('status', $this->lockedStatus),
-            );
+            ->where('direction', EmailDirection::OUTBOUND);
     }
 
     private function statusFilter(): SelectFilter
     {
         return SelectFilter::make('status_tab')
+            ->label(__('filament/pages/email-outbox.filters.status'))
             ->options($this->statusFilterOptions())
             ->default(OutboxTab::QUEUED->value)
             ->selectablePlaceholder(false)
+            ->resetState(['value' => OutboxTab::QUEUED->value])
+            ->indicateUsing(function (array $state): Indicator {
+                $tab = OutboxTab::tryFrom((string) ($state['value'] ?? '')) ?? OutboxTab::QUEUED;
+
+                return Indicator::make(__('filament/pages/email-outbox.filters.status_indicator', ['status' => $tab->getLabel()]))
+                    ->removable($tab !== OutboxTab::QUEUED);
+            })
             ->query(fn (Builder $query, array $data): Builder => $this->applyStatusTab(
                 $query,
                 OutboxTab::tryFrom((string) ($data['value'] ?? '')) ?? OutboxTab::QUEUED,
             ));
+    }
+
+    private function isShowingFailed(): bool
+    {
+        return ($this->getTableFilterState('status_tab')['value'] ?? null) === OutboxTab::FAILED->value;
     }
 
     /**
@@ -195,7 +212,6 @@ final class OutboxTable extends Component implements HasActions, HasSchemas, Has
     private function statusFilterOptions(): array
     {
         return collect(OutboxTab::cases())
-            ->reject(fn (OutboxTab $tab): bool => ! $this->includeFailedFilter && $tab === OutboxTab::FAILED)
             ->mapWithKeys(fn (OutboxTab $tab): array => [$tab->value => $tab->getLabel()])
             ->all();
     }

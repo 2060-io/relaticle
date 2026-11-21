@@ -7,6 +7,7 @@ use App\Actions\CustomFields\UpdateCustomField;
 use App\Actions\Opportunity\UpdateOpportunity;
 use App\Actions\Task\UpdateTask;
 use App\Console\Commands\ResetDemoAccountCommand;
+use App\Contracts\Entitlements;
 use App\Jobs\FetchFaviconForCompany;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\AggregateOpportunitiesTool;
@@ -29,7 +30,7 @@ use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Queries\Crm\CrmSummaryQuery;
 use App\Queries\Opportunities\OpportunityAggregatesQuery;
-use App\Services\Billing\HostedWorkspaceAccess;
+use App\Services\SelfHostedEntitlements;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -50,7 +51,7 @@ mutates(
     GetCrmSchemaTool::class,
     CrmSummaryQuery::class,
     GetCrmSummaryTool::class,
-    HostedWorkspaceAccess::class,
+    SelfHostedEntitlements::class,
     ListActivityTool::class,
     ListCustomFieldsTool::class,
     OnboardSeedManager::class,
@@ -204,7 +205,7 @@ it('creates a deterministic reviewer workspace and safely refreshes it', functio
         ->and($workspace->name)->toBe(ResetDemoAccountCommand::WORKSPACE_NAME)
         ->and($workspace->slug)->toBe(ResetDemoAccountCommand::WORKSPACE_SLUG)
         ->and($workspace->hosted_free_grandfathered_at)->not->toBeNull()
-        ->and(resolve(HostedWorkspaceAccess::class)->allows($workspace))->toBeTrue();
+        ->and(resolve(Entitlements::class)->allowsAccess($workspace))->toBeTrue();
 
     $notion = Company::query()->where('workspace_id', $workspace->getKey())->where('name', 'Notion')->firstOrFail();
     $ivan = People::query()->where('workspace_id', $workspace->getKey())->where('name', 'Ivan Zhao')->firstOrFail();
@@ -346,6 +347,8 @@ it('creates a deterministic reviewer workspace and safely refreshes it', functio
 
 it('queues exactly one logo fetch per company, including the fixtures seeded without model events', function (): void {
     Bus::fake([FetchFaviconForCompany::class]);
+    config()->set('services.logo_finder.url', 'https://logos.example.test');
+    config()->set('services.logo_finder.key', 'worker-secret');
 
     $this->artisan('demo:reset', ['--password' => 'runtime-secret-five'])->assertSuccessful();
 
@@ -410,4 +413,24 @@ it('stamps the rebuilt workspace, its records and their activity, as system', fu
 
     expect($activitySources)->toBe(['sample'])
         ->and($recordSources)->toBe(['sample']);
+});
+
+it('queues no logo fetch when no logo service is configured', function (): void {
+    Bus::fake([FetchFaviconForCompany::class]);
+
+    $this->artisan('demo:reset', ['--password' => 'runtime-secret-eight'])->assertSuccessful();
+
+    Bus::assertNotDispatched(FetchFaviconForCompany::class);
+});
+
+it('resets a demo account whose language was changed', function (): void {
+    $this->artisan('demo:reset', ['--password' => 'established-secret'])->assertSuccessful();
+    User::query()->where('email', ResetDemoAccountCommand::EMAIL)->firstOrFail()->forceFill(['locale' => 'de'])->save();
+
+    $this->artisan('demo:reset')->assertSuccessful();
+
+    $reviewer = User::query()->where('email', ResetDemoAccountCommand::EMAIL)->firstOrFail();
+
+    expect($reviewer->locale)->toBeNull()
+        ->and(Company::query()->where('workspace_id', $reviewer->personalWorkspace()->getKey())->where('name', 'Notion')->exists())->toBeTrue();
 });

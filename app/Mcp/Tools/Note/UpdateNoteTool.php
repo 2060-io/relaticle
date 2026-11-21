@@ -16,7 +16,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Title;
 
 #[Title('Update Note')]
-#[Description('Update an existing note in the CRM. Use the crm-schema resource to discover available custom fields.')]
+#[Description('Update an existing note in the CRM. Use the crm-schema resource to discover available custom attributes (custom fields).')]
 final class UpdateNoteTool extends BaseUpdateTool
 {
     use OperatesOnCrmEntity;
@@ -40,9 +40,9 @@ final class UpdateNoteTool extends BaseUpdateTool
     {
         return [
             'title' => $schema->string()->description('The note title.'),
-            'company_ids' => $schema->array()->description('Company IDs to link. Omit to leave unchanged, pass [] to remove all.'),
-            'people_ids' => $schema->array()->description('People IDs to link. Omit to leave unchanged, pass [] to remove all.'),
-            'opportunity_ids' => $schema->array()->description('Opportunity IDs to link. Omit to leave unchanged, pass [] to remove all.'),
+            'company_ids' => $schema->array()->items($schema->string())->description('Company IDs to link. Omit to leave unchanged, pass [] to remove all.'),
+            'people_ids' => $schema->array()->items($schema->string())->description('People IDs to link. Omit to leave unchanged, pass [] to remove all.'),
+            'opportunity_ids' => $schema->array()->items($schema->string())->description('Opportunity IDs to link. Omit to leave unchanged, pass [] to remove all.'),
         ];
     }
 

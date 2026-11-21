@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 use App\Models\User;
 use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Enums\RefundCause;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Services\CreditService;
 
 it('writes a Refund transaction row when refundReservation is called', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $service = app(CreditService::class);
 
     $service->reserveCredit($workspace);
-    $service->refundReservation($workspace, resolutionKey: 'job-abc');
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: 'job-abc');
 
     $refund = AiCreditTransaction::query()
         ->where('workspace_id', $workspace->getKey())
@@ -24,17 +27,20 @@ it('writes a Refund transaction row when refundReservation is called', function 
     expect($refund)->not->toBeNull()
         ->and($refund->credits_charged)->toBe(1)
         ->and($refund->idempotency_key)->toBe('job-abc')
-        ->and($refund->metadata['reason'])->toBe('reservation_refund');
+        ->and($refund->metadata['reason'])->toBe('reservation_refund')
+        ->and($refund->metadata['cause'])->toBe('failed');
 });
 
 it('refund is idempotent on the ledger: a second call writes no extra row', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $service = app(CreditService::class);
 
     $service->reserveCredit($workspace);
-    $service->refundReservation($workspace, resolutionKey: 'job-xyz');
-    $service->refundReservation($workspace, resolutionKey: 'job-xyz');
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: 'job-xyz');
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: 'job-xyz');
 
     expect(
         AiCreditTransaction::query()
@@ -45,13 +51,15 @@ it('refund is idempotent on the ledger: a second call writes no extra row', func
 });
 
 it('balance and ledger stay consistent after a reserve + refund cycle', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $service = app(CreditService::class);
     $startBalance = (int) AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->value('credits_remaining');
 
     $service->reserveCredit($workspace);
-    $service->refundReservation($workspace, resolutionKey: 'job-1');
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: 'job-1');
 
     $endBalance = (int) AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->value('credits_remaining');
     expect($endBalance)->toBe($startBalance);

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\Auth\ResetPassword as ResetPasswordNotification;
 use Filament\Facades\Filament;
 use Filament\Support\Facades\FilamentAsset;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
@@ -115,6 +116,34 @@ test('password can be reset with valid token', function () {
         ->assertRedirect();
 
     expect(Hash::check('new-secure-password', $user->fresh()->password))->toBeTrue();
+});
+
+test('a password reset ends the sessions of an account that had no password', function () {
+    config(['session.driver' => 'database']);
+
+    $user = User::factory()->socialOnly()->withWorkspace()->create();
+
+    DB::table('sessions')->insert([
+        'id' => 'signed-in-elsewhere',
+        'user_id' => $user->getKey(),
+        'ip_address' => '127.0.0.1',
+        'user_agent' => 'Mozilla/5.0',
+        'payload' => base64_encode('test'),
+        'last_activity' => time(),
+    ]);
+
+    livewire(ResetPassword::class, [
+        'email' => $user->email,
+        'token' => Password::broker('users')->createToken($user),
+    ])
+        ->fillForm([
+            'password' => 'new-secure-password',
+            'passwordConfirmation' => 'new-secure-password',
+        ])
+        ->call('resetPassword')
+        ->assertRedirect();
+
+    expect(DB::table('sessions')->where('id', 'signed-in-elsewhere')->exists())->toBeFalse();
 });
 
 test('password cannot be reset with invalid token', function () {

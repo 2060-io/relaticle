@@ -13,20 +13,24 @@ use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterErrors;
 use App\Queries\FilterTree;
+use App\Queries\ViewerZone;
 use App\Support\CustomFields\RecordNameResolver;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Pagination\CursorPaginator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
+use Relaticle\Chat\Enums\ResponseFormat;
 use Relaticle\Chat\Services\Tools\CustomFieldsDisplayFormatter;
 use Relaticle\Chat\Services\Tools\CustomFieldsFilterDescriber;
 use Relaticle\Chat\Services\Tools\DisplayFieldSelector;
+use Relaticle\Chat\Support\LongTextForModel;
 use Relaticle\Chat\Support\RecordReferenceResolver;
 use Relaticle\Chat\Tools\Concerns\LocalisesDatetimes;
 use Spatie\QueryBuilder\Exceptions\InvalidQuery;
@@ -67,7 +71,7 @@ abstract class BaseReadListTool implements Tool
     private const int MAX_PER_PAGE = 25;
 
     /** @var list<string> */
-    private const array ARGUMENTS = ['filter', 'sort', 'per_page', 'page', 'lookup', 'include'];
+    private const array ARGUMENTS = ['filter', 'sort', 'per_page', 'page', 'lookup', 'include', 'response_format'];
 
     /** @return class-string<JsonResource> */
     abstract protected function resourceClass(): string;
@@ -75,6 +79,18 @@ abstract class BaseReadListTool implements Tool
     abstract protected function entity(): CrmEntity;
 
     abstract protected function citationType(): string;
+
+    /** @return array<int, string> */
+    protected function eagerLoad(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    protected function extraPayload(Model $model): array
+    {
+        return [];
+    }
 
     abstract public function description(): string;
 
@@ -113,7 +129,8 @@ abstract class BaseReadListTool implements Tool
             ),
             'per_page' => $schema->integer()->description('Results per page (default 10, max 25).')->default(10),
             'page' => $schema->integer()->description('Page number.')->default(1),
-            'lookup' => $schema->boolean()->description('Set true when you call this only to find ids for another tool call (e.g. before an update or delete): the user then sees no table. Leave unset when the user asked to see the records.'),
+            'lookup' => $schema->boolean()->description('Set true when you call this only to find ids for another tool call (e.g. before an update or delete), or to re-read records already shown in this conversation so you can judge or investigate them: the user then sees no table. Leave unset when the user\'s latest message asks to see records, even ones shown before.'),
+            'response_format' => $schema->string()->enum(ResponseFormat::class)->description('concise (default) shortens long text fields to '.LongTextForModel::CONCISE_LIMIT.' characters and lists them in truncated_fields. detailed returns them whole: rich text as Markdown, or as its stored HTML when it carries formatting Markdown cannot hold. Use the Get tool for one record\'s full text; use detailed only when the question turns on the text of many.'),
         ];
 
         $includes = $this->availableIncludes();
@@ -149,6 +166,12 @@ abstract class BaseReadListTool implements Tool
             ], JSON_UNESCAPED_SLASHES);
         }
 
+        $responseFormat = $this->responseFormat($request);
+
+        if (! $responseFormat instanceof ResponseFormat) {
+            return (string) json_encode(['error' => 'response_format must be one of: '.implode(', ', array_column(ResponseFormat::cases(), 'value'))], JSON_UNESCAPED_SLASHES);
+        }
+
         try {
             FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
             $results = resolve($this->entity()->query())->paginate($user, $this->listQuery($request, $user));
@@ -158,12 +181,7 @@ abstract class BaseReadListTool implements Tool
             return (string) json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_SLASHES);
         }
 
-        // Loaded onto the paginator's own model instances (not a copy), so the
-        // display block below and the `included` payload further down read the
-        // same eager-loaded relations without a second query.
-        if ($requestedIncludes !== [] && $results instanceof LengthAwarePaginator) {
-            $this->loadIncludes($results, $requestedIncludes, $user);
-        }
+        $this->loadRelations($results, $requestedIncludes, $user);
 
         // Captured before the resource collection is built: wrapping a paginator
         // in a resource collection replaces its items with resource instances,
@@ -188,33 +206,7 @@ abstract class BaseReadListTool implements Tool
             return $collection->toJson(JSON_UNESCAPED_SLASHES);
         }
 
-        $citationType = $this->citationType();
-        $resolver = resolve(RecordReferenceResolver::class);
-        $linkable = in_array($citationType, RecordReferenceResolver::CHIP_TYPES, true);
-
-        $items = array_map(function (mixed $item, int $index) use ($citationType, $resolver, $linkable, $models, $requestedIncludes): mixed {
-            if (! is_array($item)) {
-                return $item;
-            }
-
-            $id = isset($item['id']) && (is_string($item['id']) || is_int($item['id']))
-                ? (string) $item['id']
-                : null;
-
-            // resolve() was called here purely as a null check while referenceUrl()
-            // supplied the value, and resolve() issues a label query per call. At
-            // MAX_PER_PAGE that is 25 discarded SELECTs per list call. Whether a type
-            // is linkable is a constant, so it is decided once outside the loop.
-            $item['url'] = $id !== null && $linkable
-                ? $resolver->referenceUrl($citationType, $id)
-                : null;
-
-            if ($requestedIncludes !== [] && isset($models[$index]) && $models[$index] instanceof Model) {
-                $item['included'] = $this->includedFor($models[$index], $requestedIncludes, $resolver);
-            }
-
-            return $item;
-        }, $items, array_keys($items));
+        $items = $this->rows($items, $models, $responseFormat, $requestedIncludes);
 
         $payload = [
             'data' => $items,
@@ -231,6 +223,98 @@ abstract class BaseReadListTool implements Tool
         }
 
         return (string) json_encode($this->localiseDatetimes($payload, $user), JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * @param  CursorPaginator<int, Model>|LengthAwarePaginator<int, Model>  $results
+     * @param  list<string>  $requestedIncludes
+     */
+    private function loadRelations(CursorPaginator|LengthAwarePaginator $results, array $requestedIncludes, User $user): void
+    {
+        // Loaded onto the paginator's own models, so the display block and
+        // the `included` payload read the same relations without a second query.
+        if ($this->eagerLoad() !== []) {
+            $models = new Collection(array_values($results->items()));
+            $models->load($this->eagerLoad());
+        }
+
+        if ($requestedIncludes !== [] && $results instanceof LengthAwarePaginator) {
+            $this->loadIncludes($results, $requestedIncludes, $user);
+        }
+    }
+
+    /**
+     * @param  array<mixed>  $items
+     * @param  list<mixed>  $models
+     * @param  list<string>  $requestedIncludes
+     * @return list<mixed>
+     */
+    private function rows(array $items, array $models, ResponseFormat $format, array $requestedIncludes): array
+    {
+        $resolver = resolve(RecordReferenceResolver::class);
+        $linkType = in_array($this->citationType(), RecordReferenceResolver::CHIP_TYPES, true) ? $this->citationType() : null;
+
+        return array_map(function (mixed $item, int|string $index) use ($models, $format, $requestedIncludes, $resolver, $linkType): mixed {
+            $model = $models[$index] ?? null;
+            $model = $model instanceof Model ? $model : null;
+
+            return is_array($item)
+                ? $this->decorateRow($this->shortenFreeText($item, $model, $format), $model, $requestedIncludes, $resolver, $linkType)
+                : $item;
+        }, $items, array_keys($items));
+    }
+
+    /**
+     * @param  array<mixed>  $item
+     * @param  list<string>  $requestedIncludes
+     * @return array<mixed>
+     */
+    private function decorateRow(array $item, ?Model $model, array $requestedIncludes, RecordReferenceResolver $resolver, ?string $linkType): array
+    {
+        $id = isset($item['id']) && (is_string($item['id']) || is_int($item['id']))
+            ? (string) $item['id']
+            : null;
+
+        // Never call $resolver->resolve() per row: it runs a label query each time,
+        // and whether this type links at all is decided once by the caller.
+        $item['url'] = $id !== null && $linkType !== null
+            ? $resolver->referenceUrl($linkType, $id)
+            : null;
+
+        if ($model instanceof Model) {
+            $item = [...$item, ...$this->extraPayload($model)];
+        }
+
+        if ($requestedIncludes !== [] && $model instanceof Model) {
+            $item['included'] = $this->includedFor($model, $requestedIncludes, $resolver);
+        }
+
+        return $item;
+    }
+
+    /**
+     * @param  array<mixed>  $item
+     * @return array<mixed>
+     */
+    private function shortenFreeText(array $item, ?Model $model, ResponseFormat $format): array
+    {
+        $values = $item['attributes']['custom_fields'] ?? null;
+
+        if (! $model instanceof Model || ! is_array($values)) {
+            return $item;
+        }
+
+        $shortened = LongTextForModel::forListRow($model, $values, $format);
+        $item['attributes']['custom_fields'] = $shortened['values'];
+
+        return $shortened['truncated'] === [] ? $item : [...$item, 'truncated_fields' => $shortened['truncated']];
+    }
+
+    private function responseFormat(Request $request): ?ResponseFormat
+    {
+        $requested = $request['response_format'] ?? ResponseFormat::Concise->value;
+
+        return is_string($requested) ? ResponseFormat::tryFrom($requested) : null;
     }
 
     private function perPageFor(Request $request): int
@@ -621,7 +705,7 @@ abstract class BaseReadListTool implements Tool
             sort: is_string($sort) && $sort !== '' ? $sort : null,
             perPage: $this->perPageFor($request),
             page: is_numeric($page) ? (int) min($page, ListQuery::MAX_PAGE) : null,
-            viewerZone: $user->effectiveTimezone(),
+            viewerZone: ViewerZone::strict($user->effectiveTimezone()),
         );
     }
 }

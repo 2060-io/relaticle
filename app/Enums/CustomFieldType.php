@@ -52,7 +52,7 @@ enum CustomFieldType: string
             self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => 'option label or option ID',
             self::MULTI_SELECT, self::CHECKBOX_LIST => 'array of option labels or IDs',
             self::TAGS_INPUT => 'array of arbitrary string values',
-            self::RICH_EDITOR => 'markdown, or HTML when the value starts with <; stored and returned as HTML',
+            self::RICH_EDITOR => 'markdown, or HTML when the value starts with <',
             self::COLOR_PICKER => 'hex color string',
             self::DATE => 'ISO 8601 date',
             self::DATE_TIME => 'ISO 8601 datetime string; an offset is converted to UTC',
@@ -61,40 +61,38 @@ enum CustomFieldType: string
         };
     }
 
-    /** The outline Heroicon shown before the field's label, matching the native detail rows. */
+    /** The icon shown before the field's label, matching the native detail rows. */
     public function icon(): string
     {
         return match ($this) {
-            self::TEXT => 'heroicon-o-bars-3-bottom-left',
-            self::NUMBER => 'heroicon-o-hashtag',
-            self::EMAIL => 'heroicon-o-envelope',
-            self::PHONE => 'heroicon-o-phone',
-            self::LINK => 'heroicon-o-globe-alt',
-            self::DOMAIN => 'heroicon-o-globe-alt',
-            self::TEXTAREA => 'heroicon-o-document-text',
-            self::CHECKBOX => 'heroicon-o-check-circle',
-            self::CHECKBOX_LIST => 'heroicon-o-list-bullet',
-            self::RADIO => 'heroicon-o-stop-circle',
-            self::RICH_EDITOR => 'heroicon-o-pencil-square',
-            self::TAGS_INPUT => 'heroicon-o-tag',
-            self::COLOR_PICKER => 'heroicon-o-swatch',
-            self::TOGGLE => 'heroicon-o-adjustments-horizontal',
-            self::TOGGLE_BUTTONS => 'heroicon-o-view-columns',
-            self::CURRENCY => 'heroicon-o-banknotes',
-            self::DATE => 'heroicon-o-calendar',
-            self::DATE_TIME => 'heroicon-o-clock',
-            self::SELECT => 'heroicon-o-chevron-up-down',
-            self::MULTI_SELECT => 'heroicon-o-queue-list',
-            self::FILE_UPLOAD => 'heroicon-o-paper-clip',
-            self::RECORD => 'heroicon-o-link',
+            self::TEXT => 'lucide-text-align-start',
+            self::NUMBER => 'lucide-hash',
+            self::EMAIL => 'lucide-mail',
+            self::PHONE => 'lucide-phone',
+            self::LINK => 'lucide-globe',
+            self::DOMAIN => 'lucide-globe',
+            self::TEXTAREA => 'lucide-file-text',
+            self::CHECKBOX => 'lucide-circle-check',
+            self::CHECKBOX_LIST => 'lucide-list',
+            self::RADIO => 'lucide-circle-dot',
+            self::RICH_EDITOR => 'lucide-square-pen',
+            self::TAGS_INPUT => 'lucide-tag',
+            self::COLOR_PICKER => 'lucide-swatch-book',
+            self::TOGGLE => 'lucide-sliders-horizontal',
+            self::TOGGLE_BUTTONS => 'lucide-columns-3',
+            self::CURRENCY => 'lucide-banknote',
+            self::DATE => 'lucide-calendar',
+            self::DATE_TIME => 'lucide-clock',
+            self::SELECT => 'lucide-chevrons-up-down',
+            self::MULTI_SELECT => 'lucide-list-ordered',
+            self::FILE_UPLOAD => 'lucide-paperclip',
+            self::RECORD => 'lucide-link',
         };
     }
 
-    // Heroicon outline paths share one stroke style and open with an absolute moveto,
-    // so a two-path icon (radio, tags-input) draws the same as one joined `d`.
     public function iconPath(): string
     {
-        return implode(' ', IconPath::all($this->icon()));
+        return IconPath::for($this->icon());
     }
 
     public function example(): mixed
@@ -128,7 +126,19 @@ enum CustomFieldType: string
             self::DOMAIN => 'as a bare host or a full URL, with or without www',
             self::PHONE => 'in any format, and the operand needs a country code such as +1 415 555 0100',
             self::TAGS_INPUT => 'the exact stored value',
+            self::RECORD => 'the ID of a linked record',
             self::DATE_TIME => 'a date without a time, such as 2026-10-01, as that whole day',
+            default => null,
+        };
+    }
+
+    public function partialMatching(): ?string
+    {
+        return match ($this) {
+            self::EMAIL => 'the address as stored',
+            self::PHONE => 'the stored number, such as +14155550100, with an extension as ;ext=12 and no spaces',
+            self::LINK => 'the link as it was saved, which keeps a scheme only when one was typed',
+            self::DOMAIN => 'the bare host, without a scheme or www',
             default => null,
         };
     }
@@ -140,7 +150,7 @@ enum CustomFieldType: string
             self::TEXT => ['$contains' => $this->example()],
             self::NUMBER, self::CURRENCY, self::DATE, self::DATE_TIME => ['$gte' => $this->example()],
             self::CHECKBOX, self::TOGGLE => ['$eq' => $this->example()],
-            self::EMAIL, self::PHONE, self::LINK, self::DOMAIN, self::MULTI_SELECT, self::CHECKBOX_LIST, self::TAGS_INPUT => ['$has_any' => $this->example()],
+            self::EMAIL, self::PHONE, self::LINK, self::DOMAIN, self::MULTI_SELECT, self::CHECKBOX_LIST, self::TAGS_INPUT, self::RECORD => ['$has_any' => $this->example()],
             self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => ['$in' => [$this->example()]],
             default => [],
         };
@@ -152,6 +162,12 @@ enum CustomFieldType: string
         return in_array($this, [self::LINK, self::DOMAIN], true);
     }
 
+    /** Whether values are prose that can run to kilobytes: rich text or long plain text. */
+    public function isFreeText(): bool
+    {
+        return in_array($this, [self::RICH_EDITOR, self::TEXTAREA], true);
+    }
+
     /** Whether values are picked from the field's own options rather than typed freely. */
     public function isChoice(): bool
     {
@@ -159,6 +175,37 @@ enum CustomFieldType: string
             self::SELECT, self::RADIO, self::TOGGLE_BUTTONS,
             self::MULTI_SELECT, self::CHECKBOX_LIST, self::TAGS_INPUT => true,
             default => false,
+        };
+    }
+
+    public function makesBoardColumns(): bool
+    {
+        return in_array($this, [self::SELECT, self::RADIO, self::TOGGLE_BUTTONS], true);
+    }
+
+    public function fitsOnCard(): bool
+    {
+        return match ($this) {
+            self::TEXTAREA, self::RICH_EDITOR, self::RECORD, self::FILE_UPLOAD => false,
+            self::TEXT, self::NUMBER, self::EMAIL, self::PHONE, self::LINK, self::DOMAIN,
+            self::CHECKBOX, self::CHECKBOX_LIST, self::RADIO, self::TAGS_INPUT, self::COLOR_PICKER,
+            self::TOGGLE, self::TOGGLE_BUTTONS, self::CURRENCY, self::DATE, self::DATE_TIME,
+            self::SELECT, self::MULTI_SELECT => true,
+        };
+    }
+
+    public function filterFieldKind(): ?FilterFieldKind
+    {
+        return match ($this) {
+            self::TEXT => FilterFieldKind::Text,
+            self::NUMBER, self::CURRENCY => FilterFieldKind::Number,
+            self::DATE, self::DATE_TIME => FilterFieldKind::Date,
+            self::SELECT, self::RADIO, self::TOGGLE_BUTTONS => FilterFieldKind::Choice,
+            self::MULTI_SELECT, self::CHECKBOX_LIST, self::TAGS_INPUT => FilterFieldKind::MultiChoice,
+            self::CHECKBOX, self::TOGGLE => FilterFieldKind::Checkbox,
+            self::EMAIL, self::PHONE, self::LINK, self::DOMAIN => FilterFieldKind::MultiText,
+            self::RECORD => FilterFieldKind::Record,
+            self::TEXTAREA, self::RICH_EDITOR, self::COLOR_PICKER, self::FILE_UPLOAD => null,
         };
     }
 }

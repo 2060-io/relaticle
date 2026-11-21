@@ -4,6 +4,7 @@
     /** @var \Relaticle\ActivityLog\Timeline\TimelineEntry $entry */
     /** @var \Relaticle\ActivityLog\Support\ActivityLogSummary $summary */
     /** @var list<array{label: string, old: string, new: string, full: array{old: string, new: string}|null}> $rows */
+    /** @var string|null $outcome */
     /** @var string|null $importFile */
     /** @var string|null $viaSource */
 
@@ -15,7 +16,7 @@
     $isChange = $summary->operation === ActivityLogOperation::Updated
         || ($summary->operation === null && $count > 0);
     $hasDiff = $isChange && $count > 0;
-    $icon = $summary->operation?->icon() ?? 'heroicon-o-adjustments-horizontal';
+    $icon = $summary->operation?->icon() ?? 'lucide-sliders-horizontal';
 @endphp
 
 <div
@@ -52,7 +53,7 @@
                     <span class="font-medium text-gray-900 underline decoration-dotted decoration-gray-400 underline-offset-[3px] dark:text-gray-100">{{ __('activity-log::messages.entry.attributes', ['count' => $count]) }}</span>
                 @endif
             @else
-                {{ \Illuminate\Support\Str::of($summary->summarySentence)->after($summary->causerName)->trim() }}
+                {{ $outcome }}
             @endif
         </p>
 
@@ -85,7 +86,7 @@
                                 >
                                     {{ $row['old'] }}
                                 </span>
-                                <x-filament::icon icon="heroicon-m-arrow-right" class="h-3 w-3 shrink-0 text-gray-400" />
+                                <x-filament::icon icon="lucide-arrow-right" class="h-3 w-3 shrink-0 text-gray-400" />
                                 <span
                                     class="line-clamp-2 font-medium text-gray-900 dark:text-gray-100"
                                     @if ($row['full'] === null) title="{{ $row['new'] }}" @endif
@@ -122,13 +123,13 @@
         <time
             class="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums"
             datetime="{{ $entry->occurredAt->toIso8601String() }}"
-            title="{{ $entry->occurredAt->toDayDateTimeString() }}"
+            title="{{ $entry->occurredAt->isoFormat('lll') }}"
         >
             {{ $entry->occurredAt->diffForHumans(syntax: null, short: true) }}
         </time>
         @if ($hasDiff)
             <x-filament::icon
-                icon="heroicon-m-chevron-down"
+                icon="lucide-chevron-down"
                 class="h-4 w-4 text-gray-400 transition-transform"
                 x-bind:class="open ? 'rotate-180' : ''"
                 aria-hidden="true"

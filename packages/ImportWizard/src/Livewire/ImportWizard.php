@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Relaticle\ImportWizard\Livewire;
 
+use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\View\View;
 use Livewire\Attributes\Locked;
@@ -50,6 +50,20 @@ final class ImportWizard extends Component implements HasActions, HasForms
     public int $columnCount = 0;
 
     public bool $importStarted = false;
+
+    /** @var (Closure(Import): ?string)|null */
+    private static ?Closure $continueUrlResolver = null;
+
+    /** @param  (Closure(Import): ?string)|null  $resolver */
+    public static function continueUrlUsing(?Closure $resolver): void
+    {
+        self::$continueUrlResolver = $resolver;
+    }
+
+    public static function continueUrl(Import $import): ?string
+    {
+        return self::$continueUrlResolver?->__invoke($import);
+    }
 
     public function mount(ImportEntityType $entityType, ?string $returnUrl = null): void
     {
@@ -152,14 +166,14 @@ final class ImportWizard extends Component implements HasActions, HasForms
     public function startOverAction(): Action
     {
         return Action::make('startOver')
-            ->label('Start over')
+            ->label(__('import-wizard-new::actions.start_over.label'))
             ->color('gray')
-            ->icon(Heroicon::OutlinedArrowPath)
+            ->icon('lucide-refresh-cw')
             ->requiresConfirmation()
-            ->modalHeading('Start a new import?')
-            ->modalDescription('Are you sure you want to start a new import? Your current progress will be lost.')
-            ->modalSubmitActionLabel('Start over')
-            ->modalCancelActionLabel('Cancel')
+            ->modalHeading(__('import-wizard-new::actions.start_over.heading'))
+            ->modalDescription(__('import-wizard-new::actions.start_over.description'))
+            ->modalSubmitActionLabel(__('import-wizard-new::actions.start_over.label'))
+            ->modalCancelActionLabel(__('import-wizard-new::actions.cancel'))
             ->action(fn () => $this->startOver());
     }
 

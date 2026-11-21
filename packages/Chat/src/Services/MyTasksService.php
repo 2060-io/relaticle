@@ -81,8 +81,8 @@ final readonly class MyTasksService
 
         $urls = resolve(CanonicalRecordUrl::class);
 
-        return $rows->map(function (object $row) use ($urls, $workspace, $startOfToday, $startOfDayAfter): MyTaskItem {
-            $dueAt = $row->due_at !== null ? Date::parse($row->due_at) : null;
+        return $rows->map(function (object $row) use ($urls, $workspace, $timezone, $startOfToday, $startOfDayAfter): MyTaskItem {
+            $dueAt = $row->due_at !== null ? Date::parse($row->due_at)->setTimezone($timezone) : null;
 
             return new MyTaskItem(
                 id: (string) $row->id,
@@ -127,7 +127,7 @@ final readonly class MyTasksService
         $row = DB::table('custom_fields as cf')
             ->leftJoin('custom_field_options as opt', function (JoinClause $join): void {
                 $join->on('opt.custom_field_id', '=', 'cf.id')
-                    ->where('opt.name', '=', TaskField::DONE_STATUS);
+                    ->whereIn('opt.name', TaskField::doneNames());
             })
             ->where('cf.tenant_id', $workspace->getKey())
             ->where('cf.entity_type', 'task')
@@ -135,7 +135,7 @@ final readonly class MyTasksService
             ->selectRaw(implode(', ', [
                 "MAX(CASE WHEN cf.code = 'due_date' THEN cf.id END) AS due_field_id",
                 "MAX(CASE WHEN cf.code = 'status' THEN cf.id END) AS status_field_id",
-                "MAX(CASE WHEN cf.code = 'status' THEN opt.id END) AS done_option_id",
+                "MIN(CASE WHEN cf.code = 'status' THEN opt.id END) AS done_option_id",
             ]))
             ->first();
 

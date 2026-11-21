@@ -6,7 +6,9 @@ namespace App\Mcp\Tools;
 
 use App\Mcp\Tools\Concerns\ChecksTokenAbility;
 use App\Mcp\Tools\Concerns\HasExplicitToolAnnotations;
+use App\Mcp\Tools\Concerns\LinksRecords;
 use App\Models\User;
+use App\Queries\ViewerZone;
 use App\Rules\ValidCustomFields;
 use App\Support\CustomFields\CustomFieldInput;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -21,6 +23,7 @@ abstract class BaseUpdateTool extends Tool
 {
     use ChecksTokenAbility;
     use HasExplicitToolAnnotations;
+    use LinksRecords;
 
     protected function idempotentHint(): bool
     {
@@ -58,7 +61,7 @@ abstract class BaseUpdateTool extends Tool
             ['id' => $schema->string()->description("The {$label} ID to update.")->required()],
             $this->entitySchema($schema),
             [
-                'custom_fields' => $schema->object()->description('Custom field values as key-value pairs. IMPORTANT: You MUST first read the crm-schema resource to discover valid field codes for this entity type. Unknown field codes will be rejected. Use exact field codes from the schema (e.g. "job_title", not "jobTitle").'),
+                'custom_fields' => $schema->object()->description('Custom attribute (custom field) values as key-value pairs. IMPORTANT: You MUST first read the crm-schema resource to discover valid field codes for this entity type. Unknown field codes will be rejected. Use exact field codes from the schema (e.g. "job_title", not "jobTitle").'),
             ],
         );
     }
@@ -84,7 +87,7 @@ abstract class BaseUpdateTool extends Tool
         $customFields = $request->get('custom_fields');
 
         if (is_array($customFields)) {
-            $customFields = resolve(CustomFieldInput::class)->normalize($user->currentWorkspace->getKey(), $this->entityType(), $customFields);
+            $customFields = resolve(CustomFieldInput::class)->normalize($user->currentWorkspace->getKey(), $this->entityType(), $customFields, ViewerZone::lenient($user->effectiveTimezone()));
             $request->merge(['custom_fields' => $customFields]);
         }
 
@@ -121,7 +124,7 @@ abstract class BaseUpdateTool extends Tool
         $resourceClass = $this->resourceClass();
 
         $payload = (array) json_decode(
-            new $resourceClass($model->loadMissing('customFieldValues.customField.options'))->toJson(),
+            $this->linkedRecordJson(new $resourceClass($model->loadMissing('customFieldValues.customField.options')), $model, $user),
             flags: JSON_THROW_ON_ERROR,
         );
 

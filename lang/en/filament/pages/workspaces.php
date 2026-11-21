@@ -22,7 +22,7 @@ return [
             'attribution_description' => 'Please select below where you found out about Relaticle. This step is optional.',
             'use_case' => 'Help us customize your workspace',
             'use_case_description' => 'Relaticle is all about empowering you to build the exact CRM you need, no matter how complex.',
-            'use_case_hint' => 'Tell us about your use case to get started with templates, or start with a blank canvas.',
+            'use_case_hint' => 'Tell us about your use case and we set up a pipeline template that fits it.',
         ],
         'form' => [
             'your_name' => [
@@ -88,11 +88,6 @@ return [
             'benefit_timeline' => 'Emails and meetings on the right record',
             'benefit_send' => 'Send from Relaticle with your own address',
             'skip' => "I'll add people and companies myself",
-            'skip_confirm' => [
-                'heading' => 'Continue without your mailbox?',
-                'description' => 'Connecting your mailbox does this work for you.',
-                'submit' => "Yes, I'm sure",
-            ],
         ],
         'sharing' => [
             'heading' => 'Choose what your team sees',
@@ -108,9 +103,6 @@ return [
             'emails_placeholder' => 'maya@acme.com, leo@acme.com',
             'helper' => 'Paste several at once. Everyone gets the same role.',
             'invalid_emails' => 'Check these addresses: :emails',
-            'link_label' => 'Or share an invite link',
-            'copy_link' => 'Copy link',
-            'create_link' => 'Create link',
             'send_and_start' => 'Send invites and get started',
             'not_sent' => [
                 'title' => 'Some invitations were not sent',

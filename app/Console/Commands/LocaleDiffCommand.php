@@ -22,6 +22,7 @@ use Symfony\Component\Finder\Finder;
  *                the translator last ran `--update-snapshot`
  *
  * Covers both PHP array files and the top-level JSON file (e.g. `lang/en.json`).
+ * A root may hold only the JSON file.
  *
  * Snapshots live at `lang/.snapshots/<locale>.json` and should be committed
  * to the fork so workspace members share translation state.
@@ -39,13 +40,6 @@ final class LocaleDiffCommand extends Command
     public function handle(): int
     {
         $locale = $this->argument('locale');
-
-        if (! is_string($locale)) {
-            $this->components->error('Pass one locale code, e.g. fr.');
-
-            return self::FAILURE;
-        }
-
         $root = $this->stringOption('lang-path') ?? lang_path();
         $format = $this->stringOption('format') ?? 'text';
         $updateSnapshot = (bool) $this->option('update-snapshot');
@@ -61,7 +55,7 @@ final class LocaleDiffCommand extends Command
         $enJsonPath = $root.DIRECTORY_SEPARATOR.'en.json';
         $localeJsonPath = $root.DIRECTORY_SEPARATOR.$locale.'.json';
 
-        if (! is_dir($enPath)) {
+        if (! is_dir($enPath) && ! is_file($enJsonPath)) {
             $this->error("Source directory not found: {$enPath}");
 
             return self::FAILURE;
@@ -75,7 +69,7 @@ final class LocaleDiffCommand extends Command
             return self::SUCCESS;
         }
 
-        if (! is_dir($localePath)) {
+        if (! is_dir($localePath) && ! is_file($localeJsonPath)) {
             $this->error("Target directory not found: {$localePath}");
 
             return self::FAILURE;
@@ -112,6 +106,10 @@ final class LocaleDiffCommand extends Command
     private function collectPhpValues(string $directory): array
     {
         $values = [];
+
+        if (! is_dir($directory)) {
+            return $values;
+        }
 
         foreach ((new Finder)->files()->in($directory)->name('*.php') as $file) {
             $relative = str_replace('\\', '/', mb_substr($file->getRelativePathname(), 0, -4));

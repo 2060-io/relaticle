@@ -41,7 +41,6 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Js;
 use Illuminate\Validation\ValidationException;
 use Laravel\Pennant\Feature;
 use Livewire\Features\SupportTesting\Testable;
@@ -179,11 +178,6 @@ function joinAsMember(Workspace $workspace, WorkspaceRole $role = WorkspaceRole:
     return $member;
 }
 
-function inviteLinkUrl(Workspace $workspace): string
-{
-    return route('workspaces.join', ['token' => $workspace->fresh()->invite_link_token]);
-}
-
 it('creates the workspace at the referral step and sends the owner to setup', function (): void {
     FilamentView::spa();
 
@@ -237,6 +231,33 @@ it('requires a use case', function (): void {
     livewire(SetupWorkspace::class)
         ->call('saveUseCase')
         ->assertHasFormErrors(['onboarding_use_case' => 'required']);
+});
+
+it('clears the required error once the owner picks a use case', function (): void {
+    workspaceInSetup(User::factory()->create());
+
+    livewire(SetupWorkspace::class)
+        ->call('saveUseCase')
+        ->assertHasFormErrors(['onboarding_use_case' => 'required'])
+        ->fillForm(['onboarding_use_case' => OnboardingUseCase::Other->value])
+        ->assertHasNoFormErrors(['onboarding_use_case']);
+});
+
+it('clears the required details error once the owner picks a detail', function (): void {
+    workspaceInSetup(User::factory()->create());
+
+    livewire(SetupWorkspace::class)
+        ->fillForm(['onboarding_use_case' => OnboardingUseCase::Recruiting->value])
+        ->call('saveUseCase')
+        ->assertHasFormErrors(['onboarding_context' => 'required'])
+        ->fillForm(['onboarding_context' => ['sourcing']])
+        ->assertHasNoFormErrors(['onboarding_context']);
+});
+
+it('gives the use case button its own loading target', function (): void {
+    workspaceInSetup(User::factory()->create());
+
+    livewire(SetupWorkspace::class)->assertSeeHtml('wire:target="saveUseCase"');
 });
 
 it('labels the use case button Continue because the invite step follows', function (): void {
@@ -374,6 +395,22 @@ it('seeds sample data at the use case step when no mailbox is connected', functi
         ->call('saveUseCase');
 
     expect(Company::query()->where('workspace_id', $workspace->getKey())->where('creation_source', CreationSource::SAMPLE)->count())->toBe(4);
+});
+
+it('seeds no sample data for an owner who lands in the setup chat', function (): void {
+    Feature::define(OnboardSeed::class, true);
+    Feature::define(SetupConversation::class, true);
+
+    $user = User::factory()->create();
+    $workspace = workspaceInSetup($user);
+
+    livewire(SetupWorkspace::class)
+        ->fillForm(['onboarding_use_case' => OnboardingUseCase::Sales->value, 'onboarding_context' => ['outbound']])
+        ->call('saveUseCase')
+        ->assertHasNoFormErrors();
+
+    expect($workspace->fresh()->onboarding_step)->toBe(WorkspaceSetupStep::Invite)
+        ->and(Company::query()->where('workspace_id', $workspace->getKey())->exists())->toBeFalse();
 });
 
 it('seeds no sample data for an owner who connected a mailbox', function (): void {
@@ -887,30 +924,26 @@ describe('connect email', function (): void {
         $workspace = workspaceInSetup(User::factory()->create());
 
         livewire(SetupWorkspace::class)
-            ->callAction('skipMailbox')
+            ->call('skipMailbox')
             ->assertSee(__('filament/pages/workspaces.create_workspace.headings.use_case'));
 
         expect($workspace->fresh()->onboarding_step)->toBe(WorkspaceSetupStep::UseCase);
     });
 
-    it('stays on the connect step until the owner confirms the skip', function (): void {
-        $workspace = workspaceInSetup(User::factory()->create());
+    it('records which way the owner leaves the connect step', function (): void {
+        workspaceInSetup(User::factory()->create());
 
         livewire(SetupWorkspace::class)
-            ->mountAction('skipMailbox')
-            ->assertMountedActionModalSee([
-                __('filament/pages/workspaces.setup_workspace.email.skip_confirm.heading'),
-                __('filament/pages/workspaces.setup_workspace.email.benefit_records'),
-            ]);
-
-        expect($workspace->fresh()->onboarding_step)->toBe(WorkspaceSetupStep::Email);
+            ->assertSeeHtml("name: 'mailbox_google_started'")
+            ->assertSeeHtml("name: 'mailbox_microsoft_started'")
+            ->assertSeeHtml("name: 'mailbox_skipped'");
     });
 
     it('lets the owner go back to connect from the use case while no mailbox is connected', function (): void {
         $workspace = workspaceInSetup(User::factory()->create());
 
         livewire(SetupWorkspace::class)
-            ->callAction('skipMailbox')
+            ->call('skipMailbox')
             ->assertSee(__('filament/pages/workspaces.create_workspace.actions.back'))
             ->call('backToMailbox')
             ->assertSee(__('filament/pages/workspaces.setup_workspace.email.heading'));
@@ -922,7 +955,7 @@ describe('connect email', function (): void {
         $workspace = workspaceInSetup(User::factory()->create());
 
         livewire(SetupWorkspace::class)
-            ->callAction('skipMailbox')
+            ->call('skipMailbox')
             ->call('backToMailbox')
             ->assertSuccessful()
             ->call('backToMailbox')
@@ -935,7 +968,7 @@ describe('connect email', function (): void {
         $user = User::factory()->create();
         $workspace = workspaceInSetup($user);
 
-        livewire(SetupWorkspace::class)->callAction('skipMailbox');
+        livewire(SetupWorkspace::class)->call('skipMailbox');
 
         ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
             'user_id' => $user->getKey(),
@@ -953,7 +986,7 @@ describe('connect email', function (): void {
     it('offers no way back to connect when the feature is off', function (): void {
         $workspace = workspaceInSetup(User::factory()->create());
 
-        livewire(SetupWorkspace::class)->callAction('skipMailbox');
+        livewire(SetupWorkspace::class)->call('skipMailbox');
 
         Feature::define(EmailIntegration::class, false);
         Feature::flushCache();
@@ -1457,7 +1490,6 @@ describe('invite team', function (): void {
         $setup = livewire(SetupWorkspace::class)
             ->assertSee(__('filament/pages/workspaces.setup_workspace.invite.heading'))
             ->assertSee(__('filament/pages/workspaces.setup_workspace.invite.description'))
-            ->assertSee(__('filament/pages/workspaces.setup_workspace.invite.link_label'))
             ->assertSee(__('filament/pages/workspaces.create_workspace.actions.get_started'))
             ->assertDontSee(__('filament/pages/workspaces.create_workspace.headings.use_case'))
             ->assertDontSee(__('filament/pages/workspaces.create_workspace.actions.back'))
@@ -1491,7 +1523,7 @@ describe('invite team', function (): void {
             ->fillForm(['emails' => "maya@northwind.test, leo@northwind.test;\nsam@northwind.test", 'role' => WorkspaceRole::Admin->value])
             ->call('finish')
             ->assertHasNoFormErrors()
-            ->assertNotified(__('workspaces.notifications.workspace_invitation_sent.success'));
+            ->assertNotified(__('workspaces.notifications.workspace_invitation_sent.success_many', ['count' => 3]));
 
         expect($workspace->workspaceInvitations()->pluck('role', 'email')->all())->toEqual([
             'maya@northwind.test' => WorkspaceRole::Admin->value,
@@ -1727,81 +1759,14 @@ describe('invite team', function (): void {
             ->and($workspace->workspaceInvitations()->count())->toBe(0);
     });
 
-    it('offers the live invite link for copying in the browser from the first render', function (): void {
-        $workspace = workspaceAtInvite(User::factory()->create());
+    it('offers email invitations only on the invite step', function (): void {
+        workspaceAtInvite(User::factory()->create());
 
         livewire(SetupWorkspace::class)
-            ->assertSee(__('filament/pages/workspaces.setup_workspace.invite.copy_link'))
-            ->assertSee(__('workspaces.invite_link.copied'))
-            ->assertDontSee(__('filament/pages/workspaces.setup_workspace.invite.create_link'))
-            ->assertSeeHtml(e('navigator.clipboard.writeText('.Js::from(inviteLinkUrl($workspace)).')'));
-    });
-
-    it('offers to create a link once the old one is gone, and then offers it for copying', function (string $reason): void {
-        $workspace = workspaceAtInvite(User::factory()->create());
-
-        match ($reason) {
-            'expired' => $this->travelTo(now()->addDays(Workspace::INVITE_LINK_TTL_DAYS + 1)),
-            'disabled' => $workspace->disableInviteLink(),
-        };
-
-        $oldToken = $workspace->fresh()->invite_link_token;
-
-        $setup = livewire(SetupWorkspace::class)
-            ->assertSee(__('filament/pages/workspaces.setup_workspace.invite.create_link'))
-            ->assertDontSee(__('filament/pages/workspaces.setup_workspace.invite.copy_link'))
-            ->assertSeeHtml('wire:target="createInviteLink"')
-            ->call('createInviteLink')
-            ->assertSee(__('filament/pages/workspaces.setup_workspace.invite.copy_link'))
-            ->assertDontSee(__('filament/pages/workspaces.setup_workspace.invite.create_link'));
-
-        $fresh = $workspace->fresh();
-
-        expect($fresh->invite_link_token)->not->toBe($oldToken)
-            ->and($fresh->isInviteLinkTokenExpired())->toBeFalse();
-
-        $setup->assertSeeHtml(e('navigator.clipboard.writeText('.Js::from(inviteLinkUrl($workspace)).')'));
-    })->with(['expired', 'disabled']);
-
-    it('never rotates a live invite link', function (): void {
-        $workspace = workspaceAtInvite(User::factory()->create());
-        $token = $workspace->invite_link_token;
-
-        livewire(SetupWorkspace::class)->call('createInviteLink');
-
-        expect($workspace->fresh()->invite_link_token)->toBe($token);
-    });
-
-    it('creates no link before the invite step', function (): void {
-        $workspace = workspaceInSetup(User::factory()->create());
-        $workspace->disableInviteLink();
-
-        livewire(SetupWorkspace::class)->call('createInviteLink');
-
-        expect($workspace->fresh()->hasInviteLink())->toBeFalse();
-    });
-
-    it('refuses to create a link for a member without the capability', function (): void {
-        $workspace = workspaceAtInvite(User::factory()->create());
-        $workspace->disableInviteLink();
-        $ownerSetup = livewire(SetupWorkspace::class);
-
-        joinAsMember($workspace, WorkspaceRole::Member);
-
-        $ownerSetup
-            ->call('createInviteLink')
-            ->assertForbidden();
-
-        expect($workspace->fresh()->hasInviteLink())->toBeFalse();
-    });
-
-    it('returns no invite link to a member who replays the owner snapshot', function (): void {
-        $workspace = workspaceAtInvite(User::factory()->create());
-        $ownerSetup = livewire(SetupWorkspace::class);
-
-        joinAsMember($workspace, WorkspaceRole::Member);
-
-        $ownerSetup->call('inviteLinkUrl')->assertReturned(null);
+            ->assertDontSee('Or share an invite link')
+            ->assertDontSee('Create link')
+            ->assertDontSee('Copy link')
+            ->assertSeeHtml('wire:target="finish"');
     });
 
     it('gives the finish button and the link button their own loading target', function (): void {

@@ -7,8 +7,8 @@ use App\Filament\Resources\PeopleResource\RelationManagers\EmailsRelationManager
 use App\Models\People;
 use App\Models\User;
 use Filament\Facades\Filament;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Relaticle\EmailIntegration\Actions\SaveEmailDraftAction;
 use Relaticle\EmailIntegration\Actions\SendEmailAction;
 use Relaticle\EmailIntegration\Enums\EmailAccountStatus;
@@ -197,6 +197,11 @@ it('inline composer prefills a reply from the selected email and queues it', fun
         ->and($reply->in_reply_to)->toBe($this->inboundEmail->rfc_message_id);
 });
 
+it('refuses a client that sets the reply target directly', function (): void {
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->set('inReplyToEmailId', $this->inboundEmail->id);
+})->throws(CannotUpdateLockedPropertyException::class);
+
 it('addresses a reply and a reply-all to the Reply-To address instead of the sender', function (): void {
     EmailParticipant::create([
         'email_id' => $this->inboundEmail->id,
@@ -303,6 +308,47 @@ it('a reply saved as a draft still threads when it is sent later', function (): 
 
     expect($reply->in_reply_to)->toBe($this->inboundEmail->rfc_message_id)
         ->and($reply->thread_id)->toBe($this->inboundEmail->thread_id);
+});
+
+it('resumes a reply draft on the sender own copy when a teammate holds a restricted copy of the message', function (): void {
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'reply')
+        ->set('bodyHtml', '<p>Started, not finished</p>')
+        ->call('close');
+
+    $draftId = Email::query()->where('status', EmailStatus::DRAFT)->sole()->getKey();
+
+    $teammate = User::factory()->create(['current_workspace_id' => $this->workspace->id]);
+    $this->workspace->users()->attach($teammate, ['role' => 'member']);
+
+    $teammateAccount = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $teammate->id,
+    ]));
+
+    Email::factory()->inbound()->create([
+        'workspace_id' => $this->workspace->id,
+        'user_id' => $teammate->id,
+        'connected_account_id' => $teammateAccount->id,
+        'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,
+        'rfc_message_id' => $this->inboundEmail->rfc_message_id,
+        'is_internal' => false,
+    ]);
+
+    $this->inboundEmail->touch();
+
+    livewire(EmailComposer::class)
+        ->call('open', [], $draftId)
+        ->assertSet('inReplyToEmailId', $this->inboundEmail->id)
+        ->call('send')
+        ->assertHasNoErrors();
+
+    $reply = Email::query()
+        ->where('direction', EmailDirection::OUTBOUND)
+        ->where('creation_source', EmailCreationSource::REPLY)
+        ->sole();
+
+    expect($reply->body->body_html)->toContain('Original body');
 });
 
 it('includes the original plain-text body when quoting a reply or forward', function (string $mode, string $marker): void {
@@ -437,6 +483,27 @@ it('lists and sends the original attachments when forwarding', function (): void
     Storage::disk(EmailAttachment::DISK)->assertExists((string) $attachment->storage_path);
     Storage::disk(EmailAttachment::DISK)->assertExists((string) $sentAttachment->storage_path);
     expect(Storage::disk(EmailAttachment::DISK)->get((string) $sentAttachment->storage_path))->toBe('signed-contract');
+});
+
+it('forwards a received attachment whatever its type', function (): void {
+    Storage::fake(EmailAttachment::DISK);
+
+    $attachment = inboundStoredAttachment($this->inboundEmail, 'original.eml', "From: a@example.com\nSubject: Hi\n\nBody\n");
+
+    livewire(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', $this->inboundEmail->id, 'forward')
+        ->set('to', ['forward-to@example.com'])
+        ->set('bodyHtml', '<p>See attached</p>')
+        ->call('send')
+        ->assertHasNoErrors();
+
+    $forward = Email::query()
+        ->where('direction', EmailDirection::OUTBOUND)
+        ->where('creation_source', EmailCreationSource::FORWARD)
+        ->sole();
+
+    expect($forward->attachments->sole()->filename)->toBe('original.eml')
+        ->and($forward->attachments->sole()->storage_path)->not->toBe($attachment->storage_path);
 });
 
 it('does not attach the original files when replying', function (): void {
@@ -653,7 +720,7 @@ it('includes a newly uploaded file alongside the original attachments on a forwa
         ->call('openReply', $this->inboundEmail->id, 'forward')
         ->set('to', ['forward-to@example.com'])
         ->set('bodyHtml', '<p>Contract plus note</p>')
-        ->set('attachments', [UploadedFile::fake()->create('cover-note.pdf', 12)])
+        ->set('attachments', [fakePdf('cover-note.pdf', 12)])
         ->call('send')
         ->assertHasNoErrors();
 

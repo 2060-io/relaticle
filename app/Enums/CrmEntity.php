@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Enums;
 
+use App\Enums\CustomFields\OpportunityField;
+use App\Enums\CustomFields\TaskField;
 use App\Models\Company;
 use App\Models\Note;
 use App\Models\Opportunity;
@@ -102,18 +104,18 @@ enum CrmEntity: string
     }
 
     /**
-     * The Heroicon name for the record type: the app panel's navigation icon,
+     * The icon name for the record type: the app panel's navigation icon,
      * the chat chip glyph and every avatar-less record tile read this, so a
      * company looks like a company on every surface.
      */
     public function icon(): string
     {
         return match ($this) {
-            self::Company => 'heroicon-o-building-office',
-            self::People => 'heroicon-o-user',
-            self::Opportunity => 'heroicon-o-currency-dollar',
-            self::Task => 'heroicon-o-clipboard-document-check',
-            self::Note => 'heroicon-o-document-text',
+            self::Company => 'lucide-building',
+            self::People => 'lucide-user',
+            self::Opportunity => 'lucide-circle-dollar-sign',
+            self::Task => 'lucide-clipboard-check',
+            self::Note => 'lucide-file-text',
         };
     }
 
@@ -125,6 +127,59 @@ enum CrmEntity: string
     public function iconPath(): string
     {
         return IconPath::for($this->icon());
+    }
+
+    /**
+     * The built-in views a member can order, in the order a member who never ordered them sees.
+     *
+     * @return list<string>
+     */
+    public function builtInViews(): array
+    {
+        return match ($this) {
+            self::Opportunity => ['board', 'list'],
+            self::Task => ['list', 'board'],
+            self::Note => ['cards', 'list'],
+            self::Company, self::People => ['list'],
+        };
+    }
+
+    public function boardFieldCode(): ?string
+    {
+        return match ($this) {
+            self::Opportunity => OpportunityField::STAGE->value,
+            self::Task => TaskField::STATUS->value,
+            self::Company, self::People, self::Note => null,
+        };
+    }
+
+    public function boardStageNounKey(): ?string
+    {
+        return match ($this) {
+            self::Opportunity => 'stage',
+            self::Task => 'status',
+            self::Company, self::People, self::Note => null,
+        };
+    }
+
+    /** @return list<string> */
+    public function nativeCardAttributes(): array
+    {
+        return match ($this) {
+            self::Opportunity => ['company', 'contact', 'creator', 'created_at', 'updated_at'],
+            self::Task => ['description', 'checklist', 'assignees', 'creator', 'created_at', 'updated_at'],
+            self::Company, self::People, self::Note => [],
+        };
+    }
+
+    /** @return list<string> */
+    public function defaultCardAttributes(): array
+    {
+        return match ($this) {
+            self::Opportunity => ['company', 'custom_fields.amount', 'custom_fields.close_date'],
+            self::Task => ['description', 'checklist', 'custom_fields.priority', 'custom_fields.due_date', 'assignees'],
+            self::Company, self::People, self::Note => [],
+        };
     }
 
     /** @return list<self> */

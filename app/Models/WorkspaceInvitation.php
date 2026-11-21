@@ -7,6 +7,8 @@ namespace App\Models;
 use App\Casts\AsCanonicalEmail;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -41,6 +43,13 @@ final class WorkspaceInvitation extends Model
         return $this->belongsTo(Workspace::class);
     }
 
+    /** @param Builder<self> $query */
+    #[Scope]
+    protected function unexpired(Builder $query): void
+    {
+        $query->where('expires_at', '>', now());
+    }
+
     public function isExpired(): bool
     {
         if ($this->expires_at === null) {
@@ -60,7 +69,7 @@ final class WorkspaceInvitation extends Model
         $rawToken = Str::random(40);
 
         $this->token = hash('sha256', $rawToken);
-        $this->expires_at = now()->addDays((int) config('jetstream.invitation_expiry_days', 7));
+        $this->expires_at = now()->addDays((int) config('jetstream.invitation_expiry_days', 2));
 
         return $rawToken;
     }

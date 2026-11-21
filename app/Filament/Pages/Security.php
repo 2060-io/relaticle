@@ -24,7 +24,7 @@ final class Security extends Page
 
     protected static ?int $navigationSort = 2;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'ri-shield-line';
+    protected static string|\BackedEnum|null $navigationIcon = 'lucide-shield';
 
     /** @var class-string<Cluster>|null */
     protected static ?string $cluster = Settings::class;
@@ -42,6 +42,11 @@ final class Security extends Page
             Livewire::make(ManageMfa::class),
             Livewire::make(LogoutOtherBrowserSessions::class),
         ]);
+    }
+
+    public function getTitle(): string
+    {
+        return __('profile.security');
     }
 
     public function getHeading(): string

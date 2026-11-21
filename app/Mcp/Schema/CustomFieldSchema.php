@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Schema;
 
 use App\Enums\CrmEntity;
+use App\Enums\CustomFields\TaskField;
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
@@ -27,12 +28,14 @@ use stdClass;
  */
 final readonly class CustomFieldSchema
 {
+    private const string RICH_TEXT_READ_FORMAT = 'stored and returned as HTML';
+
     public function __construct(private FilterVocabulary $vocabulary) {}
 
     public static function usage(CrmEntity $entity): string
     {
         return implode(' ', [
-            'Pass custom field values in the "custom_fields" object using field codes as keys.',
+            'Pass custom attribute (custom field) values in the "custom_fields" object using field codes as keys.',
             CustomFieldOptionMap::choiceRule(),
             'Filter list tools with the "filter" param. Names, operands and options are listed in filterable_fields.',
             EntityFilters::CUSTOM_FIELDS_RULE,
@@ -59,7 +62,7 @@ final readonly class CustomFieldSchema
                 ->where('tenant_id', $workspaceId)
                 ->where('entity_type', $entity->value)
                 ->active()
-                ->select('id', 'code', 'name', 'type', 'validation_rules')
+                ->select('id', 'entity_type', 'code', 'name', 'type', 'validation_rules')
                 ->with(['options:id,custom_field_id,name'])
                 ->get();
 
@@ -101,7 +104,7 @@ final readonly class CustomFieldSchema
                 'name' => $field->name,
                 'type' => $field->type,
                 'required' => $required,
-                'input_format' => $type->inputFormat(),
+                'input_format' => $this->inputFormat($field, $type),
                 'example' => $type->example(),
             ];
 
@@ -116,5 +119,20 @@ final readonly class CustomFieldSchema
         }
 
         return $result;
+    }
+
+    private function inputFormat(CustomField $field, CustomFieldType $type): string
+    {
+        $parts = [$type->inputFormat()];
+
+        if ($type === CustomFieldType::RICH_EDITOR) {
+            $parts[] = self::RICH_TEXT_READ_FORMAT;
+        }
+
+        if ($field->holdsChecklists()) {
+            $parts = [...$parts, TaskField::CHECKLIST_INPUT_FORMAT, TaskField::CHECKLIST_HTML_READ_FORMAT];
+        }
+
+        return implode('; ', $parts);
     }
 }

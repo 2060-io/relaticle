@@ -2,16 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Contracts\Billing as BillingContract;
 use App\Enums\Plan;
-use App\Features\Billing;
-use App\Filament\Pages\Billing as BillingPage;
 use App\Models\Notification as NotificationRow;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\NoBilling;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
-use Laravel\Pennant\Feature;
 use Relaticle\EmailIntegration\Actions\MarkEmailsSendFailedAction;
 use Relaticle\EmailIntegration\Actions\SyncEmailBatchCountersAction;
 use Relaticle\EmailIntegration\Console\Commands\DispatchOutboxCommand;
@@ -80,7 +79,7 @@ it('fails due queued mail on a mailbox that needs reconnecting and tells the sen
 
         return $notification->facts()['count'] === 2
             && $presented->getTitle() === '2 emails not sent'
-            && $presented->getBody() === 'Their mailbox needs reconnecting. Reconnect it, then retry them from the Failed tab.'
+            && $presented->getBody() === 'Their mailbox needs reconnecting. Reconnect it, then retry them from the outbox.'
             && $presented->getActions()[0]->getUrl() === EmailAccountsPage::getUrl(panel: 'app', tenant: $this->workspace);
     });
 });
@@ -163,7 +162,7 @@ it('keeps sending due mail on an active mailbox', function (): void {
 });
 
 it('fails due mail in a paused workspace and sends the sender to billing', function (): void {
-    Feature::define(Billing::class, true);
+    withHostedBilling();
     $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
     $due = ($this->queue)();
     $later = ($this->queue)(['scheduled_for' => now()->addDay()]);
@@ -181,13 +180,23 @@ it('fails due mail in a paused workspace and sends the sender to billing', funct
         $workspaceName = e($this->workspace->name);
 
         return $notification->facts()['remedy'] === SendFailureRemedy::Subscribe->value
-            && $presented->getBody() === "\"{$due->subject}\" was not sent because {$workspaceName} is paused. Once the workspace is reopened, retry the email from the Failed tab."
-            && $presented->getActions()[0]->getUrl() === BillingPage::getUrl(panel: 'app', tenant: $this->workspace);
+            && $presented->getBody() === "\"{$due->subject}\" was not sent because {$workspaceName} is paused. Once the workspace is reopened, retry the email from the outbox."
+            && $presented->getActions()[0]->getUrl() === route('filament.app.pages.billing', ['tenant' => $this->workspace->slug]);
     });
 });
 
+it('presents a stored subscribe remedy without a button once billing has no page', function (): void {
+    app()->instance(BillingContract::class, new NoBilling);
+    $notification = new EmailSendFailedNotification($this->workspace, $this->account, 1, 'Hello', SendFailureRemedy::Subscribe, 'g', 0);
+
+    $presented = presentedSendFailure($notification, $this->user, $this->workspace);
+
+    expect($presented->getActions())->toBe([])
+        ->and($presented->getBody())->toContain('paused');
+});
+
 it('holds due mail in a paused workspace when failing it throws', function (): void {
-    Feature::define(Billing::class, true);
+    withHostedBilling();
     $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
     $email = ($this->queue)();
     Email::updating(fn (): never => throw new RuntimeException('database unavailable'));
@@ -199,7 +208,7 @@ it('holds due mail in a paused workspace when failing it throws', function (): v
 });
 
 it('sends due mail in a workspace whose trial is running', function (): void {
-    Feature::define(Billing::class, true);
+    withHostedBilling();
     $this->workspace->forceFill(['plan' => Plan::Pro, 'trial_ends_at' => now()->addDays(5)])->save();
     $this->account->update(['status' => EmailAccountStatus::ACTIVE]);
     $email = ($this->queue)();

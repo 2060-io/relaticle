@@ -12,6 +12,7 @@ use App\Models\CustomFieldValue;
 use App\Models\User;
 use App\Support\CustomFieldDefinitionValidator;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Number;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -40,7 +41,7 @@ final class DeleteCustomFieldTool implements Tool
 
     public function description(): string
     {
-        return 'Propose permanently deleting custom field definitions. Deleting a field also deletes its options and every value records hold for it, and cannot be undone. Owners and admins only. A system-defined field cannot be deleted. An active field that records still hold values for cannot be deleted either: deactivate it first with UpdateCustomFieldTool, then delete it. Call ListCustomFieldsTool first to get the field\'s code. Returns a proposal for user approval.';
+        return 'Propose permanently deleting custom attribute (custom field) definitions. Deleting a field also deletes its options and every value records hold for it, and cannot be undone. Owners and admins only. A system-defined field cannot be deleted. An active field that records still hold values for cannot be deleted either: deactivate it first with UpdateCustomFieldTool, then delete it. Call ListCustomFieldsTool first to get the field\'s code. Returns a proposal for user approval.';
     }
 
     public function schema(JsonSchema $schema): array
@@ -52,7 +53,7 @@ final class DeleteCustomFieldTool implements Tool
                         ->description('The CRM entity the field belongs to: company, people, opportunity, task, or note.')
                         ->required(),
                     'code' => $schema->string()
-                        ->description('The machine code of the custom field to delete, as ListCustomFieldsTool returns it (e.g. "industry").')
+                        ->description('The machine code of the custom attribute (custom field) to delete, as ListCustomFieldsTool returns it (e.g. "industry").')
                         ->required(),
                 ]))
                 ->required()
@@ -110,7 +111,7 @@ final class DeleteCustomFieldTool implements Tool
             $field = $this->resolveOwnedCustomField($workspaceId, $entityType, $code);
 
             if (! $field instanceof CustomField) {
-                return (string) json_encode(['error' => "records[{$index}]: No custom field with code \"{$code}\" found on {$entityType}."], JSON_UNESCAPED_SLASHES);
+                return (string) json_encode(['error' => "records[{$index}]: No custom attribute (custom field) with code \"{$code}\" found on {$entityType}."], JSON_UNESCAPED_SLASHES);
             }
 
             if (isset($fields[$field->getKey()])) {
@@ -150,8 +151,8 @@ final class DeleteCustomFieldTool implements Tool
                 ],
             displayData: $isBatch
                 ? [
-                    'title' => __('Delete Custom Fields'),
-                    'summary' => __('Delete :count custom fields', ['count' => count($items)]),
+                    'title' => __('Delete Custom Attributes'),
+                    'summary' => __('Delete :count custom attributes', ['count' => count($items)]),
                     'items' => $items,
                 ]
                 : $items[0],
@@ -177,7 +178,7 @@ final class DeleteCustomFieldTool implements Tool
             ['label' => __('Record type'), 'value' => CrmEntity::from((string) $field->entity_type)->singularName()],
             ['label' => __('Values deleted'), 'value' => $holders === 0
                 ? __('None. No record holds a value for it.')
-                : trans_choice('{1} The value on :count record|[2,*] The values on :count records', $holders, ['count' => number_format($holders)])],
+                : trans_choice('{1} The value on :count record|[2,*] The values on :count records', $holders, ['count' => Number::format($holders)])],
         ];
 
         if ($options !== []) {
@@ -185,8 +186,8 @@ final class DeleteCustomFieldTool implements Tool
         }
 
         return [
-            'title' => __('Delete Custom Field'),
-            'summary' => __('Delete custom field ":name"', ['name' => $field->name]),
+            'title' => __('Delete Custom Attribute'),
+            'summary' => __('Delete custom attribute ":name"', ['name' => $field->name]),
             'fields' => $rows,
         ];
     }

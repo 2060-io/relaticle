@@ -81,7 +81,7 @@ it('proposes renaming a custom field and updates name on approval', function ():
         ->and($decoded['operation'])->toBe('update')
         ->and($decoded['entity_type'])->toBe('custom_field')
         ->and($decoded['meta']['agent_should_stop'])->toBeTrue()
-        ->and(array_keys($decoded))->toBe(['type', 'pending_action_id', 'turn_id', 'action', 'entity_type', 'operation', 'data', 'display', 'meta']);
+        ->and(array_keys($decoded))->toBe(['type', 'pending_action_id', 'turn_id', 'action', 'entity_type', 'operation', 'data', 'display', 'summary', 'meta']);
 
     $pending = PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail();
 
@@ -296,7 +296,7 @@ it('batches several field definitions into one per-item proposal', function (): 
     expect($result['data']['_batch'])->toBeTrue()
         ->and($pending->action_data['records'])->toHaveCount(2)
         ->and($pending->action_data['records'][1]['_model_class'])->toBe(CustomField::class)
-        ->and($pending->display_data['summary'])->toBe('Update 2 custom fields');
+        ->and($pending->display_data['summary'])->toBe('Update 2 custom attributes');
 
     $service = resolve(PendingActionService::class);
     $service->approveItem($pending, $this->owner, 0);
@@ -389,8 +389,8 @@ it('refuses settings the panel locks once a field exists', function (): void {
         ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
 });
 
-it('refuses to make an encrypted field searchable, as the panel hides the toggle', function (): void {
-    $this->field->update(['settings' => new CustomFieldSettingsData(encrypted: true)]);
+it('refuses the retired searchable setting on a :dataset field', function (bool $encrypted): void {
+    $this->field->update(['settings' => new CustomFieldSettingsData(encrypted: $encrypted)]);
 
     $result = makeUpdateFieldTool($this->convId)->handle(new Request(['records' => [[
         'entity_type' => 'company',
@@ -398,8 +398,34 @@ it('refuses to make an encrypted field searchable, as the panel hides the toggle
         'settings' => ['searchable' => true],
     ]]]));
 
-    expect($result)->toContain('searchable')
+    expect($result)->toContain('does not accept: searchable')
         ->and(PendingAction::query()->where('conversation_id', $this->convId)->count())->toBe(0);
+})->with([
+    'plain' => false,
+    'encrypted' => true,
+]);
+
+it('keeps a stored searchable value when another setting changes', function (): void {
+    $this->field->update(['settings' => new CustomFieldSettingsData(searchable: true)]);
+
+    $result = makeUpdateFieldTool($this->convId)->handle(new Request(['records' => [[
+        'entity_type' => 'company',
+        'code' => $this->field->code,
+        'settings' => ['visible_in_list' => false],
+    ]]]));
+
+    $pending = PendingAction::query()->where('conversation_id', $this->convId)->firstOrFail();
+    resolve(PendingActionService::class)->approve($pending, $this->owner);
+
+    $settings = $this->field->fresh()->settings;
+
+    expect($result)->toContain('pending_action')
+        ->and($settings->visible_in_list)->toBeFalse()
+        ->and($settings->searchable)->toBeTrue();
+});
+
+it('does not describe a search setting to the model', function (): void {
+    expect(makeUpdateFieldTool($this->convId)->description())->not->toContain('search');
 });
 
 it('refuses a setting value the panel does not offer', function (string $type, array $settings, string $key): void {

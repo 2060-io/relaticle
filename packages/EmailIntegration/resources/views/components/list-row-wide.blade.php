@@ -22,11 +22,11 @@
     $sentAt = $email->sentAtForViewer();
     $timestamp = match (true) {
         $sentAt === null          => null,
-        $sentAt->isToday()        => $sentAt->format('g:i A'),
-        $sentAt->isYesterday()    => __('filament/pages/email-inbox.list_row.timestamp_yesterday', ['time' => $sentAt->format('g:i A')]),
-        $sentAt->diffInDays() < 7 => $sentAt->format('D'),
-        $sentAt->isCurrentYear()  => $sentAt->format('M j'),
-        default                   => $sentAt->format('M j, Y'),
+        $sentAt->isToday()        => $sentAt->isoFormat('LT'),
+        $sentAt->isYesterday()    => __('filament/pages/email-inbox.list_row.timestamp_yesterday', ['time' => $sentAt->isoFormat('LT')]),
+        $sentAt->diffInDays() < 7 => $sentAt->isoFormat('ddd'),
+        $sentAt->isCurrentYear()  => $sentAt->isoFormat(__('formats.iso.date_without_year')),
+        default                   => $sentAt->isoFormat('ll'),
     };
 
     $participantLine = collect([EmailParticipantRole::FROM, EmailParticipantRole::TO])
@@ -38,14 +38,6 @@
         ->implode(', ');
 
     $participantLine = $participantLine ?: $senderName;
-
-    $avatarColor = ['primary', 'success', 'warning', 'danger', 'info'][crc32(mb_strtolower($senderName)) % 5];
-
-    $initials = collect(explode(' ', trim($senderName)))
-        ->filter()
-        ->take(2)
-        ->map(fn (string $word): string => mb_strtoupper(mb_substr($word, 0, 1)))
-        ->implode('');
 
     $decode = fn (?string $text): string => html_entity_decode((string) $text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
@@ -82,15 +74,7 @@
         </span>
     @endif
 
-    <span
-        @class([
-            'flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-[11px] font-semibold ring-1 ring-inset ring-white/60 dark:bg-gray-800 dark:text-gray-200 dark:ring-white/10',
-            '[background-color:color-mix(in_oklab,var(--color-500)_14%,transparent)] [color:var(--color-600)]',
-            'fi-color-'.$avatarColor,
-        ])
-    >
-        {{ $initials ?: '?' }}
-    </span>
+    <x-email-integration::person-avatar :src="$email->senderMemberAvatarUrl()" :alt="$senderName" />
 
     <span class="min-w-0 flex-1">
         <span class="flex items-center justify-between gap-3">
@@ -107,7 +91,7 @@
                         x-on:click.stop
                         class="relative flex min-w-0 items-center gap-1 text-gray-500 dark:text-gray-400"
                     >
-                        <x-heroicon-m-envelope class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                        <x-lucide-mail class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
                         <span class="whitespace-nowrap">{{ trans_choice('filament/pages/email-inbox.list_row.via_mailboxes', count($email->accessMailboxes), ['count' => count($email->accessMailboxes)]) }}</span>
                         <span
                             x-cloak
@@ -132,18 +116,18 @@
                     </span>
                 @elseif (filled($mailboxViaName))
                     <span class="flex min-w-0 items-center gap-1 text-gray-500 dark:text-gray-400">
-                        <x-heroicon-m-envelope class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                        <x-lucide-mail class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
                         <span class="max-w-[7rem] truncate" title="{{ $mailboxViaName }}">{{ __('filament/pages/email-inbox.list_row.via', ['name' => $mailboxViaName]) }}</span>
                     </span>
                 @endif
 
                 <span class="flex items-center gap-1.5 whitespace-nowrap">
                     @if ($email->has_attachments)
-                        <x-heroicon-m-paper-clip class="h-3.5 w-3.5" aria-hidden="true" />
+                        <x-lucide-paperclip class="h-3.5 w-3.5" aria-hidden="true" />
                     @endif
                     <time
                         class="tabular-nums"
-                        title="{{ $sentAt?->format('M j, Y · g:i A') }}"
+                        title="{{ $sentAt?->isoFormat('ll · LT') }}"
                     >{{ $timestamp }}</time>
                 </span>
             </span>
@@ -158,9 +142,9 @@
                 @if (filled($snippet))
                     <span class="flex min-w-0 items-center gap-1 truncate text-xs leading-5 text-gray-500 dark:text-gray-400">
                         @if ($isReply)
-                            <x-ri-reply-line class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                            <x-lucide-reply class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
                         @else
-                            <x-ri-file-text-line class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                            <x-lucide-file-text class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
                         @endif
                         <span class="truncate">{{ $snippet }}</span>
                     </span>

@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace Relaticle\ImportWizard\Filament\Pages;
 
 use App\Filament\Pages\Concerns\HasWorkspaceSettingsNavigation;
+use App\Models\User;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Pages\Page;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\URL;
+use Relaticle\ImportWizard\Actions\MarkImportFailed;
 use Relaticle\ImportWizard\Enums\ImportEntityType;
 use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Models\Import;
@@ -26,22 +27,35 @@ final class ImportHistory extends Page implements HasTable
 
     protected string $view = 'import-wizard-new::filament.pages.import-history';
 
-    /**
-     * How long an import may sit untouched before the recovery action appears. Comfortably
-     * longer than the job's own timeout plus its retries, so a run that is merely slow is
-     * never offered up as stalled.
-     */
-    private const int STALLED_AFTER_MINUTES = 30;
-
-    protected static string|null|BackedEnum $navigationIcon = Heroicon::OutlinedClock;
-
-    protected static ?string $navigationLabel = 'Import History';
-
-    protected static ?string $title = 'Import History';
+    protected static string|null|BackedEnum $navigationIcon = 'lucide-clock';
 
     protected static ?int $navigationSort = 100;
 
     protected static bool $shouldRegisterNavigation = false;
+
+    public static function getNavigationLabel(): string
+    {
+        return __('import-wizard-new::history.title');
+    }
+
+    public function getTitle(): string
+    {
+        return __('import-wizard-new::history.title');
+    }
+
+    public static function canAccess(): bool
+    {
+        return ImportPage::canAccess();
+    }
+
+    private function actingUser(): User
+    {
+        $user = auth()->user();
+
+        abort_unless($user instanceof User, 403);
+
+        return $user;
+    }
 
     public function table(Table $table): Table
     {
@@ -54,13 +68,13 @@ final class ImportHistory extends Page implements HasTable
             )
             ->columns([
                 TextColumn::make('entity_type')
-                    ->label('Type')
+                    ->label(__('import-wizard-new::history.columns.type'))
                     ->badge()
                     ->formatStateUsing(fn (ImportEntityType $state): string => $state->label())
                     ->icon(fn (ImportEntityType $state): string => $state->icon()),
 
                 TextColumn::make('file_name')
-                    ->label('File')
+                    ->label(__('import-wizard-new::history.columns.file'))
                     ->searchable()
                     ->limit(30),
 
@@ -74,34 +88,34 @@ final class ImportHistory extends Page implements HasTable
                     }),
 
                 TextColumn::make('total_rows')
-                    ->label('Total')
+                    ->label(__('import-wizard-new::history.columns.total'))
                     ->numeric(),
 
                 TextColumn::make('created_rows')
-                    ->label('Created')
+                    ->label(__('import-wizard-new::history.columns.created'))
                     ->numeric()
                     ->color('success'),
 
                 TextColumn::make('updated_rows')
-                    ->label('Updated')
+                    ->label(__('import-wizard-new::history.columns.updated'))
                     ->numeric()
                     ->color('info'),
 
                 TextColumn::make('skipped_rows')
-                    ->label('Skipped')
+                    ->label(__('import-wizard-new::history.columns.skipped'))
                     ->numeric()
                     ->color('gray'),
 
                 TextColumn::make('failed_rows')
-                    ->label('Failed')
+                    ->label(__('import-wizard-new::history.columns.failed'))
                     ->numeric()
                     ->color('danger'),
 
                 TextColumn::make('user.name')
-                    ->label('User'),
+                    ->label(__('import-wizard-new::history.columns.user')),
 
                 TextColumn::make('created_at')
-                    ->label('Date')
+                    ->label(__('import-wizard-new::history.columns.date'))
                     ->since()
                     ->dateTimeTooltip()
                     ->sortable(),
@@ -111,16 +125,14 @@ final class ImportHistory extends Page implements HasTable
                     ->options(ImportEntityType::class),
 
                 SelectFilter::make('status')
-                    ->options([
-                        ImportStatus::Completed->value => 'Completed',
-                        ImportStatus::Failed->value => 'Failed',
-                        ImportStatus::Importing->value => 'Importing',
-                    ]),
+                    ->options(collect([ImportStatus::Completed, ImportStatus::Failed, ImportStatus::Importing])
+                        ->mapWithKeys(fn (ImportStatus $status): array => [$status->value => $status->getLabel()])
+                        ->all()),
             ])
             ->actions([
                 Action::make('downloadFailedRows')
-                    ->label('Failed Rows')
-                    ->icon(Heroicon::OutlinedArrowDownTray)
+                    ->label(__('import-wizard-new::history.actions.failed_rows'))
+                    ->icon('lucide-download')
                     ->color('danger')
                     ->url(fn (Import $record): string => URL::temporarySignedRoute(
                         'import-history.failed-rows.download',
@@ -134,14 +146,13 @@ final class ImportHistory extends Page implements HasTable
                 // record in that state, so the user is stuck with a spinner and no recourse.
                 // Only offered once the run is old enough that it cannot still be working.
                 Action::make('markFailed')
-                    ->label('Mark as failed')
-                    ->icon(Heroicon::OutlinedExclamationTriangle)
+                    ->label(__('import-wizard-new::history.actions.mark_failed'))
+                    ->icon('lucide-triangle-exclamation-point')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->modalDescription('This import stopped responding. Marking it failed lets you start a new one from the same file.')
-                    ->action(fn (Import $record) => $record->update(['status' => ImportStatus::Failed]))
-                    ->visible(fn (Import $record): bool => $record->status === ImportStatus::Importing
-                        && $record->updated_at?->lt(now()->subMinutes(self::STALLED_AFTER_MINUTES)) === true),
+                    ->modalDescription(__('import-wizard-new::history.actions.mark_failed_description'))
+                    ->action(fn (Import $record): Import => resolve(MarkImportFailed::class)->execute($this->actingUser(), $record))
+                    ->visible(fn (Import $record): bool => $record->isStalled()),
             ])
             ->defaultSort('created_at', 'desc')
             ->poll('10s');

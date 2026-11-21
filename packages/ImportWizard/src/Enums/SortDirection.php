@@ -15,16 +15,16 @@ enum SortDirection: string implements HasIcon, HasLabel
     public function getLabel(): string
     {
         return match ($this) {
-            self::Desc => 'Descending',
-            self::Asc => 'Ascending',
+            self::Desc => __('enums/sort-direction.desc'),
+            self::Asc => __('enums/sort-direction.asc'),
         };
     }
 
     public function getIcon(): string
     {
         return match ($this) {
-            self::Desc => 'heroicon-o-bars-arrow-down',
-            self::Asc => 'heroicon-o-bars-arrow-up',
+            self::Desc => 'lucide-arrow-down-wide-narrow',
+            self::Asc => 'lucide-arrow-up-narrow-wide',
         };
     }
 }
