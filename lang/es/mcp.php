@@ -12,6 +12,7 @@ return [
         'intro' => [
             'one' => ':client solicita conectarse a :workspace.',
             'choose' => ':client solicita conectarse a uno de sus espacios de trabajo.',
+            'requested' => ':client solicita conectarse a un espacio de trabajo del que usted no es miembro.',
         ],
         'redirect' => 'Después de autorizar, volverá a :host. Continúe solo si confía en ese sitio.',
         'signed_in_as' => 'Sesión iniciada como :email.',
@@ -27,6 +28,16 @@ return [
             'none' => [
                 'heading' => 'No pertenece a ningún espacio de trabajo.',
                 'description' => 'Cree un espacio de trabajo o únase a uno en Relaticle antes de autorizar este conector.',
+            ],
+            'requested' => [
+                'not_member' => [
+                    'heading' => 'Usted no es miembro del espacio de trabajo que solicita :client.',
+                    'description' => ':client solo puede conectarse a ese espacio de trabajo, así que solo puede cancelar. Pida a un propietario del espacio de trabajo que lo invite, o inicie sesión con la cuenta que es miembro.',
+                ],
+                'paused' => [
+                    'heading' => ':workspace está en pausa.',
+                    'description' => ':client solo puede conectarse a este espacio de trabajo, así que solo puede cancelar. Suscríbase primero a un plan de Cloud: un conector autorizado en un espacio de trabajo en pausa no puede leer ni escribir datos.',
+                ],
             ],
         ],
 

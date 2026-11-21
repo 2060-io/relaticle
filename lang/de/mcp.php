@@ -12,6 +12,7 @@ return [
         'intro' => [
             'one' => ':client möchte sich mit :workspace verbinden.',
             'choose' => ':client möchte sich mit einem Ihrer Arbeitsbereiche verbinden.',
+            'requested' => ':client möchte sich mit einem Arbeitsbereich verbinden, dem Sie nicht angehören.',
         ],
         'redirect' => 'Nach der Autorisierung gelangen Sie zurück zu :host. Fahren Sie nur fort, wenn Sie dieser Website vertrauen.',
         'signed_in_as' => 'Angemeldet als :email.',
@@ -27,6 +28,16 @@ return [
             'none' => [
                 'heading' => 'Sie gehören keinem Arbeitsbereich an.',
                 'description' => 'Erstellen Sie einen Arbeitsbereich in Relaticle oder treten Sie einem bei, bevor Sie diesen Konnektor autorisieren.',
+            ],
+            'requested' => [
+                'not_member' => [
+                    'heading' => 'Sie gehören dem Arbeitsbereich nicht an, den :client anfragt.',
+                    'description' => ':client kann sich nur mit diesem einen Arbeitsbereich verbinden, Sie können also nur abbrechen. Bitten Sie einen Inhaber des Arbeitsbereichs um eine Einladung, oder melden Sie sich mit dem Konto an, das ihm angehört.',
+                ],
+                'paused' => [
+                    'heading' => ':workspace ist pausiert.',
+                    'description' => ':client kann sich nur mit diesem Arbeitsbereich verbinden, Sie können also nur abbrechen. Schließen Sie zuerst einen Cloud-Tarif ab: Ein Konnektor, der für einen pausierten Arbeitsbereich autorisiert wurde, kann keine Daten lesen oder schreiben.',
+                ],
             ],
         ],
 

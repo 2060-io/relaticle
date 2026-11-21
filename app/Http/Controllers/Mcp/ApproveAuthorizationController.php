@@ -9,6 +9,7 @@ use App\Enums\EmailGrant;
 use App\Enums\WorkspaceCapability;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\Mcp\RequestedWorkspace;
 use Illuminate\Http\Request;
 use Laravel\Mcp\Server\Registrar;
 use Laravel\Passport\Bridge\Scope;
@@ -19,7 +20,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * MCP-aware approve handler. Validates that the user has selected exactly one
- * workspace they belong to, stashes the workspace_id in the session so the AuthCode
+ * workspace they belong to, and the one the client named when its authorization request
+ * named one (RequestedWorkspace), stashes the workspace_id in the session so the AuthCode
  * model's creating hook can persist it, then completes the request. Email scopes come
  * from the user's role in that workspace, never from what the client asked for, and a
  * record scope the role lacks is dropped.
@@ -31,6 +33,14 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
         $validated = $request->validate([
             'workspace_id' => ['required', 'string', 'size:26'],
         ]);
+
+        // The consent offered only the workspace the client named; a form posted for another
+        // one was tampered with, or belongs to another consent screen of this session.
+        abort_if(
+            RequestedWorkspace::refuses($request->session(), $request->input('auth_token'), $validated['workspace_id']),
+            403,
+            'This connector asked for another workspace.',
+        );
 
         /** @var User $user */
         $user = $request->user();
@@ -61,6 +71,7 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
             ), $authRequest->getGrantTypeId() === 'implicit');
         } finally {
             $request->session()->forget('mcp.oauth.workspace_id');
+            RequestedWorkspace::forget($request->session());
         }
     }
 

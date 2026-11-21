@@ -138,6 +138,7 @@ When the websocket is unreachable, the chat still works. Each reply appears a fe
 | `GOOGLE_REDIRECT_URI` | Absolute callback URL (`https://your-host/auth/callback/google`), or a relative path (`/auth/callback/google`) to derive the host from the request. |
 | `MICROSOFT_CLIENT_ID` | Microsoft Entra ID client id. The Microsoft button appears only when this is set; register `https://your-host/auth/callback/microsoft` as the redirect URI. |
 | `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID client secret. |
+| `MCP_REDIRECT_DOMAINS` | Comma-separated https origins (`https://agent.example.com`) on which an MCP client registered through `/oauth/register` may receive the authorization, on top of claude.ai, chatgpt.com, console.mistral.ai, perplexity.ai and localhost. The redirect URI must be on exactly that host, on port 443. An entry that is not an https origin on port 443 (a path, plain http, another port, a wildcard, `*`) is ignored and logged as a warning when a client registers. |
 | `SENTRY_LARAVEL_DSN` | Sentry DSN for error tracking. |
 | `FATHOM_ANALYTICS_SITE_ID` | Fathom Analytics site ID. |
 

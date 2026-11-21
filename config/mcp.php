@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Support\Mcp\RedirectDomains;
+
 return [
 
     /*
@@ -15,16 +17,24 @@ return [
     |
     | An "*" may be used to allow all domains.
     |
+    | A deployment adds its own through MCP_REDIRECT_DOMAINS, a comma-separated
+    | list of https origins on port 443 (https://agent.example.com). An entry
+    | that is not one, "*" included, is ignored and logged when a client
+    | registers. A redirect URI matches a domain on its exact host.
+    |
     */
 
-    'redirect_domains' => [
+    'redirect_domains' => array_values(array_unique([
         'https://claude.ai',
         'https://chatgpt.com',
         'https://console.mistral.ai',
         'https://www.perplexity.ai',
         'https://enterprise.perplexity.ai',
         'http://localhost',
-    ],
+        ...RedirectDomains::origins((string) env('MCP_REDIRECT_DOMAINS', '')),
+    ])),
+
+    'ignored_redirect_domains' => RedirectDomains::ignored((string) env('MCP_REDIRECT_DOMAINS', '')),
 
     /*
     |--------------------------------------------------------------------------

@@ -12,6 +12,7 @@ return [
         'intro' => [
             'one' => ':client demande à se connecter à :workspace.',
             'choose' => ':client demande à se connecter à l\'un de vos espaces de travail.',
+            'requested' => ':client demande à se connecter à un espace de travail dont vous n\'êtes pas membre.',
         ],
         'redirect' => 'Après votre autorisation, vous retournerez sur :host. Continuez uniquement si vous faites confiance à ce site.',
         'signed_in_as' => 'Connecté en tant que :email.',
@@ -27,6 +28,16 @@ return [
             'none' => [
                 'heading' => 'Vous n\'appartenez à aucun espace de travail.',
                 'description' => 'Créez ou rejoignez un espace de travail dans Relaticle avant d\'autoriser ce connecteur.',
+            ],
+            'requested' => [
+                'not_member' => [
+                    'heading' => 'Vous n\'êtes pas membre de l\'espace de travail que demande :client.',
+                    'description' => ':client ne peut se connecter qu\'à cet espace de travail, vous pouvez donc seulement annuler. Demandez à un propriétaire de l\'espace de travail de vous inviter, ou connectez-vous avec le compte qui en est membre.',
+                ],
+                'paused' => [
+                    'heading' => ':workspace est en pause.',
+                    'description' => ':client ne peut se connecter qu\'à cet espace de travail, vous pouvez donc seulement annuler. Abonnez-vous d\'abord à une offre Cloud : un connecteur autorisé sur un espace de travail en pause ne peut lire ni écrire aucune donnée.',
+                ],
             ],
         ],
 

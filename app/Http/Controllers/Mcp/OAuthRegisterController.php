@@ -4,11 +4,32 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Mcp;
 
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Laravel\Mcp\Server\Http\Controllers\OAuthRegisterController as BaseOAuthRegisterController;
 
 final class OAuthRegisterController extends BaseOAuthRegisterController
 {
     private const array LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+    /**
+     * Fork: reports the MCP_REDIRECT_DOMAINS entries config/mcp.php ignored for not being
+     * https origins, at the one moment they matter: a client registration they could have
+     * let through. Logging them on every request instead would flood a healthy log.
+     */
+    public function __invoke(Request $request): JsonResponse
+    {
+        $ignored = config('mcp.ignored_redirect_domains', []);
+
+        if (is_array($ignored) && $ignored !== []) {
+            Log::warning('MCP_REDIRECT_DOMAINS: ignored the entries that are not https origins; no client can register a redirect URI on them.', [
+                'ignored' => array_values($ignored),
+            ]);
+        }
+
+        return parent::__invoke($request);
+    }
 
     protected function isValidRedirectUri(string $value): bool
     {
