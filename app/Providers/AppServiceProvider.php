@@ -14,6 +14,7 @@ use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
 use App\Filament\CustomFields\DomainFieldType;
 use App\Filament\CustomFields\RichEditorFieldType;
+use App\Http\Controllers\Mcp\RegisterClientController;
 use App\Http\Middleware\ReadAcrossWorkspaces;
 use App\Http\Responses\LoginResponse;
 use App\Jobs\CompleteExport;
@@ -62,6 +63,7 @@ use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
 use App\Support\Mail\ParksInactiveRecipientsTransport;
 use App\Support\Markdown\TableAwareLeagueDriver;
+use App\Support\Mcp\RequestedWorkspace;
 use App\Support\Media\MediaLookup;
 use App\Support\Migrations\TenantMigration;
 use App\Support\Passport\ClientRepository;
@@ -114,6 +116,7 @@ use Knuckles\Scribe\Scribe;
 use Laravel\Cashier\Cashier;
 use Laravel\Cashier\Events\WebhookHandled;
 use Laravel\Jetstream\Events\TeamMemberAdded;
+use Laravel\Mcp\Server\Http\Controllers\OAuthRegisterController;
 use Laravel\Passport\AccessToken as PassportAccessToken;
 use Laravel\Passport\ClientRepository as BaseClientRepository;
 use Laravel\Passport\Events\AccessTokenCreated;
@@ -244,6 +247,10 @@ final class AppServiceProvider extends ServiceProvider
         // A device-approved token would skip ApproveAuthorizationController, which derives
         // the email scopes from the user's role. Passport reads this when it boots.
         Passport::$deviceCodeGrantEnabled = false;
+
+        // Registers clients as laravel/mcp does, and logs the MCP_REDIRECT_DOMAINS entries
+        // it ignored when a client registers.
+        $this->app->bind(OAuthRegisterController::class, RegisterClientController::class);
     }
 
     private function registerParkingMailTransport(): void
@@ -329,7 +336,23 @@ final class AppServiceProvider extends ServiceProvider
         Passport::authorizationView(function (array $parameters) {
             $user = $parameters['user'] ?? null;
 
+            /** @var Request $request */
+            $request = $parameters['request'];
+
+            // A client may name the one workspace it must be connected to. The consent then
+            // offers that workspace alone, or none when the user is not a member of it, and
+            // the approval refuses any other (ApproveAuthorizationController).
+            $requestedWorkspaceId = RequestedWorkspace::of($request);
+            RequestedWorkspace::bind($request->session(), (string) $parameters['authToken'], $requestedWorkspaceId);
+
             $workspaces = $user instanceof User ? $user->allWorkspaces() : collect();
+
+            if ($requestedWorkspaceId !== null) {
+                $workspaces = $workspaces
+                    ->filter(fn (Workspace $workspace): bool => (string) $workspace->getKey() === $requestedWorkspaceId)
+                    ->values();
+            }
+
             $access = resolve(HostedWorkspaceAccess::class);
 
             // Re-read the workspaces with their subscriptions eager-loaded: isPaused() reaches
@@ -346,6 +369,7 @@ final class AppServiceProvider extends ServiceProvider
                 ->all();
 
             $parameters['workspaces'] = $workspaces;
+            $parameters['requestsWorkspace'] = $requestedWorkspaceId !== null;
             $parameters['pausedWorkspaceIds'] = $pausedWorkspaceIds;
             $parameters['redirectHost'] = $this->consentRedirectHost($parameters);
 
@@ -353,7 +377,7 @@ final class AppServiceProvider extends ServiceProvider
             // approve a token that answers 402 on every call.
             $currentWorkspaceId = $user?->currentWorkspace?->getKey();
 
-            $parameters['selectedWorkspaceId'] = is_string($currentWorkspaceId) && ! in_array($currentWorkspaceId, $pausedWorkspaceIds, true)
+            $parameters['selectedWorkspaceId'] = $requestedWorkspaceId === null && is_string($currentWorkspaceId) && ! in_array($currentWorkspaceId, $pausedWorkspaceIds, true)
                 ? $currentWorkspaceId
                 : $workspaces->first(fn (Workspace $workspace): bool => ! in_array((string) $workspace->getKey(), $pausedWorkspaceIds, true))?->getKey();
 
