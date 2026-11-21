@@ -7,15 +7,20 @@ use App\Features\EmailIntegration;
 use App\Http\Controllers\Mcp\ApproveAuthorizationController;
 use App\Http\Middleware\RequireConsent;
 use App\Http\Middleware\SetApiWorkspaceContext;
+use App\Http\Responses\LoginResponse;
 use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
 use App\Mcp\Servers\RelaticleServer;
 use App\Mcp\Tools\WhoAmiTool;
 use App\Models\Passport\AuthCode;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\Mcp\RequestedWorkspace;
 use App\Support\Passport\WorkspaceBearerTokenResponse;
+use Filament\Facades\Filament;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Client;
 use Laravel\Passport\Passport;
 use Laravel\Pennant\Feature;
@@ -30,6 +35,7 @@ mutates(
     CopyWorkspaceIdToAccessToken::class,
     SetApiWorkspaceContext::class,
     WorkspaceBearerTokenResponse::class,
+    RequestedWorkspace::class,
 );
 
 beforeEach(function (): void {
@@ -1136,4 +1142,193 @@ it('keeps the email tools away from a connector while the email feature is off',
 
     expect(listedTools($tokens['access_token']))->not->toContain('list-emails-tool')
         ->not->toContain('get-email-tool');
+});
+
+/** Approve the consent screen the session holds, for the given workspace. */
+function approveConsentFor(Client $client, Workspace $workspace): TestResponse
+{
+    return test()->post('/oauth/authorize', [
+        'state' => 'test-state',
+        'client_id' => $client->getKey(),
+        'auth_token' => session('authToken'),
+        'workspace_id' => $workspace->getKey(),
+    ]);
+}
+
+/**
+ * The workspace fields of the approve form, as "<type> <value>": the script of the page also
+ * names the field, so matching the bare attribute would find it there.
+ *
+ * @return list<string>
+ */
+function offeredWorkspaceFields(string $content): array
+{
+    preg_match_all('/<input\b[^>]*\bname="workspace_id"[^>]*>/', $content, $fields);
+
+    return array_map(function (string $field): string {
+        preg_match('/\btype="([^"]+)"/', $field, $type);
+        preg_match('/\bvalue="([^"]*)"/', $field, $value);
+
+        return ($type[1] ?? '').' '.($value[1] ?? '');
+    }, $fields[0]);
+}
+
+function authorizeButtonIsDisabled(string $content): bool
+{
+    return preg_match('/<button type="submit" disabled[^>]*id="authorizeButton"/', $content) === 1;
+}
+
+it('offers only the workspace the client names, not the user\'s current one', function (): void {
+    $this->actingAs($this->user);
+
+    $content = (string) $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]))
+        ->assertOk()
+        ->assertSee("Test MCP Client is asking to connect to {$this->otherWorkspace->name}.")
+        ->assertDontSee($this->personalWorkspace->name)
+        ->getContent();
+
+    expect(offeredWorkspaceFields($content))->toBe(['hidden '.$this->otherWorkspace->getKey()])
+        ->and(authorizeButtonIsDisabled($content))->toBeFalse()
+        ->and(shownConsentLines($content))->toBe(['read', 'create update', 'delete', 'email:read', 'email:draft', 'email:send']);
+});
+
+it('binds the connector to the workspace the client names', function (): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]))->assertOk();
+
+    approveConsentFor($this->client, $this->otherWorkspace)->assertRedirect();
+
+    expect(DB::table('oauth_auth_codes')->sole()->workspace_id)->toBe($this->otherWorkspace->getKey())
+        ->and(session()->has('mcp.oauth.requested_workspace'))->toBeFalse();
+});
+
+it('tells a user who is not a member of the named workspace so, and offers no other', function (string $named): void {
+    $requested = match ($named) {
+        'foreign' => (string) Workspace::factory()->create(['name' => 'Someone Else Ltd'])->getKey(),
+        'unknown' => (string) Str::ulid(),
+        'empty' => '',
+    };
+
+    $this->actingAs($this->user);
+
+    $content = (string) $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $requested]))
+        ->assertOk()
+        ->assertSee('Test MCP Client is asking to connect to a workspace you are not a member of.')
+        ->assertSee('You are not a member of the workspace Test MCP Client asks for.')
+        ->assertDontSee('Someone Else Ltd')
+        ->assertDontSee($this->personalWorkspace->name)
+        ->assertDontSee($this->otherWorkspace->name)
+        ->getContent();
+
+    expect(offeredWorkspaceFields($content))->toBe([])
+        ->and(authorizeButtonIsDisabled($content))->toBeTrue();
+
+    // A form posted anyway, for a workspace the user does belong to, is refused.
+    approveConsentFor($this->client, $this->personalWorkspace)->assertForbidden();
+
+    expect(DB::table('oauth_auth_codes')->count())->toBe(0);
+})->with(['foreign', 'unknown', 'empty']);
+
+it('refuses an approval posted for another workspace than the one the client names', function (): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]))->assertOk();
+
+    approveConsentFor($this->client, $this->personalWorkspace)
+        ->assertForbidden()
+        ->assertSee('This connector asked for another workspace.');
+
+    expect(DB::table('oauth_auth_codes')->count())->toBe(0);
+
+    // The refusal leaves the consent in place: the workspace it offered can still be approved.
+    approveConsentFor($this->client, $this->otherWorkspace)->assertRedirect();
+
+    expect(DB::table('oauth_auth_codes')->sole()->workspace_id)->toBe($this->otherWorkspace->getKey());
+});
+
+it('refuses an approval that carries the token of another consent screen', function (): void {
+    $this->actingAs($this->user);
+
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]))->assertOk();
+
+    $this->post('/oauth/authorize', [
+        'state' => 'test-state',
+        'client_id' => $this->client->getKey(),
+        'auth_token' => 'not-the-session-token',
+        'workspace_id' => $this->otherWorkspace->getKey(),
+    ])->assertForbidden();
+
+    expect(DB::table('oauth_auth_codes')->count())->toBe(0);
+});
+
+it('tells the user the named workspace is paused, and offers no other', function (): void {
+    Feature::define(Billing::class, true);
+
+    $this->actingAs($this->user);
+
+    $content = (string) $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]))
+        ->assertOk()
+        ->assertSee("{$this->otherWorkspace->name} is paused.")
+        ->assertSee('Test MCP Client can only connect to this workspace, so you can only cancel.')
+        ->assertDontSee($this->personalWorkspace->name)
+        ->getContent();
+
+    expect(offeredWorkspaceFields($content))->toBe([])
+        ->and(authorizeButtonIsDisabled($content))->toBeTrue();
+
+    approveConsentFor($this->client, $this->otherWorkspace)->assertStatus(402);
+    approveConsentFor($this->client, $this->personalWorkspace)->assertForbidden();
+
+    expect(DB::table('oauth_auth_codes')->count())->toBe(0);
+});
+
+it('keeps the named workspace through the sign-in of a user who was signed out', function (): void {
+    $url = authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]);
+
+    $this->get($url)->assertRedirect(route('login'));
+
+    // The sign-in sends the user back to the authorization URL, parameter included.
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+    $signIn = Request::create('/app/login', 'POST');
+    $signIn->setUserResolver(fn (): User => $this->user);
+    $target = app(LoginResponse::class)->toResponse($signIn)->getTargetUrl();
+
+    expect($target)->toContain('/oauth/authorize?')
+        ->toContain('workspace='.$this->otherWorkspace->getKey());
+
+    $this->actingAs($this->user);
+
+    $this->get($target)
+        ->assertOk()
+        ->assertSee("Test MCP Client is asking to connect to {$this->otherWorkspace->name}.")
+        ->assertDontSee($this->personalWorkspace->name);
+
+    approveConsentFor($this->client, $this->personalWorkspace)->assertForbidden();
+    approveConsentFor($this->client, $this->otherWorkspace)->assertRedirect();
+
+    expect(DB::table('oauth_auth_codes')->sole()->workspace_id)->toBe($this->otherWorkspace->getKey());
+});
+
+it('lists every workspace and approves any of them when the client names none', function (): void {
+    $this->actingAs($this->user);
+
+    // An earlier consent screen of the session named one; this one does not.
+    $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use', 'workspace' => $this->otherWorkspace->getKey()]))->assertOk();
+
+    $content = (string) $this->get(authorizeUrl($this->client, ['scope' => 'mcp:use']))
+        ->assertOk()
+        ->assertSee('Test MCP Client is asking to connect to one of your workspaces.')
+        ->assertSee($this->personalWorkspace->name)
+        ->assertSee($this->otherWorkspace->name)
+        ->getContent();
+
+    expect(offeredWorkspaceFields($content))->toEqualCanonicalizing([
+        'radio '.$this->personalWorkspace->getKey(),
+        'radio '.$this->otherWorkspace->getKey(),
+    ]);
+
+    approveConsentFor($this->client, $this->personalWorkspace)->assertRedirect();
+
+    expect(DB::table('oauth_auth_codes')->sole()->workspace_id)->toBe($this->personalWorkspace->getKey());
 });

@@ -61,10 +61,14 @@
                     ]),
                 ])->where('asked', true);
 
-                $choosesWorkspace = $workspaces->count() > 1 || $pausedWorkspaceIds !== [];
+                // A client that names its workspace gets that one or none, never a choice.
+                $requestsWorkspace ??= false;
+                $requestedIsPaused = $requestsWorkspace && $workspaces->isNotEmpty() && $workspaces->count() === count($pausedWorkspaceIds);
+
+                $choosesWorkspace = ! $requestsWorkspace && ($workspaces->count() > 1 || $pausedWorkspaceIds !== []);
 
                 if (! $choosesWorkspace) {
-                    $selectedWorkspaceId = $workspaces->first()?->getKey();
+                    $selectedWorkspaceId = $requestedIsPaused ? null : $workspaces->first()?->getKey();
                 }
 
                 $selectedAbilities = $abilitiesByWorkspace[$selectedWorkspaceId] ?? [];
@@ -82,7 +86,9 @@
                     </h1>
 
                     <p class="text-sm text-gray-500 dark:text-gray-400">
-                        @if($choosesWorkspace || $workspaces->isEmpty())
+                        @if($requestsWorkspace && $workspaces->isEmpty())
+                            {{ __('mcp.consent.intro.requested', ['client' => $client->name]) }}
+                        @elseif($choosesWorkspace || $workspaces->isEmpty())
                             {{ __('mcp.consent.intro.choose', ['client' => $client->name]) }}
                         @else
                             {{ __('mcp.consent.intro.one', ['client' => $client->name, 'workspace' => $workspaces->first()->name]) }}
@@ -136,6 +142,13 @@
                                 </p>
                             @endif
                         </div>
+                    @elseif($requestedIsPaused)
+                        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/40">
+                            <p class="text-sm font-medium text-red-800 dark:text-red-200">{{ __('mcp.consent.workspace.requested.paused.heading', ['workspace' => $workspaces->first()->name]) }}</p>
+                            <p class="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
+                                {{ __('mcp.consent.workspace.requested.paused.description', ['client' => $client->name]) }}
+                            </p>
+                        </div>
                     @else
                         <input type="hidden" name="workspace_id" value="{{ $selectedWorkspaceId }}" form="authorizeForm">
                     @endif
@@ -177,6 +190,13 @@
                             </p>
                         </div>
                     @endif
+                @elseif($requestsWorkspace)
+                    <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/40">
+                        <p class="text-sm font-medium text-red-800 dark:text-red-200">{{ __('mcp.consent.workspace.requested.not_member.heading', ['client' => $client->name]) }}</p>
+                        <p class="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
+                            {{ __('mcp.consent.workspace.requested.not_member.description', ['client' => $client->name]) }}
+                        </p>
+                    </div>
                 @else
                     <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/40">
                         <p class="text-sm font-medium text-red-800 dark:text-red-200">{{ __('mcp.consent.workspace.none.heading') }}</p>

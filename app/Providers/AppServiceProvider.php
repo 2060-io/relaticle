@@ -63,6 +63,7 @@ use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
 use App\Support\Mail\ParksInactiveRecipientsTransport;
 use App\Support\Markdown\TableAwareLeagueDriver;
+use App\Support\Mcp\RequestedWorkspace;
 use App\Support\Media\MediaLookup;
 use App\Support\Migrations\TenantMigration;
 use App\Support\Passport\ClientRepository;
@@ -335,7 +336,23 @@ final class AppServiceProvider extends ServiceProvider
         Passport::authorizationView(function (array $parameters) {
             $user = $parameters['user'] ?? null;
 
+            /** @var Request $request */
+            $request = $parameters['request'];
+
+            // A client may name the one workspace it must be connected to. The consent then
+            // offers that workspace alone, or none when the user is not a member of it, and
+            // the approval refuses any other (ApproveAuthorizationController).
+            $requestedWorkspaceId = RequestedWorkspace::of($request);
+            RequestedWorkspace::bind($request->session(), (string) $parameters['authToken'], $requestedWorkspaceId);
+
             $workspaces = $user instanceof User ? $user->allWorkspaces() : collect();
+
+            if ($requestedWorkspaceId !== null) {
+                $workspaces = $workspaces
+                    ->filter(fn (Workspace $workspace): bool => (string) $workspace->getKey() === $requestedWorkspaceId)
+                    ->values();
+            }
+
             $access = resolve(HostedWorkspaceAccess::class);
 
             // Re-read the workspaces with their subscriptions eager-loaded: isPaused() reaches
@@ -352,6 +369,7 @@ final class AppServiceProvider extends ServiceProvider
                 ->all();
 
             $parameters['workspaces'] = $workspaces;
+            $parameters['requestsWorkspace'] = $requestedWorkspaceId !== null;
             $parameters['pausedWorkspaceIds'] = $pausedWorkspaceIds;
             $parameters['redirectHost'] = $this->consentRedirectHost($parameters);
 
@@ -359,7 +377,7 @@ final class AppServiceProvider extends ServiceProvider
             // approve a token that answers 402 on every call.
             $currentWorkspaceId = $user?->currentWorkspace?->getKey();
 
-            $parameters['selectedWorkspaceId'] = is_string($currentWorkspaceId) && ! in_array($currentWorkspaceId, $pausedWorkspaceIds, true)
+            $parameters['selectedWorkspaceId'] = $requestedWorkspaceId === null && is_string($currentWorkspaceId) && ! in_array($currentWorkspaceId, $pausedWorkspaceIds, true)
                 ? $currentWorkspaceId
                 : $workspaces->first(fn (Workspace $workspace): bool => ! in_array((string) $workspace->getKey(), $pausedWorkspaceIds, true))?->getKey();
 

@@ -12,6 +12,7 @@ return [
         'intro' => [
             'one' => ':client is asking to connect to :workspace.',
             'choose' => ':client is asking to connect to one of your workspaces.',
+            'requested' => ':client is asking to connect to a workspace you are not a member of.',
         ],
         'redirect' => 'After you authorize, you go back to :host. Continue only if you trust that site.',
         'signed_in_as' => 'Signed in as :email.',
@@ -26,6 +27,16 @@ return [
             'none' => [
                 'heading' => 'You do not belong to any workspaces.',
                 'description' => 'Create or join a workspace in Relaticle before authorizing this connector.',
+            ],
+            'requested' => [
+                'not_member' => [
+                    'heading' => 'You are not a member of the workspace :client asks for.',
+                    'description' => ':client can only connect to that one workspace, so you can only cancel. Ask an owner of the workspace to invite you, or sign in with the account that is a member.',
+                ],
+                'paused' => [
+                    'heading' => ':workspace is paused.',
+                    'description' => ':client can only connect to this workspace, so you can only cancel. Subscribe to Cloud Pro first: a connector authorized against a paused workspace cannot read or write any data.',
+                ],
             ],
         ],
 

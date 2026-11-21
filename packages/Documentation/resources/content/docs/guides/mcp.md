@@ -57,6 +57,8 @@ Clients that support Dynamic Client Registration (RFC 7591), including Claude.ai
 
 At consent you pick **one workspace** for the connector. That choice is permanent for that connector: to point it at a different workspace, revoke it and connect again. Paused workspaces cannot be selected. Subscribe first, or the connector would have no data to read.
 
+A client that must reach one particular workspace can name it in the authorization request: `workspace=<id>`, the workspace `id` that `who-ami-tool` returns. The consent then offers that workspace and no other. If you are not a member of it, or it is paused, the screen says so and you can only cancel, and an approval posted for any other workspace is refused. The parameter is kept when you have to sign in first. Without it you choose among all your workspaces, as above. The token response names the workspace the token is bound to (`workspace.id`), so the client can check it got the one it asked for.
+
 The consent screen lists what the connector will be able to do, and the list follows your role in the workspace you pick. Where email is on, every role gets reading and drafting, and the Owner, Admin and Member roles get sending. The client cannot ask for more or less. Relaticle shows this screen every time a connector authorizes, so the connector always holds what its user saw.
 
 Access tokens last 30 days and refresh tokens 90 days; supported clients refresh silently in the background.
