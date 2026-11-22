@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Contracts\Entitlements;
+use App\Data\AiSettings;
 use App\Enums\BillingStatus;
+use App\Enums\DeletionReason;
 use App\Enums\MediaCollection;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
-use App\Enums\WorkspaceRole;
+use App\Enums\StripeSubscriptionStatus;
+use App\Enums\SubscriptionType;
 use App\Enums\WorkspaceSetupStep;
 use App\Events\WorkspaceCreated;
 use App\Events\WorkspaceDeleted;
@@ -58,9 +62,8 @@ use Spatie\Sluggable\SlugOptions;
  * @property EmailPrivacyTier|null $default_email_sharing_tier
  * @property ContactCreationMode $contact_creation_mode
  * @property bool $auto_create_companies
+ * @property AiSettings $ai_settings
  * @property Plan $plan
- * @property ?string $invite_link_token
- * @property ?CarbonImmutable $invite_link_token_expires_at
  * @property ?OnboardingUseCase $onboarding_use_case
  * @property ?string $onboarding_other_use_case
  * @property ?list<string> $onboarding_context
@@ -69,13 +72,18 @@ use Spatie\Sluggable\SlugOptions;
  * @property ?string $onboarding_referral_prompt
  * @property WorkspaceSetupStep|null $onboarding_step
  * @property CarbonImmutable|null $scheduled_deletion_at
+ * @property DeletionReason|null $deletion_reason
+ * @property CarbonImmutable|null $paused_at
+ * @property CarbonImmutable|null $inactivity_notice_sent_at
+ * @property CarbonImmutable|null $inactivity_reminded_at
  * @property ?string $stripe_id
  * @property ?string $pm_type
  * @property ?string $pm_last_four
  * @property CarbonImmutable|null $trial_ends_at
+ * @property CarbonImmutable|null $trial_extended_at
+ * @property CarbonImmutable|null $trial_reminded_for
  * @property CarbonImmutable|null $pro_trial_used_at
  * @property CarbonImmutable|null $hosted_free_grandfathered_at
- * @property string $invite_link_default_role
  * @property-read Membership|null $membership the `workspace_user` row, populated only when the workspace was
  *     loaded through `User::workspaces()`; null on a workspace reached any other way
  */
@@ -86,6 +94,7 @@ use Spatie\Sluggable\SlugOptions;
     'default_email_sharing_tier',
     'contact_creation_mode',
     'auto_create_companies',
+    'ai_settings',
     'onboarding_use_case',
     'onboarding_other_use_case',
     'onboarding_context',
@@ -93,10 +102,8 @@ use Spatie\Sluggable\SlugOptions;
     'onboarding_referral_detail',
     'onboarding_referral_prompt',
     'onboarding_step',
-    'invite_link_default_role',
 ])]
 #[Hidden([
-    'invite_link_token',
     'stripe_id',
     'pm_type',
     'pm_last_four',
@@ -152,6 +159,9 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'api-tokens', 'import-history', 'profile', 'scheduled-deletion',
         'opportunities-board', 'tasks-board', 'chat', 'r',
 
+        // Public site language prefixes, one per entry in config('app.available_locales') but English
+        'de', 'es', 'fr',
+
         // Content & info pages
         'about', 'blog', 'docs', 'documentation', 'faq', 'help', 'support',
         'privacy-policy', 'terms-of-service', 'legal', 'security', 'changelog',
@@ -164,7 +174,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'home', 'welcome', 'features', 'demo', 'enterprise', 'pro',
         'careers', 'jobs', 'partners', 'affiliate', 'store', 'marketplace',
         'press', 'compare', 'alternatives', 'ai', 'ai-native-crm', 'self-hosted',
-        'crm-for-claude', 'crm-for-chatgpt',
+        'crm-for-claude', 'crm-for-chatgpt', 'email-and-calendar',
 
         // Communication
         'mail', 'email', 'contact', 'feedback', 'abuse', 'report',
@@ -187,12 +197,12 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'email-accounts', 'email-attachments', 'email-compose-images',
     ];
 
-    /**
-     * How many days an invite-link token stays valid after creation/rotation.
-     */
-    public const int INVITE_LINK_TTL_DAYS = 7;
-
     public const int PRO_TRIAL_DAYS = 14;
+
+    public const int TRIAL_EXTENSION_DAYS = 7;
+
+    // The window the day-one goal checks return in.
+    public const int SETUP_WINDOW_DAYS = 14;
 
     /**
      * The event map for the model.
@@ -203,15 +213,6 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'created' => WorkspaceCreated::class,
         'updated' => WorkspaceUpdated::class,
         'deleted' => WorkspaceDeleted::class,
-    ];
-
-    /**
-     * The model's default attribute values.
-     *
-     * @var array<string, string>
-     */
-    protected $attributes = [
-        'invite_link_default_role' => WorkspaceRole::Member->value,
     ];
 
     /**
@@ -226,6 +227,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
             'default_email_sharing_tier' => EmailPrivacyTier::class,
             'contact_creation_mode' => ContactCreationMode::class,
             'auto_create_companies' => 'boolean',
+            'ai_settings' => AiSettings::class.':default',
             'plan' => Plan::class,
             'onboarding_use_case' => OnboardingUseCase::class,
             'onboarding_context' => 'array',
@@ -233,57 +235,17 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
             'onboarding_step' => WorkspaceSetupStep::class,
             'activation_checklist_dismissed_at' => 'datetime',
             'setup_nudge_sent_at' => 'datetime',
-            'invite_link_token_expires_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
+            'deletion_reason' => DeletionReason::class,
+            'paused_at' => 'datetime',
+            'inactivity_notice_sent_at' => 'datetime',
+            'inactivity_reminded_at' => 'datetime',
             'trial_ends_at' => 'datetime',
+            'trial_extended_at' => 'datetime',
+            'trial_reminded_for' => 'datetime',
             'pro_trial_used_at' => 'datetime',
             'hosted_free_grandfathered_at' => 'datetime',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        self::creating(function (Workspace $workspace): void {
-            if ($workspace->invite_link_token === null) {
-                $workspace->invite_link_token = Str::random(40);
-                $workspace->invite_link_token_expires_at = now()->addDays(self::INVITE_LINK_TTL_DAYS);
-            }
-        });
-    }
-
-    public function rotateInviteLink(): void
-    {
-        $this->forceFill([
-            'invite_link_token' => Str::random(40),
-            'invite_link_token_expires_at' => now()->addDays(self::INVITE_LINK_TTL_DAYS),
-        ])->save();
-    }
-
-    /**
-     * Clearing the token is what turns the link off: every lookup matches on the
-     * column, and no request token can equal null, so the link stops resolving
-     * without a second flag that could disagree with it.
-     */
-    public function disableInviteLink(): void
-    {
-        $this->forceFill([
-            'invite_link_token' => null,
-            'invite_link_token_expires_at' => null,
-        ])->save();
-    }
-
-    public function hasInviteLink(): bool
-    {
-        return $this->invite_link_token !== null;
-    }
-
-    public function isInviteLinkTokenExpired(): bool
-    {
-        if ($this->invite_link_token_expires_at === null) {
-            return true;
-        }
-
-        return $this->invite_link_token_expires_at->isPast();
     }
 
     /**
@@ -356,9 +318,19 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         return $this->personal_workspace;
     }
 
+    public function isInSetupWindow(): bool
+    {
+        return (bool) $this->created_at?->gt(now()->subDays(self::SETUP_WINDOW_DAYS));
+    }
+
     public function isScheduledForDeletion(): bool
     {
         return $this->scheduled_deletion_at !== null;
+    }
+
+    public function isScheduledOnRequest(): bool
+    {
+        return $this->isScheduledForDeletion() && $this->deletion_reason !== DeletionReason::Inactivity;
     }
 
     public function isDeletionDue(): bool
@@ -368,7 +340,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
 
     public function queuePurge(): void
     {
-        $this->forceFill(['scheduled_deletion_at' => now()])->save();
+        $this->forceFill(['scheduled_deletion_at' => now(), 'deletion_reason' => DeletionReason::Requested])->save();
 
         dispatch(new PurgeWorkspace($this));
     }
@@ -376,6 +348,24 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     public function hasConnectedMailbox(): bool
     {
         return $this->connectedAccounts()->connected()->exists();
+    }
+
+    public function hasMailboxCapacity(): bool
+    {
+        $limit = resolve(Entitlements::class)->mailboxLimit($this);
+
+        return $limit === null || $this->connectedAccounts()->connected()->count() < $limit;
+    }
+
+    public function mailboxLimitMessage(): string
+    {
+        if ($this->loadMissing('subscriptions')->billingStatus() === BillingStatus::Trialing) {
+            return __('filament/pages/email-accounts.notifications.limit_reached.trial');
+        }
+
+        $limit = resolve(Entitlements::class)->mailboxLimit($this) ?? 0;
+
+        return trans_choice('filament/pages/email-accounts.notifications.limit_reached.title', $limit, ['count' => $limit]);
     }
 
     /**
@@ -386,6 +376,76 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     public function billingStatus(): BillingStatus
     {
         return BillingStatus::fromWorkspace($this);
+    }
+
+    public function ownerTimezone(): string
+    {
+        $owner = $this->owner;
+
+        return $owner instanceof User ? $owner->effectiveTimezone() : (string) config('app.timezone');
+    }
+
+    public function extensionEndsAt(): ?CarbonImmutable
+    {
+        return $this->trial_extended_at?->addDays(self::TRIAL_EXTENSION_DAYS);
+    }
+
+    public function onExtendedTrial(): bool
+    {
+        $extensionEndsAt = $this->extensionEndsAt();
+
+        if (! $extensionEndsAt instanceof CarbonImmutable) {
+            return false;
+        }
+
+        $subscription = $this->subscription();
+
+        if ($subscription?->valid() === true) {
+            return $subscription->onTrial() && $subscription->created_at <= $extensionEndsAt;
+        }
+
+        return $this->trial_ends_at !== null
+            && $this->trial_ends_at <= $extensionEndsAt
+            && $this->billingStatus() === BillingStatus::Trialing;
+    }
+
+    public function canStartTrial(): bool
+    {
+        return $this->plan === Plan::Free
+            && $this->pro_trial_used_at === null
+            && ! $this->subscriptions()->exists()
+            && (! $this->ownerHasTrialedElsewhere() || $this->ownerPaysElsewhere());
+    }
+
+    private function ownerHasTrialedElsewhere(): bool
+    {
+        return $this->otherWorkspacesOfOwner()->whereNotNull('pro_trial_used_at')->exists();
+    }
+
+    private function ownerPaysElsewhere(): bool
+    {
+        $charged = fn (Builder $subscription): Builder => $subscription->where('stripe_status', StripeSubscriptionStatus::Active->value);
+
+        return $this->otherWorkspacesOfOwner()
+            ->where(fn (Builder $paying): Builder => $paying
+                ->where('plan', Plan::Enterprise)
+                ->orWhereHas('latestDefaultSubscription', $charged)
+                ->orWhereHas('managedSubscriptions', $charged))
+            ->exists();
+    }
+
+    /** @return Builder<self> */
+    private function otherWorkspacesOfOwner(): Builder
+    {
+        return self::query()->where('user_id', $this->user_id)->whereKeyNot($this->getKey());
+    }
+
+    public function canExtendTrial(): bool
+    {
+        return $this->trial_ends_at === null
+            && $this->trial_extended_at === null
+            && ! $this->isScheduledOnRequest()
+            && $this->billingStatus() === BillingStatus::TrialEnded;
     }
 
     /**
@@ -408,6 +468,68 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
                 ['created_at' => 'MAX', 'id' => 'MAX'],
                 fn (Builder $query): Builder => $query->where('type', 'default'),
             );
+    }
+
+    /** @return HasMany<Subscription, $this> */
+    public function managedSubscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class, $this->getForeignKey())->where('type', SubscriptionType::Managed->value);
+    }
+
+    public function managedSubscription(): ?Subscription
+    {
+        return $this->ownedSubscriptions()
+            ->filter(fn (mixed $subscription): bool => $subscription instanceof Subscription
+                && $subscription->type === SubscriptionType::Managed->value
+                && $subscription->valid()
+                && $this->planIsSoldBy($subscription))
+            ->first();
+    }
+
+    public function planIsSoldBy(Subscription $subscription): bool
+    {
+        return Plan::soldBy($subscription) === $this->plan;
+    }
+
+    public function hasOpenManagedSubscription(): bool
+    {
+        return $this->ownedSubscriptions()->contains(fn (mixed $subscription): bool => $subscription instanceof Subscription
+            && in_array($subscription->type, SubscriptionType::managed(), true)
+            && ! in_array($subscription->stripe_status, StripeSubscriptionStatus::ended(), true));
+    }
+
+    public function lapsedManagedPlan(): ?Plan
+    {
+        $lastEnded = $this->ownedSubscriptions()
+            ->filter(fn (mixed $subscription): bool => $subscription instanceof Subscription
+                && in_array($subscription->type, [SubscriptionType::Default->value, SubscriptionType::Managed->value], true)
+                && $subscription->ended())
+            ->sortByDesc('ends_at')
+            ->first();
+
+        if (! $lastEnded instanceof Subscription || $lastEnded->type !== SubscriptionType::Managed->value) {
+            return null;
+        }
+
+        return Plan::soldBy($lastEnded);
+    }
+
+    public function pendingManagedSubscription(): ?Subscription
+    {
+        return $this->ownedSubscriptions()
+            ->filter(fn (mixed $subscription): bool => $subscription instanceof Subscription
+                && $subscription->type === SubscriptionType::ManagedPending->value
+                && ! in_array($subscription->stripe_status, StripeSubscriptionStatus::ended(), true))
+            ->sortByDesc('created_at')
+            ->first();
+    }
+
+    /** @return Collection<int, Model> */
+    private function ownedSubscriptions(): Collection
+    {
+        $this->loadMissing('subscriptions');
+
+        return $this->subscriptions->each(fn (Model $subscription): Model => $subscription->setRelation('owner', $this));
     }
 
     /**
@@ -435,6 +557,33 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     }
 
     /**
+     * Self-serve and trialing workspaces that have connected every mailbox they may.
+     *
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    #[Scope]
+    protected function atMailboxCap(Builder $query): Builder
+    {
+        return $query->where(function (Builder $capped): void {
+            foreach (Plan::cases() as $plan) {
+                $limit = $plan->connectedMailboxes();
+
+                if (! $plan->isSelfServe() || $limit === null) {
+                    continue;
+                }
+
+                $capped->orWhere(fn (Builder $onPlan): Builder => $onPlan
+                    ->where('plan', $plan->value)
+                    ->whereHas('connectedAccounts', fn (Builder $accounts): Builder => $accounts->connected(), '>=', $limit));
+            }
+
+            $capped->orWhere(fn (Builder $trialing): Builder => BillingStatus::Trialing->applyToQuery($trialing)
+                ->whereHas('connectedAccounts', fn (Builder $accounts): Builder => $accounts->connected(), '>=', Plan::trialConnectedMailboxes()));
+        });
+    }
+
+    /**
      * @param  Builder<Workspace>  $query
      * @return Builder<Workspace>
      */
@@ -442,6 +591,39 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     protected function scheduledForDeletion(Builder $query): Builder
     {
         return $query->whereNotNull('scheduled_deletion_at');
+    }
+
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    #[Scope]
+    protected function scheduledForInactivity(Builder $query): Builder
+    {
+        return $query->where('deletion_reason', DeletionReason::Inactivity->value);
+    }
+
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    #[Scope]
+    protected function scheduledOnRequest(Builder $query): Builder
+    {
+        return $query->whereNotNull('scheduled_deletion_at')
+            ->where(fn (Builder $reason): Builder => $reason
+                ->whereNull('deletion_reason')
+                ->orWhere('deletion_reason', '!=', DeletionReason::Inactivity->value));
+    }
+
+    /**
+     * @param  Builder<Workspace>  $query
+     * @return Builder<Workspace>
+     */
+    #[Scope]
+    protected function notScheduledForDeletion(Builder $query): Builder
+    {
+        return $query->whereNull('scheduled_deletion_at');
     }
 
     /**
@@ -500,6 +682,12 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     public function allUsers(): Collection
     {
         return $this->users->merge([$this->owner]);
+    }
+
+    public function hasMemberNow(string $userId): bool
+    {
+        return (string) $this->user_id === $userId
+            || $this->users()->whereKey($userId)->exists();
     }
 
     public function hasUser(User $user): bool

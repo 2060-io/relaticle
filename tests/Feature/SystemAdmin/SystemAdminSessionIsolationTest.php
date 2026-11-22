@@ -6,11 +6,11 @@ use App\Filament\Pages\Auth\Login;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\User;
-use Filament\Auth\Pages\Login as StaffLogin;
 use Filament\Facades\Filament;
 use Filament\Support\Facades\FilamentView;
 use Filament\Support\View\ViewManager;
 use Illuminate\Contracts\Routing\ResponseFactory;
+use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,6 +28,7 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PragmaRX\Google2FAQRCode\Google2FA;
 use Relaticle\Ink\Models\Post;
+use Relaticle\SystemAdmin\Filament\Pages\Auth\Login as StaffLogin;
 use Relaticle\SystemAdmin\Filament\Resources\UserResource\Pages\ViewUser;
 use Relaticle\SystemAdmin\Http\Middleware\EnsureAuthenticationContext;
 use Relaticle\SystemAdmin\Http\Middleware\IsolateAuthenticationSession;
@@ -130,7 +131,7 @@ function isolatedAuthRequest(array &$cookies, string $method, string $url, array
 }
 
 /** @param array<string, array<string, string>> $cookies */
-function signInIsolatedStaff(array &$cookies, SystemAdministrator $administrator, bool $remember = false): void
+function signInIsolatedStaff(array &$cookies, SystemAdministrator $administrator): void
 {
     $options = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/passkeys/login/options')
         ->assertOk()->json('options');
@@ -143,7 +144,7 @@ function signInIsolatedStaff(array &$cookies, SystemAdministrator $administrator
         'credential' => $assertion['storedCredential'],
     ]);
 
-    isolatedAuthRequest($cookies, 'POST', 'https://staff.example.test/passkeys/login', [...$assertion['payload'], 'remember' => $remember])
+    isolatedAuthRequest($cookies, 'POST', 'https://staff.example.test/passkeys/login', $assertion['payload'])
         ->assertOk();
 }
 
@@ -305,11 +306,13 @@ it('rejects a saved staff page snapshot on the customer host after staff logout'
     ])->assertStatus(419);
 })->with([
     'model catalog' => ['/ai-models', 'ManageAiSettings'],
-    'dashboard' => ['/', '\\Pages\\Overview'],
-    'lazy widget' => ['/', 'ValueStats'],
-    'shared global search' => ['/', 'GlobalSearch'],
-    'shared notifications' => ['/', 'DatabaseNotifications'],
-    'shared topbar' => ['/', 'Topbar'],
+    'dashboard' => ['/instance', '\\Pages\\Dashboard'],
+    'widget' => ['/instance', 'InstanceStats'],
+    'shared notifications' => ['/instance', 'DatabaseNotifications'],
+    'shared topbar' => ['/instance', 'Topbar'],
+    ...(class_exists('Relaticle\\Cloud\\CloudServiceProvider') ? [
+        'shared global search' => ['/instance', 'GlobalSearch'],
+    ] : []),
 ]);
 
 it('keeps the customer signed in through staff login and logout with identical account ids', function (): void {
@@ -329,39 +332,17 @@ it('keeps the customer signed in through staff login and logout with identical a
         ->and(DB::table('system_administrator_sessions')->where('user_id', $administrator->id)->exists())->toBeFalse();
 });
 
-it('does not restore customer authentication from a parent-domain remember cookie on the staff host', function (): void {
+it('restores no staff session from a matching remember cookie', function (): void {
     $cookies = [];
-    $customer = User::factory()->withWorkspace()->create();
-    isolatedAuthRequest($cookies, 'POST', 'https://app.example.test/login', [
-        'email' => $customer->email,
-        'password' => 'password',
-        'remember' => true,
-    ])->assertOk();
-
-    $recaller = Auth::guard('web')->getRecallerName();
-    expect($cookies['.example.test'])->toHaveKey($recaller);
-
-    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/login')->assertOk();
-    $sessions = DB::table('system_administrator_sessions')->get();
-
-    expect($sessions)->toHaveCount(1)
-        ->and($sessions->sole()->user_id)->toBeNull();
-    $payload = unserialize(base64_decode($sessions->sole()->payload));
-    expect($payload)->not->toHaveKey(Auth::guard('web')->getName());
-});
-
-it('ignores a legacy staff remember cookie outside the staff host', function (): void {
-    $cookies = [];
-    $administrator = SystemAdministrator::factory()->create();
-    signInIsolatedStaff($cookies, $administrator, remember: true);
+    $administrator = SystemAdministrator::factory()->create(['remember_token' => 'issued-before-the-change']);
     $recaller = Auth::guard('sysadmin')->getRecallerName();
-    $cookies['.example.test'][$recaller] = $cookies['staff.example.test'][$recaller];
+    $hash = $administrator->password;
+    $cookies['staff.example.test'][$recaller] = encrypt(CookieValuePrefix::create($recaller, app('encrypter')->getKey())."{$administrator->getKey()}|issued-before-the-change|{$hash}", false);
 
-    isolatedAuthRequest($cookies, 'GET', 'https://example.test/passkeys/login/options')->assertOk();
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/')->assertUnauthorized();
 
-    expect(DB::table('sessions')->where('user_id', $administrator->id)->exists())->toBeFalse();
-    $payload = unserialize(base64_decode(DB::table('sessions')->sole()->payload));
-    expect($payload)->not->toHaveKey(Auth::guard('sysadmin')->getName());
+    $sessions = DB::table('system_administrator_sessions')->get();
+    expect($sessions->every(fn (object $row): bool => $row->user_id === null))->toBeTrue();
 });
 
 it('serves staff blog previews while still requiring a valid signature', function (): void {
@@ -374,13 +355,12 @@ it('serves staff blog previews while still requiring a valid signature', functio
     expect(parse_url($url, PHP_URL_HOST))->toBe('staff.example.test');
     isolatedAuthRequest($cookies, 'GET', $url)->assertOk()->assertSee($post->title)->assertSee('Edit Post');
     isolatedAuthRequest($cookies, 'GET', $url.'&changed=1')->assertForbidden();
-});
+})->skip(fn (): bool => ! class_exists('Relaticle\\Cloud\\CloudServiceProvider'), 'The blog front end needs the cloud package.');
 
 it('ignores staff authentication retained in a legacy customer session', function (): void {
     $cookies = [];
     $customer = User::factory()->withWorkspace()->create();
     $administrator = SystemAdministrator::factory()->create();
-    $post = Post::factory()->draft()->create();
     $response = isolatedAuthRequest($cookies, 'POST', 'https://app.example.test/login', [
         'email' => $customer->email,
         'password' => 'password',
@@ -390,7 +370,7 @@ it('ignores staff authentication retained in a legacy customer session', functio
     $payload[Auth::guard('sysadmin')->getName()] = $administrator->id;
     DB::table('sessions')->where('id', $id)->update(['payload' => base64_encode(serialize($payload))]);
 
-    isolatedAuthRequest($cookies, 'GET', $post->getUrl())->assertOk()->assertDontSee('Edit Post');
+    isolatedAuthRequest($cookies, 'GET', 'https://app.example.test/passkeys/confirm/options')->assertOk();
     $this->assertGuest('sysadmin');
     $stored = unserialize(base64_decode(DB::table('sessions')->where('id', $id)->value('payload')));
     expect($stored)->not->toHaveKey(Auth::guard('sysadmin')->getName());
@@ -405,7 +385,7 @@ it('redirects staff published blog links to the public hostname', function (): v
 
     isolatedAuthRequest($cookies, 'GET', $post->getUrl())
         ->assertStatus(301)->assertRedirect('https://example.test/blog/'.$post->slug);
-});
+})->skip(fn (): bool => ! class_exists('Relaticle\\Cloud\\CloudServiceProvider'), 'The blog front end needs the cloud package.');
 
 it('redirects public navigation from the staff hostname', function (string $route, array $parameters): void {
     $cookies = [];
@@ -414,11 +394,14 @@ it('redirects public navigation from the staff hostname', function (string $rout
     isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test'.$path)
         ->assertStatus(301)->assertRedirect('https://example.test'.$path);
 })->with([
-    'pricing' => ['pricing', []],
-    'blog' => ['blog.index', []],
-    'category' => ['blog.category', ['slug' => 'announcements']],
-    'documentation' => ['documentation.index', []],
-    'help' => ['help.index', []],
+    'security.txt' => ['securityTxt', []],
+    ...(class_exists('Relaticle\\Cloud\\CloudServiceProvider') ? [
+        'pricing' => ['pricing', []],
+        'blog' => ['blog.index', []],
+        'category' => ['blog.category', ['slug' => 'announcements']],
+        'documentation' => ['documentation.index', []],
+        'help' => ['help.index', []],
+    ] : []),
 ]);
 
 it('limits the staff development login link to the local environment', function (string $environment): void {
@@ -447,9 +430,22 @@ it('limits the staff development login link to the local environment', function 
     }
 })->with(['local', 'production']);
 
-it('allows the local login link only on development hosts', function (string $host, bool $allowed): void {
+it('allows the local login link only on development hosts', function (string $host, ?string $orbPortalDomain, bool $allowed): void {
     $cookies = [];
     $administrator = SystemAdministrator::factory()->create();
+    foreach (['AMP_ORB' => $orbPortalDomain === null ? null : '1', 'AMP_PORTAL_DOMAIN' => $orbPortalDomain] as $name => $value) {
+        $original = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+        putenv($value === null ? $name : "{$name}={$value}");
+        unset($_ENV[$name], $_SERVER[$name]);
+        $this->beforeApplicationDestroyed(function () use ($name, $original): void {
+            putenv($original[0] === false ? $name : "{$name}={$original[0]}");
+            foreach ([1 => '_ENV', 2 => '_SERVER'] as $index => $global) {
+                if ($original[$index] !== null) {
+                    $GLOBALS[$global][$name] = $original[$index];
+                }
+            }
+        });
+    }
     config()->set('app.url', "https://{$host}");
     config()->set('app.app_panel_domain', null);
     config()->set('app.sysadmin_domain', $host);
@@ -477,8 +473,11 @@ it('allows the local login link only on development hosts', function (string $ho
     $response->assertServerError();
     expect(DB::table('system_administrator_sessions')->whereNotNull('user_id')->exists())->toBeFalse();
 })->with([
-    'public host' => ['crm.example.com', false],
-    'development host' => ['staff.example.test', true],
+    'public host' => ['crm.example.com', null, false],
+    'development host' => ['staff.example.test', null, true],
+    'amp orb portal host' => ['t-abc-p21109.onamp.dev', 'onamp.dev', true],
+    'amp portal host outside an orb' => ['t-abc-p21109.onamp.dev', null, false],
+    'public host inside an orb' => ['crm.example.com', 'onamp.dev', false],
 ]);
 
 it('refuses the local login link on a spoofed development host when the app url is public', function (): void {
@@ -581,7 +580,7 @@ it('requires the native staff password and MFA challenge while keeping the custo
             'calls' => [['path' => '', 'method' => 'authenticate', 'params' => []]],
         ]],
     ])->assertOk()->assertJsonPath('components.0.effects.redirect', 'https://staff.example.test');
-    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test')->assertOk()->assertSee('Dashboard');
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk()->assertSee('Dashboard');
     isolatedAuthRequest($cookies, 'GET', 'https://app.example.test/passkeys/confirm/options')->assertOk();
     expect(DB::table('system_administrator_sessions')->where('user_id', $administrator->id)->exists())->toBeTrue();
 });
@@ -611,7 +610,7 @@ it('loads staff lazy widgets normally and rejects their signed mount parameters 
     $cookies = [];
     $administrator = SystemAdministrator::factory()->create();
     signInIsolatedStaff($cookies, $administrator);
-    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/')->assertOk();
+    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
     $html = html_entity_decode($page->getContent(), ENT_QUOTES);
     $matched = preg_match("/__lazyLoad\\('([^']+)'\\)/", $html, $lazy);
     expect($matched)->toBe(1);
@@ -662,7 +661,7 @@ it('removes foreign authentication from protected panel requests', function (str
         'password' => 'password',
     ])->assertOk();
     signInIsolatedStaff($cookies, $administrator);
-    $staffResponse = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/')->assertOk();
+    $staffResponse = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
     $isStaff = $context === 'sysadmin';
     $response = $isStaff ? $staffResponse : $customerResponse;
     $cookie = $isStaff ? '__Host-'.config('system-admin.session.cookie') : config('session.cookie');
@@ -674,7 +673,7 @@ it('removes foreign authentication from protected panel requests', function (str
     DB::table($table)->where('id', $id)->update(['payload' => base64_encode(serialize($payload))]);
 
     isolatedAuthRequest($cookies, 'GET', $isStaff
-        ? 'https://staff.example.test/'
+        ? 'https://staff.example.test/instance'
         : 'https://app.example.test/'.$customer->currentWorkspace->slug.'/companies')->assertOk();
 
     $this->assertGuest($foreignGuard);
@@ -682,15 +681,126 @@ it('removes foreign authentication from protected panel requests', function (str
     expect($stored)->not->toHaveKey(Auth::guard($foreignGuard)->getName());
 })->with(['web', 'sysadmin']);
 
+it('ends a staff session 24 hours after sign-in despite activity', function (): void {
+    $this->travelTo('2026-11-13 10:00:00');
+    $cookies = [];
+    signInIsolatedStaff($cookies, SystemAdministrator::factory()->create());
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+
+    foreach (range(1, 47) as $ignored) {
+        $this->travelTo(now()->addMinutes(30));
+        isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+    }
+
+    $this->travelTo(now()->addMinutes(29));
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+
+    $this->travelTo(now()->addMinutes(2));
+
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertStatus(419);
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertUnauthorized();
+});
+
+it('ends a staff session after 60 idle minutes', function (): void {
+    $this->travelTo('2026-11-13 10:00:00');
+    $cookies = [];
+    signInIsolatedStaff($cookies, SystemAdministrator::factory()->create());
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+
+    $this->travelTo(now()->addMinutes(59));
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+
+    $this->travelTo(now()->addMinutes(61));
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertUnauthorized();
+});
+
+/**
+ * @param  array<string, array<string, string>>  $cookies
+ * @return TestResponse<Response>
+ */
+function staffLivewireRefresh(array &$cookies, string $snapshot): TestResponse
+{
+    return isolatedAuthRequest($cookies, 'POST', 'https://staff.example.test'.route('default-livewire.update', absolute: false), [
+        'components' => [[
+            'snapshot' => $snapshot,
+            'updates' => [],
+            'calls' => [['path' => '', 'method' => '$refresh', 'params' => []]],
+        ]],
+    ]);
+}
+
+function staffDashboardSnapshot(array &$cookies): string
+{
+    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+    preg_match_all('/wire:snapshot="([^"]+)"/', $page->getContent(), $matches);
+
+    return collect($matches[1])
+        ->map(fn (string $value): string => html_entity_decode($value, ENT_QUOTES))
+        ->first(fn (string $value): bool => str_contains(json_decode($value, true, flags: JSON_THROW_ON_ERROR)['memo']['name'], '\\Pages\\Dashboard'));
+}
+
+it('refuses a staff Livewire update 24 hours after sign-in and ends the session', function (): void {
+    $this->travelTo('2026-11-13 10:00:00');
+    $cookies = [];
+    signInIsolatedStaff($cookies, SystemAdministrator::factory()->create());
+    $snapshot = staffDashboardSnapshot($cookies);
+
+    foreach (range(1, 47) as $ignored) {
+        $this->travelTo(now()->addMinutes(30));
+        staffLivewireRefresh($cookies, $snapshot)->assertOk();
+    }
+
+    $this->travelTo(now()->addMinutes(31));
+
+    staffLivewireRefresh($cookies, $snapshot)->assertStatus(419);
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertUnauthorized();
+});
+
+it('keeps a staff session alive through Livewire updates made inside the idle limit', function (): void {
+    $this->travelTo('2026-11-13 10:00:00');
+    $cookies = [];
+    signInIsolatedStaff($cookies, SystemAdministrator::factory()->create());
+    $snapshot = staffDashboardSnapshot($cookies);
+
+    foreach (range(1, 3) as $ignored) {
+        $this->travelTo(now()->addMinutes(30));
+        staffLivewireRefresh($cookies, $snapshot)->assertOk();
+    }
+
+    isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
+});
+
+it('leaves a customer Livewire update alone after the staff idle limit', function (): void {
+    $cookies = [];
+    $customer = User::factory()->withWorkspace()->create();
+    isolatedAuthRequest($cookies, 'POST', 'https://app.example.test/login', [
+        'email' => $customer->email,
+        'password' => 'password',
+    ])->assertOk();
+    $page = isolatedAuthRequest($cookies, 'GET', 'https://app.example.test/'.$customer->currentWorkspace->slug.'/companies')->assertOk();
+    preg_match('/wire:snapshot="([^"]+)"/', $page->getContent(), $matches);
+
+    $this->travelTo(now()->addHours(2));
+
+    isolatedAuthRequest($cookies, 'POST', 'https://app.example.test'.route('default-livewire.update', absolute: false), [
+        'components' => [[
+            'snapshot' => html_entity_decode($matches[1], ENT_QUOTES),
+            'updates' => [],
+            'calls' => [['path' => '', 'method' => '$refresh', 'params' => []]],
+        ]],
+    ])->assertOk();
+    $this->assertAuthenticated('web');
+});
+
 it('requires second factor enrollment on an existing staff Livewire page', function (): void {
     $cookies = [];
     $administrator = SystemAdministrator::factory()->create();
     signInIsolatedStaff($cookies, $administrator);
-    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/')->assertOk();
+    $page = isolatedAuthRequest($cookies, 'GET', 'https://staff.example.test/instance')->assertOk();
     preg_match_all('/wire:snapshot="([^"]+)"/', $page->getContent(), $matches);
     $snapshot = collect($matches[1])
         ->map(fn (string $value): string => html_entity_decode($value, ENT_QUOTES))
-        ->first(fn (string $value): bool => str_contains(json_decode($value, true, flags: JSON_THROW_ON_ERROR)['memo']['name'], 'Overview'));
+        ->first(fn (string $value): bool => str_contains(json_decode($value, true, flags: JSON_THROW_ON_ERROR)['memo']['name'], '\\Pages\\Dashboard'));
     expect($snapshot)->not->toBeNull();
     $administrator->update(['app_authentication_secret' => null]);
 

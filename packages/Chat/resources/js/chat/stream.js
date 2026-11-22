@@ -4,6 +4,10 @@
 // chat-interface.blade.php for the composition and the `pendingLabel`
 // accessor that stays inline there because a `get` property cannot survive
 // an object spread.
+
+// Matches WebSources::LIMIT, which caps the persisted list the stream end reconciles to.
+const SOURCES_LIMIT = 10;
+
 export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     channel: null,
     // Per-instance view of the shared (memoised) Echo channel. Never written onto the
@@ -13,62 +17,13 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     channelReady: null,
     channelSubscribed: false,
     streamTimeoutId: null,
-    // Injected UI copy (chat-interface.blade.php passes @js(__()) values, the
-    // same pattern voice.js uses); the defaults keep the module standalone.
-    streamTexts: {
-        runningTool: 'Running tool…',
-        runningName: 'Running :name…',
-        streamError: 'The assistant encountered an error. Please try again.',
-        timeout: 'The assistant took too long to respond.',
-        retrying: 'Provider is busy, retrying (attempt :attempt of :max)…',
-        ...texts,
-    },
+    streamTexts: texts,
     // One human label per tool the agent can call, keyed by the snake_case form
     // of its class basename (the wire name laravel/ai broadcasts). Explicit
     // rather than derived from the name: an unmapped tool used to fall through
     // to its raw identifier, so the shimmer read "Running add_custom_field_options…"
     // at the user. Ship a label with every new tool.
-    toolLabels: {
-        list_companies: 'Searching companies…',
-        get_company: 'Reading company details…',
-        list_people: 'Searching people…',
-        get_person: 'Reading person details…',
-        list_opportunities: 'Searching opportunities…',
-        get_opportunity: 'Reading opportunity details…',
-        list_tasks: 'Searching tasks…',
-        get_task: 'Reading task details…',
-        list_notes: 'Searching notes…',
-        get_note: 'Reading note details…',
-        search_crm: 'Searching your CRM…',
-        get_crm_summary: 'Reading CRM summary…',
-        aggregate_crm: 'Crunching the numbers…',
-        list_activity: 'Reading recent activity…',
-        list_workspace_members: 'Looking up workspace members…',
-        list_custom_fields: 'Reading custom fields…',
-        search_docs: 'Searching the documentation…',
-        guide_to_page: 'Finding the right page…',
-        create_company: 'Drafting a company…',
-        update_company: 'Preparing company changes…',
-        delete_company: 'Preparing company deletion…',
-        create_person: 'Drafting a person…',
-        update_person: 'Preparing person changes…',
-        delete_person: 'Preparing person deletion…',
-        create_opportunity: 'Drafting an opportunity…',
-        update_opportunity: 'Preparing opportunity changes…',
-        delete_opportunity: 'Preparing opportunity deletion…',
-        create_task: 'Drafting a task…',
-        update_task: 'Preparing task changes…',
-        delete_task: 'Preparing task deletion…',
-        create_note: 'Drafting a note…',
-        update_note: 'Preparing note changes…',
-        delete_note: 'Preparing note deletion…',
-        invite_workspace_member: 'Preparing a workspace invitation…',
-        create_custom_field: 'Drafting a custom field…',
-        update_custom_field: 'Preparing custom field changes…',
-        set_custom_field_options: 'Preparing field option changes…',
-        delete_custom_field: 'Preparing custom field deletion…',
-        ...toolLabels,
-    },
+    toolLabels,
     // Set as the FIRST line of destroy() in chat-interface.blade.php. unsubscribe()
     // (window.Echo.leave) stops NEW events from being delivered but cannot cancel a
     // handler already mid-execution. handleStreamEnd/handleStreamFailed/the watchdog
@@ -106,6 +61,9 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             // so this stays empty until reconcileLatestAssistant() fills it from
             // the persisted tool results at stream end.
             display_blocks: [],
+            // Web pages the reply cited, filled live by `.citation` and replaced
+            // by the persisted list at stream end.
+            sources: [],
             paywall: null,
             sessionExpired: false,
             rendered: false,
@@ -172,6 +130,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             b._needsSeparator = false;
             b.pending_actions = [];
             b.display_blocks = [];
+            b.sources = [];
             b.paywall = null;
             b.streamError = null;
             return b;
@@ -254,6 +213,8 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             .listen('.text_delta', (e) => this.handleTextDelta(e))
             .listen('.tool_call', (e) => this.handleToolCall(e))
             .listen('.tool_result', (e) => this.handleToolResult(e))
+            .listen('.provider_tool', (e) => this.handleProviderTool(e))
+            .listen('.citation', (e) => this.handleCitation(e))
             .listen('.stream_end', (e) => this.handleStreamEnd(e))
             .listen('.stream.failed', (e) => this.handleStreamFailed(e))
             .listen('.stream.retrying', (e) => this.handleStreamRetrying(e))
@@ -315,6 +276,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             decision: event.status === 'approved' ? 'approved' : 'rejected',
             finalized: !!event.finalized,
             record: null,
+            receipts: event.receipts ?? null,
         });
     },
 
@@ -331,7 +293,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         if (label) return label;
 
         // A tool shipped without a label must still never leak its identifier:
-        // read it back as words ("Running add custom field options…").
+        // read it back as words ("Running add custom attribute options…").
         return this.streamTexts.runningName.replace(':name', normalized.replace(/_/g, ' '));
     },
 
@@ -467,6 +429,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         // only ever flips for a resumed one. Cleared by stream_end, stream
         // failure, and the watchdog, exactly as a sent turn is.
         this.isStreaming = true;
+        this.nextSteps = [];
         const bubble = this.targetBubbleFor(event.invocation_id ?? null);
 
         // A turn with no user row (a resume, the setup greeting) anchors on its own
@@ -503,6 +466,36 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
             assistantMsg._needsSeparator = true;
         }
         this.scrollToBottom();
+    },
+
+    // A web search or page read the provider runs inside its own request. Only
+    // the shimmer changes: the result reaches the reply as text and citations.
+    handleProviderTool(event) {
+        if (!this.isForCurrentConversation()) return;
+        this.startStreamTimeout();
+        if (event?.name === 'web_fetch' && event?.url) {
+            let domain = event.url;
+            try { domain = new URL(event.url).hostname.replace(/^www\./, ''); } catch { /* keep the url */ }
+            this.currentToolStatus = this.streamTexts.readingDomain.replace(':domain', () => domain);
+        } else if (event?.name === 'web_search' && event?.query) {
+            this.currentToolStatus = this.streamTexts.searchingWebFor.replace(':query', () => event.query);
+        } else {
+            this.currentToolStatus = this.friendlyToolStatus(event?.name);
+        }
+        this.targetBubbleFor(event.invocation_id ?? null);
+        this.scrollToBottom();
+    },
+
+    handleCitation(event) {
+        if (!this.isForCurrentConversation() || !event?.url) return;
+        const assistantMsg = this.targetBubbleFor(event.invocation_id ?? null);
+        const existing = assistantMsg.sources.find((source) => source.url === event.url);
+        if (existing) {
+            existing.title ??= event.title ?? null;
+            return;
+        }
+        if (assistantMsg.sources.length >= SOURCES_LIMIT) return;
+        assistantMsg.sources.push({ url: event.url, title: event.title ?? null, domain: event.domain });
     },
 
     handleToolResult(event) {
@@ -593,6 +586,9 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
         if (Array.isArray(authoritative.display_blocks)) {
             assistantMsg.display_blocks = authoritative.display_blocks;
         }
+        if (Array.isArray(authoritative.sources)) {
+            assistantMsg.sources = authoritative.sources;
+        }
         // Picks up a `.next_steps` broadcast the client never received. The
         // suggester usually finishes AFTER this reconcile, in which case the
         // row carries none yet and the broadcast is what fills the strip, so
@@ -654,7 +650,7 @@ export const streamModule = ({ texts = {}, toolLabels = {} } = {}) => ({
     // pull here can never clobber a rename the user typed mid-turn.
     async maybeSyncTitle() {
         if (!this.conversationId) return;
-        if (!document.title.startsWith('New chat')) return;
+        if (!document.title.startsWith(this.streamTexts.newChat)) return;
         try {
             const title = await this.$wire.conversationTitle(this.conversationId);
             if (title) {

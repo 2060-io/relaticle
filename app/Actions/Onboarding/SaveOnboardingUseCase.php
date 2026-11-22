@@ -7,10 +7,12 @@ namespace App\Actions\Onboarding;
 use App\Enums\OnboardingUseCase;
 use App\Enums\WorkspaceSetupStep;
 use App\Features\OnboardSeed;
+use App\Features\SetupConversation;
 use App\Jobs\Email\SyncSubscriberJob;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\WorkspaceActivationFacts;
+use App\Support\Locales;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -37,7 +39,7 @@ final readonly class SaveOnboardingUseCase
 
         $useCase = OnboardingUseCase::from((string) $input['onboarding_use_case']);
 
-        $saved = DB::transaction(function () use ($workspace, $input, $useCase, $then): bool {
+        $saved = DB::transaction(function () use ($workspace, $input, $useCase, $then, $user): bool {
             $locked = Workspace::query()->whereKey($workspace->getKey())->lockForUpdate()->sole();
 
             if ($locked->onboarding_step !== WorkspaceSetupStep::UseCase || $locked->onboarding_use_case !== null) {
@@ -55,7 +57,7 @@ final readonly class SaveOnboardingUseCase
                 'onboarding_step' => $then,
             ]);
 
-            $preset = $useCase->stagePreset();
+            $preset = Locales::within($user->effectiveLocale(), fn (): ?array => $useCase->stagePreset());
 
             if ($preset !== null) {
                 $this->applyStagePreset->execute($locked, $preset);
@@ -87,6 +89,7 @@ final readonly class SaveOnboardingUseCase
     {
         return $workspace->isPersonalWorkspace()
             && Feature::active(OnboardSeed::class)
+            && ! Feature::active(SetupConversation::class)
             && ! $this->facts->hasConnectedMailbox($user, $workspace);
     }
 

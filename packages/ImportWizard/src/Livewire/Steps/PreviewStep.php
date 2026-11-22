@@ -9,12 +9,12 @@ use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\LengthAwarePaginator as Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\URL;
 use Illuminate\View\View;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -25,9 +25,7 @@ use Relaticle\ImportWizard\Enums\ImportStatus;
 use Relaticle\ImportWizard\Jobs\ExecuteImportJob;
 use Relaticle\ImportWizard\Livewire\Concerns\WithImportStore;
 use Relaticle\ImportWizard\Livewire\ImportWizard;
-use Relaticle\ImportWizard\Models\FailedImportRow;
 use Relaticle\ImportWizard\Store\ImportRow;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class PreviewStep extends Component implements HasActions, HasForms
 {
@@ -99,6 +97,16 @@ final class PreviewStep extends Component implements HasActions, HasForms
 
         return $this->batchId !== null
             || $this->import()->status === ImportStatus::Importing;
+    }
+
+    #[Computed]
+    public function continueUrl(): ?string
+    {
+        if ($this->import()->status !== ImportStatus::Completed) {
+            return null;
+        }
+
+        return ImportWizard::continueUrl($this->import());
     }
 
     #[Computed]
@@ -297,9 +305,9 @@ final class PreviewStep extends Component implements HasActions, HasForms
             default => __('Start Import'),
         };
         $icon = match (true) {
-            $resolvingMatches => Heroicon::OutlinedArrowPath,
-            $matchesIncomplete => Heroicon::OutlinedExclamationTriangle,
-            default => Heroicon::OutlinedPlay,
+            $resolvingMatches => 'lucide-refresh-cw',
+            $matchesIncomplete => 'lucide-triangle-exclamation-point',
+            default => 'lucide-play',
         };
 
         return Action::make('startImport')
@@ -308,52 +316,20 @@ final class PreviewStep extends Component implements HasActions, HasForms
             ->icon($icon)
             ->disabled(fn (): bool => $resolvingMatches || $matchesIncomplete)
             ->requiresConfirmation()
-            ->modalHeading('Start import')
-            ->modalDescription('Are you sure that you want to start running this import?')
-            ->modalSubmitActionLabel('Start import')
+            ->modalHeading(__('import-wizard-new::actions.start_import.heading'))
+            ->modalDescription(__('import-wizard-new::actions.start_import.description'))
+            ->modalSubmitActionLabel(__('import-wizard-new::actions.start_import.submit'))
             ->action(fn () => $this->startImport());
     }
 
     public function downloadFailedRowsAction(): Action
     {
         return Action::make('downloadFailedRows')
-            ->label('Download Failed Rows')
+            ->label(__('import-wizard-new::actions.download_failed_rows'))
             ->color('danger')
-            ->icon(Heroicon::OutlinedArrowDownTray)
+            ->icon('lucide-download')
             ->visible(fn (): bool => $this->isCompleted && $this->import()->failed_rows > 0)
-            ->action(fn (): StreamedResponse => $this->downloadFailedRows());
-    }
-
-    public function downloadFailedRows(): StreamedResponse
-    {
-        $import = $this->import();
-        $headers = $import->headers;
-
-        return response()->streamDownload(function () use ($import, $headers): void {
-            $handle = fopen('php://output', 'w');
-
-            if ($handle === false) {
-                return;
-            }
-
-            fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, [...$headers, 'Import Error'], escape: '\\');
-
-            $import->failedRows()
-                ->lazyById(100)
-                ->each(function (FailedImportRow $row) use ($handle, $headers): void {
-                    $values = [];
-
-                    foreach ($headers as $header) {
-                        $values[] = $row->data[$header] ?? '';
-                    }
-
-                    $values[] = $row->validation_error ?? '';
-                    fputcsv($handle, $values, escape: '\\');
-                });
-
-            fclose($handle);
-        }, 'failed-rows.csv', ['Content-Type' => 'text/csv']);
+            ->url(fn (): string => URL::temporarySignedRoute('import-history.failed-rows.download', now()->addHour(), ['import' => $this->import()]), shouldOpenInNewTab: true);
     }
 
     public function checkMatchResolution(): void

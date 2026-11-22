@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\Mcp\RegisterClientController;
+use App\Http\Controllers\Mcp\OAuthRegisterController;
 use App\Support\Mcp\RedirectDomains;
 use Illuminate\Support\Facades\Log;
 
-mutates(RedirectDomains::class, RegisterClientController::class);
+mutates(RedirectDomains::class, OAuthRegisterController::class);
 
 /** The redirect URI the Ayni Dev Agent registers. */
 function ayniDevAgentCallback(): string
@@ -56,6 +56,8 @@ it('keeps the built-in connector hosts next to the listed origins', function ():
         'https://claude.ai',
         'https://chatgpt.com',
         'https://console.mistral.ai',
+        'https://www.perplexity.ai',
+        'https://enterprise.perplexity.ai',
         'http://localhost',
         'https://dev-agent.dev.ayni.org',
         'https://agent.example.com',
@@ -89,6 +91,8 @@ it('opens nothing for an entry that is not an https origin', function (): void {
         'https://claude.ai',
         'https://chatgpt.com',
         'https://console.mistral.ai',
+        'https://www.perplexity.ai',
+        'https://enterprise.perplexity.ai',
         'http://localhost',
     ]);
 
@@ -138,7 +142,7 @@ it('keeps an https origin, lowercased and without its trailing slash', function 
     'origin' => ['https://dev-agent.dev.ayni.org', 'https://dev-agent.dev.ayni.org'],
     'trailing slash' => ['https://dev-agent.dev.ayni.org/', 'https://dev-agent.dev.ayni.org'],
     'upper case' => ['HTTPS://Dev-Agent.Dev.Ayni.Org', 'https://dev-agent.dev.ayni.org'],
-    'port' => ['https://agent.example.com:8443', 'https://agent.example.com:8443'],
+    'default port written out' => ['https://agent.example.com:443', 'https://agent.example.com'],
     'spaces around it' => ['  https://agent.example.com  ', 'https://agent.example.com'],
 ]);
 
@@ -158,6 +162,7 @@ it('ignores an entry that is not an https origin', function (string $entry): voi
     'credentials' => 'https://user:pass@dev-agent.dev.ayni.org',
     'backslash' => 'https://dev-agent.dev.ayni.org\\@attacker.example',
     'empty port' => 'https://dev-agent.dev.ayni.org:',
+    'another port, which no redirect URI may use' => 'https://agent.example.com:8443',
     'no host' => 'https://',
     'underscore host' => 'https://dev_agent.example.com',
 ]);

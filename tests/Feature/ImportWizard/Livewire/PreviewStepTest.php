@@ -2,18 +2,24 @@
 
 declare(strict_types=1);
 
+use App\Actions\Onboarding\CreateSetupConversation;
 use App\Events\WorkspaceCreated;
+use App\Features\SetupConversation;
+use App\Filament\Pages\ChatConversation;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldValue;
 use App\Models\People;
 use App\Models\User;
+use App\Support\Locales;
 use Filament\Events\TenantSet;
 use Filament\Facades\Filament;
 use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Foundation\Events\LocaleUpdated;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
+use Laravel\Pennant\Feature;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Relaticle\ImportWizard\Data\ColumnData;
@@ -24,6 +30,7 @@ use Relaticle\ImportWizard\Enums\RowMatchAction;
 use Relaticle\ImportWizard\Jobs\ExecuteImportJob;
 use Relaticle\ImportWizard\Jobs\ValidateColumnJob;
 use Relaticle\ImportWizard\Livewire\Steps\PreviewStep;
+use Relaticle\ImportWizard\Models\FailedImportRow;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\ImportWizard\Store\ImportStore;
 use Relaticle\ImportWizard\Support\MatchResolver;
@@ -32,7 +39,7 @@ use Tests\Helpers\ImportExecutionFixture;
 mutates(PreviewStep::class, MatchResolver::class);
 
 beforeEach(function (): void {
-    Event::fake()->except([WorkspaceCreated::class, Authenticated::class, TenantSet::class]);
+    Event::fake()->except([WorkspaceCreated::class, Authenticated::class, TenantSet::class, LocaleUpdated::class]);
 
     $this->user = User::factory()->withWorkspace()->create();
     $this->actingAs($this->user);
@@ -117,6 +124,24 @@ it('mounts and renders with summary data', function (): void {
     $component->assertOk()
         ->assertSee('People')
         ->assertSee('Start Import');
+});
+
+it('prints counts with the grouping of the user language', function (): void {
+    $rows = array_map(fn (int $n): array => makePreviewRow($n + 1, ['Name' => "Person {$n}"]), range(1, 1234));
+
+    $store = createPreviewReadyStore($this, ['Name'], [], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+    foreach (array_chunk($rows, 200) as $chunk) {
+        $store->query()->insert($chunk);
+    }
+    $this->import->update(['total_rows' => 1234]);
+
+    Locales::apply('de');
+
+    mountPreviewStep($this)
+        ->assertSee('1.234')
+        ->assertDontSee('1,234');
 });
 
 it('resolves all rows as Create when only name is mapped', function (): void {
@@ -764,6 +789,113 @@ it('downloadFailedRows action is hidden when there are no failed rows', function
     $component = mountPreviewStep($this);
 
     $component->assertDontSee('Download Failed Rows');
+});
+
+it('downloadFailedRows action links the signed download with the shared csv writer', function (): void {
+    createPreviewReadyStore($this, ['Name'], [
+        makePreviewRow(2, ['Name' => 'John']),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    $this->import->update(['status' => ImportStatus::Completed, 'failed_rows' => 1]);
+    FailedImportRow::query()->create([
+        'import_id' => $this->import->id,
+        'workspace_id' => $this->workspace->id,
+        'data' => ['Name' => 'John'],
+        'validation_error' => null,
+    ]);
+
+    $url = mountPreviewStep($this)->instance()->downloadFailedRowsAction()->getUrl();
+
+    $csv = $this->get($url)->assertOk()->streamedContent();
+
+    expect($csv)->toContain('John,"System error"');
+});
+
+function completePreviewImport(object $context): void
+{
+    createPreviewReadyStore($context, ['Name'], [
+        makePreviewRow(2, ['Name' => 'John']),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    $context->import->update([
+        'status' => ImportStatus::Completed,
+        'created_rows' => 1,
+        'updated_rows' => 0,
+        'skipped_rows' => 0,
+        'failed_rows' => 0,
+    ]);
+}
+
+function onboardingWorkspaceWithSetupChat(object $context): string
+{
+    Feature::define(SetupConversation::class, true);
+
+    $context->workspace->forceFill(['personal_workspace' => true])->save();
+
+    return resolve(CreateSetupConversation::class)->execute($context->workspace->fresh());
+}
+
+it('shows continue with rela after an onboarding import completes', function (): void {
+    $conversationId = onboardingWorkspaceWithSetupChat($this);
+    completePreviewImport($this);
+
+    mountPreviewStep($this)
+        ->assertSee('Continue with Rela')
+        ->assertSeeHtml('href="'.ChatConversation::getUrl(['conversationId' => $conversationId, 'tenant' => $this->workspace]).'"');
+});
+
+it('names the configured assistant on the continue button', function (): void {
+    config()->set('chat.assistant_name', 'Aria');
+    onboardingWorkspaceWithSetupChat($this);
+    completePreviewImport($this);
+
+    mountPreviewStep($this)
+        ->assertSee('Continue with Aria')
+        ->assertDontSee('Continue with Rela');
+});
+
+it('shows no continue button to a workspace that has no setup chat', function (): void {
+    completePreviewImport($this);
+
+    mountPreviewStep($this)->assertDontSee('Continue with Rela');
+});
+
+it('shows continue with rela only in the first 14 days of a workspace', function (int $daysOld, bool $shown): void {
+    onboardingWorkspaceWithSetupChat($this);
+    $this->workspace->forceFill(['created_at' => now()->subDays($daysOld)->addMinute()])->save();
+    completePreviewImport($this);
+
+    $step = mountPreviewStep($this);
+
+    $shown ? $step->assertSee('Continue with Rela') : $step->assertDontSee('Continue with Rela');
+})->with([
+    'day 13' => [13, true],
+    'the last minute of day 14' => [14, true],
+    'day 15' => [15, false],
+]);
+
+it('shows no continue button to a teammate of the workspace owner', function (): void {
+    onboardingWorkspaceWithSetupChat($this);
+    completePreviewImport($this);
+
+    $this->actingAs(User::factory()->create());
+
+    mountPreviewStep($this)->assertDontSee('Continue with Rela');
+});
+
+it('shows no continue button before the import completes', function (): void {
+    onboardingWorkspaceWithSetupChat($this);
+    createPreviewReadyStore($this, ['Name'], [
+        makePreviewRow(2, ['Name' => 'John']),
+    ], [
+        ColumnData::toField(source: 'Name', target: 'name'),
+    ]);
+
+    mountPreviewStep($this)->assertDontSee('Continue with Rela');
 });
 
 describe('on a remote store disk', function (): void {

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Jobs;
 
+use App\Actions\Onboarding\StartDataArrivedTurn;
+use App\Contracts\Entitlements;
 use App\Features\SetupConversation;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Services\Billing\HostedWorkspaceAccess;
 use App\Support\CurrentWorkspace;
+use App\Support\Locales;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -36,22 +38,30 @@ use Laravel\Ai\Streaming\Events\StreamEvent;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolCall;
 use Laravel\Pennant\Feature;
+use Relaticle\Chat\Actions\RecordNextSteps;
 use Relaticle\Chat\Agents\CrmAssistant;
+use Relaticle\Chat\Data\SetupOption;
 use Relaticle\Chat\Enums\AiCreditType;
 use Relaticle\Chat\Enums\EmailReach;
 use Relaticle\Chat\Enums\MessageOrigin;
 use Relaticle\Chat\Enums\PendingActionStatus;
+use Relaticle\Chat\Enums\RefundCause;
+use Relaticle\Chat\Enums\WebAccess;
+use Relaticle\Chat\Enums\WebTool;
 use Relaticle\Chat\Events\ChatStreamFailed;
 use Relaticle\Chat\Events\ChatStreamRetrying;
 use Relaticle\Chat\Events\ConversationResolved;
 use Relaticle\Chat\Events\PendingActionsSuperseded;
+use Relaticle\Chat\Exceptions\MembershipRevokedException;
 use Relaticle\Chat\Exceptions\ProviderStreamRejectedException;
 use Relaticle\Chat\Models\AgentConversation;
+use Relaticle\Chat\Models\AgentConversationMessage;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Services\AiModelResolver;
 use Relaticle\Chat\Services\CreditService;
 use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Services\PendingActionService;
+use Relaticle\Chat\Services\SetupOptions;
 use Relaticle\Chat\Services\TipTapDocumentParser;
 use Relaticle\Chat\Services\TurnContinuationService;
 use Relaticle\Chat\Support\AssistantText;
@@ -61,6 +71,7 @@ use Relaticle\Chat\Support\ProviderRateGate;
 use Relaticle\Chat\Support\ProviderStreamError;
 use Relaticle\Chat\Support\StoredSteps;
 use Relaticle\Chat\Support\StreamEventBroadcaster;
+use Relaticle\Chat\Support\TurnNotes;
 use Relaticle\Chat\Support\TurnPresence;
 use Throwable;
 
@@ -97,6 +108,8 @@ final class ProcessChatMessage implements ShouldQueue
         public readonly MessageOrigin $origin = MessageOrigin::Typed,
         public readonly ?string $resumesTurnId = null,
         public readonly ?array $attachment = null,
+        public readonly ?string $claimKey = null,
+        public readonly ?string $nextStep = null,
     ) {
         $this->onConnection('redis-chat');
         $this->onQueue('chat');
@@ -139,7 +152,7 @@ final class ProcessChatMessage implements ShouldQueue
 
     public function handle(CreditService $creditService): void
     {
-        resolve(CurrentWorkspace::class)->within($this->workspace, fn () => $this->process($creditService));
+        Locales::within($this->user->effectiveLocale(), fn () => resolve(CurrentWorkspace::class)->within($this->workspace, fn () => $this->process($creditService)));
     }
 
     private function process(CreditService $creditService): void
@@ -148,17 +161,14 @@ final class ProcessChatMessage implements ShouldQueue
 
         $this->workspace->refresh();
 
-        if (resolve(HostedWorkspaceAccess::class)->isPaused($this->workspace)) {
-            $creditService->refundReservation(
-                $this->workspace,
-                resolutionKey: $this->resolutionKey(),
-                conversationId: $this->conversationId,
-            );
-            $this->broadcastSafely(new ChatStreamFailed(
-                conversationId: $this->conversationId,
-                message: __('billing.access.paused_chat'),
-            ));
-            TurnPresence::clear($this->conversationId, $this->turnId);
+        if (! resolve(Entitlements::class)->allowsAccess($this->workspace)) {
+            $this->refuseTurn($creditService, __('billing.access.paused_chat'));
+
+            return;
+        }
+
+        if (! $this->workspace->hasMemberNow((string) $this->user->getKey())) {
+            $this->refuseTurn($creditService, $this->membershipRevokedMessage());
 
             return;
         }
@@ -188,13 +198,9 @@ final class ProcessChatMessage implements ShouldQueue
                 resolve(TurnContinuationService::class)->release($this->resumesTurnId);
             }
 
-            $creditService->refundReservation(
-                $this->workspace,
-                resolutionKey: $this->resolutionKey(),
-                conversationId: $this->conversationId,
-            );
+            $this->refundUnstartedTurn($creditService);
             $this->releaseAuth();
-            TurnPresence::clear($this->conversationId, $this->turnId);
+            $this->abandonTurn();
 
             return;
         }
@@ -219,10 +225,10 @@ final class ProcessChatMessage implements ShouldQueue
             $agent->withConversationId($this->conversationId);
             $agent->withTurnId($this->turnId);
             $agent->continue($this->conversationId, as: $this->user);
-            $agent->withUserTimezone($this->user->timezone);
+            $agent->withUserTimezone($this->user->timezone)->withLanguage($this->user->effectiveLocale());
             $agent->withWorkspace($this->workspace);
-            $agent->withSetupMode($this->isSetupConversation());
-            $agent->withTurnOrigin($this->origin);
+            $agent->withSetupMode($this->isSetupConversation())->withOpeningTurn($this->opensConversation());
+            $agent->withTurnOrigin($this->origin)->withTypedText($this->typedText());
             $agent->withCurrentUser([
                 'name' => $this->user->name,
                 'id' => (string) $this->user->getKey(),
@@ -230,7 +236,7 @@ final class ProcessChatMessage implements ShouldQueue
                 'capabilities' => array_column($this->user->workspaceCapabilities($this->workspace->getKey()), 'value'),
             ]);
             $agent->withModel($this->modelLabel(), $this->resolved['source'] === 'auto');
-            $agent->withEmailReach(EmailReach::for($this->user, $this->workspace));
+            $this->grantWebAccess($agent->withEmailReach(EmailReach::for($this->user, $this->workspace)));
             $agent->withMentions($this->mentions);
             $agent->withPageContext($this->pageContext);
             $agent->withContextLedger($this->contextLedger());
@@ -244,11 +250,7 @@ final class ProcessChatMessage implements ShouldQueue
             $channel = new PrivateChannel("chat.conversation.{$this->conversationId}");
             $broadcaster = new StreamEventBroadcaster($channel);
         } catch (Throwable $e) {
-            $creditService->refundReservation(
-                $this->workspace,
-                resolutionKey: $this->resolutionKey(),
-                conversationId: $this->conversationId,
-            );
+            $this->refundUnstartedTurn($creditService);
             // The job returns normally from here, so a breadcrumb alone would never
             // reach Sentry: breadcrumbs only ship attached to a captured event. Without
             // report() a broken deploy fails every turn for every tenant in silence.
@@ -259,7 +261,7 @@ final class ProcessChatMessage implements ShouldQueue
                 message: 'The assistant could not start. Please try again.',
             ));
             $this->releaseAuth();
-            TurnPresence::clear($this->conversationId, $this->turnId);
+            $this->abandonTurn();
 
             return;
         }
@@ -344,7 +346,7 @@ final class ProcessChatMessage implements ShouldQueue
                 return;
             }
 
-            $response->then(function (StreamedAgentResponse $streamedResponse) use ($creditService, $startedAt): void {
+            $response->then(function (StreamedAgentResponse $streamedResponse) use ($agent, $creditService, $startedAt): void {
                 $refundedBlankTurn = $this->settleBlankTurn($streamedResponse, $creditService);
 
                 // input_tokens stays the UNCACHED remainder, with the cache legs next
@@ -362,32 +364,24 @@ final class ProcessChatMessage implements ShouldQueue
                 ));
 
                 if (! $refundedBlankTurn) {
-                    $creditService->settleReservation(
-                        workspace: $this->workspace,
-                        user: $this->user,
-                        type: AiCreditType::Chat,
-                        model: $this->resolved['model'] ?? $streamedResponse->meta->model ?? 'unknown',
-                        inputTokens: $streamedResponse->usage->uncachedInputTokens(),
-                        outputTokens: $streamedResponse->usage->outputTokens,
-                        toolCallsCount: $streamedResponse->toolCalls->count(),
-                        conversationId: $streamedResponse->conversationId,
-                        resolutionKey: $this->resolutionKey(),
-                    );
+                    $this->settleTurn($streamedResponse, $creditService);
                 }
 
                 $this->persistMentions($streamedResponse->userMessageId);
                 $this->persistUserDocument($streamedResponse->userMessageId);
-                $this->persistUserAttachment($streamedResponse->userMessageId);
+                $this->persistUserMeta($streamedResponse->userMessageId);
                 $this->materializeAssistantDocument($streamedResponse, $startedAt);
                 $this->maybeTitleFromTurn($streamedResponse);
-                $this->suggestNextSteps($streamedResponse);
+                $this->suggestNextSteps($streamedResponse, $agent->awaitsFirstRecord());
 
                 // Both rows are persisted by now (RememberConversation's own
                 // then() ran before this one), so a reload can rebuild the turn
                 // from the database. Any throw above lands in failed(), which
                 // clears too.
-                TurnPresence::clear($this->conversationId, $this->turnId);
+                $this->closeCompletedTurn();
             });
+        } catch (MembershipRevokedException $e) {
+            $this->stopRevokedTurn($creditService, $e);
         } catch (Throwable $e) {
             // Rate-limit, overloaded, dropped-connection and provider stream errors are
             // transient -> release with backoff.
@@ -410,19 +404,7 @@ final class ProcessChatMessage implements ShouldQueue
                 return;
             }
 
-            $rejection = $e instanceof RequestException ? $e : $e->getPrevious();
-
-            if ($rejection instanceof RequestException) {
-                ChatTelemetry::providerRejected($rejection, $this->resolved['model'] ?? 'unknown');
-            }
-
-            if ($e instanceof ProviderStreamRejectedException) {
-                ChatTelemetry::streamRejected($e->error, $this->resolved['model'] ?? 'unknown');
-            }
-
-            if (! $rejection instanceof RequestException && ! $e instanceof ProviderStreamRejectedException && ($this->isProviderFailure($e) || $this->isTransient($e))) {
-                ChatTelemetry::providerFailed($e, $this->resolved['model'] ?? 'unknown');
-            }
+            $this->recordProviderFailure($e);
 
             // The user's model choice was 'auto' and nothing has streamed yet: fail
             // over to the next plan-allowed chain entry instead of failing the turn.
@@ -455,21 +437,7 @@ final class ProcessChatMessage implements ShouldQueue
                         maxAttempts: self::MAX_RATE_LIMIT_RETRIES,
                         delaySeconds: 0,
                     ));
-                    dispatch(new self(
-                        user: $this->user,
-                        workspace: $this->workspace,
-                        message: $this->message,
-                        conversationId: $this->conversationId,
-                        resolved: $next,
-                        mentions: $this->mentions,
-                        document: $this->document,
-                        pageContext: $this->pageContext,
-                        turnId: $this->turnId,
-                        failoverDepth: $this->failoverDepth + 1,
-                        origin: $this->origin,
-                        resumesTurnId: $this->resumesTurnId,
-                        attachment: $this->attachment,
-                    ));
+                    $this->dispatchFailover($next);
 
                     return;
                 }
@@ -500,6 +468,23 @@ final class ProcessChatMessage implements ShouldQueue
             throw $e;
         } finally {
             $this->releaseAuth();
+        }
+    }
+
+    private function recordProviderFailure(Throwable $e): void
+    {
+        $rejection = $e instanceof RequestException ? $e : $e->getPrevious();
+
+        if ($rejection instanceof RequestException) {
+            ChatTelemetry::providerRejected($rejection, $this->resolved['model'] ?? 'unknown');
+        }
+
+        if ($e instanceof ProviderStreamRejectedException) {
+            ChatTelemetry::streamRejected($e->error, $this->resolved['model'] ?? 'unknown');
+        }
+
+        if (! $rejection instanceof RequestException && ! $e instanceof ProviderStreamRejectedException && ($this->isProviderFailure($e) || $this->isTransient($e))) {
+            ChatTelemetry::providerFailed($e, $this->resolved['model'] ?? 'unknown');
         }
     }
 
@@ -552,6 +537,13 @@ final class ProcessChatMessage implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        Locales::within($this->user->effectiveLocale(), fn () => $this->settleFailedTurn($exception));
+    }
+
+    private function settleFailedTurn(?Throwable $exception): void
+    {
+        $this->reportTimeout($exception);
+
         // Unconditional, because this instance can never answer the question the
         // charge depends on: the queue rebuilds the command from the original
         // dispatch payload before calling failed(), so $streamedAnything is false
@@ -565,6 +557,7 @@ final class ProcessChatMessage implements ShouldQueue
         // entered, and nothing was ever sent to a provider to pay for.
         resolve(CreditService::class)->refundReservation(
             $this->workspace,
+            $exception instanceof TimeoutExceededException ? RefundCause::Timeout : RefundCause::Failed,
             resolutionKey: $this->resolutionKey(),
             conversationId: $this->conversationId,
         );
@@ -574,25 +567,133 @@ final class ProcessChatMessage implements ShouldQueue
             'class' => $exception instanceof Throwable ? $exception::class : null,
         ]);
 
-        resolve(PendingActionService::class)->supersedePendingForConversation($this->conversationId);
+        $keptProposals = $this->leaveFailedTurn($exception);
+
+        $this->broadcastSafely(new ChatStreamFailed(
+            conversationId: $this->conversationId,
+            message: $this->failureMessage($exception, $keptProposals),
+            retryOnAuto: $this->offersAutoRetry($exception),
+        ));
+
+        // Last, after persistFailedTurn: a reload landing mid-failed() must
+        // never find the marker gone AND the rows unpersisted at once.
+        $this->abandonTurn();
+    }
+
+    private function reportTimeout(?Throwable $exception): void
+    {
+        // The worker kills its own process after a timeout instead of rethrowing,
+        // so Worker::runJob() never reports it. Every other failure is rethrown and reported there.
+        if ($exception instanceof TimeoutExceededException) {
+            rescue(fn () => report($exception), report: false);
+        }
+    }
+
+    /**
+     * @param  array{provider: string|null, model: string|null, id: string|null, source: string}  $next
+     */
+    private function dispatchFailover(array $next): void
+    {
+        dispatch(new self(
+            user: $this->user,
+            workspace: $this->workspace,
+            message: $this->message,
+            conversationId: $this->conversationId,
+            resolved: $next,
+            mentions: $this->mentions,
+            document: $this->document,
+            pageContext: $this->pageContext,
+            turnId: $this->turnId,
+            failoverDepth: $this->failoverDepth + 1,
+            origin: $this->origin,
+            resumesTurnId: $this->resumesTurnId,
+            attachment: $this->attachment,
+            claimKey: $this->claimKey ?? null,
+            nextStep: $this->nextStep ?? null,
+        ));
+    }
+
+    private function leaveFailedTurn(?Throwable $exception): bool
+    {
+        $keptProposals = $this->cancelProposalsOfFailedTurn($exception);
 
         if (! $this->opensTheThread()) {
             try {
-                $this->persistFailedTurn($exception);
+                $this->persistFailedTurn($exception, $keptProposals);
             } catch (Throwable $e) {
                 report($e);
                 ChatTelemetry::breadcrumb('failed.persist_failed', ['exception' => $e->getMessage()]);
             }
         }
 
+        return $keptProposals;
+    }
+
+    // A dead greeting stores no note, so nothing would explain a card it left docked.
+    private function cancelProposalsOfFailedTurn(?Throwable $exception): bool
+    {
+        $keepsOwn = $exception instanceof TimeoutExceededException && ! $this->opensTheThread();
+
+        resolve(PendingActionService::class)->supersedePendingForConversation(
+            $this->conversationId,
+            exceptTurnId: $keepsOwn ? $this->turnId : null,
+        );
+
+        return $keepsOwn && resolve(TurnContinuationService::class)->hasPendingProposals($this->conversationId);
+    }
+
+    private function refundUnstartedTurn(CreditService $creditService): void
+    {
+        $creditService->refundReservation(
+            $this->workspace,
+            RefundCause::NotStarted,
+            resolutionKey: $this->resolutionKey(),
+            conversationId: $this->conversationId,
+        );
+    }
+
+    private function refuseTurn(CreditService $creditService, string $message): void
+    {
+        $creditService->refundReservation(
+            $this->workspace,
+            RefundCause::Refused,
+            resolutionKey: $this->resolutionKey(),
+            conversationId: $this->conversationId,
+        );
+
+        $this->endTurnWith($message);
+    }
+
+    // A tool call only comes after a provider step, so the turn pays its minimum as a cancel does.
+    private function stopRevokedTurn(CreditService $creditService, MembershipRevokedException $revoked): void
+    {
+        $creditService->settleReservedMinimum(
+            workspace: $this->workspace,
+            user: $this->user,
+            conversationId: $this->conversationId,
+            resolutionKey: $this->resolutionKey(),
+            reason: 'membership_revoked',
+        );
+
+        $this->leaveFailedTurn($revoked);
+        $this->endTurnWith($this->failureMessage($revoked));
+    }
+
+    private function endTurnWith(string $message): void
+    {
         $this->broadcastSafely(new ChatStreamFailed(
             conversationId: $this->conversationId,
-            message: $this->failureMessage($exception),
-            retryOnAuto: $this->offersAutoRetry($exception),
+            message: $message,
         ));
+        $this->abandonTurn();
+    }
 
-        // Last, after persistFailedTurn: a reload landing mid-failed() must
-        // never find the marker gone AND the rows unpersisted at once.
+    private function abandonTurn(): void
+    {
+        if (($this->claimKey ?? null) !== null) {
+            Cache::forget($this->claimKey);
+        }
+
         TurnPresence::clear($this->conversationId, $this->turnId);
     }
 
@@ -603,12 +704,21 @@ final class ProcessChatMessage implements ShouldQueue
         return $this->origin === MessageOrigin::Greeting;
     }
 
-    private function failureMessage(?Throwable $exception): string
+    private function membershipRevokedMessage(): string
     {
+        return __('You are no longer a member of this workspace, so the assistant stopped.');
+    }
+
+    private function failureMessage(?Throwable $exception, bool $keptProposals = false): string
+    {
+        if ($exception instanceof MembershipRevokedException) {
+            return $this->membershipRevokedMessage();
+        }
+
         if ($exception instanceof TimeoutExceededException) {
-            return __('This reply hit the :seconds-second limit before it finished. Ask for a shorter answer, or for it in parts.', [
-                'seconds' => self::TIMEOUT_SECONDS,
-            ]);
+            return $keptProposals
+                ? TurnNotes::timeoutWithProposals(self::TIMEOUT_SECONDS)
+                : TurnNotes::timeout(self::TIMEOUT_SECONDS);
         }
 
         if ($this->isRateLimited($exception)) {
@@ -674,12 +784,15 @@ final class ProcessChatMessage implements ShouldQueue
      * note, and are accepted rather than solved with more machinery.
      */
     /** @return array<string, mixed> */
-    private function failedTurnUserMeta(): array
+    private function userRowMeta(): array
     {
-        return $this->attachment === null ? [] : ['attachment' => $this->attachment];
+        return array_filter([
+            'attachment' => $this->attachment,
+            'next_step' => $this->nextStep ?? null,
+        ], static fn (mixed $value): bool => $value !== null);
     }
 
-    private function persistFailedTurn(?Throwable $exception): void
+    private function persistFailedTurn(?Throwable $exception, bool $keptProposals): void
     {
         $now = now();
         $table = DB::table('agent_conversation_messages');
@@ -720,7 +833,7 @@ final class ProcessChatMessage implements ShouldQueue
                 'attachments' => '[]',
                 'steps' => '[]',
                 'usage' => '[]',
-                'meta' => json_encode($this->failedTurnUserMeta(), JSON_THROW_ON_ERROR),
+                'meta' => json_encode($this->userRowMeta(), JSON_THROW_ON_ERROR),
                 'document' => json_encode($this->document, JSON_THROW_ON_ERROR),
                 'origin' => $this->origin->value,
                 'created_at' => $now,
@@ -728,7 +841,7 @@ final class ProcessChatMessage implements ShouldQueue
             ]);
         }
 
-        $text = $this->failureMessage($exception);
+        $text = $this->failureMessage($exception, $keptProposals);
         $document = $this->getParser()->buildFromText($text, [], $this->workspace);
 
         $table->insert([
@@ -742,7 +855,7 @@ final class ProcessChatMessage implements ShouldQueue
             'attachments' => '[]',
             'steps' => StoredSteps::text($text),
             'usage' => '[]',
-            'meta' => json_encode(['error' => true], JSON_THROW_ON_ERROR),
+            'meta' => json_encode(['error' => true, 'failure' => ChatTelemetry::failureEvidence($exception, $this->resolved['provider'], $this->resolved['model'])], JSON_THROW_ON_ERROR),
             'document' => json_encode($document, JSON_THROW_ON_ERROR),
             'created_at' => $now,
             'updated_at' => $now,
@@ -877,23 +990,19 @@ final class ProcessChatMessage implements ShouldQueue
             ->update(['document' => json_encode($this->document, JSON_THROW_ON_ERROR)]);
     }
 
-    private function persistUserAttachment(?string $userMessageId): void
+    private function persistUserMeta(?string $userMessageId): void
     {
-        if ($this->attachment === null) {
-            return;
-        }
+        $additions = $this->userRowMeta();
 
-        if ($userMessageId === null) {
+        if ($additions === [] || $userMessageId === null) {
             return;
         }
 
         $existing = json_decode((string) DB::table('agent_conversation_messages')->where('id', $userMessageId)->value('meta'), associative: true);
-        $meta = is_array($existing) ? $existing : [];
-        $meta['attachment'] = $this->attachment;
 
         DB::table('agent_conversation_messages')
             ->where('id', $userMessageId)
-            ->update(['meta' => json_encode($meta, JSON_THROW_ON_ERROR)]);
+            ->update(['meta' => json_encode([...(is_array($existing) ? $existing : []), ...$additions], JSON_THROW_ON_ERROR)]);
     }
 
     /**
@@ -936,21 +1045,37 @@ final class ProcessChatMessage implements ShouldQueue
             ]);
     }
 
+    private function settleTurn(StreamedAgentResponse $streamedResponse, CreditService $creditService): void
+    {
+        $creditService->settleReservation(
+            workspace: $this->workspace,
+            user: $this->user,
+            type: AiCreditType::Chat,
+            model: $this->resolved['model'] ?? $streamedResponse->meta->model ?? 'unknown',
+            usage: $streamedResponse->usage,
+            toolCallsCount: $streamedResponse->toolCalls->count() + WebTool::Fetch->countIn($streamedResponse->events),
+            webSearchCount: WebTool::Search->countIn($streamedResponse->events),
+            conversationId: $streamedResponse->conversationId,
+            resolutionKey: $this->resolutionKey(),
+        );
+    }
+
     private function settleBlankTurn(StreamedAgentResponse $streamedResponse, CreditService $creditService): bool
     {
-        if ($this->sawToolCall) {
+        if ($this->sawToolCall || trim(AssistantText::finalReply($streamedResponse->text, $this->textAfterLastToolCall, $this->sawToolCall)) !== '') {
             return false;
         }
 
-        if (trim(AssistantText::finalReply($streamedResponse->text, $this->textAfterLastToolCall, $this->sawToolCall)) !== '') {
-            return false;
-        }
+        $ranProviderTool = $this->ranProviderTool($streamedResponse);
 
-        $creditService->refundReservation(
-            $this->workspace,
-            resolutionKey: $this->resolutionKey(),
-            conversationId: $this->conversationId,
-        );
+        if (! $ranProviderTool) {
+            $creditService->refundReservation(
+                $this->workspace,
+                RefundCause::BlankReply,
+                resolutionKey: $this->resolutionKey(),
+                conversationId: $this->conversationId,
+            );
+        }
 
         $note = $this->blankTurnMessage($streamedResponse);
 
@@ -960,26 +1085,33 @@ final class ProcessChatMessage implements ShouldQueue
 
         ChatTelemetry::breadcrumb('stream.blank_reply', ['model' => $this->resolved['model'] ?? null]);
 
-        return true;
+        return ! $ranProviderTool;
+    }
+
+    private function ranProviderTool(StreamedAgentResponse $streamedResponse): bool
+    {
+        return WebTool::anyRanIn($streamedResponse->events);
     }
 
     private function blankTurnMessage(StreamedAgentResponse $streamedResponse): ?string
     {
         $reason = $streamedResponse->events->whereInstanceOf(StreamEnd::class)->last()?->reason;
 
+        $notes = TurnNotes::blankReply();
+
         if ($reason === FinishReason::Length->value) {
-            return __('This reply ran out of room before it said anything. Ask again, or ask for a shorter answer.');
+            return $notes['length'];
         }
 
         if ($reason === FinishReason::ContentFilter->value) {
-            return __('The model declined to answer this. Try rephrasing your request.');
+            return $notes['content_filter'];
         }
 
         if (! $this->origin->isTyped()) {
             return null;
         }
 
-        return __('Noted. Go on, or ask me a question.');
+        return $notes['noted'];
     }
 
     private function acknowledgeBlankTurn(?string $assistantMessageId, string $acknowledgement): void
@@ -997,6 +1129,14 @@ final class ProcessChatMessage implements ShouldQueue
                 'document' => json_encode($document, JSON_THROW_ON_ERROR),
                 'steps' => StoredSteps::text($acknowledgement),
             ]);
+    }
+
+    private function typedText(): string
+    {
+        // An attachment turn's message holds the file's contents, so only the document says what the user typed.
+        return $this->attachment === null
+            ? $this->message
+            : $this->getParser()->parse($this->document, $this->workspace)['text'];
     }
 
     private function getParser(): TipTapDocumentParser
@@ -1061,7 +1201,7 @@ final class ProcessChatMessage implements ShouldQueue
      * its reply. That is the moment suggestions are worth the most: the record
      * was just written and what follows it is genuinely open.
      */
-    private function suggestNextSteps(StreamedAgentResponse $streamedResponse): void
+    private function suggestNextSteps(StreamedAgentResponse $streamedResponse, bool $askedForFirstRecord): void
     {
         $reply = AssistantText::finalReply($streamedResponse->text, $this->textAfterLastToolCall, $this->sawToolCall);
 
@@ -1079,6 +1219,18 @@ final class ProcessChatMessage implements ShouldQueue
             return;
         }
 
+        if ($this->offersSetupOptions()) {
+            $this->offerSetupOptions($messageId);
+
+            return;
+        }
+
+        if ($askedForFirstRecord && $this->origin->isTyped()) {
+            $this->offerWaysInBesideTheAsk($messageId);
+
+            return;
+        }
+
         dispatch(new SuggestNextSteps(
             conversationId: $this->conversationId,
             messageId: $messageId,
@@ -1091,6 +1243,47 @@ final class ProcessChatMessage implements ShouldQueue
                     ->all()
             )),
         ));
+    }
+
+    private function offersSetupOptions(): bool
+    {
+        return config('chat.next_steps.enabled', true)
+            && $this->isSetupConversation()
+            && in_array($this->origin, [MessageOrigin::Greeting, MessageOrigin::DataArrived], true);
+    }
+
+    private function offerSetupOptions(string $messageId): void
+    {
+        $this->recordSetupOptions($messageId, resolve(SetupOptions::class)->for($this->user, $this->workspace));
+    }
+
+    // The ask needs a typed name, so a model-written chip beside it only costs a turn.
+    private function offerWaysInBesideTheAsk(string $messageId): void
+    {
+        if (! config('chat.next_steps.enabled', true) || ! $this->isSetupConversation()) {
+            return;
+        }
+
+        $this->recordSetupOptions($messageId, array_values(array_filter(
+            resolve(SetupOptions::class)->besideTheAsk($this->user, $this->workspace),
+            fn (SetupOption $option): bool => $option->id !== $this->nextStep,
+        )));
+    }
+
+    /**
+     * @param  list<SetupOption>  $options
+     */
+    private function recordSetupOptions(string $messageId, array $options): void
+    {
+        if ($options === []) {
+            return;
+        }
+
+        resolve(RecordNextSteps::class)->execute(
+            $this->conversationId,
+            $messageId,
+            array_map(static fn (SetupOption $option): array => $option->toArray(), $options),
+        );
     }
 
     private function turnLeftAProposal(): bool
@@ -1133,9 +1326,36 @@ final class ProcessChatMessage implements ShouldQueue
         return 'resolve-'.$this->turnId;
     }
 
+    private function grantWebAccess(CrmAssistant $agent): void
+    {
+        $model = resolve(ModelRegistry::class)->find((string) ($this->resolved['id'] ?? ''));
+        $searches = resolve(CreditService::class)->affordableWebSearches($this->workspace);
+
+        $agent->withWebAccess(WebAccess::for($this->user, $this->workspace, $model, $this->resumesTurnId, $searches), $searches);
+    }
+
     private function modelLabel(): ?string
     {
         return resolve(ModelRegistry::class)->find((string) ($this->resolved['id'] ?? ''))?->displayLabel();
+    }
+
+    private function closeCompletedTurn(): void
+    {
+        TurnPresence::clear($this->conversationId, $this->turnId);
+
+        if (in_array($this->origin, [MessageOrigin::Resume, MessageOrigin::Greeting], true) && $this->isSetupConversation()) {
+            resolve(StartDataArrivedTurn::class)->execute($this->workspace);
+        }
+    }
+
+    private function opensConversation(): bool
+    {
+        return $this->origin->isTyped()
+            && $this->workspace->isInSetupWindow()
+            && ! AgentConversationMessage::query()
+                ->where('conversation_id', $this->conversationId)
+                ->where('role', 'assistant')
+                ->exists();
     }
 
     private function isSetupConversation(): bool

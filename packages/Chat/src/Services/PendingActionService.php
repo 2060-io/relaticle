@@ -41,20 +41,28 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
+use Relaticle\Chat\Actions\GrantWebAccess;
 use Relaticle\Chat\Enums\PendingActionOperation;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Enums\ProposalEntity;
 use Relaticle\Chat\Events\PendingActionResolved;
+use Relaticle\Chat\Exceptions\ProposalNotResolvable;
 use Relaticle\Chat\Models\AgentConversation;
 use Relaticle\Chat\Models\PendingAction;
+use Relaticle\Chat\Queries\ProposalReceiptsQuery;
 use Relaticle\Chat\Support\ProposalLabel;
 use Relaticle\Chat\Support\ProposalOwnership;
 use Relaticle\Chat\Support\ProposalPayload;
 use Relaticle\Chat\Support\ProposalProgress;
 use Relaticle\Chat\Support\RecordReferenceResolver;
 use Relaticle\CustomFields\Models\Scopes\CustomFieldsActivableScope;
+use Relaticle\EmailIntegration\Actions\CancelAssistantEmail;
+use Relaticle\EmailIntegration\Actions\DeleteAssistantEmailDraft;
+use Relaticle\EmailIntegration\Actions\RescheduleAssistantEmail;
+use Relaticle\EmailIntegration\Actions\RetryAssistantEmail;
 use Relaticle\EmailIntegration\Actions\SaveAssistantEmailDraft;
 use Relaticle\EmailIntegration\Actions\SendAssistantEmail;
+use Relaticle\EmailIntegration\Actions\SendAssistantEmailDraft;
 use RuntimeException;
 use Throwable;
 
@@ -95,6 +103,12 @@ final readonly class PendingActionService
         RemoveSampleData::class,
         SaveAssistantEmailDraft::class,
         SendAssistantEmail::class,
+        SendAssistantEmailDraft::class,
+        DeleteAssistantEmailDraft::class,
+        CancelAssistantEmail::class,
+        RescheduleAssistantEmail::class,
+        RetryAssistantEmail::class,
+        GrantWebAccess::class,
     ];
 
     /**
@@ -450,6 +464,9 @@ final readonly class PendingActionService
                 status: $status,
                 index: $index,
                 finalized: $finalized,
+                receipts: $finalized
+                    ? resolve(ProposalReceiptsQuery::class)->forPlanBroadcastOf($pendingAction)
+                    : resolve(ProposalReceiptsQuery::class)->forStep($pendingAction),
             ));
         } catch (Throwable $e) {
             report($e);
@@ -486,7 +503,7 @@ final readonly class PendingActionService
      */
     private function assertItemIndex(array $records, int $index): void
     {
-        throw_if($index < 0 || $index >= count($records), RuntimeException::class, 'Item index out of range');
+        throw_if($index < 0 || $index >= count($records), ProposalNotResolvable::itemOutOfRange());
     }
 
     /**
@@ -528,8 +545,7 @@ final readonly class PendingActionService
     {
         throw_unless(
             in_array($pendingAction->action_class, self::ALLOWED_ACTION_CLASSES, true),
-            RuntimeException::class,
-            'Action class not allowlisted',
+            ProposalNotResolvable::actionNotAllowlisted(),
         );
 
         return app()->make($pendingAction->action_class);
@@ -547,7 +563,7 @@ final readonly class PendingActionService
 
         // A vanished record fails only this item (RuntimeException -> resolve-failed),
         // never the sibling items. Per-item resolution is independent, not atomic.
-        throw_if(! $model instanceof Model, RuntimeException::class, 'Record not found');
+        throw_if(! $model instanceof Model, ProposalNotResolvable::recordNotFound());
 
         return $model;
     }
@@ -571,11 +587,14 @@ final readonly class PendingActionService
      *
      * @return list<PendingAction>
      */
-    public function supersedePendingForConversation(string $conversationId): array
+    public function supersedePendingForConversation(string $conversationId, ?string $exceptTurnId = null): array
     {
-        return DB::transaction(function () use ($conversationId): array {
+        return DB::transaction(function () use ($conversationId, $exceptTurnId): array {
             $pending = array_values(PendingAction::query()
                 ->where('conversation_id', $conversationId)
+                ->when($exceptTurnId !== null, fn (Builder $query): Builder => $query->where(
+                    fn (Builder $query): Builder => $query->whereNull('turn_id')->orWhere('turn_id', '!=', $exceptTurnId),
+                ))
                 ->pending()
                 ->lockForUpdate()
                 ->get()
@@ -645,10 +664,8 @@ final readonly class PendingActionService
     }
 
     /**
-     * Fields the user unchecked before approving, per record. A field listed here
-     * was NOT written even though the proposal's replayed tool result still shows
-     * it. Without this the model reports values it never set, the same defect
-     * skippedItemLabels() exists to prevent for whole records.
+     * Fields the user unchecked before approving, per record. A listed field was
+     * NOT written, though the replayed proposal summary still names it.
      *
      * @return list<array{record: string|null, fields: list<string>}>
      */
@@ -660,7 +677,7 @@ final readonly class PendingActionService
         if (! $payload->isBatch) {
             $codes = is_array($resultData['excluded'] ?? null) ? $resultData['excluded'] : [];
             $displayData = $action->display_data;
-            $fields = $this->excludedFieldLabels($codes, is_array($displayData['fields'] ?? null) ? $displayData['fields'] : []);
+            $fields = $this->excludedFieldNames($codes, is_array($displayData['fields'] ?? null) ? $displayData['fields'] : []);
 
             return $fields === [] ? [] : [['record' => null, 'fields' => $fields]];
         }
@@ -678,7 +695,7 @@ final readonly class PendingActionService
 
             $item = $items[(int) $index] ?? null;
             $display = is_array($item['display'] ?? null) ? $item['display'] : [];
-            $fields = $this->excludedFieldLabels($codes, is_array($display['fields'] ?? null) ? $display['fields'] : []);
+            $fields = $this->excludedFieldNames($codes, is_array($display['fields'] ?? null) ? $display['fields'] : []);
 
             if ($fields === []) {
                 continue;
@@ -695,20 +712,20 @@ final readonly class PendingActionService
     }
 
     /**
-     * Human labels for excluded field codes, read from the proposal's own display
-     * rows; a code with no display row falls back to the code itself.
+     * Each excluded field as "Label (code)": the label the user unchecked, and the code the
+     * replayed proposal summary uses. A code with no display row stays the bare code.
      *
      * @param  array<array-key, mixed>  $codes
      * @param  array<array-key, mixed>  $displayFields
      * @return list<string>
      */
-    private function excludedFieldLabels(array $codes, array $displayFields): array
+    private function excludedFieldNames(array $codes, array $displayFields): array
     {
         $labels = [];
 
         foreach ($displayFields as $row) {
-            if (is_array($row) && is_string($row['code'] ?? null)) {
-                $labels[$row['code']] = is_string($row['label'] ?? null) ? $row['label'] : $row['code'];
+            if (is_array($row) && is_string($row['code'] ?? null) && is_string($row['label'] ?? null) && $row['label'] !== $row['code']) {
+                $labels[$row['code']] = "{$row['label']} ({$row['code']})";
             }
         }
 
@@ -909,10 +926,10 @@ final readonly class PendingActionService
                 'status' => PendingActionStatus::Expired,
                 'resolved_at' => now(),
             ]);
-            throw new RuntimeException('This action has expired');
+            throw ProposalNotResolvable::expired();
         }
 
-        throw_unless($pendingAction->isPending(), RuntimeException::class, 'This action has already been resolved');
+        throw_unless($pendingAction->isPending(), ProposalNotResolvable::alreadyResolved());
     }
 
     /**
@@ -937,11 +954,16 @@ final readonly class PendingActionService
 
         throw_unless(
             in_array($actionClass, self::ALLOWED_ACTION_CLASSES, true),
-            RuntimeException::class,
-            'Action class not allowlisted',
+            ProposalNotResolvable::actionNotAllowlisted(),
         );
 
         $action = app()->make($actionClass);
+
+        if ($action instanceof GrantWebAccess) {
+            $action->execute($user, Workspace::query()->findOrFail($pendingAction->workspace_id));
+
+            return null;
+        }
 
         return match ($pendingAction->operation) {
             PendingActionOperation::Create => $this->executeCreate($action, $user, $pendingAction, $excludedFields),

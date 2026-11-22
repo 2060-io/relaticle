@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Casts\AsCanonicalEmail;
+use App\Contracts\Billing;
 use App\Data\NotificationPreferences;
 use App\Enums\EmailGrant;
 use App\Enums\Notifications\NotificationChannel;
@@ -19,6 +20,7 @@ use App\Notifications\Auth\ResetPassword;
 use App\Notifications\Auth\VerifyEmail;
 use App\Observers\UserObserver;
 use App\Support\EmailAddress;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
 use DateTimeZone;
@@ -30,6 +32,7 @@ use Filament\Models\Contracts\HasDefaultTenant;
 use Filament\Models\Contracts\HasTenants;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Attributes\Appends;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -46,6 +49,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
@@ -59,6 +63,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string $name
  * @property string $email
  * @property string|null $timezone
+ * @property string|null $locale
  * @property string|null $password
  * @property string|null $profile_photo_path
  * @property-read string $profile_photo_url
@@ -73,6 +78,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property CarbonImmutable|null $scheduled_deletion_at
  * @property string|null $two_factor_recovery_codes
  * @property string|null $two_factor_secret
+ * @property int|null $two_factor_last_used_step
  * @property array<string, mixed>|null $ai_preferences
  * @property array<string, mixed>|null $notification_preferences
  * @property-read Workspace|null $currentWorkspace
@@ -86,6 +92,7 @@ use Laravel\Sanctum\HasApiTokens;
     'name',
     'email',
     'timezone',
+    'locale',
     'password',
     'ai_preferences',
     'notification_preferences',
@@ -100,7 +107,7 @@ use Laravel\Sanctum\HasApiTokens;
     'rejected_subscriber_profile_hash',
 ])]
 #[ObservedBy(UserObserver::class)]
-final class User extends Authenticatable implements FilamentUser, HasAvatar, HasDefaultTenant, HasTenants, MustVerifyEmail, PasskeyUser
+final class User extends Authenticatable implements FilamentUser, HasAvatar, HasDefaultTenant, HasLocalePreference, HasTenants, MustVerifyEmail, PasskeyUser
 {
     use HasApiTokens;
 
@@ -120,6 +127,8 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
 
     public const int SOCIAL_SIGNUP_WINDOW_SECONDS = 60;
 
+    private const int VERIFICATION_EMAIL_COOLDOWN_SECONDS = 60;
+
     /** @var array<string, bool> */
     private array $ownershipByWorkspaceId = [];
 
@@ -136,6 +145,7 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
             'email_sign_in_enabled_at' => 'datetime',
             'last_login_at' => 'datetime',
             'email_bounced_at' => 'datetime',
+            'two_factor_last_used_step' => 'integer',
             'password' => 'hashed',
             'ai_preferences' => 'array',
             'notification_preferences' => 'array',
@@ -155,10 +165,22 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
 
     public function sendEmailVerificationNotification(): void
     {
-        $notification = resolve(VerifyEmail::class);
-        $notification->url = Filament::getVerifyEmailUrl($this);
+        RateLimiter::attempt($this->verificationEmailCooldownKey(), 1, function (): void {
+            $notification = resolve(VerifyEmail::class);
+            $notification->url = Filament::getVerifyEmailUrl($this);
 
-        $this->notify($notification);
+            $this->notify($notification);
+        }, self::VERIFICATION_EMAIL_COOLDOWN_SECONDS);
+    }
+
+    public function verificationEmailCooldown(): int
+    {
+        return RateLimiter::availableIn($this->verificationEmailCooldownKey());
+    }
+
+    private function verificationEmailCooldownKey(): string
+    {
+        return 'verification-email:'.$this->getKey().':'.hash('sha256', $this->getEmailForVerification());
     }
 
     public function sendPasswordResetNotification($token): void
@@ -180,12 +202,29 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
         return $this->timezone ?? (string) config('app.timezone');
     }
 
+    public function effectiveLocale(): string
+    {
+        return Locales::isListed($this->locale)
+            ? $this->locale
+            : (string) config('app.default_locale');
+    }
+
+    public function preferredLocale(): string
+    {
+        return $this->effectiveLocale();
+    }
+
     /**
      * @return HasMany<UserSocialAccount, $this>
      */
     public function socialAccounts(): HasMany
     {
         return $this->hasMany(UserSocialAccount::class);
+    }
+
+    public function availableSocialAccount(): ?UserSocialAccount
+    {
+        return $this->socialAccounts()->available()->first();
     }
 
     public function hasPassword(): bool
@@ -210,6 +249,22 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
 
     public function ensureCanBeDeleted(): void
     {
+        $billing = resolve(Billing::class);
+
+        $managedWorkspaces = $this->ownedWorkspaces()
+            ->with('subscriptions')
+            ->get()
+            ->filter(fn (Workspace $workspace): bool => $billing->blocksDeletion($workspace))
+            ->pluck('name');
+
+        if ($managedWorkspaces->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'workspace' => [__('workspaces.validation.managed_plan_before_deleting_account', [
+                    'workspaces' => $managedWorkspaces->implode(', '),
+                ])],
+            ]);
+        }
+
         $sharedWorkspaces = $this->ownedWorkspaces()
             ->whereHas('users')
             ->pluck('name');
@@ -243,6 +298,19 @@ final class User extends Authenticatable implements FilamentUser, HasAvatar, Has
     protected function withEmailIn(Builder $query, array $addresses): Builder
     {
         return $query->whereIn('email', array_map(EmailAddress::canonicalize(...), $addresses));
+    }
+
+    /**
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    #[Scope]
+    protected function unclaimed(Builder $query): Builder
+    {
+        return $query->whereNull('email_verified_at')
+            ->whereDoesntHave('ownedWorkspaces')
+            ->whereDoesntHave('workspaces')
+            ->whereDoesntHave('socialAccounts');
     }
 
     /**

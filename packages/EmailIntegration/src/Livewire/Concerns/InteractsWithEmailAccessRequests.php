@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Support\LikePattern;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -38,7 +37,7 @@ trait InteractsWithEmailAccessRequests
         return $table
             ->query($this->requestsQuery())
             ->defaultSort('created_at', 'desc')
-            ->emptyStateIcon(Heroicon::OutlinedKey)
+            ->emptyStateIcon('lucide-key')
             ->emptyStateHeading($this->accessRequestsEmptyHeading(...))
             ->emptyStateDescription(fn (): string => match (true) {
                 $this->filteredStatus() instanceof EmailAccessRequestStatus => __('filament/pages/email-access-requests.empty.filtered_description'),
@@ -105,9 +104,7 @@ trait InteractsWithEmailAccessRequests
         $status = $this->filteredStatus();
 
         if ($status instanceof EmailAccessRequestStatus) {
-            return __('filament/pages/email-access-requests.empty.filtered_heading', [
-                'status' => mb_strtolower($status->getLabel()),
-            ]);
+            return __("filament/pages/email-access-requests.empty.filtered_heading.{$status->value}");
         }
 
         return $this->tab === 'incoming'
@@ -175,7 +172,7 @@ trait InteractsWithEmailAccessRequests
             ->label(__('filament/pages/email-access-requests.actions.open_email'))
             ->hiddenLabel()
             ->tooltip(__('filament/pages/email-access-requests.actions.open_email'))
-            ->icon('heroicon-m-arrow-top-right-on-square')
+            ->icon('lucide-external-link')
             ->iconButton()
             ->color('gray')
             ->visible(fn (EmailAccessRequest $request): bool => $request->email_id !== null)
@@ -190,12 +187,12 @@ trait InteractsWithEmailAccessRequests
             ->label(__('filament/pages/email-access-requests.actions.approve.label'))
             ->hiddenLabel()
             ->tooltip(__('filament/pages/email-access-requests.actions.approve.label'))
-            ->icon('heroicon-m-check')
+            ->icon('lucide-check')
             ->iconButton()
             ->color('success')
             ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'incoming' && $request->isOpen())
             ->requiresConfirmation()
-            ->modalIcon('heroicon-o-check-circle')
+            ->modalIcon('lucide-circle-check')
             ->modalIconColor('success')
             ->modalHeading(__('filament/pages/email-access-requests.actions.approve.modal_heading'))
             ->modalDescription(fn (EmailAccessRequest $request): string => __('filament/pages/email-access-requests.actions.approve.modal_description', ['name' => $request->requester->name ?? __('filament/pages/email-access-requests.actions.fallback_user')]))
@@ -217,7 +214,7 @@ trait InteractsWithEmailAccessRequests
             ->label(__('filament/pages/email-access-requests.actions.deny.label'))
             ->hiddenLabel()
             ->tooltip(__('filament/pages/email-access-requests.actions.deny.label'))
-            ->icon('heroicon-m-x-mark')
+            ->icon('lucide-x')
             ->iconButton()
             ->color('danger')
             ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'incoming' && $request->isOpen())
@@ -242,7 +239,7 @@ trait InteractsWithEmailAccessRequests
             ->label(__('filament/pages/email-access-requests.actions.cancel.label'))
             ->hiddenLabel()
             ->tooltip(__('filament/pages/email-access-requests.actions.cancel.label'))
-            ->icon('heroicon-m-x-mark')
+            ->icon('lucide-x')
             ->iconButton()
             ->color('danger')
             ->visible(fn (EmailAccessRequest $request): bool => $this->tab === 'outgoing' && $request->isOpen())

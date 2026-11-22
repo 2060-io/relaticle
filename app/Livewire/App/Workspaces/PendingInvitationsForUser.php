@@ -27,10 +27,14 @@ final class PendingInvitationsForUser extends BaseLivewireComponent
     #[Computed]
     public function invitations(): Collection
     {
+        if (! $this->authUser()->hasVerifiedEmail()) {
+            return collect();
+        }
+
         return WorkspaceInvitation::query()
             ->with(['workspace', 'inviter'])
             ->whereRaw('lower(email) = ?', [Str::lower($this->authUser()->email)])
-            ->where('expires_at', '>', now())
+            ->unexpired()
             ->whereDoesntHave('workspace', fn (Builder $workspace): Builder => $workspace->scheduledForDeletion())
             ->get();
     }

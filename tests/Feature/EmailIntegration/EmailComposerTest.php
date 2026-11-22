@@ -17,6 +17,7 @@ use Filament\Forms\Components\Toggle;
 use Illuminate\Database\Eloquent\Factories\Sequence;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -665,7 +666,7 @@ it('passes uploaded attachments through to the send action', function (): void {
         ->set('to', ['a@example.com'])
         ->set('subject', 'With attachment')
         ->set('bodyHtml', '<p>see attached</p>')
-        ->set('attachments', [UploadedFile::fake()->create('quote.pdf', 12)])
+        ->set('attachments', [fakePdf('quote.pdf', 12)])
         ->call('send');
 
     $email = Email::query()->where('subject', 'With attachment')->sole();
@@ -673,6 +674,63 @@ it('passes uploaded attachments through to the send action', function (): void {
     expect($email->has_attachments)->toBeTrue()
         ->and($email->attachments()->count())->toBe(1)
         ->and($email->attachments()->first()->filename)->toBe('quote.pdf');
+});
+
+it('accepts a real pdf', function (): void {
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('attachments', [fakePdf('quote.pdf')])
+        ->assertCount('attachments', 1);
+});
+
+it('accepts each allowed file family', function (string $name, string $kind): void {
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('attachments', [UploadedFile::fake()->createWithContent($name, emailAttachmentFixture($kind))])
+        ->assertCount('attachments', 1);
+})->with([
+    'docx' => ['brief.docx', 'docx'],
+    'xlsx' => ['sheet.xlsx', 'xlsx'],
+    'doc' => ['legacy.doc', 'doc'],
+    'odt' => ['brief.odt', 'odt'],
+    'csv' => ['contacts.csv', 'csv'],
+    'txt' => ['notes.txt', 'txt'],
+    'txt that reads like source' => ['notes.txt', 'txt-source-like'],
+    'ics' => ['invite.ics', 'ics'],
+    'png' => ['pixel.png', 'png'],
+    'jpg' => ['pixel.jpg', 'jpg'],
+    'zip' => ['bundle.zip', 'zip'],
+    'uppercase extension' => ['QUOTE.PDF', 'pdf'],
+]);
+
+it('refuses an empty attachment', function (): void {
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('attachments', [UploadedFile::fake()->createWithContent('empty.txt', '')])
+        ->assertCount('attachments', 0)
+        ->assertNotified(__('filament/emails/composer.notifications.attachment_empty.title'));
+});
+
+it('refuses an attachment that is not an allowed type', function (string $name, string $content): void {
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('attachments', [UploadedFile::fake()->createWithContent($name, $content)])
+        ->assertCount('attachments', 0)
+        ->assertNotified(__('filament/emails/composer.notifications.attachment_type_not_allowed.title'));
+})->with([
+    'svg' => ['logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+    'html' => ['page.html', '<html><body><script>alert(1)</script></body></html>'],
+    'exe' => ['setup.exe', "MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF\x00\x00"],
+    'html renamed to txt' => ['notes.txt', '<!doctype html><html><body><script>alert(1)</script></body></html>'],
+    'svg renamed to csv' => ['data.csv', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+    'pdf renamed to png' => ['photo.png', "%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"],
+]);
+
+it('keeps the allowed files when one in the same batch is refused', function (): void {
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open')
+        ->set('attachments', [fakePdf('quote.pdf'), UploadedFile::fake()->createWithContent('setup.exe', 'MZ'.str_repeat("\x00", 64))])
+        ->assertCount('attachments', 1);
 });
 
 it('does not render for users without an active connected account', function (): void {
@@ -1255,9 +1313,9 @@ it('presents composer recipient options as record chips', function (): void {
         'type' => 'person',
         'label' => 'Ada Lovelace',
         'circular' => true,
-        'iconPath' => null,
+        'avatarUrl' => null,
+        'iconPath' => CrmEntity::People->iconPath(),
     ]);
-    expect($personOption['avatarColor'])->toBeIn(['primary', 'success', 'warning', 'danger', 'info']);
     expect($companyOption)->toMatchArray([
         'circular' => false,
         'iconPath' => CrmEntity::Company->iconPath(),
@@ -1273,7 +1331,7 @@ it('saves pending attachments onto the draft when the composer is closed', funct
         ->set('to', ['x@example.com'])
         ->set('subject', 'Has an attachment')
         ->set('bodyHtml', '<p>b</p>')
-        ->set('attachments', [UploadedFile::fake()->create('quote.pdf', 12)])
+        ->set('attachments', [fakePdf('quote.pdf', 12)])
         ->call('close');
 
     $draft = Email::query()->where('status', EmailStatus::DRAFT)->where('subject', 'Has an attachment')->sole();
@@ -1291,7 +1349,7 @@ it('reopens a draft with its saved attachments listed', function (): void {
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')
         ->set('subject', 'Reopen me')
-        ->set('attachments', [UploadedFile::fake()->create('brief.pdf', 20)])
+        ->set('attachments', [fakePdf('brief.pdf', 20)])
         ->call('close');
 
     $draft = Email::query()->where('subject', 'Reopen me')->sole();
@@ -1312,7 +1370,7 @@ it('does not attach a saved draft file twice when the draft is saved again', fun
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')
         ->set('subject', 'Saved twice')
-        ->set('attachments', [UploadedFile::fake()->create('once.pdf', 10)])
+        ->set('attachments', [fakePdf('once.pdf', 10)])
         ->call('close');
 
     $draft = Email::query()->where('subject', 'Saved twice')->sole();
@@ -1330,7 +1388,7 @@ it('removes a saved attachment from the draft and from disk', function (): void 
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')
         ->set('subject', 'Drop the file')
-        ->set('attachments', [UploadedFile::fake()->create('oops.pdf', 10)])
+        ->set('attachments', [fakePdf('oops.pdf', 10)])
         ->call('close');
 
     $draft = Email::query()->where('subject', 'Drop the file')->sole();
@@ -1352,7 +1410,7 @@ it('sends a reopened draft with its saved attachments and leaves no orphaned fil
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')
         ->set('subject', 'Send with attachment')
-        ->set('attachments', [UploadedFile::fake()->create('contract.pdf', 30)])
+        ->set('attachments', [fakePdf('contract.pdf', 30)])
         ->call('close');
 
     $draft = Email::query()->where('subject', 'Send with attachment')->sole();
@@ -1793,13 +1851,107 @@ it('sends a reopened forward once an unavailable attachment can be downloaded', 
     expect(Storage::disk(EmailAttachment::DISK)->get($sentPath))->toBe('gmail-contract-bytes');
 });
 
+it('downloads a reopened forward attachment through the sender own copy when a teammate holds a restricted copy', function (): void {
+    Storage::fake(EmailAttachment::DISK);
+
+    $this->account->update(['email_address' => 'me@example.com']);
+
+    $inbound = Email::factory()->create([
+        'workspace_id' => $this->user->current_workspace_id,
+        'user_id' => $this->user->id,
+        'connected_account_id' => $this->account->id,
+        'status' => EmailStatus::SYNCED,
+        'privacy_tier' => EmailPrivacyTier::FULL,
+        'provider_message_id' => 'provider-msg-1',
+        'rfc_message_id' => '<original@example.com>',
+        'subject' => 'Has a contract',
+    ]);
+
+    EmailParticipant::factory()->create([
+        'email_id' => $inbound->id,
+        'email_address' => 'sender@contact.com',
+        'role' => EmailParticipantRole::FROM,
+    ]);
+
+    EmailAttachment::factory()->create([
+        'email_id' => $inbound->getKey(),
+        'filename' => 'contract.pdf',
+        'storage_path' => null,
+        'provider_attachment_id' => 'provider-att-1',
+        'size' => 18,
+        'is_inline' => false,
+    ]);
+
+    $mail = Mockery::mock(MailServiceInterface::class);
+    $mail->shouldReceive('downloadAttachment')
+        ->twice()
+        ->with('provider-msg-1', 'provider-att-1')
+        ->andReturnUsing(function (): string {
+            static $attempt = 0;
+            $attempt++;
+
+            throw_if($attempt === 1, RuntimeException::class, 'provider unavailable');
+
+            return 'gmail-contract-bytes';
+        });
+
+    $factory = Mockery::mock(MailServiceFactoryInterface::class);
+    $factory->shouldReceive('make')->twice()->andReturn($mail);
+    app()->instance(MailServiceFactoryInterface::class, $factory);
+
+    Livewire::test(EmailComposer::class, ['dock' => 'inline'])
+        ->call('openReply', (string) $inbound->getKey(), 'forward')
+        ->set('to', ['forward-to@example.com'])
+        ->set('bodyHtml', '<p>Passing this on</p>')
+        ->call('close');
+
+    $draft = Email::query()->where('status', EmailStatus::DRAFT)->sole();
+
+    $teammate = User::factory()->create(['current_workspace_id' => $this->user->current_workspace_id]);
+    $this->user->currentWorkspace->users()->attach($teammate, ['role' => 'member']);
+
+    $teammateAccount = ConnectedAccount::withoutEvents(fn (): ConnectedAccount => ConnectedAccount::factory()->create([
+        'user_id' => $teammate->id,
+        'workspace_id' => $this->user->current_workspace_id,
+    ]));
+
+    Email::factory()->create([
+        'workspace_id' => $this->user->current_workspace_id,
+        'user_id' => $teammate->id,
+        'connected_account_id' => $teammateAccount->id,
+        'status' => EmailStatus::SYNCED,
+        'privacy_tier' => EmailPrivacyTier::METADATA_ONLY,
+        'provider_message_id' => 'teammate-msg-1',
+        'rfc_message_id' => '<original@example.com>',
+        'is_internal' => false,
+    ]);
+
+    $inbound->touch();
+
+    Livewire::test(EmailComposer::class)
+        ->dispatch('composer:open', draftId: $draft->id)
+        ->call('send')
+        ->assertHasNoErrors()
+        ->assertSet('isOpen', false);
+
+    $forward = Email::query()
+        ->where('direction', EmailDirection::OUTBOUND)
+        ->where('creation_source', EmailCreationSource::FORWARD)
+        ->sole();
+    $sentPath = (string) $forward->attachments->sole()->storage_path;
+
+    expect($forward->attachments->sole()->filename)->toBe('contract.pdf');
+    Storage::disk(EmailAttachment::DISK)->assertExists($sentPath);
+    expect(Storage::disk(EmailAttachment::DISK)->get($sentPath))->toBe('gmail-contract-bytes');
+});
+
 it('deletes a draft\'s attachment files when the draft is deleted', function (): void {
     Storage::fake(EmailAttachment::DISK);
 
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')
         ->set('subject', 'Delete me')
-        ->set('attachments', [UploadedFile::fake()->create('gone.pdf', 10)])
+        ->set('attachments', [fakePdf('gone.pdf', 10)])
         ->call('close');
 
     $draft = Email::query()->where('subject', 'Delete me')->sole();
@@ -1953,7 +2105,8 @@ it('saves a template from the composer with the templates page message editor', 
                 'panel' => $editor->getActivePanel(),
             ];
 
-            return $fromTemplates['panel'] === 'mergeTags';
+            return $fromTemplates['panel'] === null
+                && in_array('mergeTags', Arr::flatten($fromTemplates['toolbar']), true);
         });
 
     Livewire::test(EmailComposer::class)
@@ -2041,12 +2194,12 @@ it('rejects attachments over the per-file and total size caps', function (): voi
         ->set('subject', 'Too heavy')
         ->set('bodyHtml', '<p>Body</p>')
         ->set('attachments', [
-            UploadedFile::fake()->create('small.pdf', 100),
+            fakePdf('small.pdf', 100),
             // Over the 10 MB per-file cap.
-            UploadedFile::fake()->create('huge.pdf', 11 * 1024),
+            fakePdf('huge.pdf', 11 * 1024),
             // Fits on its own, but pushes the message past the 15 MB total.
-            UploadedFile::fake()->create('big-a.pdf', 9 * 1024),
-            UploadedFile::fake()->create('big-b.pdf', 9 * 1024),
+            fakePdf('big-a.pdf', 9 * 1024),
+            fakePdf('big-b.pdf', 9 * 1024),
         ])
         ->assertSee('small.pdf')
         ->assertSee('big-a.pdf')
@@ -2065,7 +2218,7 @@ it('counts saved draft attachments against the total size cap', function (): voi
     Livewire::test(EmailComposer::class)
         ->dispatch('composer:open')
         ->set('subject', 'Saved plus pending')
-        ->set('attachments', [UploadedFile::fake()->create('saved.pdf', 9 * 1024)])
+        ->set('attachments', [fakePdf('saved.pdf', 9 * 1024)])
         ->call('close');
 
     $draft = Email::query()->where('subject', 'Saved plus pending')->sole();
@@ -2075,7 +2228,7 @@ it('counts saved draft attachments against the total size cap', function (): voi
         ->dispatch('composer:open', draftId: (string) $draft->getKey())
         ->set('to', ['lead@example.com'])
         ->set('bodyHtml', '<p>Body</p>')
-        ->set('attachments', [UploadedFile::fake()->create('too-much.pdf', 9 * 1024)])
+        ->set('attachments', [fakePdf('too-much.pdf', 9 * 1024)])
         ->assertSee('saved.pdf')
         ->assertDontSee('too-much.pdf')
         ->call('send')
@@ -2098,8 +2251,8 @@ it('drops a pending attachment when it is removed before sending', function (): 
         ->set('subject', 'No attachment after all')
         ->set('bodyHtml', '<p>Body</p>')
         ->set('attachments', [
-            UploadedFile::fake()->create('keep.pdf', 12),
-            UploadedFile::fake()->create('drop.pdf', 12),
+            fakePdf('keep.pdf', 12),
+            fakePdf('drop.pdf', 12),
         ])
         // Each pending attachment is listed with its name and human-readable size.
         ->assertSee('keep.pdf')

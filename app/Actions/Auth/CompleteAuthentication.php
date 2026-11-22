@@ -4,18 +4,20 @@ declare(strict_types=1);
 
 namespace App\Actions\Auth;
 
+use App\Enums\AuthMethod;
 use App\Models\User;
 use App\Support\Auth\AuthenticationSession;
 use App\Support\Auth\LoginDestination;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 final readonly class CompleteAuthentication
 {
     private const array PRESERVED_SESSION_KEYS = [
-        'fathom.track_signup',
-        'fathom.track_workspace_created',
+        'fathom',
+        'analytics.acquisition',
         'mcp.oauth.workspace_id',
         'auth.link_suggestion',
     ];
@@ -41,6 +43,7 @@ final readonly class CompleteAuthentication
             throw $this->expired();
         }
 
+        $startedAt = $pending['method'] === AuthMethod::REMEMBERED->value ? AuthenticationSession::startedAt() : null;
         $session = resolve(Session::class);
         $intended = $session->get('url.intended');
         $preserved = $this->capturePreservedSessionValues($session);
@@ -48,10 +51,15 @@ final readonly class CompleteAuthentication
         $session->invalidate();
         $session->put($preserved);
 
-        Auth::guard('web')->login($user, $pending['remember']);
+        Auth::guard('web')->login($user);
         $session->regenerateToken();
 
         AuthenticationSession::markComplete($user);
+        AuthenticationSession::markStarted($startedAt);
+
+        if ($pending['method'] !== AuthMethod::REMEMBERED->value) {
+            $session->put('fathom.track_login_completed', (string) Str::uuid());
+        }
 
         return $this->loginDestination->resolve($user, is_string($intended) ? $intended : null);
     }

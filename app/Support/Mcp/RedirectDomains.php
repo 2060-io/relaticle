@@ -6,12 +6,12 @@ namespace App\Support\Mcp;
 
 /**
  * The redirect domains a deployment adds to config('mcp.redirect_domains') through
- * MCP_REDIRECT_DOMAINS, a comma-separated list. laravel/mcp accepts a client's redirect
- * URI when it starts with one of the domains followed by "/", so an entry must be an https
- * origin (scheme, host and an optional port, nothing else): anything wider, such as "*",
- * a plain-http origin, a path or a wildcard host, would let a client registration send
- * authorization codes somewhere the operator did not mean. Such an entry is ignored, never
- * widened or repaired, and reported by ignored() so that it can be logged.
+ * MCP_REDIRECT_DOMAINS, a comma-separated list. OAuthRegisterController accepts a client's
+ * https redirect URI when its host equals the host of one of the domains, on port 443, so
+ * an entry must be an https origin (scheme and host, on the default port, nothing else):
+ * "*" would open every host, and a plain-http origin, a path, another port or a wildcard
+ * host either opens more than the operator meant or never matches. Such an entry is
+ * ignored, never widened or repaired, and reported by ignored() so that it can be logged.
  */
 final readonly class RedirectDomains
 {
@@ -67,10 +67,20 @@ final readonly class RedirectDomains
             return null;
         }
 
-        $origin = 'https://'.$host.(isset($parts['port']) ? ':'.$parts['port'] : '');
+        // A redirect URI on any port other than 443 is refused at registration, so an
+        // entry naming one could never match.
+        $port = $parts['port'] ?? null;
+
+        if ($port !== null && $port !== 443) {
+            return null;
+        }
+
+        $origin = 'https://'.$host;
 
         // Rebuilt from its parts, the origin must be the whole entry: a path, a query, a
         // fragment, credentials or anything parse_url() skipped over leaves it different.
-        return strtolower(rtrim($entry, '/')) === $origin && substr_count($entry, '/') <= 3 ? $origin : null;
+        $written = $origin.($port !== null ? ':443' : '');
+
+        return strtolower(rtrim($entry, '/')) === $written && substr_count($entry, '/') <= 3 ? $origin : null;
     }
 }

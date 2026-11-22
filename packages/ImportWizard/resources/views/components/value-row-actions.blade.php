@@ -5,11 +5,12 @@
     'hasCorrection' => false,
     'showSkip' => true,
     'showUndo' => null,
-    'undoTitle' => 'Undo correction',
+    'undoTitle' => null,
 ])
 
 @php
     $showUndo = $showUndo ?? $hasCorrection;
+    $undoTitle ??= __('Undo correction');
 @endphp
 
 <div class="flex items-center bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shrink-0">
@@ -20,7 +21,7 @@
             title="{{ $undoTitle }}"
             aria-label="{{ $undoTitle }}"
         >
-            <x-filament::icon icon="heroicon-o-arrow-uturn-left" class="w-4 h-4"/>
+            <x-filament::icon icon="lucide-undo-2" class="w-4 h-4"/>
         </button>
         @if ($showSkip)
             <div class="w-px h-4 bg-gray-200 dark:bg-gray-700"></div>
@@ -31,10 +32,10 @@
         <button
             wire:click.stop.preserve-scroll="skipValue({{ Js::from($rawValue) }})"
             class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-400 dark:hover:bg-gray-950/50 transition-colors"
-            title="Skip this value"
-            aria-label="Skip this value"
+            title="{{ __('Skip this value') }}"
+            aria-label="{{ __('Skip this value') }}"
         >
-            <x-filament::icon icon="heroicon-o-no-symbol" class="w-4 h-4"/>
+            <x-filament::icon icon="lucide-ban" class="w-4 h-4"/>
         </button>
     @endif
 

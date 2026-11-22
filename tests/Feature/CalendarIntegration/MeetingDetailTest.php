@@ -359,8 +359,8 @@ it('shows the current user attendee row when is_self is true', function (): void
         ->assertMountedActionModalSee('Oliver Workspace')
         ->assertMountedActionModalSee('oliver@relaticle.test')
         ->assertMountedActionModalDontSee('Calendar Oliver')
-        ->assertMountedActionModalSee('attendee-avatar-initials', escape: false)
-        ->assertMountedActionModalDontSee('attendee-avatar-guest', escape: false)
+        ->assertMountedActionModalSee('member-avatar', escape: false)
+        ->assertMountedActionModalDontSee('person-silhouette', escape: false)
         ->assertMountedActionModalSee(AttendeeResponseStatus::ACCEPTED->getLabel());
 });
 
@@ -446,8 +446,8 @@ it('shows the linked person name above the attendee email', function (): void {
         ->mountAction(TestAction::make('view')->table($meeting))
         ->assertMountedActionModalSee('Maya Chen')
         ->assertMountedActionModalSee('maya@example.test')
-        ->assertMountedActionModalSee('attendee-avatar-initials', escape: false)
-        ->assertMountedActionModalDontSee('attendee-avatar-guest', escape: false);
+        ->assertMountedActionModalSee('person-silhouette', escape: false)
+        ->assertMountedActionModalDontSee('member-avatar', escape: false);
 });
 
 it('shows the address itself rather than inventing a name from the email', function (): void {
@@ -468,8 +468,8 @@ it('shows the address itself rather than inventing a name from the email', funct
         ->mountAction(TestAction::make('view')->table($meeting))
         ->assertMountedActionModalSee('only@example.test')
         ->assertMountedActionModalDontSee(__('filament/resources/meeting.attendees.guest'))
-        ->assertMountedActionModalSee('attendee-avatar-guest', escape: false)
-        ->assertMountedActionModalDontSee('attendee-avatar-initials', escape: false);
+        ->assertMountedActionModalSee('person-silhouette', escape: false)
+        ->assertMountedActionModalDontSee('member-avatar', escape: false);
 });
 
 it('names a guest from mailbox history without a person record', function (): void {
@@ -500,8 +500,8 @@ it('names a guest from mailbox history without a person record', function (): vo
         ->mountAction(TestAction::make('view')->table($meeting))
         ->assertMountedActionModalSee('Asmit Nepali')
         ->assertMountedActionModalSee('mail2asmitnepali@gmail.com')
-        ->assertMountedActionModalSee('attendee-avatar-initials', escape: false)
-        ->assertMountedActionModalDontSee('attendee-avatar-guest', escape: false);
+        ->assertMountedActionModalSee('person-silhouette', escape: false)
+        ->assertMountedActionModalDontSee('member-avatar', escape: false);
 });
 
 it('ignores a linked person whose name is the email and uses the mailbox name', function (): void {
@@ -536,8 +536,8 @@ it('ignores a linked person whose name is the email and uses the mailbox name', 
         ->mountAction(TestAction::make('view')->table($meeting))
         ->assertMountedActionModalSee('Asmit Nepali')
         ->assertMountedActionModalSee('mail2asmitnepali@gmail.com')
-        ->assertMountedActionModalSee('attendee-avatar-initials', escape: false)
-        ->assertMountedActionModalDontSee('attendee-avatar-guest', escape: false);
+        ->assertMountedActionModalSee('person-silhouette', escape: false)
+        ->assertMountedActionModalDontSee('member-avatar', escape: false);
 });
 
 it('does not use another team mailbox name for a guest', function (): void {
@@ -702,6 +702,19 @@ it('keeps the line breaks of a plain-text description and drops divider lines', 
         ->mountAction(TestAction::make('view')->table($meeting))
         ->assertMountedActionModalSee("Join on your computer<br />\nMeeting ID: 933 004", escape: false)
         ->assertMountedActionModalDontSee('____');
+});
+
+it('renders a meeting description as a safe html fragment', function (): void {
+    $meeting = Meeting::factory()->create([
+        'workspace_id' => $this->workspace->id,
+        'connected_account_id' => $this->account->id,
+        'description' => '<p onclick="x()"><b>Bold</b> <a href="javascript:alert(1)">a</a> <a href="https://ok.example">b</a></p><style>body{display:none}</style><script>alert(2)</script>',
+    ]);
+
+    meetingDetailsOnRecord([$meeting])
+        ->mountAction(TestAction::make('view')->table($meeting))
+        ->assertMountedActionModalSee(['<b>Bold</b>', 'https://ok.example'], escape: false)
+        ->assertMountedActionModalDontSee(['onclick', 'javascript:', '<script', '<style', 'display:none'], escape: false);
 });
 
 it('offers a join link on an upcoming meeting that has one', function (): void {

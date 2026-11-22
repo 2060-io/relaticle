@@ -7,6 +7,7 @@ use App\Actions\Workspace\CreateWorkspaceInvitation;
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
 use App\Exceptions\WorkspaceInvitationRateLimitedException;
+use App\Features\Billing;
 use App\Livewire\App\Workspaces\InviteWorkspaceMembers;
 use App\Livewire\App\Workspaces\InviteWorkspaceMembersModal;
 use App\Livewire\App\Workspaces\WorkspaceMembers;
@@ -16,7 +17,6 @@ use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
-use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Tools\Request;
+use Laravel\Jetstream\Events\InvitingTeamMember;
+use Laravel\Pennant\Feature;
 use Livewire\Features\SupportTesting\Testable;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Models\PendingAction;
@@ -84,6 +86,73 @@ test('invitation expires_at is set based on config', function () {
 
     $invitation = $this->workspace->fresh()->workspaceInvitations->first();
     expect((int) round($invitation->expires_at->diffInDays(now(), absolute: true)))->toBe(14);
+});
+
+test('an invitation expires 48 hours after it is sent', function () {
+    $this->travelTo(now()->startOfSecond());
+
+    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->callAction('invitePeople', [
+            'emails' => 'test@example.com',
+            'role' => 'member',
+        ]);
+
+    $invitation = $this->workspace->fresh()->workspaceInvitations->sole();
+    expect($invitation->expires_at->equalTo(now()->addHours(48)))->toBeTrue();
+
+    $this->travelTo(now()->addHours(47));
+    expect($invitation->fresh()->isExpired())->toBeFalse();
+
+    $this->travelTo(now()->addHours(2));
+    expect($invitation->fresh()->isExpired())->toBeTrue();
+});
+
+test('inviting several people at once confirms how many were sent', function () {
+    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->callAction('invitePeople', [
+            'emails' => 'first@example.com, second@example.com, third@example.com',
+            'role' => 'member',
+        ])
+        ->assertNotified(__('workspaces.notifications.workspace_invitation_sent.success_many', ['count' => 3]));
+});
+
+test('inviting an address whose invitation expired sends it a fresh one', function () {
+    $invite = fn (string $role) => resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'lapsed@example.com', $role);
+
+    $invite('member');
+    WorkspaceInvitation::query()->where('email', 'lapsed@example.com')->update(['expires_at' => now()->subDay()]);
+
+    $invite('admin');
+
+    $invitation = $this->workspace->fresh()->workspaceInvitations->sole();
+    expect($invitation->isExpired())->toBeFalse()
+        ->and($invitation->role)->toBe('admin');
+
+    Mail::assertQueued(WorkspaceInvitationMail::class, 2);
+});
+
+test('inviting an address with a live invitation is still refused', function () {
+    resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'pending@example.com', 'member');
+
+    expect(fn () => resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'pending@example.com', 'member'))
+        ->toThrow(ValidationException::class, __('workspaces.validation.email_already_invited'));
+});
+
+test('a re-invite that another request reissued first is refused instead of sent twice', function () {
+    $invite = fn (): WorkspaceInvitation => resolve(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'raced@example.com', 'member');
+
+    $invite();
+    WorkspaceInvitation::query()->where('email', 'raced@example.com')->update(['expires_at' => now()->subDay()]);
+
+    Event::listen(InvitingTeamMember::class, function (): void {
+        $reissued = WorkspaceInvitation::query()->where('email', 'raced@example.com')->sole();
+        $reissued->issueToken();
+        $reissued->save();
+    });
+
+    expect($invite)->toThrow(ValidationException::class, __('workspaces.validation.email_already_invited'));
+
+    Mail::assertQueued(WorkspaceInvitationMail::class, 1);
 });
 
 test('workspace member invitations can be revoked', function () {
@@ -314,7 +383,7 @@ test('inviting an address longer than the database holds is reported, not thrown
         ->assertNotified(
             Notification::make()
                 ->title(__('workspaces.notifications.some_invites_failed.title'))
-                ->body("{$address}: ".__('validation.max.string', ['attribute' => 'email', 'max' => 255]))
+                ->body("{$address}: ".__('validation.max.string', ['attribute' => __('validation.attributes.email'), 'max' => 255]))
                 ->warning()
         );
 
@@ -483,20 +552,14 @@ test('offers an admin every role but admin in the invite modal', function (): vo
         ->assertSchemaComponentExists('role', checkComponentUsing: fn (Select $component): bool => array_keys($component->getOptions()) === [WorkspaceRole::Member->value, WorkspaceRole::Viewer->value]);
 });
 
-test('shows a hint for every role option in the invite-link default role picker', function (): void {
+test('offers no invite link on the members page', function (): void {
     livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->mountAction('manageInviteLink')
-        ->assertSchemaComponentExists('invite_link_default_role', checkComponentUsing: function (Radio $component): bool {
-            $options = $component->getOptions();
-            $descriptions = $component->getDescriptions();
-
-            return array_keys($options) === [WorkspaceRole::Member->value, WorkspaceRole::Viewer->value]
-                && $descriptions[WorkspaceRole::Member->value] === __('workspaces.roles.member.description')
-                && $descriptions[WorkspaceRole::Viewer->value] === __('workspaces.roles.viewer.description');
-        });
+        ->assertSee(__('workspaces.actions.invite_people'))
+        ->assertDontSee('Invite link');
 });
 
 test('the compare-roles modal marks every cell exactly as WorkspaceRole::capabilities() says, not a hand-written copy', function (): void {
+    Feature::define(Billing::class, true);
     $component = livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
         ->mountAction([
             TestAction::make('invitePeople'),
@@ -585,18 +648,18 @@ function approveInvitationProposal(User $user, string $email): void
 }
 
 test('invitations are capped per workspace across different inviting users', function (): void {
-    fillWorkspaceHourlyCeiling($this->user, 50);
+    fillWorkspaceHourlyCeiling($this->user, 20);
 
-    Mail::assertQueuedCount(50);
+    Mail::assertQueuedCount(20);
 
     inviteThroughForm($this->user, $this->workspace, ['one-too-many@example.com'])
         ->assertNotified(__('workspaces.notifications.invite_rate_limited.title'));
 
-    expect($this->workspace->workspaceInvitations()->count())->toBe(50);
+    expect($this->workspace->workspaceInvitations()->count())->toBe(20);
 });
 
 test('the chat approval path stops at the workspace ceiling and leaves the proposal pending', function (): void {
-    fillWorkspaceHourlyCeiling($this->user, 50);
+    fillWorkspaceHourlyCeiling($this->user, 20);
 
     expect(fn () => approveInvitationProposal($this->user, 'chat-over@example.com'))
         ->toThrow(WorkspaceInvitationRateLimitedException::class);
@@ -606,7 +669,7 @@ test('the chat approval path stops at the workspace ceiling and leaves the propo
 });
 
 test('a batch the ceiling cuts lists the addresses that were not sent', function (): void {
-    fillWorkspaceHourlyCeiling($this->user, 45);
+    fillWorkspaceHourlyCeiling($this->user, 15);
 
     $batch = invitationEmails('batch', 8);
 
@@ -625,8 +688,8 @@ test('a batch the ceiling cuts lists the addresses that were not sent', function
 });
 
 test('the hourly ceiling resets after an hour and the daily ceiling holds', function (): void {
-    foreach (range(1, 4) as $hour) {
-        fillWorkspaceHourlyCeiling($this->user, 50, "day{$hour}x");
+    foreach ([20, 20, 10] as $hour => $count) {
+        fillWorkspaceHourlyCeiling($this->user, $count, "day{$hour}x");
 
         $this->travelTo(now()->addMinutes(61));
     }
@@ -640,7 +703,7 @@ test('the hourly ceiling resets after an hour and the daily ceiling holds', func
 test('the wait is shown as a duration, not raw seconds', function (): void {
     $this->freezeTime();
 
-    fillWorkspaceHourlyCeiling($this->user, 50);
+    fillWorkspaceHourlyCeiling($this->user, 20);
 
     inviteThroughForm($this->user, $this->workspace, ['wait@example.com'])
         ->assertNotified(
@@ -652,7 +715,7 @@ test('the wait is shown as a duration, not raw seconds', function (): void {
 });
 
 test('one workspace reaching its ceiling does not block another workspace', function (): void {
-    fillWorkspaceHourlyCeiling($this->user, 50);
+    fillWorkspaceHourlyCeiling($this->user, 20);
 
     $other = User::factory()->withWorkspace()->create();
 
@@ -666,8 +729,8 @@ test('one inviter is capped across all the workspaces they own and the trip is l
 
     $owned = [$this->workspace, ...Workspace::factory()->count(2)->create(['user_id' => $this->user->getKey()])->all()];
 
-    foreach ([$owned[0], $owned[1]] as $workspace) {
-        foreach (array_chunk(invitationEmails("inv{$workspace->getKey()}x", 50), 10) as $batch) {
+    foreach ([[$owned[0], 20], [$owned[1], 10]] as [$workspace, $count]) {
+        foreach (array_chunk(invitationEmails("inv{$workspace->getKey()}x", $count), 10) as $batch) {
             inviteThroughForm($this->user, $workspace, $batch);
 
             $this->travelTo(now()->addSeconds(31));
@@ -706,7 +769,7 @@ test('a rolled back invitation does not use up a slot', function (): void {
 });
 
 test('resending an invitation counts against the workspace ceiling', function (): void {
-    fillWorkspaceHourlyCeiling($this->user, 50);
+    fillWorkspaceHourlyCeiling($this->user, 20);
 
     $invitation = $this->workspace->workspaceInvitations()->orderBy('email')->firstOrFail();
 
@@ -714,5 +777,17 @@ test('resending an invitation counts against the workspace ceiling', function ()
         ->callAction(TestAction::make('resendWorkspaceInvitation')->table($invitation->id))
         ->assertNotified(__('workspaces.notifications.invite_rate_limited.title'));
 
-    Mail::assertQueuedCount(50);
+    Mail::assertQueuedCount(20);
+});
+
+test('an invalid invitation email names its attribute in the interface language', function () {
+    app()->setLocale('es');
+
+    try {
+        app(InviteWorkspaceMember::class)->invite($this->user, $this->workspace, 'not-an-email');
+    } catch (ValidationException $exception) {
+        $message = $exception->errors()['email'][0];
+    }
+
+    expect($message)->toContain('correo electrónico')->not->toContain('email');
 });

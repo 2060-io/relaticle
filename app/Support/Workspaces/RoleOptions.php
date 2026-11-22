@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Workspaces;
 
+use App\Enums\BillingStatus;
 use App\Enums\WorkspaceCapability;
 use App\Enums\WorkspaceRole;
 use App\Features\Documentation;
@@ -13,6 +14,7 @@ use Filament\Actions\Action;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Laravel\Pennant\Feature;
+use Relaticle\Documentation\Support\DocUrl;
 
 final readonly class RoleOptions
 {
@@ -41,16 +43,6 @@ final readonly class RoleOptions
     }
 
     /**
-     * @return array<string, string>
-     */
-    public static function forInviteLink(): array
-    {
-        return self::labels()
-            ->except(WorkspaceRole::Admin->value)
-            ->all();
-    }
-
-    /**
      * @return array<string, array<string, bool>>
      */
     public static function matrix(): array
@@ -60,6 +52,7 @@ final readonly class RoleOptions
             ->prepend(WorkspaceCapability::forOwner(), 'owner');
 
         return collect(WorkspaceCapability::cases())
+            ->reject(fn (WorkspaceCapability $capability): bool => $capability === WorkspaceCapability::BillingManage && ! BillingStatus::billingEnabled())
             ->mapWithKeys(fn (WorkspaceCapability $capability): array => [
                 $capability->value => $roleCapabilities
                     ->map(fn (array $granted): bool => in_array($capability, $granted, true))
@@ -72,7 +65,7 @@ final readonly class RoleOptions
     {
         return Action::make('compareRoles')
             ->label(__('workspaces.actions.compare_roles'))
-            ->icon('heroicon-m-table-cells')
+            ->icon('lucide-table')
             ->link()
             ->modalHeading(__('workspaces.actions.compare_roles'))
             ->modalWidth('2xl')
@@ -83,17 +76,16 @@ final readonly class RoleOptions
             ->modalCancelAction(fn (Action $action): Action => $action
                 ->label(__('workspaces.actions.close'))
                 ->extraAttributes(['autofocus' => true]))
-            // The help pages only exist while the Documentation feature is on; a
-            // self-hosted install with it off would otherwise crash this page on
-            // route('help.show').
+            // Hidden while the Documentation feature is off, as before. The link no
+            // longer needs the help routes: DocUrl points at the public help centre.
             ->extraModalFooterActions([
                 Action::make('readRolesHelp')
                     ->visible(fn (): bool => Feature::active(Documentation::class))
                     ->label(__('workspaces.actions.compare_roles_help_link'))
-                    ->icon('heroicon-m-arrow-top-right-on-square')
+                    ->icon('lucide-external-link')
                     ->iconPosition('after')
                     ->link()
-                    ->url(fn (): string => url()->getPublicUrl(route('help.show', ['category' => 'workspace', 'slug' => 'manage-members-and-roles'], false)))
+                    ->url(DocUrl::helpPage('workspace', 'manage-members-and-roles'))
                     ->openUrlInNewTab()
                     ->extraAttributes(['aria-label' => __('workspaces.actions.compare_roles_help_link').' '.__('workspaces.role_matrix.opens_in_new_tab')]),
             ]);

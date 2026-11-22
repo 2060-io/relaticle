@@ -7,7 +7,6 @@ use App\Enums\SocialiteProvider;
 use App\Filament\Pages\Auth\Login;
 use App\Http\Controllers\Auth\CallbackController;
 use App\Models\User;
-use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Rules\InvitedEmail;
 use App\Support\Auth\InvitationOnlySignup;
@@ -23,11 +22,14 @@ function makeInvitedSocialiteUser(string $id, string $name, string $email): Soci
     $user->id = $id;
     $user->name = $name;
     $user->email = $email;
+    // Google must vouch for the address before a sign-up (upstream 3.11), so the
+    // invitation rule, not an unverified address, is what each test exercises.
+    $user->setRaw(['email_verified' => true]);
 
     return $user;
 }
 
-function signUpWithPassword(string $email): Testable
+function attemptPasswordSignup(string $email): Testable
 {
     return livewire(Login::class)
         ->fillForm(['email' => $email])
@@ -42,7 +44,7 @@ function signUpWithPassword(string $email): Testable
 it('lets anyone sign up with a password while invitation_only is off', function (): void {
     config()->set('relaticle.registration.invitation_only', false);
 
-    signUpWithPassword('jane-open@gmail.com')->assertHasNoFormErrors();
+    attemptPasswordSignup('jane-open@gmail.com')->assertHasNoFormErrors();
 
     expect(User::query()->where('email', 'jane-open@gmail.com')->exists())->toBeTrue();
 });
@@ -50,7 +52,7 @@ it('lets anyone sign up with a password while invitation_only is off', function 
 it('blocks password sign-up for an uninvited email when invitation_only is on', function (): void {
     config()->set('relaticle.registration.invitation_only', true);
 
-    signUpWithPassword('jane-uninvited@gmail.com')->assertHasFormErrors(['email']);
+    attemptPasswordSignup('jane-uninvited@gmail.com')->assertHasFormErrors(['email']);
 
     expect(User::query()->where('email', 'jane-uninvited@gmail.com')->exists())->toBeFalse();
 });
@@ -60,7 +62,7 @@ it('lets an invited email sign up with a password when invitation_only is on', f
 
     WorkspaceInvitation::factory()->create(['email' => 'jane-invited@gmail.com']);
 
-    signUpWithPassword('jane-invited@gmail.com')->assertHasNoFormErrors();
+    attemptPasswordSignup('jane-invited@gmail.com')->assertHasNoFormErrors();
 
     expect(User::query()->where('email', 'jane-invited@gmail.com')->exists())->toBeTrue();
 });
@@ -70,7 +72,7 @@ it('blocks password sign-up when the only invitation has expired', function (): 
 
     WorkspaceInvitation::factory()->expired()->create(['email' => 'jane-expired@gmail.com']);
 
-    signUpWithPassword('jane-expired@gmail.com')->assertHasFormErrors(['email']);
+    attemptPasswordSignup('jane-expired@gmail.com')->assertHasFormErrors(['email']);
 
     expect(User::query()->where('email', 'jane-expired@gmail.com')->exists())->toBeFalse();
 });
@@ -80,7 +82,7 @@ it('does not count an invitation without an expiry', function (): void {
 
     WorkspaceInvitation::factory()->withoutExpiry()->create(['email' => 'jane-legacy@gmail.com']);
 
-    signUpWithPassword('jane-legacy@gmail.com')->assertHasFormErrors(['email']);
+    attemptPasswordSignup('jane-legacy@gmail.com')->assertHasFormErrors(['email']);
 });
 
 it('matches the invitation on the canonical form of the email', function (): void {
@@ -88,28 +90,7 @@ it('matches the invitation on the canonical form of the email', function (): voi
 
     WorkspaceInvitation::factory()->create(['email' => 'Jane.Case@gmail.com']);
 
-    signUpWithPassword('jane.case@gmail.com')->assertHasNoFormErrors();
-});
-
-it('lets a visitor who arrived through an active invite link sign up', function (): void {
-    config()->set('relaticle.registration.invitation_only', true);
-
-    $workspace = Workspace::factory()->create();
-    session(['url.intended' => route('workspaces.join', ['token' => $workspace->invite_link_token])]);
-
-    signUpWithPassword('jane-link@gmail.com')->assertHasNoFormErrors();
-
-    expect(User::query()->where('email', 'jane-link@gmail.com')->exists())->toBeTrue();
-});
-
-it('ignores an expired invite link in the session', function (): void {
-    config()->set('relaticle.registration.invitation_only', true);
-
-    $workspace = Workspace::factory()->create();
-    $workspace->forceFill(['invite_link_token_expires_at' => now()->subDay()])->save();
-    session(['url.intended' => route('workspaces.join', ['token' => $workspace->invite_link_token])]);
-
-    signUpWithPassword('jane-stale-link@gmail.com')->assertHasFormErrors(['email']);
+    attemptPasswordSignup('jane.case@gmail.com')->assertHasNoFormErrors();
 });
 
 // --- Social sign-up ---

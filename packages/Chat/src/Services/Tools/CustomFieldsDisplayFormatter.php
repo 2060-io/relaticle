@@ -241,10 +241,10 @@ final readonly class CustomFieldsDisplayFormatter
         return match ($dataType) {
             FieldDataType::SINGLE_CHOICE => $this->renderSingleChoice($field, $value),
             FieldDataType::MULTI_CHOICE => $this->renderMultiChoice($field, $value),
-            FieldDataType::DATE => $this->toDate($value)->isoFormat('MMM D, YYYY'),
-            FieldDataType::DATE_TIME => $this->toDate($value)->setTimezone($timezone)->isoFormat('MMM D, YYYY'),
+            FieldDataType::DATE => $this->toDate($value)->isoFormat('ll'),
+            FieldDataType::DATE_TIME => $this->toDate($value)->setTimezone($timezone)->isoFormat('ll'),
             FieldDataType::TEXT => trim(strip_tags((string) $value)),
-            FieldDataType::BOOLEAN => $value ? 'Yes' : 'No',
+            FieldDataType::BOOLEAN => $value ? (string) __('Yes') : (string) __('No'),
             default => is_array($value) ? implode(', ', array_map(strval(...), $value)) : (string) $value,
         };
     }
@@ -280,10 +280,10 @@ final readonly class CustomFieldsDisplayFormatter
     /** @return list<string> */
     private function recordNames(CustomField $field, mixed $value): array
     {
-        return array_map(
-            fn (array $record): string => $record['name'] ?? $record['id'],
+        return array_values(array_filter(array_column(
             resolve(RecordNameResolver::class)->resolve((string) $field->lookup_type, $value),
-        );
+            'name',
+        ), is_string(...)));
     }
 
     private function renderMultiChoice(CustomField $field, mixed $value): string

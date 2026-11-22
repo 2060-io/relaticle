@@ -2,25 +2,63 @@
 
 declare(strict_types=1);
 
+use App\Actions\CustomFields\CreateCustomField;
+use App\Actions\CustomFields\DeleteCustomField;
+use App\Actions\Views\PlaceBoardCard;
+use App\Actions\Views\ReorderBoardStages;
+use App\Actions\Views\SetBoardColumnCollapsed;
+use App\Actions\Views\SetBoardColumnField;
+use App\Actions\Views\SetBoardColumnVisibility;
+use App\Actions\Views\SetCardAttributes;
+use App\Data\BoardStateData;
+use App\Enums\BoardCardSize;
+use App\Enums\CrmEntity;
 use App\Enums\CustomFields\TaskField;
+use App\Enums\OptionColor;
+use App\Enums\SavedViewType;
+use App\Enums\WorkspaceRole;
 use App\Filament\Actions\CreateTaskAction;
-use App\Filament\Resources\CompanyResource;
+use App\Filament\Actions\MoveCardAction;
+use App\Filament\Concerns\HasBoardCards;
+use App\Filament\Concerns\HasBoardStageOrder;
+use App\Filament\Concerns\HasBoardViews;
+use App\Filament\Concerns\HasViewSwitcher;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Pages\ManageTasks;
 use App\Filament\Resources\TaskResource\Pages\TasksBoard;
+use App\Filament\Tables\Concerns\CreatesTableAttribute;
 use App\Models\CustomField;
+use App\Models\CustomFieldOption;
+use App\Models\Export;
+use App\Models\Opportunity;
+use App\Models\SavedView;
+use App\Models\TablePreference;
 use App\Models\Task;
 use App\Models\User;
+use App\Queries\Views\BoardCardAttributesQuery;
+use App\Queries\Views\BoardColumnFieldsQuery;
+use App\Support\ChecklistHtml;
+use App\Support\CustomFields\WorkspaceCustomFields;
+use App\Support\Locales;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Once;
+use Livewire\Features\SupportTesting\Testable;
+use Livewire\Livewire;
+use Relaticle\CustomFields\Services\TenantContextService;
 use Relaticle\Flowforge\Board;
 use Relaticle\Flowforge\Grouping;
 use Relaticle\Flowforge\Lane;
+use Relaticle\Flowforge\Services\DecimalPosition;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\Helpers\WorkspaceCustomField;
 
-mutates(TasksBoard::class, CreateTaskAction::class);
+mutates(SetCardAttributes::class, PlaceBoardCard::class, CreatesTableAttribute::class, BoardCardAttributesQuery::class, HasBoardCards::class, ReorderBoardStages::class, SetBoardColumnField::class, SetBoardColumnCollapsed::class, SetBoardColumnVisibility::class, BoardColumnFieldsQuery::class, TasksBoard::class, CreateTaskAction::class, ChecklistHtml::class, MoveCardAction::class, HasBoardViews::class, HasBoardStageOrder::class, HasViewSwitcher::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -143,6 +181,59 @@ it('moves a card between columns via moveCard', function (): void {
         ->value($this->statusField->getValueColumn());
 
     expect($updatedValue)->toBe($inProgress->getKey());
+});
+
+it('moves a card to the status picked from its move to sheet', function (): void {
+    $todo = $this->statusField->options->firstWhere('name', 'To do');
+    $inProgress = $this->statusField->options->firstWhere('name', 'In progress');
+
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $task->saveCustomFieldValue($this->statusField, $todo->getKey());
+
+    livewire(TasksBoard::class)
+        ->call('mountAction', 'moveTo', [], ['recordKey' => (string) $task->id])
+        ->assertMountedActionModalSee(['To do', 'In progress', 'Done'])
+        ->call('callMountedAction', ['to' => (string) $inProgress->getKey()])
+        ->assertHasNoActionErrors()
+        ->assertNotified(__('filament/pages/boards.move_to.moved', ['column' => 'In progress']));
+
+    $storedValue = $task->fresh()->customFieldValues()
+        ->where('custom_field_id', $this->statusField->getKey())
+        ->value($this->statusField->getValueColumn());
+
+    expect($storedValue)->toBe($inProgress->getKey());
+});
+
+it('keeps move to off a card a viewer cannot change', function (): void {
+    $todo = $this->statusField->options->firstWhere('name', 'To do');
+    $done = $this->statusField->options->firstWhere('name', 'Done');
+
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $task->saveCustomFieldValue($this->statusField, $todo->getKey());
+
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $this->actingAs($viewer);
+
+    livewire(TasksBoard::class)
+        ->call('mountAction', 'moveTo', [], ['recordKey' => (string) $task->id])
+        ->assertActionNotMounted()
+        ->call('callMountedAction', ['to' => (string) $done->getKey()]);
+
+    $storedValue = $task->fresh()->customFieldValues()
+        ->where('custom_field_id', $this->statusField->getKey())
+        ->value($this->statusField->getValueColumn());
+
+    expect($storedValue)->toBe($todo->getKey());
+});
+
+it('names the move to choices for a screen reader', function (): void {
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(TasksBoard::class)
+        ->call('mountAction', 'moveTo', [], ['recordKey' => (string) $task->id])
+        ->assertMountedActionModalSeeHtml('role="radiogroup" aria-label="Move to"');
 });
 
 it('moves a card between two cards of another column', function (): void {
@@ -270,8 +361,8 @@ it('rejects a card created in a status option the board does not own', function 
     $targetId = $targetKind === 'foreign' ? (string) $foreignOptionId : 'not-an-option';
 
     livewire(TasksBoard::class)
-        ->assertActionDisabled(TestAction::make('create')->arguments(['column' => $targetId]))
-        ->call('mountAction', 'create', ['column' => $targetId])
+        ->assertActionDisabled(TestAction::make('addCard')->arguments(['column' => $targetId]))
+        ->call('mountAction', 'addCard', ['column' => $targetId])
         ->set('mountedActions.0.data.title', 'Rejected task')
         ->call('callMountedAction')
         ->assertOk();
@@ -283,7 +374,7 @@ it('creates a card in a status option the board owns', function (): void {
     $inProgress = $this->statusField->options->firstWhere('name', 'In progress');
 
     livewire(TasksBoard::class)
-        ->call('mountAction', 'create', ['column' => (string) $inProgress->getKey()])
+        ->call('mountAction', 'addCard', ['column' => (string) $inProgress->getKey()])
         ->set('mountedActions.0.data.title', 'Accepted task')
         ->call('callMountedAction')
         ->assertOk();
@@ -341,6 +432,28 @@ it('buckets the due-date badge against the user calendar, not the server clock',
         ->assertDontSee('Due Today');
 });
 
+it('words the due-date badge in the language of the user', function (): void {
+    $this->travelTo(Date::parse('2026-11-18 12:00:00', 'UTC'));
+
+    $this->user->forceFill(['locale' => 'de', 'timezone' => 'UTC'])->save();
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+
+    $dueField = CustomField::query()
+        ->forEntity(Task::class)
+        ->where('code', TaskField::DUE_DATE)
+        ->first();
+
+    $task = Task::factory()->recycle([$this->user, $this->workspace])->create();
+    $task->saveCustomFieldValue($this->statusField, $this->statusField->options->firstWhere('name', 'To do')->getKey());
+    $task->saveCustomFieldValue($dueField, Date::parse('2026-11-17 10:00:00', 'UTC'));
+
+    Locales::apply('de');
+
+    livewire(TasksBoard::class)
+        ->assertSee('17. Nov 2026 (überfällig)')
+        ->assertDontSee('Overdue');
+});
+
 it('keeps a card\'s assignees and status when only its title is edited', function (): void {
     $assignee = User::factory()->create();
     $this->workspace->users()->attach($assignee, ['role' => 'member']);
@@ -395,7 +508,7 @@ it('notifies the assignee of a task added from a board column', function (): voi
 
     livewire(TasksBoard::class)
         ->callAction(
-            TestAction::make('create')->arguments(['column' => (string) $column->getKey()]),
+            TestAction::make('addCard')->arguments(['column' => (string) $column->getKey()]),
             data: ['title' => 'Prepare the renewal deck', 'assignees' => [$assignee->id]],
         )
         ->assertHasNoActionErrors();
@@ -404,36 +517,1819 @@ it('notifies the assignee of a task added from a board column', function (): voi
         ->and($assignee->notifications()->count())->toBe(1);
 });
 
-it('points the navigation link at the view the user opened last', function (): void {
-    expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('index'));
+function tasksBoardChecklistHtml(): string
+{
+    return '<ul data-type="taskList">'
+        .'<li data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Call Bob</p></div></li>'
+        .'<li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>Send quote</p></div></li>'
+        .'</ul>';
+}
 
-    livewire(TasksBoard::class)->assertOk();
+function tasksBoardCardWithDescription(mixed $test, string $description): Task
+{
+    $descriptionField = CustomField::query()
+        ->forEntity(Task::class)
+        ->where('code', TaskField::DESCRIPTION)
+        ->first();
 
-    expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('board'));
+    $task = Task::factory()->recycle([$test->user, $test->workspace])->create();
+    $task->saveCustomFieldValue($test->statusField, $test->statusField->options->firstWhere('name', 'To do')->getKey());
+    $task->saveCustomFieldValue($descriptionField, $description);
 
-    livewire(ManageTasks::class)->assertOk();
+    return $task;
+}
 
-    expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('index'));
+it('shows checklist progress on a task card', function (): void {
+    tasksBoardCardWithDescription($this, tasksBoardChecklistHtml());
+
+    livewire(TasksBoard::class)
+        ->assertSeeHtml('data-checklist-progress')
+        ->assertSee('1/2');
 });
 
-it('falls back to the list when the remembered view no longer exists', function (): void {
-    TaskResource::rememberViewMode('timeline');
+it('reads a card description as separate words and leaves the ticks to the badge', function (): void {
+    tasksBoardCardWithDescription($this, '<p>Agenda</p><p>Venue</p>'.tasksBoardChecklistHtml());
 
-    expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('index'));
+    livewire(TasksBoard::class)
+        ->assertSee('Agenda Venue Call Bob Send quote')
+        ->assertDontSee('[x]')
+        ->assertDontSee('[ ]');
 });
 
-it('falls back to the list when the board the user opened last is no longer available', function (): void {
-    TaskResource::rememberViewMode('board');
+it('shows markup typed into a card description as text', function (): void {
+    tasksBoardCardWithDescription($this, '<p>&lt;b&gt;literal&lt;/b&gt;</p>');
 
-    $this->statusField->update(['active' => false]);
-
-    expect(TaskResource::getNavigationUrl())->toBe(TaskResource::getUrl('index'));
+    livewire(TasksBoard::class)
+        ->assertSeeHtml('&lt;b&gt;literal&lt;/b&gt;')
+        ->assertDontSeeHtml('<b>literal</b>');
 });
 
-it('links the sidebar to the board on the next page after the user opens it', function (): void {
-    $this->get(TaskResource::getUrl('board'))->assertOk();
+it('turns the checklist badge green once every item is ticked', function (): void {
+    tasksBoardCardWithDescription($this, str_replace('data-checked="false"', 'data-checked="true"', tasksBoardChecklistHtml()));
 
-    $this->get(CompanyResource::getUrl('index'))
-        ->assertOk()
-        ->assertSee('href="'.TaskResource::getUrl('board').'"', escape: false);
+    livewire(TasksBoard::class)
+        ->assertSee('2/2')
+        ->assertSeeHtml('fi-color-success')
+        ->assertSeeHtml('2 of 2 items done');
+});
+
+it('keeps an unfinished checklist badge gray with its count in a tooltip', function (): void {
+    tasksBoardCardWithDescription($this, tasksBoardChecklistHtml());
+
+    livewire(TasksBoard::class)
+        ->assertSee('1/2')
+        ->assertDontSeeHtml('fi-color-success')
+        ->assertSeeHtml('1 of 2 items done');
+});
+
+it('names the checklist badge from the lang file', function (): void {
+    app('translator')->addLines(['filament/pages/boards.tasks.checklist_progress' => 'Steps done'], 'en');
+    tasksBoardCardWithDescription($this, tasksBoardChecklistHtml());
+
+    livewire(TasksBoard::class)
+        ->assertSee('Steps done');
+});
+
+it('shows no checklist badge on a card without a checklist', function (): void {
+    tasksBoardCardWithDescription($this, '<p>Plain</p>');
+
+    livewire(TasksBoard::class)
+        ->assertSee('Plain')
+        ->assertDontSeeHtml('data-checklist-progress');
+});
+
+it('reads checklist progress without a query per card', function (): void {
+    $countQueries = function (): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        livewire(TasksBoard::class)->assertSee('1/2');
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    tasksBoardCardWithDescription($this, tasksBoardChecklistHtml());
+    livewire(TasksBoard::class);
+    $withOneCard = $countQueries();
+
+    foreach (range(1, 4) as $ignored) {
+        tasksBoardCardWithDescription($this, tasksBoardChecklistHtml());
+    }
+
+    expect($countQueries())->toBe($withOneCard);
+});
+
+function taskInStatus(object $test, string $title, string $status): Task
+{
+    $task = Task::factory()->recycle([$test->user, $test->workspace])->create(['title' => $title]);
+    $task->saveCustomFieldValue($test->statusField, $test->statusField->options->firstWhere('name', $status)->getKey());
+
+    return $task;
+}
+
+function taskStatusCardIds(Testable $component, string $status): array
+{
+    $option = CustomFieldOption::query()->withoutGlobalScopes()->where('name', $status)->firstOrFail();
+
+    return $component->instance()->getBoard()->getBoardRecords((string) $option->getKey())->pluck('id')->all();
+}
+
+it('narrows the cards with a rule from the bar', function (string $field): void {
+    $mate = User::factory()->create();
+    $this->workspace->users()->attach($mate->id, ['role' => 'member']);
+    $priority = CustomField::query()->forEntity(Task::class)->where('code', TaskField::PRIORITY)->firstOrFail();
+
+    $keep = taskInStatus($this, 'Keep me', 'To do');
+    $drop = taskInStatus($this, 'Drop me', 'To do');
+    $keep->assignees()->attach($mate);
+    $keep->saveCustomFieldValue($priority, $priority->options->first()->getKey());
+
+    $rule = match ($field) {
+        'title' => ['field' => 'title', 'condition' => 'contains', 'value' => 'Keep'],
+        'assignees' => ['field' => 'assignees', 'condition' => 'is_any_of', 'value' => [$mate->getKey()]],
+        'custom_fields.priority' => ['field' => 'custom_fields.priority', 'condition' => 'is_not_empty'],
+    };
+
+    $component = livewire(TasksBoard::class);
+
+    expect(taskStatusCardIds($component, 'To do'))->toContain($keep->id, $drop->id);
+
+    $component->call('setFilterRules', [$rule]);
+
+    expect(taskStatusCardIds($component, 'To do'))->toBe([$keep->id]);
+})->with(['a native field' => 'title', 'a relation' => 'assignees', 'a custom attribute' => 'custom_fields.priority']);
+
+it('shows every card again when the bar is cleared', function (): void {
+    $keep = taskInStatus($this, 'Keep me', 'To do');
+    $drop = taskInStatus($this, 'Drop me', 'To do');
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterRules', [['field' => 'title', 'condition' => 'contains', 'value' => 'Keep']]);
+
+    expect($component->instance()->hasFilterBarState())->toBeTrue();
+
+    $component->call('clearFilterBar');
+
+    expect(taskStatusCardIds($component, 'To do'))->toContain($keep->id, $drop->id)
+        ->and($component->instance()->hasFilterBarState())->toBeFalse();
+});
+
+it('makes assignee lanes when view settings groups by assignee', function (): void {
+    livewire(TasksBoard::class)
+        ->call('setBoardGrouping', 'assignee')
+        ->assertSet('groupBy', 'assignee');
+});
+
+it('removes the lanes when the grouping is cleared', function (): void {
+    livewire(TasksBoard::class)
+        ->call('setBoardGrouping', 'assignee')
+        ->call('setBoardGrouping', null)
+        ->assertSet('groupBy', null);
+});
+
+it('ignores a grouping the board does not have', function (): void {
+    livewire(TasksBoard::class)
+        ->call('setBoardGrouping', 'status')
+        ->assertSet('groupBy', null);
+});
+
+it('offers the bar no deleted control and no groups, and lists the lanes in view settings', function (): void {
+    $component = livewire(TasksBoard::class);
+    $data = $component->instance()->getFilterBarData();
+
+    expect($data['deletable'])->toBeFalse()
+        ->and($data['groups'])->toBe([])
+        ->and($data['grouping'])->toBeNull();
+
+    $component->assertSeeHtml('data-board-grouping="assignee"')
+        ->assertSeeHtml('data-board-grouping="none"')
+        ->assertSee(__('filament/pages/boards.view_settings.lanes'))
+        ->assertSee(__('filament/pages/boards.view_settings.no_lanes'));
+});
+
+function tasksToSort(object $test): void
+{
+    $dueDate = WorkspaceCustomField::byCode($test->workspace->getKey(), 'task', 'due_date');
+
+    foreach ([
+        ['Bravo', Date::parse('2026-01-01'), '2026-03-03', 1000],
+        ['Charlie', Date::parse('2026-01-03'), '2026-03-01', 2000],
+        ['Alpha', Date::parse('2026-01-02'), '2026-03-02', 3000],
+    ] as [$title, $createdAt, $due, $position]) {
+        $task = taskInStatus($test, $title, 'To do');
+        $task->forceFill(['created_at' => $createdAt, 'order_column' => $position])->saveQuietly();
+        $task->saveCustomFieldValue($dueDate, $due);
+    }
+}
+
+function taskStatusTitles(Testable $component, string $status): array
+{
+    $option = CustomFieldOption::query()->withoutGlobalScopes()->where('name', $status)->firstOrFail();
+
+    return $component->instance()->getBoard()->getBoardRecords((string) $option->getKey())->pluck('title')->all();
+}
+
+it('orders the cards of a column by the sort from the bar', function (string $column, string $direction, array $expected): void {
+    tasksToSort($this);
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => $column, 'direction' => $direction]]);
+
+    expect(taskStatusTitles($component, 'To do'))->toBe($expected);
+})->with([
+    'newest first' => ['created_at', 'desc', ['Charlie', 'Alpha', 'Bravo']],
+    'title a to z' => ['title', 'asc', ['Alpha', 'Bravo', 'Charlie']],
+    'latest due date first' => ['custom_fields.due_date', 'desc', ['Bravo', 'Alpha', 'Charlie']],
+    'earliest due date first' => ['custom_fields.due_date', 'asc', ['Charlie', 'Alpha', 'Bravo']],
+]);
+
+it('keeps the hand order while no sort is set', function (): void {
+    tasksToSort($this);
+
+    $component = livewire(TasksBoard::class);
+
+    expect(taskStatusTitles($component, 'To do'))->toBe(['Bravo', 'Charlie', 'Alpha']);
+
+    $component->call('setFilterBarSorts', [['column' => 'title', 'direction' => 'asc']])->call('setFilterBarSorts', []);
+
+    expect(taskStatusTitles($component, 'To do'))->toBe(['Bravo', 'Charlie', 'Alpha'])
+        ->and($component->get('boardSort'))->toBeNull();
+});
+
+it('offers the sort fields the shared sort language allows', function (): void {
+    $keys = array_column(livewire(TasksBoard::class)->instance()->getFilterBarData()['sortable'], 'key');
+
+    expect($keys)->toContain('title', 'created_at', 'updated_at', 'custom_fields.due_date', 'custom_fields.priority')
+        ->and($keys)->not->toContain('order_column');
+});
+
+it('gives each sort field the label and icon the filter catalog gives it', function (): void {
+    $data = livewire(TasksBoard::class)->instance()->getFilterBarData();
+    $fields = collect($data['fields'])->keyBy('key');
+
+    foreach ($data['sortable'] as $sortable) {
+        expect($fields->get($sortable['key']))->not->toBeNull()
+            ->and($sortable['label'])->toBe($fields[$sortable['key']]['label'])
+            ->and($sortable['icon'])->toBe($fields[$sortable['key']]['icon']);
+    }
+});
+
+it('ignores a sort the board does not offer', function (array $sorts): void {
+    livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', $sorts)
+        ->assertSet('boardSort', null);
+})->with([
+    'a column the board does not offer' => [[['column' => 'order_column', 'direction' => 'asc']]],
+    'a direction that is not one' => [[['column' => 'title', 'direction' => 'sideways']]],
+    'not a list of sorts' => [['title']],
+]);
+
+it('reads the sort from the url and ignores a garbage one', function (): void {
+    tasksToSort($this);
+
+    $sorted = Livewire::withQueryParams(['sort' => 'created_at:desc'])->test(TasksBoard::class);
+
+    expect(taskStatusTitles($sorted, 'To do'))->toBe(['Charlie', 'Alpha', 'Bravo']);
+
+    foreach (['x;drop', 'order_column:asc', 'title:sideways', ':', 'custom_fields.gone:asc'] as $garbage) {
+        $component = Livewire::withQueryParams(['sort' => $garbage])->test(TasksBoard::class)->assertOk();
+
+        expect(taskStatusTitles($component, 'To do'))->toBe(['Bravo', 'Charlie', 'Alpha'])
+            ->and($component->instance()->getFilterBarData()['sorts'])->toBe([]);
+    }
+});
+
+/**
+ * @return array{User, User}
+ */
+function tasksInAssigneeLanes(object $test): array
+{
+    tasksToSort($test);
+    $other = User::factory()->create();
+    $test->workspace->users()->attach($other, ['role' => 'member']);
+    Task::query()->get()->each(fn (Task $task) => $task->assignees()->attach($test->user));
+    $dueDate = WorkspaceCustomField::byCode($test->workspace->getKey(), 'task', 'due_date');
+
+    foreach ([
+        ['Foxtrot', Date::parse('2026-01-04'), '2026-03-04', 1000],
+        ['Delta', Date::parse('2026-01-06'), '2026-03-06', 2000],
+        ['Echo', Date::parse('2026-01-05'), '2026-03-05', 3000],
+    ] as [$title, $createdAt, $due, $position]) {
+        $task = taskInStatus($test, $title, 'To do');
+        $task->forceFill(['created_at' => $createdAt, 'order_column' => $position])->saveQuietly();
+        $task->saveCustomFieldValue($dueDate, $due);
+        $task->assignees()->attach($other);
+    }
+
+    return [$test->user, $other];
+}
+
+function taskLaneTitles(Testable $component, User $assignee): array
+{
+    $board = $component->instance()->getBoard();
+    $lane = collect($board->getLanes($board->getActiveGrouping()))->first(fn (Lane $lane): bool => $lane->getName() === (string) $assignee->getKey());
+
+    return $board->getLaneRecords($lane, 50)->pluck('title')->all();
+}
+
+it('keeps the hand order in lane cells while no sort is set', function (): void {
+    [$first, $second] = tasksInAssigneeLanes($this);
+
+    $component = livewire(TasksBoard::class)->call('setBoardGrouping', 'assignee');
+
+    expect(taskLaneTitles($component, $first))->toBe(['Bravo', 'Charlie', 'Alpha'])
+        ->and(taskLaneTitles($component, $second))->toBe(['Foxtrot', 'Delta', 'Echo']);
+});
+
+it('orders the cards of each lane cell by the sort from the bar', function (string $column, string $direction, array $firstLane, array $secondLane): void {
+    [$first, $second] = tasksInAssigneeLanes($this);
+
+    $component = livewire(TasksBoard::class)
+        ->call('setBoardGrouping', 'assignee')
+        ->call('setFilterBarSorts', [['column' => $column, 'direction' => $direction]]);
+
+    expect(taskLaneTitles($component, $first))->toBe($firstLane)
+        ->and(taskLaneTitles($component, $second))->toBe($secondLane);
+})->with([
+    'newest first' => ['created_at', 'desc', ['Charlie', 'Alpha', 'Bravo'], ['Delta', 'Echo', 'Foxtrot']],
+    'title a to z' => ['title', 'asc', ['Alpha', 'Bravo', 'Charlie'], ['Delta', 'Echo', 'Foxtrot']],
+    'title z to a' => ['title', 'desc', ['Charlie', 'Bravo', 'Alpha'], ['Foxtrot', 'Echo', 'Delta']],
+    'latest due date first' => ['custom_fields.due_date', 'desc', ['Bravo', 'Alpha', 'Charlie'], ['Delta', 'Echo', 'Foxtrot']],
+    'earliest due date first' => ['custom_fields.due_date', 'asc', ['Charlie', 'Alpha', 'Bravo'], ['Foxtrot', 'Echo', 'Delta']],
+]);
+
+it('offers the bar a sort while lanes are shown and keeps it when lanes go away', function (): void {
+    tasksInAssigneeLanes($this);
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'title', 'direction' => 'asc']])
+        ->call('setBoardGrouping', 'assignee');
+
+    expect($component->instance()->getFilterBarData()['sortable'])->not->toBe([])
+        ->and($component->instance()->getFilterBarData()['sorts'])->toHaveCount(1)
+        ->and($component->get('boardSort'))->toBe('title:asc');
+
+    $component->call('setBoardGrouping', null);
+
+    expect(taskStatusTitles($component, 'To do'))->toBe(['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot']);
+});
+
+it('moves a card to another assignee lane while sorted', function (string $status): void {
+    $this->withoutDefer();
+
+    [$first, $second] = tasksInAssigneeLanes($this);
+    $card = Task::query()->where('title', 'Bravo')->firstOrFail();
+    $column = (string) $this->statusField->options->firstWhere('name', $status)->getKey();
+
+    $component = livewire(TasksBoard::class)
+        ->call('setBoardGrouping', 'assignee')
+        ->call('setFilterBarSorts', [['column' => 'title', 'direction' => 'asc']])
+        ->call('moveCard', (string) $card->id, $column, null, null, (string) $first->id, (string) $second->id)
+        ->assertDispatched('kanban-card-moved');
+
+    expect($card->assignees()->pluck('users.id')->all())->toBe([$second->id])
+        ->and(taskLaneTitles($component, $second))->toContain('Bravo')
+        ->and(taskLaneTitles($component, $first))->not->toContain('Bravo');
+})->with(['the same status' => 'To do', 'another status' => 'In progress']);
+
+it('refuses a drop inside the same column while sorted', function (): void {
+    tasksToSort($this);
+    $card = Task::query()->where('title', 'Bravo')->firstOrFail();
+    $status = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+    $others = Task::query()->whereKeyNot($card->getKey())->pluck('id');
+
+    livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']])
+        ->call('moveCard', (string) $card->id, $status, (string) $others[0], (string) $others[1])
+        ->assertNotified(__('filament/pages/boards.sorted_no_reorder', ['field' => 'Created at']))
+        ->assertNotDispatched('kanban-card-moved');
+
+    expect((float) $card->fresh()->order_column)->toBe(1000.0);
+});
+
+it('drops a card between two cards of another column while sorted', function (): void {
+    tasksToSort($this);
+    $mover = taskInStatus($this, 'Mover', 'In progress');
+    $alpha = Task::query()->where('title', 'Alpha')->firstOrFail();
+    $bravo = Task::query()->where('title', 'Bravo')->firstOrFail();
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']])
+        ->call('moveCard', (string) $mover->id, $todo, (string) $alpha->id, (string) $bravo->id)
+        ->assertDispatched('kanban-card-moved');
+
+    expect((float) $mover->fresh()->order_column)->toBeLessThan(1000.0)
+        ->and(taskStatusTitles($component->call('setFilterBarSorts', []), 'To do'))->toBe(['Mover', 'Bravo', 'Charlie', 'Alpha']);
+});
+
+it('puts a card created while sorted at the top of the hand order', function (): void {
+    tasksToSort($this);
+    Task::query()->where('title', 'Charlie')->update(['order_column' => 200000]);
+    $todo = $this->statusField->options->firstWhere('name', 'To do');
+
+    livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'title', 'direction' => 'desc']])
+        ->call('mountAction', 'addCard', ['column' => (string) $todo->getKey()])
+        ->set('mountedActions.0.data.title', 'Fresh task')
+        ->call('callMountedAction')
+        ->assertOk();
+
+    expect((float) Task::query()->where('title', 'Fresh task')->firstOrFail()->order_column)->toBeLessThan(1000.0);
+});
+
+it('leaves the hand order of a column untouched by moves made while sorted', function (): void {
+    tasksToSort($this);
+    $mover = taskInStatus($this, 'Mover', 'In progress');
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+    $positions = fn (): array => Task::query()->whereIn('title', ['Bravo', 'Charlie', 'Alpha'])->orderBy('title')->pluck('order_column', 'title')->map(fn ($value): float => (float) $value)->all();
+    $before = $positions();
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']])
+        ->call('moveCard', (string) $mover->id, $todo)
+        ->call('setFilterBarSorts', []);
+
+    expect($positions())->toBe($before)
+        ->and(taskStatusTitles($component, 'To do'))->toBe(['Mover', 'Bravo', 'Charlie', 'Alpha']);
+});
+
+it('keeps the counts right while sorted', function (string $column): void {
+    tasksToSort($this);
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterRules', [['field' => 'title', 'condition' => 'contains', 'value' => 'Alp']])
+        ->call('setFilterBarSorts', [['column' => $column, 'direction' => 'desc']]);
+
+    $board = $component->instance()->getBoard();
+
+    expect($board->getBoardRecordCount($todo))->toBe(1)
+        ->and($board->getBatchedBoardRecordCounts()[$todo])->toBe(1)
+        ->and(taskStatusTitles($component, 'To do'))->toBe(['Alpha']);
+})->with(['a native field' => 'created_at', 'a custom attribute' => 'custom_fields.due_date']);
+
+it('keeps sorting when a garbage grouping arrives after mount', function (): void {
+    tasksToSort($this);
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']])
+        ->set('groupBy', 'status');
+
+    expect($component->instance()->getFilterBarData()['sortable'])->not->toBe([])
+        ->and(taskStatusTitles($component, 'To do'))->toBe(['Charlie', 'Alpha', 'Bravo']);
+});
+
+it('still moves a card to another status while sorted', function (): void {
+    tasksToSort($this);
+    $card = Task::query()->where('title', 'Bravo')->firstOrFail();
+    $inProgress = $this->statusField->options->firstWhere('name', 'In progress');
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']])
+        ->call('moveCard', (string) $card->id, (string) $inProgress->getKey())
+        ->assertDispatched('kanban-card-moved');
+
+    expect(taskStatusTitles($component, 'In progress'))->toBe(['Bravo']);
+});
+
+it('leaves the deleted records half of the bar inert on a board', function (): void {
+    $component = livewire(TasksBoard::class)->call('setDeletedRecordsFilter', 'only');
+
+    expect($component->instance()->getFilterBarData()['deleted'])->toBeNull()
+        ->and($component->instance()->hasFilterBarState())->toBeFalse();
+
+    $fromUrl = Livewire::withQueryParams(['filters' => ['trashed' => ['value' => '0']]])->test(TasksBoard::class);
+
+    expect($fromUrl->instance()->getFilterBarData()['deleted'])->toBeNull()
+        ->and($fromUrl->instance()->hasFilterBarState())->toBeFalse();
+});
+
+it('labels every field on the board as the list does', function (): void {
+    $board = collect(livewire(TasksBoard::class)->instance()->getFilterBarData()['fields'])->pluck('label', 'key');
+    $list = collect(livewire(ManageTasks::class)->instance()->getFilterBarData()['fields'])->pluck('label', 'key');
+
+    expect($board->all())->toEqual($list->all());
+});
+
+it('draws the bar and none of the old toolbar', function (): void {
+    Filament::setCurrentPanel(Filament::getPanel('app'));
+    Filament::bootCurrentPanel();
+
+    livewire(TasksBoard::class)
+        ->assertSeeHtml('data-filter-bar')
+        ->assertDontSeeHtml('ff-grouping')
+        ->assertDontSeeHtml('fi-ta-search-field')
+        ->assertDontSeeHtml('fi-ta-filters-dropdown');
+});
+
+it('ignores a search that arrives in the url', function (): void {
+    $card = taskInStatus($this, 'Findable', 'To do');
+
+    $component = Livewire::withQueryParams(['search' => 'zzqx-no-match'])->test(TasksBoard::class);
+
+    expect(taskStatusCardIds($component, 'To do'))->toContain($card->id);
+});
+
+it('renders a board whose url carries garbage filters', function (string $query): void {
+    $this->get(TasksBoard::getUrl(['tenant' => $this->workspace]).'?'.$query)->assertSuccessful();
+})->with([
+    'trashed scalar' => 'filters[trashed]=x',
+    'whole value a string' => 'filters=x',
+    'conditions scalar' => 'filters[conditions]=x',
+    'creation source nested junk' => 'filters[creation_source][values]=x',
+]);
+
+it('turns an old assignees link into a chip', function (): void {
+    $mate = User::factory()->create();
+    $this->workspace->users()->attach($mate->id, ['role' => 'member']);
+    $keep = taskInStatus($this, 'Keep me', 'To do');
+    $drop = taskInStatus($this, 'Drop me', 'To do');
+    $keep->assignees()->attach($mate);
+
+    $component = Livewire::withQueryParams(['filters' => ['assignees' => ['values' => [$mate->getKey()]]]])->test(TasksBoard::class);
+
+    expect(array_column($component->instance()->getFilterBarData()['rules'], 'field'))->toBe(['assignees'])
+        ->and(taskStatusCardIds($component, 'To do'))->toBe([$keep->id]);
+});
+
+/**
+ * @return list<string>
+ */
+function statusIds(CustomField $field): array
+{
+    return CustomFieldOption::query()->withoutGlobalScopes()->where('custom_field_id', $field->getKey())->orderBy('sort_order')->pluck('id')->map(strval(...))->all();
+}
+
+function freshTasksBoard(): Testable
+{
+    Once::flush();
+
+    return livewire(TasksBoard::class);
+}
+
+it('lists the statuses in the order the field settings give them by default', function (): void {
+    expect(freshTasksBoard()->instance()->getBoard()->getColumnIdentifiers())->toBe(statusIds($this->statusField));
+});
+
+it('keeps a reordered status list for the member on the same page and on a new visit', function (): void {
+    $reversed = array_reverse(statusIds($this->statusField));
+
+    $component = livewire(TasksBoard::class)->call('reorderBoardStages', $reversed);
+
+    expect($component->instance()->getBoard()->getColumnIdentifiers())->toBe($reversed)
+        ->and(freshTasksBoard()->instance()->getBoard()->getColumnIdentifiers())->toBe($reversed);
+});
+
+it('leaves another member\'s task board in the field order', function (): void {
+    $other = User::factory()->create();
+    $this->workspace->users()->attach($other, ['role' => WorkspaceRole::Member->value]);
+    $other->switchWorkspace($this->workspace);
+
+    livewire(TasksBoard::class)->call('reorderBoardStages', array_reverse(statusIds($this->statusField)));
+
+    $this->actingAs($other);
+
+    expect(freshTasksBoard()->instance()->getBoard()->getColumnIdentifiers())->toBe(statusIds($this->statusField));
+});
+
+it('never writes the status options when statuses are reordered', function (): void {
+    $before = CustomFieldOption::query()->where('custom_field_id', $this->statusField->getKey())->pluck('sort_order', 'id')->all();
+
+    livewire(TasksBoard::class)->call('reorderBoardStages', array_reverse(statusIds($this->statusField)));
+
+    expect(CustomFieldOption::query()->where('custom_field_id', $this->statusField->getKey())->pluck('sort_order', 'id')->all())->toBe($before);
+});
+
+it('stores a status order once each and rejects an opportunity stage', function (): void {
+    $order = statusIds($this->statusField);
+    $stage = CustomField::query()->forEntity(Opportunity::class)->where('code', 'stage')->firstOrFail();
+
+    $state = resolve(ReorderBoardStages::class)->execute($this->user, $this->workspace, CrmEntity::Task, [$order[1], $order[1], $order[0]]);
+
+    expect($state->stageOrder)->toBe([$order[1], $order[0], $order[2]])
+        ->and(fn () => resolve(ReorderBoardStages::class)->execute($this->user, $this->workspace, CrmEntity::Task, statusIds($stage)))
+        ->toThrow(HttpException::class);
+});
+
+function taskBoardPreferenceWrites(Closure $callback): int
+{
+    $writes = 0;
+    DB::listen(function (QueryExecuted $query) use (&$writes): void {
+        if (preg_match('/^(update|insert into) "table_preferences"/', $query->sql) === 1) {
+            $writes++;
+        }
+    });
+    $callback();
+
+    return $writes;
+}
+
+function rememberedTaskBoard(object $test, BoardStateData $state): TablePreference
+{
+    return TablePreference::factory()->create([
+        'user_id' => $test->user->getKey(),
+        'workspace_id' => $test->workspace->getKey(),
+        'entity' => CrmEntity::Task,
+        'board_state' => $state,
+    ]);
+}
+
+it('remembers a filter and the lanes set on the plain board for the next visit', function (): void {
+    taskInStatus($this, 'Keep me', 'To do');
+    $rule = ['field' => 'title', 'condition' => 'contains', 'value' => 'Keep'];
+
+    livewire(TasksBoard::class)
+        ->call('setFilterRules', [$rule])
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']])
+        ->call('setBoardGrouping', 'assignee');
+
+    $next = freshTasksBoard();
+
+    expect($next->get('groupBy'))->toBe('assignee')
+        ->and($next->get('boardSort'))->toBe('created_at:desc')
+        ->and($next->instance()->getFilterBarData()['rules'])->toHaveCount(1)
+        ->and(TablePreference::query()->sole()->board_state->grouping)->toBe('assignee');
+});
+
+it('writes nothing for a request that changes nothing', function (): void {
+    $preference = rememberedTaskBoard($this, new BoardStateData(grouping: 'assignee'));
+    $updatedAt = $preference->updated_at;
+    $component = freshTasksBoard();
+
+    $this->travelTo(now()->addHour());
+    $writes = taskBoardPreferenceWrites(function () use ($component): void {
+        $component->call('$refresh')->call('setBoardGrouping', 'assignee')->call('setFilterBarSorts', []);
+    });
+
+    expect($writes)->toBe(0)
+        ->and($preference->refresh()->updated_at)->toEqual($updatedAt);
+});
+
+it('writes once when statuses are reordered', function (): void {
+    rememberedTaskBoard($this, new BoardStateData(grouping: 'assignee'));
+    $component = freshTasksBoard();
+
+    $writes = taskBoardPreferenceWrites(fn () => $component->call('reorderBoardStages', array_reverse(statusIds($this->statusField))));
+
+    expect($writes)->toBe(1);
+});
+
+it('keeps the filter when a sort is set', function (): void {
+    $keep = taskInStatus($this, 'Keep me', 'To do');
+    taskInStatus($this, 'Drop me', 'To do');
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterRules', [['field' => 'title', 'condition' => 'contains', 'value' => 'Keep']])
+        ->call('setFilterBarSorts', [['column' => 'created_at', 'direction' => 'desc']]);
+
+    expect($component->instance()->getFilterBarData()['rules'])->toHaveCount(1)
+        ->and(taskStatusCardIds($component, 'To do'))->toBe([$keep->id]);
+});
+
+it('opens the remembered board when the url state normalises to nothing', function (array $query): void {
+    $filters = ['conditions' => ['match' => 'all', 'rules' => [['field' => 'title', 'condition' => 'contains', 'value' => 'Keep']]], 'trashed' => ['value' => null]];
+    $preference = rememberedTaskBoard($this, new BoardStateData(filters: $filters, grouping: 'assignee', sort: 'created_at:desc'));
+    $updatedAt = $preference->updated_at;
+
+    $this->travelTo(now()->addHour());
+    $component = Livewire::withQueryParams($query)->test(TasksBoard::class);
+
+    expect($component->get('groupBy'))->toBe('assignee')
+        ->and($component->get('boardSort'))->toBe('created_at:desc')
+        ->and($component->instance()->getFilterBarData()['rules'])->toHaveCount(1)
+        ->and($preference->refresh()->updated_at)->toEqual($updatedAt);
+
+    $component->call('setFilterBarSorts', [['column' => 'title', 'direction' => 'asc']]);
+
+    $stored = TablePreference::query()->sole()->board_state;
+    expect($stored->filters)->toEqual($filters)
+        ->and($stored->grouping)->toBe('assignee')
+        ->and($stored->sort)->toBe('title:asc');
+})->with([
+    'an unknown grouping' => [['groupBy' => 'status']],
+    'a legacy filter key' => [['filters' => ['assignees' => ['values' => ['x']]]]],
+    'an empty rule list' => [['filters' => ['conditions' => ['rules' => '']]]],
+    'a garbage sort' => [['sort' => 'garbage']],
+]);
+
+function taskBoardView(object $test, array $state = []): SavedView
+{
+    return SavedView::factory()->for($test->user)->for($test->workspace)->create([
+        'entity' => CrmEntity::Task,
+        'type' => SavedViewType::Board,
+        'state' => new BoardStateData(...$state),
+    ]);
+}
+
+it('saves the current task board as a view and opens it', function (): void {
+    $order = array_reverse(statusIds($this->statusField));
+
+    $component = livewire(TasksBoard::class)
+        ->call('setFilterRules', [['field' => 'title', 'condition' => 'contains', 'value' => 'Keep']])
+        ->call('setBoardGrouping', 'assignee')
+        ->call('reorderBoardStages', $order)
+        ->callAction('saveSavedViewAs', ['name' => 'My tasks'])
+        ->assertHasNoActionErrors();
+
+    $view = SavedView::query()->withoutGlobalScopes()->sole();
+
+    expect($view->type)->toBe(SavedViewType::Board)
+        ->and($view->entity)->toBe(CrmEntity::Task)
+        ->and($view->boardState()->grouping)->toBe('assignee')
+        ->and($view->boardState()->stageOrder)->toBe($order)
+        ->and($view->boardState()->filters['conditions']['rules'][0]['value'])->toBe('Keep');
+    $component->assertSet('activeSavedViewId', $view->getKey());
+});
+
+it('opens a task board view from its link and writes nothing', function (): void {
+    $keep = taskInStatus($this, 'Keep me', 'To do');
+    taskInStatus($this, 'Drop me', 'To do');
+    $rule = ['field' => 'title', 'condition' => 'contains', 'value' => 'Keep'];
+    $view = taskBoardView($this, ['filters' => ['conditions' => ['match' => 'all', 'rules' => [$rule]], 'trashed' => ['value' => null]], 'grouping' => 'assignee']);
+    $updatedAt = $view->updated_at;
+    $this->travelTo(now()->addHour());
+
+    $component = Livewire::withQueryParams(['view' => $view->getKey()])->test(TasksBoard::class);
+    $component->call('$refresh');
+
+    expect($component->get('activeSavedViewId'))->toBe($view->getKey())
+        ->and($component->get('groupBy'))->toBe('assignee')
+        ->and(taskStatusCardIds($component, 'To do'))->toBe([$keep->id])
+        ->and($view->refresh()->updated_at)->toEqual($updatedAt)
+        ->and(TablePreference::query()->count())->toBe(0);
+});
+
+it('stores a task board change on the open view and none on the plain board', function (): void {
+    $view = taskBoardView($this, ['grouping' => 'assignee']);
+    $reversed = array_reverse(statusIds($this->statusField));
+
+    Livewire::withQueryParams(['view' => $view->getKey()])->test(TasksBoard::class)
+        ->call('setBoardGrouping', null)
+        ->call('reorderBoardStages', $reversed);
+
+    $state = $view->refresh()->boardState();
+
+    expect($state->grouping)->toBeNull()
+        ->and($state->stageOrder)->toBe($reversed)
+        ->and(TablePreference::query()->count())->toBe(0);
+});
+
+it('refuses a task board view id that is not the member\'s', function (): void {
+    $other = User::factory()->create();
+    $this->workspace->users()->attach($other, ['role' => WorkspaceRole::Member->value]);
+    $theirs = SavedView::factory()->for($other)->for($this->workspace)->create([
+        'entity' => CrmEntity::Task,
+        'type' => SavedViewType::Board,
+        'state' => new BoardStateData(grouping: 'assignee'),
+    ]);
+    $updatedAt = $theirs->updated_at;
+    $this->travelTo(now()->addHour());
+
+    $component = Livewire::withQueryParams(['view' => $theirs->getKey()])->test(TasksBoard::class)
+        ->assertNotified(__('filament/panel.tables.views.unavailable'))
+        ->call('setBoardGrouping', 'assignee');
+
+    expect($component->get('activeSavedViewId'))->toBeNull()
+        ->and($theirs->refresh()->updated_at)->toEqual($updatedAt)
+        ->and(TablePreference::query()->sole()->board_state->grouping)->toBe('assignee');
+});
+
+function taskSelectField(object $test, string $name, array $options, string $type = 'select'): CustomField
+{
+    return resolve(CreateCustomField::class)->execute($test->user, ['name' => $name, 'type' => $type, 'entity_type' => 'task', 'options' => array_map(fn (string $option): array => ['name' => $option], $options)]);
+}
+
+/**
+ * @return list<string>
+ */
+function taskBoardColumnOrder(Testable $component): array
+{
+    return $component->instance()->getBoard()->getColumnIdentifiers();
+}
+
+function taskPriority(): CustomField
+{
+    return CustomField::query()->forEntity(Task::class)->where('code', TaskField::PRIORITY)->firstOrFail();
+}
+
+function taskValueOf(Task $task, CustomField $field): mixed
+{
+    return $task->customFieldValues()->where('custom_field_id', $field->getKey())->value($field->getValueColumn());
+}
+
+it('makes a column per priority in the same request the attribute is picked', function (): void {
+    $priority = taskPriority();
+    $high = $priority->options->firstWhere('name', 'High');
+    $task = taskInStatus($this, 'Ship it', 'To do');
+    $task->saveCustomFieldValue($priority, $high->getKey());
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnField', TaskField::PRIORITY->value);
+
+    expect(taskBoardColumnOrder($component))->toBe(statusIds($priority))
+        ->and($component->instance()->getBoard()->getBoardRecords((string) $high->getKey())->pluck('id')->all())->toBe([$task->id]);
+});
+
+it('writes the priority when a card moves between priority columns', function (): void {
+    $priority = taskPriority();
+    $task = taskInStatus($this, 'Ship it', 'To do');
+    $low = $priority->options->firstWhere('name', 'Low');
+
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnField', TaskField::PRIORITY->value)
+        ->call('moveCard', (string) $task->id, (string) $low->getKey());
+
+    expect(taskValueOf($task, $priority))->toBe($low->getKey())
+        ->and(taskValueOf($task, $this->statusField))->toBe($this->statusField->options->firstWhere('name', 'To do')->getKey());
+});
+
+it('creates a card in a priority column with that priority and hides priority in its form', function (): void {
+    $priority = taskPriority();
+    $low = $priority->options->firstWhere('name', 'Low');
+
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnField', TaskField::PRIORITY->value)
+        ->call('mountAction', 'addCard', ['column' => (string) $low->getKey()])
+        ->assertSchemaComponentDoesNotExist('custom_fields.priority', 'mountedActionSchema0')
+        ->assertSchemaComponentExists('custom_fields.status', 'mountedActionSchema0')
+        ->set('mountedActions.0.data.title', 'Low task')
+        ->call('callMountedAction');
+
+    expect(taskValueOf(Task::query()->where('title', 'Low task')->firstOrFail(), $priority))->toBe($low->getKey());
+});
+
+it('ignores an attribute that cannot make columns', function (string $case): void {
+    $other = User::factory()->withWorkspace()->create();
+    $otherField = taskSelectField((object) ['user' => $other], 'Tier', ['Gold']);
+    $inactive = taskSelectField($this, 'Dormant', ['A']);
+    $inactive->forceFill(['active' => false])->save();
+    $encrypted = taskSelectField($this, 'Secret', ['A']);
+    $encrypted->settings->encrypted = true;
+    $encrypted->save();
+    $empty = taskSelectField($this, 'Hollow', ['A']);
+    $empty->options()->delete();
+    $text = CustomField::query()->forEntity(Task::class)->where('code', TaskField::DESCRIPTION)->firstOrFail();
+
+    $code = match ($case) {
+        'another entity' => 'stage',
+        'another workspace' => $otherField->code,
+        'inactive' => $inactive->code,
+        'encrypted' => $encrypted->code,
+        'no options' => $empty->code,
+        'a text attribute' => $text->code,
+        'not a string' => ['x'],
+    };
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnField', $code);
+
+    expect(taskBoardColumnOrder($component))->toBe(statusIds($this->statusField))
+        ->and(TablePreference::query()->first()?->board_state->columnField)->toBeNull();
+})->with(['another entity', 'another workspace', 'inactive', 'encrypted', 'no options', 'a text attribute', 'not a string']);
+
+it('refuses an attribute that cannot make columns in the action', function (): void {
+    $other = User::factory()->withWorkspace()->create();
+    $otherField = taskSelectField((object) ['user' => $other], 'Tier', ['Gold']);
+
+    expect(fn () => resolve(SetBoardColumnField::class)->execute($this->user, $this->workspace, CrmEntity::Task, $otherField->code))
+        ->toThrow(fn (HttpException $exception): bool => $exception->getStatusCode() === 403);
+    expect(TablePreference::query()->withoutGlobalScopes()->count())->toBe(0);
+});
+
+it('falls back to the status columns when the stored attribute is gone', function (): void {
+    $tier = taskSelectField($this, 'Tier', ['Gold', 'Silver']);
+    rememberedTaskBoard($this, new BoardStateData(columnField: $tier->code));
+    resolve(DeleteCustomField::class)->execute($this->user, $tier);
+
+    $component = freshTasksBoard();
+
+    expect(taskBoardColumnOrder($component))->toBe(statusIds($this->statusField))
+        ->and(TablePreference::query()->sole()->board_state->columnField)->toBe($tier->code);
+});
+
+it('stores null when the default attribute is picked', function (): void {
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnField', TaskField::PRIORITY->value)
+        ->call('setBoardColumnField', TaskField::STATUS->value);
+
+    expect(TablePreference::query()->sole()->board_state->columnField)->toBeNull();
+});
+
+it('keeps the status order while priority columns are reordered and the reverse', function (): void {
+    $priorityIds = statusIds(taskPriority());
+    $statusIds = statusIds($this->statusField);
+
+    livewire(TasksBoard::class)
+        ->call('reorderBoardStages', array_reverse($statusIds))
+        ->call('setBoardColumnField', TaskField::PRIORITY->value)
+        ->call('reorderBoardStages', array_reverse($priorityIds));
+
+    $stored = TablePreference::query()->sole()->board_state;
+
+    expect($stored->orderStages($statusIds))->toBe(array_reverse($statusIds))
+        ->and($stored->orderStages($priorityIds))->toBe(array_reverse($priorityIds));
+
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnField', TaskField::STATUS->value)
+        ->call('reorderBoardStages', $statusIds);
+
+    $stored = TablePreference::query()->sole()->board_state;
+
+    expect($stored->orderStages($statusIds))->toBe($statusIds)
+        ->and($stored->orderStages($priorityIds))->toBe(array_reverse($priorityIds));
+});
+
+it('lists the attributes that can make columns with the current one checked', function (): void {
+    $checked = function (Testable $component, string $code): bool {
+        preg_match('/<button[^>]*data-board-column-field="'.$code.'"[^>]*>/', $component->html(), $row);
+
+        return str_contains($row[0] ?? '', 'role="radio"') && str_contains($row[0], 'aria-checked="true"');
+    };
+
+    $component = livewire(TasksBoard::class)
+        ->assertSeeHtml('data-board-column-field="status"')
+        ->assertSeeHtml('data-board-column-field="priority"');
+
+    expect($checked($component, 'status'))->toBeTrue()
+        ->and($checked($component, 'priority'))->toBeFalse();
+
+    $component->call('setBoardColumnField', TaskField::PRIORITY->value);
+
+    expect($checked($component, 'priority'))->toBeTrue()
+        ->and($checked($component, 'status'))->toBeFalse();
+});
+
+it('moves a card between two cards that share a position after regrouping', function (): void {
+    $priority = taskPriority();
+    $high = $priority->options->firstWhere('name', 'High');
+    $first = taskInStatus($this, 'First', 'To do');
+    $second = taskInStatus($this, 'Second', 'Done');
+    $third = taskInStatus($this, 'Third', 'In progress');
+
+    foreach ([$first, $second, $third] as $task) {
+        $task->saveCustomFieldValue($priority, $high->getKey());
+    }
+
+    Task::query()->whereKey([$first->id, $second->id])->update(['order_column' => 1000]);
+    $third->forceFill(['order_column' => 3000])->saveQuietly();
+
+    $moved = livewire(TasksBoard::class)
+        ->call('setBoardColumnField', TaskField::PRIORITY->value)
+        ->instance()
+        ->moveCard((string) $third->id, (string) $high->getKey(), (string) $first->id, (string) $second->id);
+
+    expect($moved)->toBeTrue()
+        ->and(taskValueOf($third, $priority))->toBe($high->getKey())
+        ->and(Task::query()->whereKey([$first->id, $second->id, $third->id])->pluck('order_column')->unique())->toHaveCount(3);
+});
+
+it('refuses a field code or ids that do not belong together when stages are reordered', function (string $case): void {
+    $other = User::factory()->withWorkspace()->create();
+    $otherTier = taskSelectField((object) ['user' => $other], 'Tier', ['Gold']);
+    $priorityIds = statusIds(taskPriority());
+    $statusIds = statusIds($this->statusField);
+
+    [$ids, $code] = match ($case) {
+        'a field of another workspace' => [statusIds($otherTier), $otherTier->code],
+        'a field of another entity' => [$statusIds, 'stage'],
+        'ids of another field' => [$statusIds, TaskField::PRIORITY->value],
+    };
+
+    expect(fn () => resolve(ReorderBoardStages::class)->execute($this->user, $this->workspace, CrmEntity::Task, $ids, null, $code))
+        ->toThrow(fn (HttpException $exception): bool => $exception->getStatusCode() === 403)
+        ->and(TablePreference::query()->withoutGlobalScopes()->count())->toBe(0)
+        ->and($priorityIds)->not->toBe($statusIds);
+})->with(['a field of another workspace', 'a field of another entity', 'ids of another field']);
+
+it('lists the board column fields with their options whatever custom attribute tenant is bound', function (?string $tenant): void {
+    $other = User::factory()->withWorkspace()->create();
+    TenantContextService::setTenantId($tenant === 'other' ? $other->currentWorkspace->getKey() : null);
+    Filament::setTenant(null);
+
+    $fields = resolve(BoardColumnFieldsQuery::class)->get($this->user, $this->workspace, CrmEntity::Task);
+
+    expect($fields->keys()->all())->toBe(['status', 'priority'])
+        ->and($fields->get('status')->options)->toHaveCount(count(statusIds($this->statusField)));
+})->with(['no tenant' => null, 'another workspace' => 'other']);
+
+it('keeps a hidden column in its slot when the visible columns are dragged', function (): void {
+    $ids = statusIds($this->statusField);
+    $component = livewire(TasksBoard::class)->call('setBoardColumnVisible', $ids[1], false);
+
+    $component->call('reorderBoardStages', [$ids[2], $ids[0]]);
+
+    expect(TablePreference::query()->sole()->board_state->stageOrder)->toBe([$ids[2], $ids[1], $ids[0]])
+        ->and(taskBoardColumnOrder($component))->toBe([$ids[2], $ids[0]]);
+});
+
+it('draws, counts and offers no hidden column', function (): void {
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+    taskInStatus($this, 'Hidden task', 'To do');
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnVisible', $todo, false);
+
+    expect(taskBoardColumnOrder($component))->not->toContain($todo)
+        ->and($component->instance()->getBoard()->getBatchedBoardRecordCounts())->not->toHaveKey($todo);
+
+    $other = taskInStatus($this, 'Other task', 'In progress');
+
+    $component->call('mountAction', 'moveTo', [], ['recordKey' => (string) $other->id])
+        ->assertMountedActionModalSee(['In progress', 'Done'])
+        ->assertMountedActionModalDontSee('To do');
+});
+
+it('refuses a card created or moved into a hidden column', function (): void {
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+    $card = taskInStatus($this, 'Moving task', 'In progress');
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnVisible', $todo, false);
+
+    $component->call('mountAction', 'addCard', ['column' => $todo])
+        ->set('mountedActions.0.data.title', 'Hidden column task')
+        ->call('callMountedAction');
+
+    $component->call('moveCard', (string) $card->id, $todo)->assertReturned(false);
+
+    expect(Task::query()->where('title', 'Hidden column task')->exists())->toBeFalse()
+        ->and(taskValueOf($card->fresh(), $this->statusField))->toBe($this->statusField->options->firstWhere('name', 'In progress')->getKey());
+});
+
+/**
+ * @return list<int|string>
+ */
+function noStatusCardIds(Testable $component): array
+{
+    return $component->instance()->getBoard()->getBoardRecords(BoardStateData::NO_VALUE_COLUMN)->pluck('id')->all();
+}
+
+it('shows a no status column first, holding exactly the tasks with no status, once it is switched on', function (): void {
+    taskInStatus($this, 'Write brief', 'To do');
+    $bare = Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Bare task']);
+    $cleared = taskInStatus($this, 'Cleared task', 'To do');
+    $cleared->saveCustomFieldValue($this->statusField, null);
+
+    $off = livewire(TasksBoard::class);
+    expect(taskBoardColumnOrder($off))->not->toContain(BoardStateData::NO_VALUE_COLUMN);
+
+    $on = $off->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true);
+
+    expect(taskBoardColumnOrder($on)[0])->toBe(BoardStateData::NO_VALUE_COLUMN)
+        ->and(noStatusCardIds($on))->toEqualCanonicalizing([$bare->id, $cleared->id])
+        ->and($on->instance()->getBoard()->getBatchedBoardRecordCounts()[BoardStateData::NO_VALUE_COLUMN])->toBe(2)
+        ->and(TablePreference::query()->sole()->board_state->noValueColumns)->toBe(['status']);
+    $on->assertSee('No Status');
+});
+
+it('clears the status when a task moves into the no status column and sets it when it moves out', function (): void {
+    $task = taskInStatus($this, 'Write brief', 'To do');
+    $inProgress = (string) $this->statusField->options->firstWhere('name', 'In progress')->getKey();
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true);
+
+    $component->call('moveCard', (string) $task->id, BoardStateData::NO_VALUE_COLUMN)->assertReturned(true);
+    expect($task->customFieldValues()->where('custom_field_id', $this->statusField->getKey())->exists())->toBeTrue()
+        ->and(taskValueOf($task, $this->statusField))->toBeNull();
+
+    $component->call('moveCard', (string) $task->id, $inProgress)->assertReturned(true);
+    expect(taskValueOf($task, $this->statusField))->toBe($inProgress);
+});
+
+it('moves a task into the no status column and to another assignee lane in one drop', function (): void {
+    $this->withoutDefer();
+
+    [$leaving, $joining] = User::factory()->count(2)->create()->all();
+    $this->workspace->users()->attach([$leaving->id, $joining->id], ['role' => 'member']);
+    $task = taskInStatus($this, 'Write brief', 'To do');
+    $task->assignees()->attach($leaving);
+    Task::factory()->recycle([$this->user, $this->workspace])->create()->assignees()->attach($joining);
+
+    livewire(TasksBoard::class, ['groupBy' => 'assignee'])
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->call('moveCard', (string) $task->id, BoardStateData::NO_VALUE_COLUMN, null, null, (string) $leaving->id, (string) $joining->id)
+        ->assertReturned(true);
+
+    expect(taskValueOf($task, $this->statusField))->toBeNull()
+        ->and($task->assignees()->pluck('users.id')->all())->toBe([$joining->id]);
+});
+
+it('creates a task with no status from the no status column', function (): void {
+    $component = livewire(TasksBoard::class)
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->call('mountAction', 'addCard', ['column' => BoardStateData::NO_VALUE_COLUMN])
+        ->set('mountedActions.0.data.title', 'Bare task')
+        ->call('callMountedAction');
+
+    $created = Task::query()->where('title', 'Bare task')->firstOrFail();
+
+    expect(taskValueOf($created, $this->statusField))->toBeNull()
+        ->and((float) $created->order_column)->toBe((float) DecimalPosition::forEmptyColumn())
+        ->and(noStatusCardIds($component))->toContain($created->id);
+});
+
+it('puts a task created in the no status column above the ones already there', function (): void {
+    Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Bare task'])->forceFill(['order_column' => 5000])->saveQuietly();
+
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->call('mountAction', 'addCard', ['column' => BoardStateData::NO_VALUE_COLUMN])
+        ->set('mountedActions.0.data.title', 'Fresh task')
+        ->call('callMountedAction');
+
+    expect((float) Task::query()->where('title', 'Fresh task')->firstOrFail()->order_column)->toBe((float) DecimalPosition::before('5000'));
+});
+
+it('offers the list\'s import, export and new task actions in the board header', function (): void {
+    livewire(TasksBoard::class)
+        ->assertActionVisible('create')
+        ->assertActionVisible('export')
+        ->assertActionVisible('import');
+});
+
+it('shows a viewer none of the header actions', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $this->actingAs($viewer);
+
+    livewire(TasksBoard::class)
+        ->assertActionHidden('create')
+        ->assertActionHidden('export')
+        ->assertActionHidden('import');
+});
+
+function headerCreateTask(string $title, array $data = []): void
+{
+    livewire(TasksBoard::class)
+        ->mountAction('create')
+        ->setActionData(['title' => $title, ...$data])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+}
+
+function headerTaskPosition(string $title): ?float
+{
+    $position = Task::query()->where('title', $title)->firstOrFail()->order_column;
+
+    return $position === null ? null : (float) $position;
+}
+
+it('creates a task from the header into the first visible status', function (): void {
+    $ids = statusIds($this->statusField);
+
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnVisible', $ids[0], false)
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->mountAction('create')
+        ->assertSchemaStateSet(['custom_fields.'.TaskField::STATUS->value => $ids[1]])
+        ->setActionData(['title' => 'Header task'])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    $cards = livewire(TasksBoard::class)->instance()->getBoard()->getBoardRecords($ids[1]);
+
+    expect($cards->pluck('title')->all())->toContain('Header task');
+});
+
+it('puts a task created from the header below the last card of its column', function (): void {
+    taskInStatus($this, 'Write brief', 'To do')->forceFill(['order_column' => 3000])->saveQuietly();
+
+    headerCreateTask('Header task');
+
+    expect(headerTaskPosition('Header task'))->toBe((float) DecimalPosition::after('3000'));
+});
+
+it('gives the first task created from the header into an empty column the empty column position', function (): void {
+    headerCreateTask('Header task');
+
+    expect(headerTaskPosition('Header task'))->toBe((float) DecimalPosition::forEmptyColumn());
+});
+
+it('sorts a second task created from the header after the first', function (): void {
+    headerCreateTask('First header task');
+    headerCreateTask('Second header task');
+
+    expect(headerTaskPosition('Second header task'))->toBeGreaterThan(headerTaskPosition('First header task'));
+});
+
+it('positions a task created from the header in the status the form was changed to', function (): void {
+    taskInStatus($this, 'Write brief', 'To do')->forceFill(['order_column' => 3000])->saveQuietly();
+    taskInStatus($this, 'Ship it', 'In progress')->forceFill(['order_column' => 9000])->saveQuietly();
+    $inProgress = (string) $this->statusField->options->firstWhere('name', 'In progress')->getKey();
+
+    headerCreateTask('Header task', ['custom_fields' => [TaskField::STATUS->value => $inProgress]]);
+
+    expect(headerTaskPosition('Header task'))->toBe((float) DecimalPosition::after('9000'));
+});
+
+it('positions a task created from the header with no status in the no status column', function (): void {
+    Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Bare task'])->forceFill(['order_column' => 5000])->saveQuietly();
+
+    livewire(TasksBoard::class)
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->mountAction('create')
+        ->setActionData(['title' => 'Header task', 'custom_fields' => [TaskField::STATUS->value => null]])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    expect(headerTaskPosition('Header task'))->toBe((float) DecimalPosition::after('5000'));
+});
+
+it('creates no task when a viewer calls the header create action directly', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $this->actingAs($viewer);
+
+    livewire(TasksBoard::class)
+        ->call('mountAction', 'create')
+        ->set('mountedActions.0.data.title', 'Viewer task')
+        ->call('callMountedAction');
+
+    expect(Task::query()->where('title', 'Viewer task')->exists())->toBeFalse();
+});
+
+it('exports the tasks the bar\'s filters match from the board, hidden statuses and no status included', function (bool $noValueColumn): void {
+    taskInStatus($this, 'Acme hidden status', 'To do');
+    taskInStatus($this, 'Acme shown status', 'In progress');
+    Task::factory()->recycle([$this->user, $this->workspace])->create(['title' => 'Acme no status']);
+    taskInStatus($this, 'Globex brief', 'In progress');
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+
+    Auth::guard('web')->login($this->user);
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnVisible', $todo, false);
+
+    if ($noValueColumn) {
+        $component->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true);
+    }
+
+    $component
+        ->call('setFilterRules', [['field' => 'title', 'condition' => 'contains', 'value' => 'Acme']])
+        ->callAction('export');
+
+    expect(Export::query()->sole()->total_rows)->toBe(3)
+        ->and(Export::query()->sole()->processed_rows)->toBe(3);
+})->with([
+    'no status column off' => [false],
+    'no status column on' => [true],
+]);
+
+function taskWithEveryRelation(object $test): Task
+{
+    $task = tasksBoardCardWithDescription($test, tasksBoardChecklistHtml());
+    $task->update(['creator_id' => $test->user->getKey()]);
+    $task->assignees()->attach(User::factory()->create());
+
+    return $task;
+}
+
+function countTaskBoardQueries(): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    freshTasksBoard()->assertOk();
+    $queries = array_column(DB::getQueryLog(), 'query');
+    DB::disableQueryLog();
+
+    return $queries;
+}
+
+it('reads every attribute a card can show without a query per card', function (): void {
+    $keys = resolve(BoardCardAttributesQuery::class)->get($this->user, $this->workspace, CrmEntity::Task);
+    rememberedTaskCard($this, $keys);
+
+    taskWithEveryRelation($this);
+    countTaskBoardQueries();
+    $withOneCard = count(countTaskBoardQueries());
+
+    foreach (range(1, 4) as $ignored) {
+        taskWithEveryRelation($this);
+    }
+
+    expect(countTaskBoardQueries())->toHaveCount($withOneCard);
+});
+
+it('loads no card relations for a compact card', function (): void {
+    $keys = resolve(BoardCardAttributesQuery::class)->get($this->user, $this->workspace, CrmEntity::Task);
+    $preference = TablePreference::factory()->create([
+        'user_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
+        'entity' => CrmEntity::Task,
+        'board_state' => new BoardStateData(cardAttributes: $keys),
+    ]);
+    taskWithEveryRelation($this);
+
+    $full = implode("\n", countTaskBoardQueries());
+    $preference->update(['board_state' => new BoardStateData(cardAttributes: $keys, cardSize: BoardCardSize::Compact)]);
+    $compact = implode("\n", countTaskBoardQueries());
+
+    expect($full)->toContain('"task_user"')
+        ->and($compact)->not->toContain('"task_user"');
+});
+
+it('draws a task card as before when nothing is chosen', function (): void {
+    $priority = taskPriority();
+    $task = tasksBoardCardWithDescription($this, '<p>Plan the visit</p>'.tasksBoardChecklistHtml());
+    $task->saveCustomFieldValue($priority, $priority->options->firstWhere('name', 'High')->getKey());
+    $task->saveCustomFieldValue(WorkspaceCustomField::byCode($this->workspace->getKey(), 'task', 'due_date'), Date::parse('2031-03-04', 'UTC'));
+    $task->assignees()->attach($this->user);
+
+    livewire(TasksBoard::class)
+        ->assertSeeInOrder(['Plan the visit', '1/2', 'High', 'Mar 4, 2031', $this->user->profile_photo_url]);
+});
+
+it('draws a compact task card with its title only', function (): void {
+    $priority = taskPriority();
+    $task = tasksBoardCardWithDescription($this, '<p>Plan the visit</p>'.tasksBoardChecklistHtml());
+    $task->saveCustomFieldValue($priority, $priority->options->firstWhere('name', 'High')->getKey());
+    $task->saveCustomFieldValue(WorkspaceCustomField::byCode($this->workspace->getKey(), 'task', 'due_date'), Date::parse('2031-03-04', 'UTC'));
+
+    livewire(TasksBoard::class)
+        ->assertSee('Mar 4, 2031')
+        ->call('setBoardCardSize', 'compact')
+        ->assertSee($task->title)
+        ->assertDontSee('Mar 4, 2031')
+        ->assertDontSee('1/2');
+});
+
+it('marks the task board collapsed and compact once both toggles are set', function (): void {
+    $component = livewire(TasksBoard::class)
+        ->call('setBoardColumnsCollapsed', true)
+        ->call('setBoardCardSize', 'compact')
+        ->assertSeeHtml('data-board-columns="collapsed"')
+        ->assertSeeHtml('data-board-card-size="compact"');
+
+    expect($component->html())
+        ->toMatch('/data-board-columns-option="collapsed"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-board-columns-option="collapsed"/');
+
+    $state = TablePreference::query()->sole()->board_state;
+
+    expect($state->columnsCollapsed)->toBeTrue()
+        ->and($state->cardSize)->toBe(BoardCardSize::Compact);
+});
+
+it('draws the chosen task attributes in their order', function (): void {
+    $task = tasksBoardCardWithDescription($this, '<p>Plan the visit</p>'.tasksBoardChecklistHtml());
+    $task->assignees()->attach($this->user);
+
+    rememberedTaskCard($this, ['assignees', 'checklist']);
+    $component = livewire(TasksBoard::class);
+
+    expect($component->html())->toMatch('/'.preg_quote($this->user->profile_photo_url, '/').'.*data-checklist-progress/s')
+        ->not->toContain('Plan the visit');
+});
+
+it('draws an empty task attribute with its label when empty attributes are kept', function (): void {
+    tasksBoardCardWithDescription($this, '<p>Plain</p>');
+    $component = livewire(TasksBoard::class)->call('setHideEmptyAttributes', false);
+
+    expect($component->html())->toMatch('/fi-sc-text[^>]*>\s*Checklist\s*<.*fi-sc-text[^>]*>\s*Empty\s*</s');
+});
+
+it('refuses a key the task card cannot show', function (string $key): void {
+    expect(fn () => resolve(SetCardAttributes::class)->execute($this->user, $this->workspace, CrmEntity::Task, [$key]))
+        ->toThrow(fn (HttpException $exception): bool => $exception->getStatusCode() === 422);
+
+    expect(TablePreference::query()->withoutGlobalScopes()->count())->toBe(0);
+})->with(['company', 'contact', 'bogus', 'custom_fields.description']);
+
+it('offers no description or checklist while the description attribute is inactive', function (): void {
+    CustomField::query()->forEntity(Task::class)->where('code', TaskField::DESCRIPTION)->firstOrFail()->forceFill(['active' => false])->save();
+    resolve(WorkspaceCustomFields::class)->forget($this->workspace->getKey());
+
+    $keys = resolve(BoardCardAttributesQuery::class)->get($this->user, $this->workspace, CrmEntity::Task);
+
+    expect($keys)->not->toContain('description', 'checklist')
+        ->and($keys)->toContain('assignees', 'creator');
+});
+
+it('draws neither the description nor the checklist of a stored card once the description attribute is inactive', function (): void {
+    tasksBoardCardWithDescription($this, '<p>Plan the visit</p>'.tasksBoardChecklistHtml());
+    $preference = TablePreference::factory()->create([
+        'user_id' => $this->user->getKey(),
+        'workspace_id' => $this->workspace->getKey(),
+        'entity' => CrmEntity::Task,
+        'board_state' => new BoardStateData(cardAttributes: ['description', 'checklist', 'creator'], hideEmpty: false),
+    ]);
+    $updatedAt = $preference->updated_at;
+
+    freshTasksBoard()->assertSee('Plan the visit')->assertSeeHtml('data-checklist-progress');
+
+    CustomField::query()->forEntity(Task::class)->where('code', TaskField::DESCRIPTION)->firstOrFail()->forceFill(['active' => false])->save();
+    resolve(WorkspaceCustomFields::class)->forget($this->workspace->getKey());
+
+    $html = freshTasksBoard()->assertOk()->html();
+
+    expect($html)->not->toContain('Plan the visit')
+        ->not->toContain('data-checklist-progress')
+        ->not->toMatch('/fi-sc-text[^>]*>\s*(Description|Checklist)\s*</')
+        ->and($preference->refresh()->updated_at)->toEqual($updatedAt)
+        ->and($preference->board_state->cardAttributes)->toBe(['description', 'checklist', 'creator']);
+});
+
+function rememberedTaskCard(object $test, array $keys): TablePreference
+{
+    return TablePreference::factory()->create([
+        'user_id' => $test->user->getKey(),
+        'workspace_id' => $test->workspace->getKey(),
+        'entity' => CrmEntity::Task,
+        'board_state' => new BoardStateData(cardAttributes: $keys),
+    ]);
+}
+
+it('lists the task card attributes in order with the two switches', function (): void {
+    livewire(TasksBoard::class)
+        ->assertSeeHtmlInOrder([
+            'data-board-show-labels',
+            'data-board-hide-empty',
+            'data-card-attribute="description"',
+            'data-card-attribute="checklist"',
+            'data-card-attribute="custom_fields.priority"',
+            'data-card-attribute="custom_fields.due_date"',
+            'data-card-attribute="assignees"',
+            'data-board-add-attribute',
+        ]);
+});
+
+it('offers every task attribute the card does not show in the add panel', function (): void {
+    livewire(TasksBoard::class)
+        ->assertSeeHtml('data-board-add-item="creator"')
+        ->assertDontSeeHtml('data-board-add-item="assignees"')
+        ->assertDontSeeHtml('data-board-add-item="custom_fields.'.TaskField::STATUS->value.'"');
+});
+
+it('creates an attribute from the task board and puts it on the card', function (): void {
+    livewire(TasksBoard::class)
+        ->callAction('createTableAttribute', data: ['name' => 'Effort', 'type' => 'text'])
+        ->assertHasNoActionErrors()
+        ->assertNotified('Effort added to this view');
+
+    expect(TablePreference::query()->sole()->board_state->cardAttributes)->toBe([...CrmEntity::Task->defaultCardAttributes(), 'custom_fields.effort']);
+});
+
+it('offers a viewer the task card settings but no create row', function (): void {
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $this->actingAs($viewer);
+
+    livewire(TasksBoard::class)
+        ->assertSeeHtml('data-board-add-attribute')
+        ->assertDontSeeHtml('data-view-settings-create')
+        ->assertDontSeeHtml('createTableAttribute')
+        ->assertActionHidden('createTableAttribute');
+});
+
+it('keeps the priority on the card across a write while priority makes the columns', function (string $change): void {
+    $priority = taskPriority();
+    $task = tasksBoardCardWithDescription($this, '<p>Plan</p>');
+    $task->saveCustomFieldValue($priority, $priority->options->firstWhere('name', 'High')->getKey());
+    $drawnBefore = substr_count(livewire(TasksBoard::class)->html(), 'High');
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnField', TaskField::PRIORITY->value);
+
+    match ($change) {
+        'create' => $component->callAction('createTableAttribute', data: ['name' => 'Effort', 'type' => 'text']),
+        'reorder' => $component->call('reorderCardAttributes', ['assignees', 'custom_fields.due_date']),
+        'remove' => $component->call('removeCardAttribute', 'assignees'),
+    };
+
+    $component->call('setBoardColumnField', TaskField::STATUS->value);
+
+    expect(TablePreference::query()->sole()->board_state->cardAttributes)->toContain('custom_fields.priority')
+        ->and(substr_count($component->html(), 'High'))->toBe($drawnBefore);
+})->with(['create', 'reorder', 'remove']);
+
+it('says a text attribute was added and a rich text attribute was only created', function (): void {
+    livewire(TasksBoard::class)
+        ->callAction('createTableAttribute', data: ['name' => 'Effort', 'type' => 'text'])
+        ->assertNotified('Effort added to this view')
+        ->callAction('createTableAttribute', data: ['name' => 'Plan notes', 'type' => 'rich-editor'])
+        ->assertNotified('Plan notes created. This type of attribute does not show on a card.');
+
+    expect(TablePreference::query()->sole()->board_state->cardAttributes)->toContain('custom_fields.effort')->not->toContain('custom_fields.plan_notes');
+});
+
+it('collapses a task stage for the member and expands it again', function (): void {
+    $ids = statusIds($this->statusField);
+    $component = livewire(TasksBoard::class)->call('setBoardColumnCollapsed', $ids[1], true);
+
+    expect(TablePreference::query()->sole()->board_state->collapsedColumns)->toBe([$ids[1]])
+        ->and($component->instance()->getBoard()->getCollapsedColumns())->toBe([$ids[1]]);
+
+    $component->call('toggleBoardColumnCollapse', $ids[1]);
+
+    expect(TablePreference::query()->sole()->board_state->collapsedColumns)->toBe([])
+        ->and($component->instance()->getBoard()->getCollapsedColumns())->toBe([]);
+});
+
+it('collapses the task no-value column', function (): void {
+    $component = livewire(TasksBoard::class)
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->call('setBoardColumnCollapsed', BoardStateData::NO_VALUE_COLUMN, true);
+
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([BoardStateData::NO_VALUE_COLUMN]);
+});
+
+it('keeps another member\'s task board expanded', function (): void {
+    livewire(TasksBoard::class)->call('setBoardColumnCollapsed', statusIds($this->statusField)[1], true);
+
+    $colleague = User::factory()->create();
+    $this->workspace->users()->attach($colleague, ['role' => WorkspaceRole::Member->value]);
+    $colleague->switchWorkspace($this->workspace);
+    $this->actingAs($colleague);
+
+    expect(livewire(TasksBoard::class)->instance()->getBoard()->getCollapsedColumns())->toBe([]);
+});
+
+it('keeps a collapsed task stage across regrouping by another attribute', function (): void {
+    $ids = statusIds($this->statusField);
+    $component = livewire(TasksBoard::class)->call('setBoardColumnCollapsed', $ids[1], true);
+
+    $component->call('setBoardColumnField', 'priority');
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([]);
+
+    $component->call('setBoardColumnField', $this->statusField->code);
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([$ids[1]]);
+});
+
+it('stores collapsed task stages inside an open board view only', function (): void {
+    $ids = statusIds($this->statusField);
+    $plain = rememberedTaskBoard($this, new BoardStateData(sort: 'title:asc'));
+    $view = taskBoardView($this);
+    $plainHash = $plain->board_state->hash();
+
+    $component = Livewire::withQueryParams(['view' => $view->getKey()])->test(TasksBoard::class)
+        ->call('setBoardColumnCollapsed', $ids[0], true);
+
+    expect($view->refresh()->boardState()->collapsedColumns)->toBe([$ids[0]])
+        ->and($component->instance()->getBoard()->getCollapsedColumns())->toBe([$ids[0]])
+        ->and($plain->refresh()->board_state->hash())->toBe($plainHash);
+});
+
+it('collapses every task column from the bar and keeps it after a reload', function (): void {
+    livewire(TasksBoard::class)->call('setBoardColumnsCollapsed', true);
+
+    expect(TablePreference::query()->sole()->board_state->columnsCollapsed)->toBeTrue()
+        ->and(freshTasksBoard()->instance()->getBoard()->collapsesAllColumns())->toBeTrue();
+
+    $component = freshTasksBoard()->call('setBoardColumnsCollapsed', false);
+
+    expect($component->instance()->getBoard()->collapsesAllColumns())->toBeFalse();
+});
+
+it('renders a collapsed task stage that was then deleted or hidden without error', function (string $case): void {
+    $ids = statusIds($this->statusField);
+    livewire(TasksBoard::class)->call('setBoardColumnCollapsed', $ids[1], true);
+
+    if ($case === 'deleted') {
+        CustomFieldOption::query()->withoutGlobalScopes()->whereKey($ids[1])->delete();
+    } else {
+        livewire(TasksBoard::class)->call('setBoardColumnVisible', $ids[1], false);
+    }
+
+    $component = freshTasksBoard()->assertOk();
+
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([])
+        ->and(taskBoardColumnOrder($component))->not->toContain($ids[1]);
+
+    $component->call('setBoardColumnCollapsed', $ids[0], true)->assertOk();
+
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([$ids[0]]);
+})->with(['deleted', 'hidden']);
+
+it('refuses a task collapse of an option of another attribute or workspace', function (string $case): void {
+    $foreign = User::factory()->withWorkspace()->create();
+    $priority = taskPriority();
+    $foreignStatus = CustomField::query()->withoutGlobalScopes()->where('tenant_id', $foreign->currentWorkspace->getKey())->where('entity_type', 'task')->where('code', TaskField::STATUS)->firstOrFail();
+
+    $optionId = match ($case) {
+        'another attribute' => (string) $priority->options->first()->getKey(),
+        'another workspace' => statusIds($foreignStatus)[0],
+        'unknown' => 'not-an-option',
+    };
+
+    expect(fn () => resolve(SetBoardColumnCollapsed::class)->execute($this->user, $this->workspace, CrmEntity::Task, TaskField::STATUS->value, $optionId, true))
+        ->toThrow(HttpException::class);
+
+    expect(TablePreference::query()->withoutGlobalScopes()->count())->toBe(0);
+})->with(['another attribute', 'another workspace', 'unknown']);
+
+it('reads a stored task board state that still carries the retired column width', function (): void {
+    $preference = rememberedTaskBoard($this, new BoardStateData);
+    DB::table('table_preferences')->where('id', $preference->getKey())->update(['board_state' => json_encode(['column_width' => 'narrow', 'card_size' => 'compact'])]);
+
+    $component = freshTasksBoard()->assertOk();
+
+    expect($component->instance()->getBoard()->collapsesAllColumns())->toBeFalse();
+});
+
+it('keeps the task no-value collapse with the attribute it was set on', function (): void {
+    $component = livewire(TasksBoard::class)
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true)
+        ->call('setBoardColumnCollapsed', BoardStateData::NO_VALUE_COLUMN, true)
+        ->call('setBoardColumnField', 'priority')
+        ->call('setBoardColumnVisible', BoardStateData::NO_VALUE_COLUMN, true);
+
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([]);
+
+    $component->call('setBoardColumnField', $this->statusField->code);
+
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([BoardStateData::NO_VALUE_COLUMN]);
+});
+
+it('renames a task status from its header menu and names the attribute status', function (): void {
+    $id = statusIds($this->statusField)[1];
+
+    $component = livewire(TasksBoard::class)
+        ->call('renameBoardColumn', $id, 'Blocked')
+        ->assertHasNoErrors();
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($id)->name)->toBe('Blocked')
+        ->and($component->html())->toContain('Collapse status')->toContain('Hide status')->not->toContain('Collapse stage');
+});
+
+it('refuses to rename the Done status and a taken status name in the menu', function (): void {
+    $done = $this->statusField->options->firstWhere('name', 'Done');
+    $todo = $this->statusField->options->firstWhere('name', 'To do');
+
+    livewire(TasksBoard::class)
+        ->call('renameBoardColumn', (string) $done->getKey(), 'Finished')
+        ->assertHasErrors(['boardStageMenu.'.$done->getKey()])
+        ->call('renameBoardColumn', (string) $todo->getKey(), 'DONE')
+        ->assertHasErrors(['boardStageMenu.'.$todo->getKey()]);
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail((string) $done->getKey())->name)->toBe('Done')
+        ->and(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail((string) $todo->getKey())->name)->toBe('To do');
+});
+
+it('turns confetti on for the Done status and keeps it through a rename of another status', function (): void {
+    $done = (string) $this->statusField->options->firstWhere('name', 'Done')->getKey();
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+
+    $component = livewire(TasksBoard::class)->call('setBoardColumnCelebrate', $done, true)->assertHasNoErrors();
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($done)->settings->celebrate)->toBeTrue()
+        ->and($component->html())->toContain('data-board-celebrate="'.e(json_encode([$done])).'"');
+
+    $component->call('renameBoardColumn', $todo, 'Backlog');
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($done)->settings->celebrate)->toBeTrue()
+        ->and(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($done)->name)->toBe('Done');
+
+    $component->call('setBoardColumnCelebrate', $done, false);
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($done)->settings->celebrate)->toBeFalse();
+});
+
+it('refuses a forged task status confetti toggle from a member and shows no row', function (): void {
+    $id = statusIds($this->statusField)[1];
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($this->workspace);
+    $this->actingAs($member);
+
+    $component = livewire(TasksBoard::class);
+
+    expect($component->html())->not->toContain('data-stage-confetti');
+
+    $component->call('setBoardColumnCelebrate', $id, true)->assertForbidden();
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($id)->settings->celebrate)->toBeNull();
+});
+
+it('sets a task status color from the palette', function (): void {
+    $id = statusIds($this->statusField)[1];
+
+    livewire(TasksBoard::class)->call('setBoardColumnColor', $id, OptionColor::Cyan->value)->assertHasNoErrors();
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($id)->settings->color)->toBe(OptionColor::Cyan->value);
+});
+
+it('refuses a forged task status rename from a member and shows no edit block', function (): void {
+    $id = statusIds($this->statusField)[1];
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($this->workspace);
+    $this->actingAs($member);
+
+    livewire(TasksBoard::class)->call('renameBoardColumn', $id, 'Forged')->assertForbidden();
+    livewire(TasksBoard::class)->call('setBoardColumnColor', $id, OptionColor::Red->value)->assertForbidden();
+
+    $html = livewire(TasksBoard::class)->html();
+
+    expect($html)->not->toContain('data-stage-edit')->not->toContain('data-stage-swatch')->toContain('Collapse status');
+});
+
+it('collapses and hides a task status from the menu actions and refuses the last one', function (): void {
+    $ids = statusIds($this->statusField);
+    $component = livewire(TasksBoard::class)
+        ->callAction(TestAction::make('collapseStage')->arguments(['column' => $ids[0]]))
+        ->callAction(TestAction::make('hideStage')->arguments(['column' => $ids[1]]));
+
+    expect($component->instance()->getBoard()->getCollapsedColumns())->toBe([$ids[0]])
+        ->and(TablePreference::query()->sole()->board_state->hiddenColumns)->toBe([$ids[1]]);
+
+    foreach (array_slice($ids, 2) as $id) {
+        $component->call('setBoardColumnVisible', $id, false);
+    }
+
+    $component->callAction(TestAction::make('hideStage')->arguments(['column' => $ids[0]]))
+        ->assertNotified(__('filament/pages/boards.stage_menu.last_visible', ['noun' => 'status']));
+});
+
+it('deletes a task status, clears its tasks and names the attribute status', function (): void {
+    $ids = statusIds($this->statusField);
+    $name = CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($ids[0])->name;
+    $task = taskInStatus($this, 'Acme brief', $name);
+    $action = TestAction::make('deleteStage')->arguments(['column' => $ids[0]]);
+
+    $component = livewire(TasksBoard::class)->mountAction($action);
+    $mounted = $component->instance()->getMountedAction();
+
+    expect($mounted->getModalHeading())->toBe('Delete "'.$name.'"?')
+        ->and($mounted->getModalDescription())->toBe('1 task will have no status. It shows in the No Status column when it is on in View settings.');
+
+    $component->callMountedAction();
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->find($ids[0]))->toBeNull()
+        ->and($task->refresh()->customFieldValues()->where('custom_field_id', $this->statusField->getKey())->value('string_value'))->toBeNull()
+        ->and($component->html())->toContain('Delete status');
+});
+
+it('hides delete for the Done status, locks its name and refuses a forged delete', function (): void {
+    $done = (string) $this->statusField->options->firstWhere('name', 'Done')->getKey();
+    $todo = (string) $this->statusField->options->firstWhere('name', 'To do')->getKey();
+
+    $component = livewire(TasksBoard::class)
+        ->assertActionHidden(TestAction::make('deleteStage')->arguments(['column' => $done]))
+        ->assertActionVisible(TestAction::make('deleteStage')->arguments(['column' => $todo]))
+        ->assertSeeHtml('data-stage-name-locked="'.$done.'"')
+        ->assertDontSeeHtml('data-stage-name-locked="'.$todo.'"')
+        ->call('mountAction', 'deleteStage', ['column' => $done])
+        ->call('callMountedAction');
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->find($done))->not->toBeNull()
+        ->and($component->html())->toContain('data-stage-swatch');
+});
+
+it('hides delete from a member and refuses a forged task status delete', function (): void {
+    $id = statusIds($this->statusField)[1];
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($this->workspace);
+    $this->actingAs($member);
+    $action = TestAction::make('deleteStage')->arguments(['column' => $id]);
+
+    $component = livewire(TasksBoard::class)
+        ->assertActionHidden($action)
+        ->call('mountAction', 'deleteStage', ['column' => $id])
+        ->call('callMountedAction');
+
+    expect(CustomFieldOption::query()->withoutGlobalScopes()->find($id))->not->toBeNull()
+        ->and($component->html())->not->toContain('Delete status');
+});
+
+it('adds a gray task status after the last one and words the tile status', function (): void {
+    $before = statusIds($this->statusField);
+
+    $component = livewire(TasksBoard::class)
+        ->assertSee('Add status')
+        ->call('addBoardColumn', 'Blocked')
+        ->assertHasNoErrors();
+
+    $added = array_values(array_diff(statusIds($this->statusField), $before));
+
+    expect($added)->toHaveCount(1)
+        ->and(CustomFieldOption::query()->withoutGlobalScopes()->findOrFail($added[0])->settings->color)->toBe(OptionColor::Gray->value)
+        ->and(statusIds($this->statusField))->toBe([...$before, $added[0]])
+        ->and(array_slice($component->instance()->getBoard()->getColumnIdentifiers(), -1))->toBe($added);
+});
+
+it('shows a taken task status name under the add input', function (): void {
+    $count = count(statusIds($this->statusField));
+
+    livewire(TasksBoard::class)->call('addBoardColumn', 'DONE')->assertHasErrors(['boardNewColumn']);
+
+    expect(statusIds($this->statusField))->toHaveCount($count);
+});
+
+it('offers no add tile to a member and refuses a forged task status add', function (): void {
+    $count = count(statusIds($this->statusField));
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+    $member->switchWorkspace($this->workspace);
+    $this->actingAs($member);
+
+    $component = livewire(TasksBoard::class)->call('addBoardColumn', 'Forged');
+
+    expect($component->instance()->getBoard()->canAddColumns())->toBeFalse()
+        ->and(statusIds($this->statusField))->toHaveCount($count);
+});
+
+it('words the task add input placeholder and a taken status name', function (): void {
+    $component = livewire(TasksBoard::class)->call('addBoardColumn', 'done');
+
+    expect($component->instance()->getBoard()->getAddColumnPlaceholder())->toBe('New status name')
+        ->and($component->errors()->get('boardNewColumn'))->toBe(['A status named "done" already exists.']);
 });

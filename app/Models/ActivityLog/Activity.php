@@ -12,6 +12,7 @@ use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
@@ -24,6 +25,8 @@ final class Activity extends SpatieActivity
     public const string SOURCE_PROPERTY = 'source';
 
     public const string EMAIL_ACCESS_LOG = 'email_access';
+
+    public const string SIGNUP_LOG = 'signup';
 
     /** @param  array<array-key, mixed>  $properties */
     public static function sourceFrom(array $properties): ?CreationSource
@@ -81,17 +84,22 @@ final class Activity extends SpatieActivity
         self::addGlobalScope(new WorkspaceScope);
 
         self::creating(function (self $activity): void {
-            if ($activity->workspace_id !== null || $activity->log_name === Impersonator::LOG_NAME) {
+            if ($activity->workspace_id !== null || in_array($activity->log_name, [Impersonator::LOG_NAME, self::SIGNUP_LOG], true)) {
                 return;
             }
 
-            $workspaceId = $activity->subject?->getAttribute('workspace_id')
-                ?? $activity->subject?->getAttribute('tenant_id')
-                ?? Filament::getTenant()?->getKey();
+            $workspaceId = self::workspaceIdFor($activity->subject);
 
             if ($workspaceId !== null) {
                 $activity->workspace_id = $workspaceId;
             }
         });
+    }
+
+    public static function workspaceIdFor(?Model $subject): mixed
+    {
+        return $subject?->getAttribute('workspace_id')
+            ?? $subject?->getAttribute('tenant_id')
+            ?? Filament::getTenant()?->getKey();
     }
 }

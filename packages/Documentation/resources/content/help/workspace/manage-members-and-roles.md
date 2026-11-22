@@ -1,8 +1,8 @@
 ---
 title: Manage members and roles
-description: What the Owner, Admin, Member, and Viewer roles can each do, plus invitations, join links, and removing members.
+description: What the Owner, Admin, Member, and Viewer roles can each do, plus email invitations and removing members.
 order: 1
-updated: "2026-09-22"
+updated: "2026-11-19"
 related: [help/getting-started/invite-your-team, help/workspace/rename-or-delete-your-workspace]
 ---
 
@@ -15,7 +15,7 @@ joined or not.
 ## A recent change to roles
 
 The Administrator role is now called Admin, and Editor is now called Member.
-Admins can now manage custom fields, which only the owner could do before.
+Admins can now manage custom attributes, which only the owner could do before.
 Check your **Members** list if you granted the Admin role earlier. Viewers
 can no longer export data, so give anyone who still needs exports the
 Member role. A Viewer can still read records through an access token for the
@@ -34,14 +34,14 @@ API or MCP.
 | Export data | Yes | Yes | Yes | No |
 | Invite, remove, and change member roles | Yes | Yes | No | No |
 | Promote someone to Admin | Yes | No | No | No |
-| Manage custom fields | Yes | Yes | No | No |
+| Manage custom attributes | Yes | Yes | No | No |
 | Manage workspace email settings | Yes | Yes | No | No |
 | Send email through an AI assistant | Yes | Yes | Yes | No |
 | Manage billing | Yes | No | No | No |
 | Rename or delete the workspace | Yes | No | No | No |
 | View the activity log | Yes | Yes | No | No |
 
-Admins manage members, custom fields, and workspace email settings alongside working with records. A
+Admins manage members, custom attributes, and workspace email settings alongside working with records. A
 few things stay with the **workspace owner** alone, whatever anyone's role:
 promoting someone *to* Admin, renaming or deleting the workspace, and
 billing.
@@ -50,8 +50,8 @@ The owner isn't a role you assign. Whoever owns the workspace always
 appears with an **Owner** badge, has no role to change, and can't leave or
 be removed.
 
-Wherever you pick a role, in **Invite workspace members**, **Change role**,
-or **Invite link**, **Compare roles** sits beside the choice. It opens this
+Wherever you pick a role, in **Invite workspace members** or **Change role**,
+**Compare roles** sits beside the choice. It opens this
 table in the app, and it always matches what each role can actually do.
 
 ## Invitations
@@ -67,29 +67,10 @@ how long the invite has left. Its actions menu offers:
 - **Resend** the email.
 - **Revoke** the invitation.
 
-An invite lasts 7 days. After that the row reads **Invite expired**, and
+An invite lasts 48 hours. After that the row reads **Invite expired**, and
 **Resend** issues a fresh one.
 
 ![The Members list showing an invited email marked Invite pending above the people who have joined](/help-assets/workspace/manage-members-and-roles-1.png)
-
-## The workspace link
-
-**Invite link**, next to **Invite workspace members**, holds a single link anyone
-can join with. Copy it to share directly, and set the role people get when
-they join with it, Member by default. The role saves as soon as you pick it.
-The link lasts 7 days and can grant Member or Viewer. Admins are
-invited by email, so the person is always named.
-
-The dialog shows how long the link has left. Once it expires, nobody can
-join with it, and the dialog offers **Generate a new link** in its place.
-
-Two controls sit under it:
-
-- **Generate a new link** replaces the link if the current one leaked. The
-  old one stops working right away.
-- **Turn off the link** removes it entirely, leaving email invitations as
-  the only way in. Turning it back on issues a different link, so the one
-  you turned off stays dead.
 
 ## Changing and removing members
 

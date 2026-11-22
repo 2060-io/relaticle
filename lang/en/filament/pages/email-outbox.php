@@ -19,6 +19,10 @@ return [
         'completed' => 'Completed',
         'partial_failure' => 'Partial failure',
     ],
+    'filters' => [
+        'status' => 'Status',
+        'status_indicator' => 'Status: :status',
+    ],
     'tabs' => [
         'queued' => 'Queued',
         'scheduled' => 'Scheduled',
@@ -29,6 +33,9 @@ return [
     'actions' => [
         'reschedule_field' => 'Send at',
         'bulk_cancel' => 'Cancel selected',
+        'cancel' => 'Cancel',
+        'reschedule' => 'Reschedule',
+        'retry' => 'Retry',
     ],
     'notifications' => [
         'cancelled' => 'Cancelled',

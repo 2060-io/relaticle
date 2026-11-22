@@ -50,10 +50,12 @@ enum CreationSource: string implements HasColor, HasLabel
 
     case MAILBOX = 'mailbox';
 
+    case SYSTEM = 'system';
+
     /** @return list<self> */
     public static function automated(): array
     {
-        return [self::SAMPLE, self::MAILBOX];
+        return [self::SAMPLE, self::MAILBOX, self::SYSTEM];
     }
 
     /** @return list<string> */
@@ -72,19 +74,41 @@ enum CreationSource: string implements HasColor, HasLabel
             self::MCP => 'gray',
             self::CHAT => 'indigo',
             self::MAILBOX => 'gray',
+            self::SYSTEM => 'gray',
         };
+    }
+
+    // One categorical slot each, validated for colour-vision separation on light and dark surfaces.
+    public function chartColor(): string
+    {
+        return match ($this) {
+            self::WEB => '#2a78d6',
+            self::SAMPLE => '#d95926',
+            self::IMPORT => '#1baf7a',
+            self::API => '#c98500',
+            self::MCP => '#d55181',
+            self::CHAT => '#008300',
+            self::MAILBOX => '#6250d6',
+            self::SYSTEM => '#e34948',
+        };
+    }
+
+    public function arrivedFrom(): string
+    {
+        return $this === self::MCP ? 'your connected assistant' : $this->value;
     }
 
     public function getLabel(): string
     {
         return match ($this) {
-            self::WEB => 'Web Interface',
-            self::SAMPLE => 'Sample Data',
-            self::IMPORT => 'Data Import',
-            self::API => 'API',
-            self::MCP => 'MCP Agent',
-            self::CHAT => 'AI Chat',
-            self::MAILBOX => 'Mailbox Sync',
+            self::WEB => __('enums/creation-source.web'),
+            self::SAMPLE => __('enums/creation-source.sample'),
+            self::IMPORT => __('enums/creation-source.import'),
+            self::API => __('enums/creation-source.api'),
+            self::MCP => __('enums/creation-source.mcp'),
+            self::CHAT => __('enums/creation-source.chat', ['assistant' => config('chat.assistant_name')]),
+            self::MAILBOX => __('enums/creation-source.mailbox'),
+            self::SYSTEM => __('enums/creation-source.system'),
         };
     }
 }

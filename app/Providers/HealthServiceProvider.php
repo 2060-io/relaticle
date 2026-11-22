@@ -6,8 +6,11 @@ namespace App\Providers;
 
 use App\Health\ChatProviderCheck;
 use App\Health\ChatTurnFailureRateCheck;
+use App\Health\SecretFileAccessCheck;
+use App\Health\TorExitListCheck;
 use Illuminate\Support\ServiceProvider;
 use Spatie\CpuLoadHealthCheck\CpuLoadCheck;
+use Spatie\Health\Checks\Check;
 use Spatie\Health\Checks\Checks\CacheCheck;
 use Spatie\Health\Checks\Checks\DatabaseCheck;
 use Spatie\Health\Checks\Checks\DatabaseConnectionCountCheck;
@@ -86,10 +89,21 @@ final class HealthServiceProvider extends ServiceProvider
 
             CacheCheck::new(),
 
-            ...ChatProviderCheck::forConfiguredProviders(),
-
-            ChatTurnFailureRateCheck::new(),
+            ...$this->applicationChecks(),
         ]);
+    }
+
+    /**
+     * @return list<Check>
+     */
+    private function applicationChecks(): array
+    {
+        return [
+            ...ChatProviderCheck::forConfiguredProviders(),
+            ChatTurnFailureRateCheck::new(),
+            TorExitListCheck::new(),
+            ...(filled(config('health.secret_access_status_path')) ? [SecretFileAccessCheck::new()] : []),
+        ];
     }
 
     private function isEnabled(): bool

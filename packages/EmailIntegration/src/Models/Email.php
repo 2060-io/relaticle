@@ -39,6 +39,7 @@ use Relaticle\EmailIntegration\Enums\EmailStatus;
 use Relaticle\EmailIntegration\Models\Scopes\ActiveAccountScope;
 use Relaticle\EmailIntegration\Observers\EmailObserver;
 use Relaticle\EmailIntegration\Policies\EmailPolicy;
+use Relaticle\EmailIntegration\Services\WorkspaceMemberDirectory;
 use Relaticle\EmailIntegration\Support\EmailHtmlSanitizer;
 
 /**
@@ -67,6 +68,8 @@ use Relaticle\EmailIntegration\Support\EmailHtmlSanitizer;
  * @property int $attempts
  * @property CarbonInterface|null $linked_at
  * @property EmailPriority $priority
+ * @property string|null $oauth_client_id
+ * @property int|null $personal_access_token_id
  */
 #[UsePolicy(EmailPolicy::class)]
 #[ObservedBy(EmailObserver::class)]
@@ -140,6 +143,20 @@ final class Email extends Model
     {
         return $query->where('direction', EmailDirection::OUTBOUND)
             ->whereNotNull('sent_at');
+    }
+
+    /**
+     * @param  Builder<Email>  $query
+     * @return Builder<Email>
+     */
+    #[Scope]
+    protected function composedBy(Builder $query, User $user): Builder
+    {
+        return $query
+            ->where($query->qualifyColumn('user_id'), $user->getKey())
+            ->where($query->qualifyColumn('workspace_id'), $user->current_workspace_id)
+            ->where($query->qualifyColumn('direction'), EmailDirection::OUTBOUND)
+            ->whereNot($query->qualifyColumn('status'), EmailStatus::SYNCED);
     }
 
     /**
@@ -283,6 +300,21 @@ final class Email extends Model
         return $this->user?->name;
     }
 
+    public function senderMemberAvatarUrl(): ?string
+    {
+        if ($this->direction === EmailDirection::OUTBOUND) {
+            return $this->user?->profile_photo_url;
+        }
+
+        $address = $this->fromParticipant()?->email_address;
+
+        if (blank($address)) {
+            return null;
+        }
+
+        return resolve(WorkspaceMemberDirectory::class)->find((string) $this->workspace_id, $address)['avatar'] ?? null;
+    }
+
     /**
      * Connected mailboxes that hold a visible copy of this message. Email is
      * the mailbox address, never the Relaticle login.
@@ -336,6 +368,19 @@ final class Email extends Model
         }
 
         return nl2br(e($text), false);
+    }
+
+    public function quotedBelow(string $bodyHtml, bool $asForward): string
+    {
+        $quotedBodyHtml = $this->quotedBodyHtml();
+
+        if (blank($quotedBodyHtml)) {
+            return $bodyHtml;
+        }
+
+        return $bodyHtml.($asForward
+            ? '<br><p><strong>---------- Forwarded message ----------</strong></p>'.$quotedBodyHtml
+            : '<br><blockquote style="border-left:3px solid #ccc;margin-left:0;padding-left:1rem">'.$quotedBodyHtml.'</blockquote>');
     }
 
     /**

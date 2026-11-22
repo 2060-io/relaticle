@@ -25,6 +25,11 @@ return [
         'workspace_logo' => [
             'label' => 'Workspace logo',
         ],
+        'web_search' => [
+            'label' => 'Let :assistant search the web',
+            'helper_text' => 'Search queries go to the AI provider\'s web search.',
+            'unavailable' => 'No model on this install can search the web.',
+        ],
     ],
 
     'sections' => [
@@ -34,14 +39,17 @@ return [
         ],
         'update_workspace_logo' => [
             'title' => 'Workspace Logo',
-            'description' => 'Your logo appears in the workspace switcher, on invitations, and on the join page.',
+            'description' => 'Your logo appears in the workspace switcher, on invitations, and on the invitation page.',
+        ],
+        'assistant' => [
+            'description' => 'Choose what :assistant, the built-in AI assistant, may do for members of this workspace.',
         ],
         'invite_people' => [
             'description' => 'Each person gets an email with a link to join :workspace.',
         ],
         'add_workspace_member' => [
             'title' => 'Invite people',
-            'description' => 'Send an email invitation, or share a link that lets people join themselves.',
+            'description' => 'Invite people by email. Each person gets their own invitation.',
         ],
         'workspace_members' => [
             'title' => 'Members',
@@ -59,12 +67,7 @@ return [
         'save' => 'Save',
         'invite_people' => 'Invite workspace members',
         'send_invitations' => 'Send invitations',
-        'invite_link' => 'Invite link',
         'close' => 'Close',
-        'copy_invite_link' => 'Copy link',
-        'rotate_invite_link' => 'Generate a new link',
-        'disable_invite_link' => 'Turn off the link',
-        'enable_invite_link' => 'Turn on the link',
         'update_workspace_role' => 'Change role',
         'compare_roles' => 'Compare roles',
         'compare_roles_help_link' => 'Read the full breakdown',
@@ -77,8 +80,15 @@ return [
     ],
 
     'notifications' => [
+        'workspace_deletion_cancelled' => [
+            'success' => 'Workspace deletion cancelled',
+        ],
+        'workspace_deletion_scheduled' => [
+            'success' => 'Workspace scheduled for deletion on :date',
+        ],
         'workspace_invitation_sent' => [
             'success' => 'Invitation sent.',
+            'success_many' => ':count invitations sent.',
         ],
         'workspace_invitation_revoked' => [
             'success' => 'Invitation revoked.',
@@ -98,18 +108,6 @@ return [
         'role_updated' => [
             'success' => 'Role updated.',
         ],
-        'invite_link_role_updated' => [
-            'success' => 'Anyone joining with this link is now a :role.',
-        ],
-        'invite_link_rotated' => [
-            'success' => 'A new invite link was generated. The previous link no longer works.',
-        ],
-        'invite_link_disabled' => [
-            'success' => 'The workspace link is off. Invite people by email instead.',
-        ],
-        'invite_link_enabled' => [
-            'success' => 'The workspace link is on. Anyone who opens it can join.',
-        ],
         'resend_throttled' => 'Please wait :seconds seconds before resending.',
         'some_invites_failed' => [
             'title' => 'Some invitations could not be sent',
@@ -122,12 +120,16 @@ return [
     ],
 
     'validation' => [
+        'slug_too_short' => 'The :attribute must be at least 3 characters.',
+        'slug_format' => 'The :attribute may only contain lowercase letters, numbers, and hyphens.',
+        'slug_reserved' => 'The :attribute is reserved and cannot be used.',
         'email_already_invited' => 'This user has already been invited to the workspace.',
         'email_already_member' => 'This user already belongs to the workspace.',
         'only_owner_promotes_admins' => 'Only the workspace owner can grant the Admin role.',
-        'invite_link_role_cannot_be_admin' => 'The workspace link cannot grant the Admin role. Invite admins by email instead.',
         'no_valid_emails' => 'Enter at least one email address.',
         'too_many_invites' => 'You can invite up to :max people at a time.',
+        'managed_plan_before_deleting' => 'This workspace is on a plan billed by Relaticle. Talk to us to end the plan before you delete the workspace.',
+        'managed_plan_before_deleting_account' => 'These workspaces are on a plan billed by Relaticle: :workspaces. Talk to us to end the plan before you delete your account.',
         'remove_members_before_deleting' => 'Remove all members from these workspaces, or delete the workspaces, before deleting your account: :workspaces',
         'workspace_scheduled_for_deletion' => 'This workspace is scheduled for deletion. Cancel the deletion to invite people.',
     ],
@@ -146,14 +148,6 @@ return [
         'delete_workspace' => [
             'notice' => 'This will schedule the workspace for deletion. You will have 30 days to cancel before all data is permanently removed.',
         ],
-        'rotate_invite_link' => [
-            'heading' => 'Generate a new invite link?',
-            'notice' => 'The current link stops working immediately. Anyone still holding it, in a chat or an email, will not be able to join.',
-        ],
-        'disable_invite_link' => [
-            'heading' => 'Turn off the workspace link?',
-            'notice' => 'Nobody can join with the current link once it is off. Turning it back on issues a different link, so the old one stays dead.',
-        ],
         'cancel_deletion' => [
             'heading' => 'Cancel workspace deletion?',
             'notice' => 'The workspace and all its data will be preserved.',
@@ -169,7 +163,7 @@ return [
     'tabs' => [
         'general' => 'General',
         'members' => 'Members',
-        'custom_fields' => 'Custom Fields',
+        'custom_fields' => 'Custom attributes',
         'email' => 'Email and Calendar',
         'import_history' => 'Import History',
         'activity' => 'Activity',
@@ -183,6 +177,19 @@ return [
         'record_destroyed' => 'This record has been permanently deleted.',
         'yes' => 'Yes',
         'no' => 'No',
+        'outcome' => [
+            'created' => 'created :subject',
+            'deleted' => 'deleted :subject',
+            'restored' => 'restored :subject',
+            'other' => 'made a change to :subject',
+        ],
+        'subjects' => [
+            'company' => 'a company',
+            'people' => 'a person',
+            'opportunity' => 'an opportunity',
+            'task' => 'a task',
+            'note' => 'a note',
+        ],
         'columns' => [
             'created_at' => 'When',
             'causer' => 'Who',
@@ -214,8 +221,8 @@ return [
             'opportunity' => 'Opportunity',
             'task' => 'Task',
             'note' => 'Note',
-            'custom_field' => 'Custom field',
-            'custom_field_option' => 'Custom field option',
+            'custom_field' => 'Custom attribute',
+            'custom_field_option' => 'Custom attribute option',
             'import' => 'Import',
         ],
         'import_counts' => [
@@ -249,12 +256,13 @@ return [
     ],
 
     'roles' => [
+        'unknown' => 'Unknown',
         'owner' => [
             'label' => 'Owner',
         ],
         'admin' => [
             'label' => 'Admin',
-            'description' => 'Manages members, custom fields, and email settings. Can delete records permanently',
+            'description' => 'Manages members, custom attributes, and email settings. Can delete records permanently',
         ],
         'member' => [
             'label' => 'Member',
@@ -283,7 +291,7 @@ return [
             'promote_admin' => ['label' => 'Promote someone to Admin'],
         ],
         'fields' => [
-            'manage' => ['label' => 'Manage custom fields'],
+            'manage' => ['label' => 'Manage custom attributes'],
         ],
         'billing' => [
             'manage' => ['label' => 'Manage billing'],
@@ -324,37 +332,8 @@ return [
     ],
 
     'invitation' => [
+        'joining_as' => 'Joining as',
         'members' => '{1} 1 person is already in this workspace|[2,*] :count people are already in this workspace',
-    ],
-
-    'invite_link' => [
-        'heading' => 'Invite link',
-        'description' => 'Share one link instead of typing addresses. Anyone who opens it joins this workspace.',
-        'url' => 'Workspace link',
-        'copied' => 'Link copied.',
-        'expires_in' => 'Stops working in :time. Generating a new link resets the clock.',
-        'default_role' => 'People join as',
-        'default_role_helper' => 'Saved as soon as you pick it. Admins are invited by email instead.',
-        'lapsed' => [
-            'title' => 'This link expired :time ago',
-            'notice' => 'Nobody can join with it. Generate a new link to keep inviting people.',
-        ],
-        'disabled' => [
-            'title' => 'The workspace link is off',
-            'notice' => 'Email invitations are the only way in. Turning the link on issues a new one.',
-        ],
-        'join' => [
-            'heading' => 'Join :workspace',
-            'body' => 'You will join with :role access.',
-            'joining_as' => 'Joining as',
-            'action' => 'Join workspace',
-            'decline' => 'Not now',
-        ],
-        'expired' => [
-            'heading' => 'Invite link expired',
-            'body' => 'This invite link has expired. Please ask the workspace owner to share a new link.',
-            'action' => 'Go to my workspace',
-        ],
     ],
 
     'deletion_banner' => [
@@ -371,9 +350,10 @@ return [
     ],
 
     'accept' => [
-        'joined' => 'You have joined the :workspace workspace.',
+        'joined' => 'You have joined :workspace.',
         'already_member' => 'You are already a member of :workspace.',
         'no_longer_valid' => 'That invitation is no longer valid. It may have been revoked or it may have expired.',
+        'email_unverified' => 'Verify your email address before you join a workspace.',
         'account_deleting' => 'You cannot accept invitations while your account is scheduled for deletion.',
         'workspace_deleting' => 'This workspace is scheduled for deletion and is not accepting new members.',
         'deleting' => [
@@ -396,7 +376,7 @@ return [
         ],
         'expired' => [
             'heading' => 'Invitation no longer valid',
-            'body' => 'This invitation has expired or has already been accepted.',
+            'body' => 'This invitation has expired, was already used, or was replaced by a newer one.',
             'action' => 'Go to my workspace',
         ],
     ],

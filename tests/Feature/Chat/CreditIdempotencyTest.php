@@ -7,7 +7,9 @@ use App\Models\Workspace;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Enums\RefundCause;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Services\CreditService;
@@ -15,6 +17,8 @@ use Relaticle\Chat\Services\CreditService;
 mutates(CreditService::class);
 
 it('does not double-charge when settle is called twice with the same idempotency key', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $service = app(CreditService::class);
@@ -35,8 +39,7 @@ it('does not double-charge when settle is called twice with the same idempotency
         'user' => $user,
         'type' => AiCreditType::Chat,
         'model' => 'claude-sonnet-4',
-        'inputTokens' => 100,
-        'outputTokens' => 200,
+        'usage' => new TextUsage(100, 200),
         'toolCallsCount' => 1,
         'conversationId' => 'conv_1',
         'resolutionKey' => 'response_abc123',
@@ -83,6 +86,8 @@ it('requires a non-null idempotency_key', function (): void {
 });
 
 it('settles a reservation exactly once even when called twice with the same key', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $service = resolve(CreditService::class);
@@ -93,7 +98,7 @@ it('settles a reservation exactly once even when called twice with the same key'
 
     $args = [
         'workspace' => $workspace, 'user' => $user, 'type' => AiCreditType::Chat,
-        'model' => 'claude-sonnet', 'inputTokens' => 10, 'outputTokens' => 20,
+        'model' => 'claude-sonnet', 'usage' => new TextUsage(10, 20),
         'toolCallsCount' => 0, 'conversationId' => null, 'reservedCredits' => 1,
         'resolutionKey' => 'resolve-TURN-1',
     ];
@@ -107,6 +112,8 @@ it('settles a reservation exactly once even when called twice with the same key'
 });
 
 it('makes settle and refund mutually exclusive for one resolution key', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $service = resolve(CreditService::class);
@@ -114,7 +121,7 @@ it('makes settle and refund mutually exclusive for one resolution key', function
         ->update(['credits_remaining' => 100, 'credits_used' => 0]);
     $service->reserveCredit($workspace); // used 1
 
-    $service->refundReservation($workspace, resolutionKey: 'resolve-TURN-2'); // refund wins
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: 'resolve-TURN-2'); // refund wins
     $service->settleReservedMinimum($workspace, $user, null, 'resolve-TURN-2', 'cancelled'); // must no-op
 
     $balance = AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->first();

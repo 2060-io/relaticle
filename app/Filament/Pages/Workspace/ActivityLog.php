@@ -24,7 +24,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Pages\Page;
 use Filament\Support\Enums\FontWeight;
 use Filament\Support\Facades\FilamentTimezone;
-use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\Column;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
@@ -82,7 +82,7 @@ final class ActivityLog extends Page implements HasTable
     /** @var array<int|string, list<array{label: string, old: string, new: string, full: array{old: string, new: string}|null}>> */
     private array $changeRows = [];
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClock;
+    protected static string|BackedEnum|null $navigationIcon = 'lucide-clock';
 
     protected static ?string $slug = 'workspace/activity';
 
@@ -162,7 +162,7 @@ final class ActivityLog extends Page implements HasTable
             ->stackedOnMobile()
             ->recordUrl($this->subjectUrl(...))
             ->searchPlaceholder(__('workspaces.activity.search_placeholder'))
-            ->emptyStateIcon(fn (): Heroicon => $this->isFiltered() ? Heroicon::OutlinedMagnifyingGlass : Heroicon::OutlinedClock)
+            ->emptyStateIcon(fn (): string => $this->isFiltered() ? 'lucide-search' : 'lucide-clock')
             ->emptyStateHeading(fn (): string => $this->isFiltered()
                 ? __('workspaces.activity.no_results.heading')
                 : __('workspaces.activity.empty.heading'))
@@ -172,7 +172,7 @@ final class ActivityLog extends Page implements HasTable
             ->emptyStateActions([
                 Action::make('clearFilters')
                     ->label(__('workspaces.activity.no_results.action'))
-                    ->icon(Heroicon::OutlinedXMark)
+                    ->icon('lucide-x')
                     ->color('gray')
                     ->visible(fn (): bool => $this->isFiltered())
                     ->action(function (): void {
@@ -180,46 +180,7 @@ final class ActivityLog extends Page implements HasTable
                         $this->removeTableFilters();
                     }),
             ])
-            ->columns([
-                TextColumn::make('created_at')
-                    ->label(__('workspaces.activity.columns.created_at'))
-                    ->since()
-                    ->dateTimeTooltip()
-                    ->sortable(),
-                TextColumn::make('causer.name')
-                    ->label(__('workspaces.activity.columns.causer'))
-                    ->weight(FontWeight::Medium)
-                    ->placeholder(fn (Activity $record): string => $record->causerLabel()),
-                TextColumn::make('source')
-                    ->label(__('workspaces.activity.columns.source'))
-                    ->badge()
-                    ->placeholder(ActivityValue::EMPTY),
-                TextColumn::make('event')
-                    ->label(__('workspaces.activity.columns.event'))
-                    ->badge()
-                    ->icon($this->eventIcon(...))
-                    ->color(fn (?string $state): string => match ($state) {
-                        'created', ExecuteImportJob::IMPORTED_EVENT => 'success',
-                        'deleted', ExecuteImportJob::FAILED_EVENT => 'danger',
-                        'restored' => 'warning',
-                        default => 'gray',
-                    })
-                    ->formatStateUsing($this->eventLabel(...)),
-                TextColumn::make('subject_type')
-                    ->label(__('workspaces.activity.columns.subject_type'))
-                    ->color('gray')
-                    ->icon($this->typeIcon(...))
-                    ->formatStateUsing($this->typeLabel(...)),
-                TextColumn::make('subject_id')
-                    ->label(__('workspaces.activity.columns.record'))
-                    ->state($this->recordName(...))
-                    ->weight(FontWeight::Medium)
-                    ->color(fn (Activity $record): ?string => $this->liveSubject($record) instanceof Model ? null : 'gray')
-                    ->tooltip($this->destroyedNotice(...))
-                    ->searchable(query: $this->searchByRecordName(...))
-                    ->wrap(),
-                $this->changesColumn(),
-            ])
+            ->columns($this->columns())
             ->filters([
                 SelectFilter::make('event')
                     ->label(__('workspaces.activity.filters.event'))
@@ -251,6 +212,55 @@ final class ActivityLog extends Page implements HasTable
                         ->when(filled($data['until'] ?? null), fn (Builder $q): Builder => $q->whereDate('activity_log.created_at', '<=', $data['until'])))
                     ->indicateUsing($this->dateIndicators(...)),
             ]);
+    }
+
+    /**
+     * @return array<int, Column>
+     */
+    private function columns(): array
+    {
+        return [
+            TextColumn::make('created_at')
+                ->label(__('workspaces.activity.columns.created_at'))
+                ->since()
+                ->dateTimeTooltip()
+                ->sortable(),
+            TextColumn::make('causer.name')
+                ->label(__('workspaces.activity.columns.causer'))
+                ->weight(FontWeight::Medium)
+                ->placeholder(fn (Activity $record): string => $record->causerLabel()),
+            TextColumn::make('source')
+                ->label(__('workspaces.activity.columns.source'))
+                ->badge()
+                ->visibleFrom('sm')
+                ->placeholder(ActivityValue::EMPTY),
+            TextColumn::make('event')
+                ->label(__('workspaces.activity.columns.event'))
+                ->badge()
+                ->icon($this->eventIcon(...))
+                ->color(fn (?string $state): string => match ($state) {
+                    'created', ExecuteImportJob::IMPORTED_EVENT => 'success',
+                    'deleted', ExecuteImportJob::FAILED_EVENT => 'danger',
+                    'restored' => 'warning',
+                    default => 'gray',
+                })
+                ->formatStateUsing($this->eventLabel(...)),
+            TextColumn::make('subject_type')
+                ->label(__('workspaces.activity.columns.subject_type'))
+                ->visibleFrom('sm')
+                ->color('gray')
+                ->icon($this->typeIcon(...))
+                ->formatStateUsing($this->typeLabel(...)),
+            TextColumn::make('subject_id')
+                ->label(__('workspaces.activity.columns.record'))
+                ->state($this->recordName(...))
+                ->weight(FontWeight::Medium)
+                ->color(fn (Activity $record): ?string => $this->liveSubject($record) instanceof Model ? null : 'gray')
+                ->tooltip($this->destroyedNotice(...))
+                ->searchable(query: $this->searchByRecordName(...))
+                ->wrap(),
+            $this->changesColumn(),
+        ];
     }
 
     /**
@@ -308,7 +318,7 @@ final class ActivityLog extends Page implements HasTable
             ->slideOver()
             ->modalHeading(fn (Activity $record): string => $this->recordName($record))
             ->modalDescription($this->changesDescription(...))
-            ->modalIcon(fn (Activity $record): Heroicon => $this->eventIcon($record->event))
+            ->modalIcon(fn (Activity $record): string => $this->eventIcon($record->event))
             ->modalContent(fn (Activity $record): View => view('filament.pages.workspace.activity-changes', [
                 'rows' => $this->changes($record),
             ]))
@@ -363,7 +373,7 @@ final class ActivityLog extends Page implements HasTable
             $this->typeLabel($record->subject_type),
             $this->eventLabel($record->event),
             $record->causerLabel(),
-            $record->created_at?->copy()->setTimezone(FilamentTimezone::get())->toDayDateTimeString() ?? ActivityValue::EMPTY,
+            $record->created_at?->copy()->setTimezone(FilamentTimezone::get())->isoFormat('lll') ?? ActivityValue::EMPTY,
         ]);
     }
 
@@ -656,15 +666,15 @@ final class ActivityLog extends Page implements HasTable
         return $this->eventOptions()[$state] ?? Str::headline(str_replace('.', ' ', $state));
     }
 
-    private function eventIcon(?string $state): Heroicon
+    private function eventIcon(?string $state): string
     {
         return match ($state) {
-            'created' => Heroicon::PlusCircle,
-            'deleted' => Heroicon::Trash,
-            'restored' => Heroicon::ArrowUturnLeft,
-            ExecuteImportJob::IMPORTED_EVENT => Heroicon::ArrowUpTray,
-            ExecuteImportJob::FAILED_EVENT => Heroicon::ExclamationTriangle,
-            default => Heroicon::PencilSquare,
+            'created' => 'lucide-circle-plus',
+            'deleted' => 'lucide-trash',
+            'restored' => 'lucide-undo-2',
+            ExecuteImportJob::IMPORTED_EVENT => 'lucide-upload',
+            ExecuteImportJob::FAILED_EVENT => 'lucide-triangle-exclamation-point',
+            default => 'lucide-square-pen',
         };
     }
 
@@ -677,22 +687,22 @@ final class ActivityLog extends Page implements HasTable
         return $this->typeOptions()[$state] ?? Str::headline($state);
     }
 
-    private function typeIcon(?string $state): ?Heroicon
+    private function typeIcon(?string $state): ?string
     {
         if (in_array($state, $this->customFieldSubjects(), true)) {
-            return Heroicon::AdjustmentsHorizontal;
+            return 'lucide-sliders-horizontal';
         }
 
         if ($state === $this->importSubject()) {
-            return Heroicon::ArrowUpTray;
+            return 'lucide-upload';
         }
 
         return match (CrmEntity::tryFrom((string) $state)) {
-            CrmEntity::Company => Heroicon::BuildingOffice,
-            CrmEntity::People => Heroicon::User,
-            CrmEntity::Opportunity => Heroicon::CurrencyDollar,
-            CrmEntity::Task => Heroicon::ClipboardDocumentCheck,
-            CrmEntity::Note => Heroicon::DocumentText,
+            CrmEntity::Company => 'lucide-building',
+            CrmEntity::People => 'lucide-user',
+            CrmEntity::Opportunity => 'lucide-circle-dollar-sign',
+            CrmEntity::Task => 'lucide-clipboard-check',
+            CrmEntity::Note => 'lucide-file-text',
             null => null,
         };
     }

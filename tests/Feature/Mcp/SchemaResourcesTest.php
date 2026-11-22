@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\CustomFields\TaskField;
 use App\Enums\CustomFieldType;
 use App\Mcp\Resources\CompanySchemaResource;
 use App\Mcp\Resources\NoteSchemaResource;
@@ -75,6 +76,35 @@ it('returns valid task schema with correct fields', function (): void {
         ->assertSee('"title"');
 });
 
+it('never tells an mcp client that rich text comes back as markdown', function (): void {
+    RelaticleServer::actingAs($this->user)
+        ->resource(TaskSchemaResource::class)
+        ->assertOk()
+        ->assertDontSee('Markdown');
+});
+
+it('tells an mcp client that a rich text field is stored and returned as html', function (): void {
+    RelaticleServer::actingAs($this->user)
+        ->resource(NoteSchemaResource::class)
+        ->assertOk()
+        ->assertSee('markdown, or HTML when the value starts with <; stored and returned as HTML');
+});
+
+it('publishes the checklist hint on the task description and not on the note body', function (): void {
+    $hint = substr(json_encode(TaskField::CHECKLIST_INPUT_FORMAT, JSON_THROW_ON_ERROR), 1, -1);
+    $entry = substr(json_encode(CustomFieldType::RICH_EDITOR->inputFormat().'; stored and returned as HTML; '.TaskField::CHECKLIST_INPUT_FORMAT.'; '.TaskField::CHECKLIST_HTML_READ_FORMAT, JSON_THROW_ON_ERROR), 1, -1);
+
+    RelaticleServer::actingAs($this->user)
+        ->resource(TaskSchemaResource::class)
+        ->assertOk()
+        ->assertSee($entry);
+
+    RelaticleServer::actingAs($this->user)
+        ->resource(NoteSchemaResource::class)
+        ->assertOk()
+        ->assertDontSee($hint);
+});
+
 it('returns valid note schema with correct fields', function (): void {
     RelaticleServer::actingAs($this->user)
         ->resource(NoteSchemaResource::class)
@@ -90,7 +120,17 @@ it('lets a client cache an entity schema privately for as long as the server doe
         'jsonrpc' => '2.0',
         'id' => 1,
         'method' => 'resources/read',
-        'params' => ['uri' => $uri],
+        'params' => [
+            'uri' => $uri,
+            '_meta' => [
+                'io.modelcontextprotocol/protocolVersion' => '2026-07-28',
+                'io.modelcontextprotocol/clientCapabilities' => (object) [],
+            ],
+        ],
+    ], [
+        'MCP-Protocol-Version' => '2026-07-28',
+        'Mcp-Method' => 'resources/read',
+        'Mcp-Name' => $uri,
     ])
         ->assertOk()
         ->assertJsonPath('result.ttlMs', CustomFieldSchemaCache::TTL * 1000)

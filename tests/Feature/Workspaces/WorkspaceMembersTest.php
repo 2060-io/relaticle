@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-use App\Actions\Jetstream\UpdateInviteLinkSettings;
 use App\Actions\Jetstream\UpdateWorkspaceMemberRole;
 use App\Enums\WorkspaceRole;
+use App\Features\Billing;
 use App\Features\EmailIntegration;
 use App\Livewire\App\Workspaces\InviteWorkspaceMembers;
 use App\Livewire\App\Workspaces\WorkspaceMembers;
 use App\Models\User;
+use App\Support\Workspaces\RoleOptions;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Radio;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Laravel\Pennant\Feature;
 
-mutates(WorkspaceMembers::class);
+mutates(WorkspaceMembers::class, RoleOptions::class);
 
 beforeEach(function (): void {
     $this->owner = User::factory()->withWorkspace()->create();
@@ -210,49 +211,6 @@ test('cumulative invite volume beyond the window cap is throttled, not just the 
     expect($this->workspace->fresh()->workspaceInvitations)->toHaveCount(20);
 });
 
-test('the owner can change the invite link default role', function (): void {
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->mountAction('manageInviteLink')
-        ->setActionData(['invite_link_default_role' => WorkspaceRole::Viewer->value])
-        ->assertHasNoActionErrors();
-
-    expect($this->workspace->fresh()->invite_link_default_role)->toBe(WorkspaceRole::Viewer->value);
-});
-
-test('an admin cannot set the invite link default role to admin', function (): void {
-    $admin = User::factory()->create();
-    $this->workspace->users()->attach($admin, ['role' => WorkspaceRole::Admin->value]);
-    $this->actingAs($admin);
-
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->mountAction('manageInviteLink')
-        ->setActionData(['invite_link_default_role' => WorkspaceRole::Admin->value]);
-
-    expect($this->workspace->fresh()->invite_link_default_role)->toBe(WorkspaceRole::Member->value);
-});
-
-test('not even the owner can point the invite link at the admin role', function (): void {
-    expect(fn () => resolve(UpdateInviteLinkSettings::class)->update($this->owner, $this->workspace, WorkspaceRole::Admin->value))
-        ->toThrow(ValidationException::class);
-
-    expect($this->workspace->fresh()->invite_link_default_role)->toBe(WorkspaceRole::Member->value);
-});
-
-test('the owner setting the invite link to admin through the modal changes nothing', function (): void {
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->mountAction('manageInviteLink')
-        ->setActionData(['invite_link_default_role' => WorkspaceRole::Admin->value]);
-
-    expect($this->workspace->fresh()->invite_link_default_role)->toBe(WorkspaceRole::Member->value);
-});
-
-test('the invite link default role must be a role the app actually registers', function (): void {
-    expect(fn () => resolve(UpdateInviteLinkSettings::class)->update($this->owner, $this->workspace, 'superuser'))
-        ->toThrow(ValidationException::class);
-
-    expect($this->workspace->fresh()->invite_link_default_role)->toBe(WorkspaceRole::Member->value);
-});
-
 test('a member role must be a role the app actually registers', function (): void {
     $member = User::factory()->create();
     $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
@@ -261,104 +219,6 @@ test('a member role must be a role the app actually registers', function (): voi
         ->toThrow(ValidationException::class);
 
     expect($member->fresh()->membershipRole($this->workspace->fresh()))->toBe(WorkspaceRole::Member->value);
-});
-
-test('rotating the invite link changes the token', function (): void {
-    $originalToken = $this->workspace->invite_link_token;
-
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->callAction([
-            TestAction::make('manageInviteLink'),
-            TestAction::make('rotateInviteLink'),
-        ]);
-
-    expect($this->workspace->fresh()->invite_link_token)->not->toBe($originalToken);
-});
-
-test('turning the workspace link off clears the token', function (): void {
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->callAction([
-            TestAction::make('manageInviteLink'),
-            TestAction::make('disableInviteLink'),
-        ]);
-
-    expect($this->workspace->fresh()->invite_link_token)->toBeNull()
-        ->and($this->workspace->fresh()->invite_link_token_expires_at)->toBeNull();
-});
-
-test('turning the link back on issues a different token, never the disabled one', function (): void {
-    $originalToken = $this->workspace->invite_link_token;
-
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->callAction([
-            TestAction::make('manageInviteLink'),
-            TestAction::make('disableInviteLink'),
-        ]);
-
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace->fresh()])
-        ->callAction([
-            TestAction::make('manageInviteLink'),
-            TestAction::make('enableInviteLink'),
-        ]);
-
-    expect($this->workspace->fresh()->invite_link_token)
-        ->toBeString()
-        ->toHaveLength(40)
-        ->not->toBe($originalToken);
-});
-
-test('a workspace with the link off offers no rotate or disable action', function (): void {
-    $this->workspace->disableInviteLink();
-
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace->fresh()])
-        ->mountAction('manageInviteLink')
-        ->assertActionHidden('rotateInviteLink')
-        ->assertActionHidden('disableInviteLink')
-        ->assertActionVisible('enableInviteLink');
-});
-
-test('a live invite link says when it stops working', function (): void {
-    $component = livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->mountAction('manageInviteLink')
-        ->assertActionDataSet(['invite_link_url' => route('workspaces.join', ['token' => $this->workspace->invite_link_token])]);
-
-    $modal = $component->instance()->getSchema($component->instance()->getMountedActionSchemaName())->toHtml();
-
-    expect($modal)->toContain(__('workspaces.invite_link.expires_in', ['time' => '1 week']));
-});
-
-test('an expired invite link hides the dead url and offers a new link in place of a rotation', function (): void {
-    $this->travelTo($this->workspace->invite_link_token_expires_at->addMinute());
-
-    $component = livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->mountAction('manageInviteLink')
-        ->assertActionDataSet(['invite_link_url' => null])
-        ->assertFormFieldHidden('invite_link_url')
-        ->assertActionHidden('rotateInviteLink')
-        ->assertActionVisible('enableInviteLink')
-        ->assertActionVisible('disableInviteLink');
-
-    $modal = $component->instance()->getSchema($component->instance()->getMountedActionSchemaName())->toHtml();
-
-    expect($modal)->toContain(__('workspaces.invite_link.lapsed.notice'));
-});
-
-test('renewing an expired invite link issues a fresh token that works for another week', function (): void {
-    $expiredToken = $this->workspace->invite_link_token;
-
-    $this->travelTo($this->workspace->invite_link_token_expires_at->addMinute());
-
-    livewire(InviteWorkspaceMembers::class, ['workspace' => $this->workspace])
-        ->callAction([
-            TestAction::make('manageInviteLink'),
-            TestAction::make('enableInviteLink'),
-        ])
-        ->assertNotified(__('workspaces.notifications.invite_link_rotated.success'));
-
-    $workspace = $this->workspace->fresh();
-
-    expect($workspace->invite_link_token)->not->toBe($expiredToken)
-        ->and($workspace->isInviteLinkTokenExpired())->toBeFalse();
 });
 
 test('the members list is searchable by name and by email', function (): void {
@@ -474,6 +334,38 @@ test('the change role modal offers a way to compare roles rendered from the capa
     expect($content)
         ->toContain(__('workspaces.roles.owner.label'))
         ->toContain(__('workspaces.capabilities.fields.manage.label'));
+});
+
+test('the compare roles modal lists the manage billing row only while billing is on', function (bool $billingIsOn): void {
+    Feature::define(Billing::class, $billingIsOn);
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+
+    $component = livewire(WorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->mountAction([
+            TestAction::make('updateWorkspaceRole')->table($member->id),
+            TestAction::make('compareRoles')->schemaComponent('role'),
+        ]);
+
+    $content = (string) $component->instance()->getMountedAction()->getModalContent();
+
+    expect(str_contains($content, __('workspaces.capabilities.billing.manage.label')))->toBe($billingIsOn)
+        ->and($content)->toContain(__('workspaces.capabilities.fields.manage.label'));
+})->with(['billing on' => true, 'billing off' => false]);
+
+test('the compare roles modal links the roles guide on the documentation public url', function (): void {
+    $member = User::factory()->create();
+    $this->workspace->users()->attach($member, ['role' => WorkspaceRole::Member->value]);
+
+    $component = livewire(WorkspaceMembers::class, ['workspace' => $this->workspace])
+        ->mountAction([
+            TestAction::make('updateWorkspaceRole')->table($member->id),
+            TestAction::make('compareRoles')->schemaComponent('role'),
+        ]);
+
+    $helpAction = $component->instance()->getMountedAction()->getExtraModalFooterActions()['readRolesHelp'];
+
+    expect($helpAction->getUrl())->toBe(rtrim((string) config('documentation.public_url'), '/').'/help/workspace/manage-members-and-roles');
 });
 
 test('removing a member warns that their mailboxes disconnect when email is on', function (bool $emailIsOn): void {

@@ -35,7 +35,7 @@ final class OpportunityImporter extends BaseImporter
             ImportField::id(),
 
             ImportField::make('name')
-                ->label('Name')
+                ->label(__('import-wizard-new::fields.name'))
                 ->required()
                 ->rules(['required', 'string', 'max:255'])
                 ->guess([
@@ -44,7 +44,7 @@ final class OpportunityImporter extends BaseImporter
                     'deal title', 'opportunity title', 'pipeline',
                 ])
                 ->example('Enterprise License Deal')
-                ->icon('heroicon-o-currency-dollar'),
+                ->icon('lucide-circle-dollar-sign'),
         ]);
     }
 

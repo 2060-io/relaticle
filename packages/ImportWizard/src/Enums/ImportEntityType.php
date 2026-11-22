@@ -22,11 +22,11 @@ enum ImportEntityType: string
     public function label(): string
     {
         return match ($this) {
-            self::Company => 'Companies',
-            self::People => 'People',
-            self::Opportunity => 'Opportunities',
-            self::Task => 'Tasks',
-            self::Note => 'Notes',
+            self::Company => __('enums/import-entity-type.company'),
+            self::People => __('enums/import-entity-type.people'),
+            self::Opportunity => __('enums/import-entity-type.opportunity'),
+            self::Task => __('enums/import-entity-type.task'),
+            self::Note => __('enums/import-entity-type.note'),
         };
     }
 
@@ -60,11 +60,11 @@ enum ImportEntityType: string
     public function icon(): string
     {
         return match ($this) {
-            self::Company => 'heroicon-o-building-office',
-            self::People => 'heroicon-o-user',
-            self::Opportunity => 'heroicon-o-currency-dollar',
-            self::Task => 'heroicon-o-clipboard-document-check',
-            self::Note => 'heroicon-o-document-text',
+            self::Company => 'lucide-building',
+            self::People => 'lucide-user',
+            self::Opportunity => 'lucide-circle-dollar-sign',
+            self::Task => 'lucide-clipboard-check',
+            self::Note => 'lucide-file-text',
         };
     }
 

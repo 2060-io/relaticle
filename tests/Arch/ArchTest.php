@@ -128,10 +128,6 @@ arch('avoid mutation')
         'App\Health',
         'App\Http\Controllers\Chat',
         'App\Http\Controllers\Mcp',
-        // Extends Cashier's WebhookController, its documented handler
-        // extension point; PHP forbids a readonly class extending a
-        // non-readonly one.
-        'App\Http\Controllers\Billing\StripeWebhookController',
         'App\Http\Requests',
         'App\Http\Resources',
         'App\Jobs',
@@ -183,8 +179,9 @@ arch('avoid mutation')
         'App\Support\Passport\WorkspaceBearerTokenResponse',
         // Extends the framework's DatabaseSessionHandler; PHP forbids a readonly class extending a non-readonly one.
         'App\Support\Impersonation\ImpersonationSessionHandler',
+        // Rebound over the framework's CSRF middleware to drop the readable XSRF-TOKEN cookie; PHP forbids a readonly class extending a non-readonly one.
+        'App\Http\Middleware\PreventRequestForgery',
         'App\View',
-        'App\Services\Favicon\Drivers',
         'App\Providers\Filament',
         'App\Scribe',
         ArrayExistsForWorkspace::class,
@@ -203,9 +200,6 @@ arch('avoid inheritance')
         'App\Exceptions',
         'App\Filament',
         'App\Http\Controllers\Mcp',
-        // Overrides Cashier's subscription-created handler so an abandoned
-        // checkout does not consume the workspace's generic trial.
-        'App\Http\Controllers\Billing\StripeWebhookController',
         'App\Http\Requests',
         'App\Http\Resources',
         'App\Jobs',
@@ -240,6 +234,8 @@ arch('avoid inheritance')
         'App\Support\Passport\WorkspaceBearerTokenResponse',
         // userId() is the framework's only hook for the id a database session row carries.
         'App\Support\Impersonation\ImpersonationSessionHandler',
+        // $addHttpCookie is the framework's only switch for the XSRF-TOKEN cookie.
+        'App\Http\Middleware\PreventRequestForgery',
     ]);
 
 // Packages are kept final by pint (final_class, repo-wide) and strict-typed by
@@ -255,17 +251,30 @@ $packageQueryLayers = [];
 foreach (glob(dirname(__DIR__, 2).'/packages/*/src', GLOB_ONLYDIR) ?: [] as $packageSource) {
     $packageRoots[] = $packageRoot = 'Relaticle\\'.basename(dirname($packageSource));
 
-    if (is_dir($packageSource.'/Queries')) {
-        $packageQueryLayers[$packageRoot] = "{$packageRoot}\Queries";
+    foreach ([$packageSource.'/Queries', ...glob($packageSource.'/*/Queries', GLOB_ONLYDIR) ?: []] as $queryFolder) {
+        if (is_dir($queryFolder)) {
+            $packageQueryLayers[] = $packageRoot.'\\'.str_replace('/', '\\', substr($queryFolder, strlen($packageSource) + 1));
+        }
     }
 }
 
 $packageServiceLayers = [
-    ...array_values($packageQueryLayers),
+    ...$packageQueryLayers,
     'Relaticle\Chat\Actions',
     'Relaticle\Chat\Agents',
     'Relaticle\Chat\Services',
     'Relaticle\Chat\Support',
+    'Relaticle\Cloud\Admin\Actions',
+    'Relaticle\Cloud\Billing\Actions',
+    'Relaticle\Cloud\Billing\CreditPackCatalog',
+    'Relaticle\Cloud\Billing\Filament\BillingPanelHooks',
+    'Relaticle\Cloud\Billing\Listeners',
+    'Relaticle\Cloud\Billing\SidebarBillingState',
+    'Relaticle\Cloud\Billing\StripeBilling',
+    'Relaticle\Cloud\Docs\Support',
+    'Relaticle\Cloud\Entitlements',
+    'Relaticle\Cloud\Marketing\Services',
+    'Relaticle\Cloud\Marketing\Support',
     'Relaticle\Documentation\Support',
     'Relaticle\EmailIntegration\Actions',
     'Relaticle\EmailIntegration\Services',
@@ -339,6 +348,37 @@ foreach (['App\Http', 'App\Jobs', 'App\Policies', 'App\ActivityLog', 'App\Consol
         ->toUse('Relaticle\EmailIntegration');
 }
 
+foreach ([
+    'App',
+    'Relaticle\Chat',
+    'Relaticle\Documentation',
+    'Relaticle\EmailIntegration',
+    'Relaticle\ImportWizard',
+    'Relaticle\OnboardSeed',
+    'Relaticle\SystemAdmin',
+] as $coreLayer) {
+    arch("{$coreLayer} stays free of the cloud package")
+        ->expect($coreLayer)
+        ->not
+        ->toUse('Relaticle\Cloud');
+}
+
+foreach ([
+    'App',
+    'Relaticle\Chat',
+    'Relaticle\Cloud',
+    'Relaticle\Documentation',
+    'Relaticle\EmailIntegration',
+    'Relaticle\ImportWizard',
+    'Relaticle\OnboardSeed',
+    'Relaticle\SystemAdmin',
+] as $shippedLayer) {
+    arch("{$shippedLayer} never reaches the Claude Code test gateway")
+        ->expect($shippedLayer)
+        ->not
+        ->toUse('Tests\Evals\Support\ClaudeCode');
+}
+
 arch('email integration owns its controllers, jobs, policies and timeline entries')
     ->expect('Relaticle\EmailIntegration')
     ->not
@@ -369,14 +409,16 @@ arch('the query language uses no transport')
     ->not
     ->toUse(['App\Mcp', 'App\Http', 'App\Filament', 'App\Livewire', 'App\Scribe', 'Relaticle\Chat']);
 
-foreach ($packageQueryLayers as $packageRoot => $packageQueryLayer) {
+foreach ($packageQueryLayers as $packageQueryLayer) {
+    $transportRoot = Str::beforeLast($packageQueryLayer, '\\');
+
     arch("{$packageQueryLayer} uses no transport of its package")
         ->expect($packageQueryLayer)
         ->not
-        ->toUse(["{$packageRoot}\Http", "{$packageRoot}\Livewire", "{$packageRoot}\Tools", "{$packageRoot}\Jobs"]);
+        ->toUse(["{$transportRoot}\Http", "{$transportRoot}\Livewire", "{$transportRoot}\Filament", "{$transportRoot}\Tools", "{$transportRoot}\Jobs"]);
 }
 
-foreach (['App\Queries', ...array_values($packageQueryLayers)] as $queryRoot) {
+foreach (['App\Queries', ...$packageQueryLayers] as $queryRoot) {
     arch("{$queryRoot} takes the acting user and reads no ambient user, request or workspace")
         ->expect($queryRoot)
         ->not
@@ -396,7 +438,7 @@ foreach (['App', ...$packageRoots] as $codeRoot) {
         ->expect($codeRoot)
         ->not
         ->toUse('Spatie\QueryBuilder\QueryBuilder')
-        ->ignoring(['App\Queries', ...array_values($packageQueryLayers)]);
+        ->ignoring(['App\Queries', ...$packageQueryLayers]);
 }
 
 arch('CRM API write requests share the custom field contract')

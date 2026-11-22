@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
+use App\Filament\Resources\CompanyResource\RelationManagers\MeetingsRelationManager as CompanyMeetingsRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\NotesRelationManager as CompanyNotesRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\TasksRelationManager as CompanyTasksRelationManager;
@@ -14,13 +15,16 @@ use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
 use App\Filament\Resources\PeopleResource\RelationManagers\NotesRelationManager as PeopleNotesRelationManager;
 use App\Filament\Resources\PeopleResource\RelationManagers\TasksRelationManager as PeopleTasksRelationManager;
 use App\Models\Company;
+use App\Models\CustomField;
 use App\Models\Note;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\Locales;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Tables\Columns\TextColumn;
 
 beforeEach(function (): void {
     $this->user = User::factory()->withWorkspace()->create();
@@ -227,3 +231,155 @@ it('notifies a member newly assigned from a record tasks tab', function (string 
         },
     ],
 ]);
+
+it('shows one assignee on a record tasks tab and lists the rest behind a count', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $task = $company->tasks()->save(Task::factory()->recycle([$this->user, $this->workspace])->make());
+    $members = User::factory()->count(2)->sequence(['name' => 'Priya Raman'], ['name' => 'Tomas Berg'])->create();
+    $this->workspace->users()->attach($members, ['role' => 'member']);
+    $task->assignees()->attach([$this->user->getKey(), ...$members->modelKeys()]);
+
+    livewire(CompanyTasksRelationManager::class, [
+        'ownerRecord' => $company,
+        'pageClass' => ViewCompany::class,
+    ])
+        ->assertSeeHtml('fi-linked-records-cell-more')
+        ->assertSee('+2')
+        ->assertSeeHtml('aria-label="Show all 3 assignees"')
+        ->assertSee([$this->user->name, 'Priya Raman', 'Tomas Berg']);
+});
+
+it('shows a lone assignee without a count and an unassigned task as empty', function (int $assignees, bool $showsCount, bool $showsEmpty): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $task = $company->tasks()->save(Task::factory()->recycle([$this->user, $this->workspace])->make());
+    $members = User::factory()->count($assignees)->create();
+    $this->workspace->users()->attach($members, ['role' => 'member']);
+    $task->assignees()->attach($members->modelKeys());
+
+    $component = livewire(CompanyTasksRelationManager::class, [
+        'ownerRecord' => $company,
+        'pageClass' => ViewCompany::class,
+    ]);
+
+    $showsCount
+        ? $component->assertSeeHtml('fi-linked-records-cell-more')->assertSee('+1')
+        : $component->assertDontSeeHtml('fi-linked-records-cell-more');
+
+    $showsEmpty
+        ? $component->assertSeeHtml('fi-linked-records-cell-empty')
+        : $component->assertDontSeeHtml('fi-linked-records-cell-empty');
+})->with([
+    'none' => [0, false, true],
+    'one' => [1, false, false],
+    'two' => [2, true, false],
+]);
+
+function setStoredSearchable(object $workspace, string $entityType, string $code, bool $searchable): void
+{
+    CustomField::query()
+        ->where('tenant_id', $workspace->getKey())
+        ->where('entity_type', $entityType)
+        ->where('code', $code)
+        ->firstOrFail()
+        ->update(['settings->searchable' => $searchable]);
+}
+
+it('finds a person by :dataset in the company people tab whatever the stored setting says', function (string $search): void {
+    setStoredSearchable($this->workspace, 'people', 'emails', false);
+    setStoredSearchable($this->workspace, 'people', 'job_title', false);
+
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $match = People::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $company->getKey(),
+        'name' => 'Brian Chesky',
+        'custom_fields' => ['emails' => ['brian@airbnb.example'], 'job_title' => 'Head of Partnerships'],
+    ]);
+    $other = People::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $company->getKey(),
+        'name' => 'Nathan Blecharczyk',
+        'custom_fields' => ['emails' => ['nathan@globex.example'], 'job_title' => 'Engineer'],
+    ]);
+
+    livewire(PeopleRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->searchTable($search)
+        ->assertCanSeeTableRecords([$match])
+        ->assertCanNotSeeTableRecords([$other]);
+})->with([
+    'email' => 'brian@airbnb',
+    'email in another case' => 'BRIAN@Airbnb',
+    'job title' => 'Partnerships',
+    'job title in lower case' => 'partnerships',
+]);
+
+it('treats wildcards and json punctuation as text when searching the company people tab', function (string $search): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $company->getKey(),
+        'name' => 'Brian Chesky',
+        'custom_fields' => ['emails' => ['brian@airbnb.example'], 'job_title' => 'Head of Partnerships'],
+    ]);
+
+    livewire(PeopleRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->searchTable($search)
+        ->assertCanNotSeeTableRecords([$person]);
+})->with([
+    'a bracket' => '[',
+    'a percent sign' => '%',
+    'an underscore' => '_',
+]);
+
+it('does not search a task due date in the company tasks tab even when the stored setting is on', function (): void {
+    setStoredSearchable($this->workspace, 'task', 'due_date', true);
+
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $task = $company->tasks()->save(Task::factory()->recycle([$this->user, $this->workspace])->make([
+        'title' => 'Renewal call',
+        'custom_fields' => ['due_date' => '2031-05-17 09:00:00'],
+    ]));
+
+    expect($task->customFieldValues()->whereRelation('customField', 'code', 'due_date')->exists())->toBeTrue();
+
+    livewire(CompanyTasksRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->searchTable('Renewal')
+        ->assertCanSeeTableRecords([$task])
+        ->searchTable('2031-05-17')
+        ->assertCanNotSeeTableRecords([$task]);
+});
+
+it('names the record page tabs and their empty states in the user language', function (string $locale, array $tabs, array $plurals): void {
+    $this->user->forceFill(['locale' => $locale])->save();
+    Locales::apply($locale);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $page = livewire(ViewCompany::class, ['record' => $company->getKey()]);
+    $titles = collect($page->instance()->getRelationManagers())
+        ->map(fn (string $manager): string => $manager::getTitle($company, ViewCompany::class))
+        ->all();
+
+    expect($titles)->toContain(...$tabs);
+
+    foreach ([
+        PeopleRelationManager::class => $plurals[0],
+        CompanyTasksRelationManager::class => $plurals[1],
+        CompanyNotesRelationManager::class => $plurals[2],
+    ] as $manager => $plural) {
+        livewire($manager, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+            ->assertSee(__('filament-tables::table.empty.heading', ['model' => $plural]));
+    }
+})->with([
+    'de' => ['de', ['Personen', 'Aufgaben', 'Notizen', 'E-Mails', 'Meetings'], ['Personen', 'Aufgaben', 'Notizen']],
+    'es' => ['es', ['Personas', 'Tareas', 'Notas', 'Correos electrónicos', 'Reuniones'], ['personas', 'tareas', 'notas']],
+    'fr' => ['fr', ['Personnes', 'Tâches', 'Notes', 'E-mails', 'Réunions'], ['personnes', 'tâches', 'notes']],
+]);
+
+it('labels the meetings title column and asks formally in an empty state in German', function (): void {
+    $this->user->forceFill(['locale' => 'de'])->save();
+    Locales::apply('de');
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(CompanyMeetingsRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->assertTableColumnExists('title', fn (TextColumn $column): bool => $column->getLabel() === 'Titel');
+
+    livewire(PeopleRelationManager::class, ['ownerRecord' => $company, 'pageClass' => ViewCompany::class])
+        ->assertSee('Erstellen Sie ein(e) Person, um zu beginnen.');
+});

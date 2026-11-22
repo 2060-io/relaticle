@@ -8,7 +8,6 @@ use App\Support\Http\HostResolver;
 use App\Support\Http\SsrfGuard;
 use App\Support\Media\UploadAllowlist;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Request as HttpClientRequest;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
@@ -69,6 +68,15 @@ test('rejects shared, translated and reserved ranges filter_var calls public', f
     'ipv4-compatible metadata' => ['[::a9fe:a9fe]'],
     'deprecated site-local' => ['[fec0::1]'],
     'orchidv2' => ['[2001:20::1]'],
+    'siit translated loopback' => ['[::ffff:0:7f00:1]'],
+    'siit translated rfc1918' => ['[::ffff:0:a00:1]'],
+    'siit translated metadata' => ['[::ffff:0:a9fe:a9fe]'],
+    'ipv6 multicast' => ['[ff02::1]'],
+    'discard-only prefix' => ['[100::1]'],
+    'ipv6 benchmarking' => ['[2001:2::1]'],
+    'orchidv1' => ['[2001:10::1]'],
+    'segment routing sids' => ['[5f00::1]'],
+    'documentation 3fff' => ['[3fff::1]'],
 ]);
 
 test('rejects hostnames that resolve to private addresses', function (): void {
@@ -100,56 +108,6 @@ test('guard refuses a redirect to a non-public host and follows a public one', f
     'private range' => ['http://10.0.0.1/', false],
     'public host' => ['http://1.0.0.1/icon.png', true],
 ]);
-
-test('pinned client refuses plain http', function (): void {
-    expect(fn (): PendingRequest => SsrfGuard::pinnedClient('http://example.com/file.pdf'))
-        ->toThrow(SsrfGuardException::class, 'Only https URLs on port 443 are allowed');
-});
-
-test('pinned client refuses a non-default port', function (): void {
-    expect(fn (): PendingRequest => SsrfGuard::pinnedClient('https://example.com:8443/file.pdf'))
-        ->toThrow(SsrfGuardException::class, 'Only https URLs on port 443 are allowed');
-});
-
-test('pinned client refuses a private host', function (): void {
-    expect(fn (): PendingRequest => SsrfGuard::pinnedClient('https://10.0.0.1/file.pdf'))
-        ->toThrow(SsrfGuardException::class);
-});
-
-test('pinned client never follows redirects and leaves an address literal unpinned', function (): void {
-    $client = SsrfGuard::pinnedClient('https://93.184.216.34/file.pdf');
-    $options = (fn (): array => $this->options)->call($client);
-
-    expect($options['allow_redirects'])->toBeFalse()
-        ->and($options['decode_content'])->toBeFalse()
-        ->and($options['timeout'])->toBe(30)
-        ->and($options['curl'])->toBe([]);
-});
-
-test('pinned client resolves a hostname once and pins the validated address', function (): void {
-    $calls = 0;
-    resolveHostsTo(['93.184.216.34'], $calls);
-
-    $client = SsrfGuard::pinnedClient('https://cdn.example.com/brief.pdf');
-    $options = (fn (): array => $this->options)->call($client);
-
-    expect($options['curl'][CURLOPT_RESOLVE])->toBe(['cdn.example.com:443:93.184.216.34'])
-        ->and($calls)->toBe(1);
-});
-
-test('pinned client refuses a hostname that resolves to a private address', function (): void {
-    resolveHostsTo(['169.254.169.254']);
-
-    expect(fn (): PendingRequest => SsrfGuard::pinnedClient('https://cdn.example.com/brief.pdf'))
-        ->toThrow(SsrfGuardException::class);
-});
-
-test('pinned client refuses a hostname that fails to resolve', function (): void {
-    resolveHostsTo([]);
-
-    expect(fn (): PendingRequest => SsrfGuard::pinnedClient('https://cdn.example.com/brief.pdf'))
-        ->toThrow(SsrfGuardException::class);
-});
 
 test('guard pins every hop to the address it validated', function (): void {
     app()->instance(HostResolver::class, new HostResolver(fn (string $host): array => match ($host) {

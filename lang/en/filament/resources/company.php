@@ -27,9 +27,6 @@ return [
         'creator' => [
             'label' => 'Created By',
         ],
-        'creation_source' => [
-            'label' => 'Creation Source',
-        ],
         'created_at' => [
             'label' => 'Creation Date',
         ],
@@ -37,8 +34,12 @@ return [
             'label' => 'Last Update',
         ],
         'deleted_at' => [
-            'label' => 'Deleted At',
+            'label' => 'Deleted at',
         ],
+    ],
+
+    'empty_state' => [
+        'description' => 'Companies you add or import appear here.',
     ],
 
     'pages' => [
@@ -49,6 +50,10 @@ return [
                 ],
                 'import_export' => [
                     'label' => 'Import / Export',
+                ],
+                'export' => [
+                    'label' => 'Export companies',
+                    'heading' => 'Export Companies',
                 ],
             ],
         ],
@@ -63,12 +68,6 @@ return [
             'activity_log' => [
                 'description' => 'All activity for this company, grouped by week.',
             ],
-        ],
-    ],
-
-    'relation_managers' => [
-        'people' => [
-            'model_label' => 'person',
         ],
     ],
 ];

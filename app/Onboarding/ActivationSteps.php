@@ -47,7 +47,7 @@ final readonly class ActivationSteps
                 'key' => ActivationStep::FirstRecord,
                 'label_key' => 'filament/pages/dashboard.activation.steps.first_record.label',
                 'description_key' => 'filament/pages/dashboard.activation.steps.first_record.description',
-                'icon' => 'heroicon-o-user-plus',
+                'icon' => 'lucide-user-plus',
             ])
             ->completeIf(fn (Workspace $model): bool => resolve(WorkspaceActivationFacts::class)->hasOwnRecord($model));
 
@@ -57,7 +57,7 @@ final readonly class ActivationSteps
                     'key' => ActivationStep::SyncEmail,
                     'label_key' => 'filament/pages/dashboard.activation.steps.sync_email.label',
                     'description_key' => 'filament/pages/dashboard.activation.steps.sync_email.description',
-                    'icon' => 'heroicon-o-envelope',
+                    'icon' => 'lucide-mail',
                 ])
                 ->completeIf(function (Workspace $model): bool {
                     $user = auth()->user();
@@ -73,7 +73,7 @@ final readonly class ActivationSteps
                     'key' => ActivationStep::AskRela,
                     'label_key' => 'filament/pages/dashboard.activation.steps.ask_rela.label',
                     'description_key' => 'filament/pages/dashboard.activation.steps.ask_rela.description',
-                    'icon' => 'heroicon-o-sparkles',
+                    'icon' => 'lucide-sparkles',
                 ])
                 ->completeIf(fn (Workspace $model): bool => resolve(WorkspaceActivationFacts::class)->hasUserChatMessage($model));
         }
@@ -83,7 +83,7 @@ final readonly class ActivationSteps
                 'key' => ActivationStep::Import,
                 'label_key' => 'filament/pages/dashboard.activation.steps.import.label',
                 'description_key' => 'filament/pages/dashboard.activation.steps.import.description',
-                'icon' => 'heroicon-o-arrow-up-tray',
+                'icon' => 'lucide-upload',
             ])
             ->completeIf(fn (Workspace $model): bool => resolve(WorkspaceActivationFacts::class)->hasImportedRecord($model));
 
@@ -92,7 +92,7 @@ final readonly class ActivationSteps
                 'key' => ActivationStep::Invite,
                 'label_key' => 'filament/pages/dashboard.activation.steps.invite.label',
                 'description_key' => 'filament/pages/dashboard.activation.steps.invite.description',
-                'icon' => 'heroicon-o-user-group',
+                'icon' => 'lucide-users',
             ])
             ->completeIf(fn (Workspace $model): bool => resolve(WorkspaceActivationFacts::class)->hasAnotherMember($model));
     }

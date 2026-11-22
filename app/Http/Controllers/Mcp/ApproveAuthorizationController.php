@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Mcp;
 
+use App\Contracts\Entitlements;
 use App\Enums\EmailGrant;
 use App\Enums\WorkspaceCapability;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Services\Billing\HostedWorkspaceAccess;
 use App\Support\Mcp\RequestedWorkspace;
 use Illuminate\Http\Request;
 use Laravel\Mcp\Server\Registrar;
 use Laravel\Passport\Bridge\Scope;
 use Laravel\Passport\Http\Controllers\ApproveAuthorizationController as BaseApproveAuthorizationController;
-use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,13 +28,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class ApproveAuthorizationController extends BaseApproveAuthorizationController
 {
-    public function __construct(
-        AuthorizationServer $server,
-        private readonly HostedWorkspaceAccess $access,
-    ) {
-        parent::__construct($server);
-    }
-
     public function approve(Request $request, ResponseInterface $psrResponse): Response
     {
         $validated = $request->validate([
@@ -53,6 +45,8 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
         /** @var User $user */
         $user = $request->user();
 
+        abort_unless($user->hasVerifiedEmail(), 403, 'Verify your email address before connecting an AI assistant.');
+
         $workspace = Workspace::query()->find($validated['workspace_id']);
 
         abort_if(! $workspace instanceof Workspace, 422, 'Selected workspace does not exist.');
@@ -61,7 +55,7 @@ final class ApproveAuthorizationController extends BaseApproveAuthorizationContr
         // A paused workspace answers 402 on every MCP call, so approving here would mint
         // a token that can never do anything. Refuse at consent rather than hand the user
         // a connector that silently fails on first use.
-        abort_if($this->access->isPaused($workspace), 402, 'This workspace is paused. Subscribe to Cloud Pro before connecting it to an AI assistant.');
+        abort_if(! resolve(Entitlements::class)->allowsAccess($workspace), 402, 'This workspace is paused. Subscribe to Cloud Pro before connecting it to an AI assistant.');
 
         $request->session()->put('mcp.oauth.workspace_id', $workspace->getKey());
 

@@ -284,7 +284,7 @@ it('labels each record of an approved batch with its own title and url', functio
         ]);
 });
 
-it('labels each record of a batch update that changes only a custom field by its summary', function (): void {
+it('labels each record of a batch update that changes only a custom field by the record name its display carries', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
     seedResolvedConv('conv-U', $user);
@@ -302,6 +302,7 @@ it('labels each record of a batch update that changes only a custom field by its
         'display_data' => ['title' => 'Update People', 'summary' => 'Update 3 people', 'items' => array_map(
             static fn (string $name): array => [
                 'title' => 'Update Person',
+                'name' => $name,
                 'summary' => "Update person \"{$name}\"",
                 'fields' => [['label' => 'Tier', 'old' => 'Silver', 'new' => 'Gold']],
             ],
@@ -316,15 +317,39 @@ it('labels each record of a batch update that changes only a custom field by its
 
     $resolved = resolve(PendingActionService::class)->resolvedForConversation('conv-U', null);
 
-    expect($resolved[0]['label'])->toBe('Update person "Ada Lovelace", Update person "Grace Hopper", Update person "Alan Turing"')
+    expect($resolved[0]['label'])->toBe('Ada Lovelace, Grace Hopper, Alan Turing')
         ->and(array_column($resolved[0]['records'], 'label'))->toBe([
-            'Update person "Ada Lovelace"',
-            'Update person "Grace Hopper"',
-            'Update person "Alan Turing"',
+            'Ada Lovelace',
+            'Grace Hopper',
+            'Alan Turing',
         ]);
 });
 
-it('labels an update by its summary when a custom field is named like a title row', function (): void {
+it('names an unchecked field by its label and the code the proposal summary uses', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $this->actingAs($user);
+    seedResolvedConv('conv-X', $user);
+
+    PendingAction::query()->create([
+        'workspace_id' => $user->currentWorkspace->getKey(), 'user_id' => $user->getKey(),
+        'conversation_id' => 'conv-X', 'action_class' => CreateTask::class,
+        'operation' => PendingActionOperation::Update, 'entity_type' => 'company',
+        'action_data' => ['_record_id' => 'c-1', '_model_class' => 'App\\Models\\Company', 'name' => 'Acme', 'custom_fields' => ['industry' => 'Retail']],
+        'display_data' => [
+            'title' => 'Update Company',
+            'summary' => 'Update company "Acme"',
+            'fields' => [['label' => 'Industry', 'code' => 'industry', 'old' => 'Tech', 'new' => 'Retail']],
+        ],
+        'status' => PendingActionStatus::Approved, 'expires_at' => now(),
+        'resolved_at' => now(), 'result_data' => ['id' => 'c-1', 'excluded' => ['industry']],
+    ]);
+
+    $resolved = resolve(PendingActionService::class)->resolvedForConversation('conv-X', null);
+
+    expect($resolved[0]['excluded'])->toBe([['record' => null, 'fields' => ['Industry (industry)']]]);
+});
+
+it('labels an update by the record name its display carries when a custom field is named like a title row', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
     seedResolvedConv('conv-E', $user);
@@ -336,6 +361,7 @@ it('labels an update by its summary when a custom field is named like a title ro
         'action_data' => ['_record_id' => 'p-1', '_model_class' => 'App\\Models\\People', 'custom_fields' => ['email' => 'ada@acme.test']],
         'display_data' => [
             'title' => 'Update Person',
+            'name' => 'Ada Lovelace',
             'summary' => 'Update person "Ada Lovelace"',
             'fields' => [['label' => 'Email', 'code' => 'email', 'old' => 'ada@old.test', 'new' => 'ada@acme.test']],
         ],
@@ -345,10 +371,10 @@ it('labels an update by its summary when a custom field is named like a title ro
 
     $resolved = resolve(PendingActionService::class)->resolvedForConversation('conv-E', null);
 
-    expect($resolved[0]['label'])->toBe('Update person "Ada Lovelace"');
+    expect($resolved[0]['label'])->toBe('Ada Lovelace');
 });
 
-it('labels an update by its summary when a custom field shares the title key', function (): void {
+it('labels an update by the record name its display carries when a custom field shares the title key', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
     seedResolvedConv('conv-K', $user);
@@ -360,6 +386,7 @@ it('labels an update by its summary when a custom field shares the title key', f
         'action_data' => ['_record_id' => 'c-1', '_model_class' => 'App\\Models\\Company', 'custom_fields' => ['name' => 'Legal name']],
         'display_data' => [
             'title' => 'Update Company',
+            'name' => 'Acme',
             'summary' => 'Update company "Acme"',
             'fields' => [['label' => 'Name', 'code' => 'name', 'type' => 'text', 'old' => 'Old legal name', 'new' => 'Legal name']],
         ],
@@ -369,7 +396,7 @@ it('labels an update by its summary when a custom field shares the title key', f
 
     $resolved = resolve(PendingActionService::class)->resolvedForConversation('conv-K', null);
 
-    expect($resolved[0]['label'])->toBe('Update company "Acme"');
+    expect($resolved[0]['label'])->toBe('Acme');
 });
 
 it('labels a delete by its Name row when the row label is translated', function (): void {
@@ -486,10 +513,25 @@ it('replays proposal tool results unmutated after a decision', function (): void
             return [$decoded['pending_action_id'] => $decoded];
         });
 
+    $stored = collect(json_decode((string) DB::table('agent_conversation_messages')
+        ->where('conversation_id', 'conv-R')
+        ->where('role', 'assistant')
+        ->value('steps'), true)[0]['tool_calls'])
+        ->mapWithKeys(function (array $call): array {
+            $decoded = json_decode((string) $call['result'], true);
+
+            return [$decoded['pending_action_id'] => $decoded];
+        });
+
     expect($replayed[$approved->getKey()]['type'])->toBe('pending_action')
-        ->and($replayed[$approved->getKey()]['display'])->toBe($approved->display_data)
-        ->and($replayed[$approved->getKey()]['data']['title'])->toBe('Ship it')
-        ->and($replayed[$pending->getKey()]['type'])->toBe('pending_action');
+        ->and($replayed[$approved->getKey()]['pending_action_id'])->toBe($approved->getKey())
+        ->and($replayed[$approved->getKey()])->not->toHaveKey('data')->not->toHaveKey('display')
+        ->and($replayed[$pending->getKey()]['type'])->toBe('pending_action')
+        ->and($replayed[$pending->getKey()])->not->toHaveKey('data')->not->toHaveKey('display')
+        ->and($stored[$approved->getKey()]['display'])->toBe($approved->display_data)
+        ->and($stored[$approved->getKey()]['data']['title'])->toBe('Ship it')
+        ->and($stored[$approved->getKey()])->not->toHaveKey('status')
+        ->and($stored[$pending->getKey()])->toHaveKey('data')->toHaveKey('display');
 });
 
 it('tells the model stamped-pending results are stale via resolved actions', function (): void {

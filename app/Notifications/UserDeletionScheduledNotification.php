@@ -9,7 +9,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Attributes\Backoff;
+use Illuminate\Queue\Attributes\Tries;
 
+#[Tries(3)]
+#[Backoff(60, 300)]
 final class UserDeletionScheduledNotification extends Notification implements ShouldQueue
 {
     use Queueable;
@@ -26,7 +30,7 @@ final class UserDeletionScheduledNotification extends Notification implements Sh
 
     public function toMail(object $notifiable): MailMessage
     {
-        $date = $this->user->scheduled_deletion_at?->copy()->setTimezone($this->user->effectiveTimezone())->format('M j, Y') ?? '';
+        $date = $this->user->scheduled_deletion_at?->copy()->setTimezone($this->user->effectiveTimezone())->settings(['locale' => app()->getLocale()])->isoFormat('ll') ?? '';
 
         return (new MailMessage)
             ->subject(__('mail.account_deletion_scheduled.subject'))

@@ -3,13 +3,14 @@
 declare(strict_types=1);
 
 use App\Actions\Jetstream\DeleteWorkspace;
+use App\Enums\DeletionReason;
 use App\Enums\MediaCollection;
+use App\Features\Billing;
 use App\Jobs\PurgeUser;
 use App\Jobs\PurgeWorkspace;
 use App\Models\Note;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Notifications\PaymentFailedNotification;
 use App\Notifications\UserDeletionReminderNotification;
 use App\Notifications\WorkspaceDeletionReminderNotification;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Laravel\Pennant\Feature;
+use Relaticle\Cloud\Billing\Notifications\PaymentFailedNotification;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailBody;
@@ -159,6 +162,8 @@ test('expired workspaces are permanently deleted', function () {
 });
 
 it('removes the payment failure notice of a purged workspace and keeps the owner\'s other notices', function (): void {
+    withHostedBilling();
+
     $owner = User::factory()->withWorkspace()->create();
     $doomed = $owner->currentWorkspace;
     $kept = Workspace::factory()->for($owner, 'owner')->create();
@@ -233,6 +238,22 @@ test('day 25 reminder is sent to workspace owner only', function () {
 
     Notification::assertSentTo($owner, WorkspaceDeletionReminderNotification::class);
     Notification::assertNotSentTo($member, WorkspaceDeletionReminderNotification::class);
+});
+
+test('the workspace reminder is sent for an owner-requested deletion and skipped for an inactivity deletion', function () {
+    Notification::fake();
+
+    $requestedOwner = User::factory()->withWorkspace()->create();
+    $requestedOwner->currentWorkspace->forceFill(['scheduled_deletion_at' => now()->addDays(5), 'deletion_reason' => DeletionReason::Requested])->save();
+
+    $inactiveOwner = User::factory()->withWorkspace()->create();
+    $inactiveOwner->currentWorkspace->forceFill(['scheduled_deletion_at' => now()->addDays(5), 'deletion_reason' => DeletionReason::Inactivity])->save();
+
+    $this->artisan('app:purge-scheduled-deletions')
+        ->assertExitCode(0);
+
+    Notification::assertSentTo($requestedOwner, WorkspaceDeletionReminderNotification::class);
+    Notification::assertNotSentTo($inactiveOwner, WorkspaceDeletionReminderNotification::class);
 });
 
 test('ownerless workspaces are skipped without aborting the deletion reminders', function () {
@@ -321,4 +342,17 @@ it('keeps attachment bytes when permanent workspace deletion rolls back', functi
     expect($workspace->fresh())->not->toBeNull()
         ->and($attachment->fresh())->not->toBeNull();
     Storage::disk('local')->assertExists($attachment->getPathRelativeToRoot());
+});
+
+it('keeps a workspace on an inactivity countdown when hosted billing is off', function (): void {
+    Feature::define(Billing::class, false);
+    $workspace = User::factory()->withPersonalWorkspace()->create()->currentWorkspace;
+    $workspace->forceFill(['scheduled_deletion_at' => now()->subMinute(), 'deletion_reason' => DeletionReason::Inactivity])->save();
+
+    $this->artisan('app:purge-scheduled-deletions')->assertSuccessful();
+
+    $workspace->refresh();
+
+    expect($workspace->scheduled_deletion_at)->toBeNull()
+        ->and($workspace->deletion_reason)->toBeNull();
 });

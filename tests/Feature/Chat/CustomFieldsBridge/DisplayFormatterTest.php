@@ -8,11 +8,14 @@ use App\Models\CustomField;
 use App\Models\CustomFieldSection;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\ChecklistHtml;
+use App\Support\Locales;
+use App\Support\PlainText;
 use Laravel\Pennant\Feature;
 use Relaticle\Chat\Services\Tools\CustomFieldsDisplayFormatter;
 use Relaticle\CustomFields\Services\TenantContextService;
 
-mutates(CustomFieldsDisplayFormatter::class);
+mutates(CustomFieldsDisplayFormatter::class, PlainText::class);
 
 beforeEach(function (): void {
     Feature::define(OnboardSeed::class, false);
@@ -109,6 +112,44 @@ it('includes the old value for updates with a current value on the model', funct
         'old' => 'Old text',
         'new' => 'New text',
     ]);
+});
+
+it('shows a ticked checklist item on the proposal card', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $task = Task::factory()->for($workspace)->create(['title' => 'T']);
+    $item = fn (string $checked): string => '<ul data-type="taskList"><li data-checked="'.$checked.'" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>Call Bob</p></div></li></ul>';
+
+    $descField = CustomField::query()
+        ->where('tenant_id', $workspace->getKey())
+        ->where('entity_type', 'task')
+        ->where('code', 'description')
+        ->firstOrFail();
+
+    $task->saveCustomFieldValue($descField, $item('false'));
+
+    $rows = resolve(CustomFieldsDisplayFormatter::class)
+        ->format($user, 'task', cleanFields: ['description' => $item('true')], oldModel: $task->fresh());
+
+    expect($rows[0])->toMatchArray([
+        'label' => 'Description',
+        'old' => '[ ] Call Bob',
+        'new' => '[x] Call Bob',
+    ]);
+});
+
+it('ticks a proposal card item only where the board badge counts it ticked', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $html = '<ul data-type="taskList">'
+        .'<li data-checked="TRUE" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>Call Bob</p></div></li>'
+        .'<li data-checked=true data-type=taskItem><label><input type="checkbox"><span></span></label><div><p>Send quote</p></div></li>'
+        .'</ul>';
+
+    $rows = resolve(CustomFieldsDisplayFormatter::class)
+        ->format($user, 'task', cleanFields: ['description' => $html], oldModel: null);
+
+    expect($rows[0]['new'])->toBe('[ ] Call Bob [x] Send quote')
+        ->and(ChecklistHtml::progress($html))->toBe(['checked' => 1, 'total' => 2]);
 });
 
 /**
@@ -238,4 +279,47 @@ it('names the record on a stored record card, not its id', function (): void {
     expect($rows)->toHaveCount(1)
         ->and($rows[0]['value'])->toBe('Initech')
         ->and($rows[0]['values'])->toBe(['Initech']);
+});
+
+it('leaves a deleted record out of a record custom field instead of printing its id', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspaceId = $user->currentWorkspace->getKey();
+    $live = Company::factory()->create(['workspace_id' => $workspaceId, 'name' => 'Globex']);
+    $gone = Company::factory()->create(['workspace_id' => $workspaceId, 'name' => 'Gone']);
+    $gone->delete();
+
+    $section = CustomFieldSection::query()->create(['tenant_id' => $workspaceId, 'entity_type' => 'task', 'name' => 'Links', 'code' => 'links', 'type' => 'section', 'sort_order' => 96, 'active' => true]);
+    $field = CustomField::query()->create([
+        'tenant_id' => $workspaceId,
+        'custom_field_section_id' => $section->getKey(),
+        'entity_type' => 'task',
+        'code' => 'linked_company',
+        'name' => 'Linked Company',
+        'type' => 'record',
+        'lookup_type' => 'company',
+        'sort_order' => 1,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    TenantContextService::setTenantId($workspaceId);
+
+    try {
+        $format = fn (array $ids): array => resolve(CustomFieldsDisplayFormatter::class)->format($user, 'task', [$field->code => $ids], null)[0]['values'];
+
+        expect($format([$live->getKey(), $gone->getKey()]))->toBe(['Globex'])
+            ->and($format([$gone->getKey()]))->toBe([]);
+    } finally {
+        TenantContextService::setTenantId(null);
+    }
+});
+
+it('writes a boolean value in the app language', function (): void {
+    $user = User::factory()->withPersonalWorkspace()->create();
+    Locales::apply('de');
+
+    $rows = resolve(CustomFieldsDisplayFormatter::class)
+        ->format($user, 'company', cleanFields: ['icp' => true], oldModel: null);
+
+    expect($rows[0]['new'])->toBe('Ja');
 });

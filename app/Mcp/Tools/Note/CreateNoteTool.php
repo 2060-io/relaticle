@@ -16,7 +16,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Title;
 
 #[Title('Create Note')]
-#[Description('Create a new note in the CRM. Use the crm-schema resource to discover available custom fields.')]
+#[Description('Create a new note in the CRM. Use the crm-schema resource to discover available custom attributes (custom fields).')]
 final class CreateNoteTool extends BaseCreateTool
 {
     use OperatesOnCrmEntity;
@@ -40,9 +40,9 @@ final class CreateNoteTool extends BaseCreateTool
     {
         return [
             'title' => $schema->string()->description('The note title.')->required(),
-            'company_ids' => $schema->array()->description('Company IDs to link this note to.'),
-            'people_ids' => $schema->array()->description('People IDs to link this note to.'),
-            'opportunity_ids' => $schema->array()->description('Opportunity IDs to link this note to.'),
+            'company_ids' => $schema->array()->items($schema->string())->description('Company IDs to link this note to.'),
+            'people_ids' => $schema->array()->items($schema->string())->description('People IDs to link this note to.'),
+            'opportunity_ids' => $schema->array()->items($schema->string())->description('Opportunity IDs to link this note to.'),
         ];
     }
 

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use App\Models\Company;
 use App\Models\People;
+use App\Models\Task;
 use App\Models\User;
+use App\Support\Locales;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
@@ -256,6 +258,55 @@ it('treats a lone proposal as a plan of one', function (): void {
         ->and(Company::query()->where('name', 'Solo Corp')->exists())->toBeTrue();
 });
 
+it('saves the assignees of a batch task proposal approved from the card', function (): void {
+    $member = User::factory()->create();
+    $this->user->currentWorkspace->users()->attach($member, ['role' => 'member']);
+
+    ($this->tool)(CreateTaskTool::class)->handle(new Request([
+        'records' => [
+            ['title' => 'Draft the brief'],
+            ['title' => 'Send the contract', 'assignee_ids' => [(string) $member->getKey()]],
+        ],
+    ]));
+
+    $proposal = ($this->proposalFor)('task');
+
+    Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+        ->dispatch('proposal:set-active', id: $proposal->getKey(), context: 'conversation')
+        ->call('approveAll')
+        ->assertNotDispatched('proposal:resolve-failed');
+
+    $first = Task::query()->where('title', 'Draft the brief')->firstOrFail();
+    $second = Task::query()->where('title', 'Send the contract')->firstOrFail();
+
+    expect($first->assignees)->toHaveCount(0)
+        ->and($second->assignees->modelKeys())->toBe([$member->getKey()]);
+});
+
+it('approves a German plan with an owner and a linked person from the card', function (): void {
+    $this->user->forceFill(['locale' => 'de'])->save();
+    Locales::apply('de');
+
+    ($this->tool)(CreateCompanyTool::class)->handle(new Request([
+        'records' => [['name' => 'Nordwind GmbH', 'account_owner_id' => (string) $this->user->getKey()]],
+    ]));
+    $company = ($this->proposalFor)('company');
+    ($this->tool)(CreatePersonTool::class)->handle(new Request([
+        'records' => [['name' => 'Anna Weber', 'company_id' => PlanReference::to((string) $company->getKey())]],
+    ]));
+
+    Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+        ->dispatch('proposal:set-active', id: $company->getKey(), context: 'conversation')
+        ->assertSee('Verantwortlicher')
+        ->call('approveAll')
+        ->assertNotDispatched('proposal:resolve-failed');
+
+    $created = Company::query()->where('name', 'Nordwind GmbH')->firstOrFail();
+
+    expect($created->account_owner_id)->toBe($this->user->getKey())
+        ->and(People::query()->where('name', 'Anna Weber')->firstOrFail()->company_id)->toBe($created->getKey());
+});
+
 describe('reference validation', function (): void {
     it('rejects a reference to a proposal from another turn', function (): void {
         ($this->tool)(CreateCompanyTool::class, '01OTHERTURNAAAAAAAAAAAAAAA')->handle(new Request([
@@ -435,7 +486,7 @@ describe('reference validation', function (): void {
             ->and($person->result_data['cancelled_by'] ?? null)->toBe((string) $companies->getKey());
     });
 
-    it('rejects a reference to an already decided proposal', function (): void {
+    it('links a step to one the user approved while the turn was still running', function (): void {
         ($this->tool)(CreateCompanyTool::class)->handle(new Request([
             'records' => [['name' => 'Acme Robotics']],
         ]));
@@ -443,11 +494,72 @@ describe('reference validation', function (): void {
         $company = ($this->proposalFor)('company');
         resolve(PendingActionService::class)->approve($company, $this->user);
 
+        $result = json_decode(($this->tool)(CreatePersonTool::class)->handle(new Request([
+            'records' => [['name' => 'Jane Doe', 'company_id' => PlanReference::to((string) $company->getKey())]],
+        ])), true);
+
+        $person = ($this->proposalFor)('people');
+
+        Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+            ->dispatch('proposal:set-active', id: $person->getKey(), context: 'conversation')
+            ->call('approveAll');
+
+        expect($result['type'] ?? null)->toBe('pending_action')
+            ->and(collect($person->display_data['fields'])->firstWhere('label', 'Company')['value'])->toBe('Acme Robotics (step 1)')
+            ->and(People::query()->where('name', 'Jane Doe')->sole()->company->name)->toBe('Acme Robotics');
+    });
+
+    it('links a step to one record of a batch the user already approved', function (): void {
+        ($this->tool)(CreateCompanyTool::class)->handle(new Request([
+            'records' => [['name' => 'Acme Robotics'], ['name' => 'Globex']],
+        ]));
+
+        $companies = ($this->proposalFor)('company');
+        resolve(ProposalPlanService::class)->approveAll($companies, $this->user);
+
+        ($this->tool)(CreatePersonTool::class)->handle(new Request([
+            'records' => [['name' => 'Jane Doe', 'company_id' => PlanReference::to((string) $companies->getKey(), 1)]],
+        ]));
+
+        Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+            ->dispatch('proposal:set-active', id: ($this->proposalFor)('people')->getKey(), context: 'conversation')
+            ->call('approveAll');
+
+        expect(People::query()->where('name', 'Jane Doe')->sole()->company->name)->toBe('Globex');
+    });
+
+    it('refuses a reference to a rejected step', function (): void {
+        ($this->tool)(CreateCompanyTool::class)->handle(new Request([
+            'records' => [['name' => 'Acme Robotics']],
+        ]));
+
+        $company = ($this->proposalFor)('company');
+        resolve(PendingActionService::class)->reject($company, $this->user);
+
         $result = ($this->tool)(CreatePersonTool::class)->handle(new Request([
             'records' => [['name' => 'Jane Doe', 'company_id' => PlanReference::to((string) $company->getKey())]],
         ]));
 
-        expect($result)->toContain('already approved');
+        expect($result)->toContain('already rejected')
+            ->and(PendingAction::query()->where('entity_type', 'people')->exists())->toBeFalse();
+    });
+
+    it('refuses a reference to a row the user left out of an approved batch', function (): void {
+        ($this->tool)(CreateCompanyTool::class)->handle(new Request([
+            'records' => [['name' => 'Acme Robotics'], ['name' => 'Globex']],
+        ]));
+
+        $companies = ($this->proposalFor)('company');
+        resolve(PendingActionService::class)->approveItem($companies, $this->user, 0);
+        resolve(PendingActionService::class)->rejectItem($companies->refresh(), $this->user, 1);
+
+        $result = ($this->tool)(CreatePersonTool::class)->handle(new Request([
+            'records' => [['name' => 'Jane Doe', 'company_id' => PlanReference::to((string) $companies->getKey(), 1)]],
+        ]));
+
+        expect($companies->refresh()->status)->toBe(PendingActionStatus::Approved)
+            ->and($result)->toContain('did not create that record')
+            ->and(PendingAction::query()->where('entity_type', 'people')->exists())->toBeFalse();
     });
 
     it('rejects an invented reference', function (): void {
@@ -541,9 +653,9 @@ it('renders a plan without re-reading the plan or the custom fields once per ste
     $planQueries = $queries->filter(fn (string $q): bool => str_contains($q, 'from "pending_actions"'))->count();
     $customFieldQueries = $queries->filter(fn (string $q): bool => str_contains($q, 'from "custom_fields"'))->count();
 
-    // Five steps over two entity types. One plan read, and one custom-field read
-    // per distinct entity type (plus its options eager load), not per step.
-    expect($planQueries)->toBeLessThanOrEqual(3, "plan re-read per step: {$planQueries} pending_actions queries")
+    // Five steps over two entity types. The plan reads, one read of the conversation's
+    // approved creates, and one custom-field read per distinct entity type, not per step.
+    expect($planQueries)->toBeLessThanOrEqual(4, "plan re-read per step: {$planQueries} pending_actions queries")
         ->and($customFieldQueries)->toBeLessThanOrEqual(4, "custom fields re-read per step: {$customFieldQueries} custom_fields queries");
 });
 
@@ -575,8 +687,7 @@ it('lists every record of a batch step the dock is not focused on before approvi
         ->assertSee('Grace Hopper')
         // The rows have to be interactive for step 2, not just visible: a step
         // the dock never focuses would otherwise have no way to open record 2.
-        ->assertSee("focusItem('".$people->getKey()."', 1)", escape: false)
-        ->assertSee("skipItem('".$people->getKey()."', 1)", escape: false);
+        ->assertSee("toggleLeftOutRow('".$people->getKey()."', 1)", escape: false);
 
     $card->call('focusItem', (string) $people->getKey(), 1)
         ->assertSet('activeStepId', (string) $people->getKey())

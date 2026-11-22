@@ -18,7 +18,7 @@ final class NotificationPreferences extends Page
 
     protected static ?int $navigationSort = 3;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-bell';
+    protected static string|\BackedEnum|null $navigationIcon = 'lucide-bell';
 
     /** @var class-string<Cluster>|null */
     protected static ?string $cluster = Settings::class;
@@ -26,6 +26,11 @@ final class NotificationPreferences extends Page
     public static function getNavigationLabel(): string
     {
         return __('notifications.title');
+    }
+
+    public function getTitle(): string
+    {
+        return __('Notification Preferences');
     }
 
     public function getHeading(): string

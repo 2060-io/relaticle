@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Relaticle\Chat\Enums\RefundCause;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Services\CreditService;
 
 it('does not double-refund when failed() runs after a cancel-path refund', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
 
@@ -26,12 +29,12 @@ it('does not double-refund when failed() runs after a cancel-path refund', funct
 
     $cancelToken = 'job-test-token';
 
-    $service->refundReservation($workspace, resolutionKey: $cancelToken);
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: $cancelToken);
 
     $balance->refresh();
     expect($balance->credits_remaining)->toBe(10);
 
-    $service->refundReservation($workspace, resolutionKey: $cancelToken);
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: $cancelToken);
 
     $balance->refresh();
     expect($balance->credits_remaining)->toBe(10);

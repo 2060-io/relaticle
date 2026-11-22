@@ -18,8 +18,9 @@ return [
     | An "*" may be used to allow all domains.
     |
     | A deployment adds its own through MCP_REDIRECT_DOMAINS, a comma-separated
-    | list of https origins (https://agent.example.com). An entry that is not
-    | one, "*" included, is ignored and logged when a client registers.
+    | list of https origins on port 443 (https://agent.example.com). An entry
+    | that is not one, "*" included, is ignored and logged when a client
+    | registers. A redirect URI matches a domain on its exact host.
     |
     */
 
@@ -27,6 +28,8 @@ return [
         'https://claude.ai',
         'https://chatgpt.com',
         'https://console.mistral.ai',
+        'https://www.perplexity.ai',
+        'https://enterprise.perplexity.ai',
         'http://localhost',
         ...RedirectDomains::origins((string) env('MCP_REDIRECT_DOMAINS', '')),
     ])),

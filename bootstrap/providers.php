@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Providers\AppServiceProvider;
-use App\Providers\FaviconServiceProvider;
 use App\Providers\Filament\AppPanelProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HealthServiceProvider;
@@ -12,6 +11,7 @@ use App\Providers\JetstreamServiceProvider;
 use App\Providers\LocaleServiceProvider;
 use App\Providers\MacroServiceProvider;
 use Relaticle\Chat\ChatServiceProvider;
+use Relaticle\Cloud\CloudServiceProvider;
 use Relaticle\Documentation\DocumentationServiceProvider;
 use Relaticle\EmailIntegration\EmailIntegrationServiceProvider;
 use Relaticle\ImportWizard\ImportWizardNewServiceProvider;
@@ -19,7 +19,6 @@ use Relaticle\SystemAdmin\SystemAdminPanelProvider;
 
 return [
     AppServiceProvider::class,
-    FaviconServiceProvider::class,
     AppPanelProvider::class,
     FortifyServiceProvider::class,
     HealthServiceProvider::class,
@@ -32,4 +31,5 @@ return [
     EmailIntegrationServiceProvider::class,
     ImportWizardNewServiceProvider::class,
     SystemAdminPanelProvider::class,
+    ...(class_exists(CloudServiceProvider::class) && config()->boolean('relaticle.cloud', false) ? [CloudServiceProvider::class] : []),
 ];

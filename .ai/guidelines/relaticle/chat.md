@@ -36,8 +36,8 @@ production: message ordering, approval races, duplicate proposals.
   `SendEmailTool` takes one email per call, and `PendingAction::isEmailSend()` makes
   `approveStep()` refuse a batch of them. An invitation step may hold several
   addresses, and its button sends them all. `tests/Feature/Chat/EmailToolsTest.php`
-  and `tests/Feature/Chat/InviteWorkspaceMemberToolTest.php` fail when "Approve all"
-  or its shortcut sends either.
+  and `tests/Feature/Chat/InviteWorkspaceMemberToolTest.php` fail when approving the
+  plan, or its shortcut, sends either.
 - `Relaticle\Chat\Enums\ProposalEntity` owns every fact that follows from what a proposal
   writes: its title key, its core fields, its verbs, and whether it is approved on its own.
   `PendingAction::entity_type` is cast to it. A new kind of proposal is a new case, and every
@@ -49,9 +49,14 @@ production: message ordering, approval races, duplicate proposals.
   that hides the link being approved is the failure this design exists to
   prevent (`RecordNameResolver` renders it as "Name (step N)").
 - Read tools take `lookup: true` to skip the `display_block`; the prompt tells
-  the model to use it (or `SearchCrmTool`) when it only needs ids. Every read
-  result without that flag renders, so a new read tool must either emit a block
-  or be named in the prompt's no-block list.
+  the model to use it (or `SearchCrmTool`) when it only needs ids, or when it
+  re-reads records already shown in the conversation to judge them. A message
+  that asks to see records renders them, even ones shown before: 5 of 7 repeated
+  tables in production answered such a message, so the app never suppresses a
+  repeat. The `investigate` case in `tests/Evals/Rela/ReadsTest.php` fails a
+  re-read that renders the same table again. Every read result without the flag
+  renders, so a new read tool must either emit a block or be named in the
+  prompt's no-block list.
 - A new list tool needs `availableIncludes()` (copy its sibling `Get*Tool`'s
   allowlist) or the prompt's related-records rule has nothing to call for it.
 - Replayed proposal tool results are NEVER rewritten: mutating an earlier

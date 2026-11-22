@@ -18,6 +18,11 @@ return [
             'helper_text' => 'Dates and times across the app are shown in this timezone.',
             'placeholder' => 'Select a timezone',
         ],
+        'locale' => [
+            'label' => 'Language',
+            'helper_text' => 'The app, emails and notifications use this language.',
+            'placeholder' => 'Select a language',
+        ],
         'current_password' => [
             'label' => 'Current Password',
         ],
@@ -134,6 +139,7 @@ return [
     ],
 
     'notifications' => [
+        'account_deletion_cancelled' => 'Account deletion cancelled',
         'save' => [
             'success' => 'Saved.',
         ],
@@ -141,6 +147,7 @@ return [
         'photo_remove_failed' => 'Could not remove your profile photo. Please try again.',
         'logged_out_other_sessions' => [
             'success' => 'All other browser sessions have been logged out successfully.',
+            'remembered_only' => 'Other devices are signed out once they sit idle for :minutes minutes. A device with Relaticle open stays signed in. Change your password to sign it out at once.',
         ],
         'delete_account_blocked' => [
             'title' => 'Account deletion blocked',
@@ -173,8 +180,6 @@ return [
     ],
 
     'security' => 'Security',
-
-    'edit_profile' => 'Edit Profile',
 
     'scheduled_deletion_interstitial' => [
         'heading' => 'Your account is scheduled for deletion',

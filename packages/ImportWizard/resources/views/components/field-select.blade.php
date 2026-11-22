@@ -5,10 +5,11 @@
     'mappedFieldKeys' => [],
     'mappedEntityLinkMatchers' => [],
     'column',
-    'placeholder' => 'Select attribute',
+    'placeholder' => null,
 ])
 
 @php
+    $placeholder ??= __('Select attribute');
     $dropdownId = "fs-{$column}";
     $isFieldMapping = $selected?->isFieldMapping() ?? false;
     $isEntityLinkMapping = $selected?->isEntityLinkMapping() ?? false;
@@ -128,7 +129,7 @@
         role="combobox"
         aria-haspopup="listbox"
         :aria-expanded="open"
-        aria-label="Map column {{ $column }} to field"
+        aria-label="{{ __('Map column :column to an attribute', ['column' => $column]) }}"
         class="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-lg border bg-white dark:bg-gray-900 focus:outline-none transition-colors cursor-pointer"
         :class="open
             ? 'border-primary-500 dark:border-primary-400 ring-2 ring-primary-500/20'
@@ -141,15 +142,15 @@
             <span class="flex-1 text-left text-gray-900 dark:text-white truncate text-sm">
                 {{ $selectedEntityLink->label }}
                 @if ($selectedMatcher)
-                    <x-filament::icon icon="heroicon-m-chevron-right" class="inline w-3 h-3 text-gray-400 dark:text-gray-500 mx-0.5" />
+                    <x-filament::icon icon="lucide-chevron-right" class="inline w-3 h-3 text-gray-400 dark:text-gray-500 mx-0.5" />
                     <span class="text-gray-500 dark:text-gray-400">{{ $selectedMatcher->label }}</span>
                 @endif
             </span>
         @elseif ($selectedField)
-            <x-filament::icon icon="{{ $selectedField->icon ?? 'heroicon-o-squares-2x2' }}" class="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+            <x-filament::icon icon="{{ $selectedField->icon ?? 'lucide-layout-grid' }}" class="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
             <span class="flex-1 text-left text-gray-900 dark:text-white truncate text-sm">{{ $selectedField->label }}</span>
         @else
-            <x-filament::icon icon="heroicon-o-squares-2x2" class="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <x-filament::icon icon="lucide-layout-grid" class="w-3.5 h-3.5 text-gray-400 shrink-0" />
             <span class="flex-1 text-left text-gray-400 truncate text-sm">{{ $placeholder }}</span>
         @endif
 
@@ -160,14 +161,14 @@
                 @click.stop="clear()"
                 @keydown.enter.stop="clear()"
                 @keydown.space.stop="clear()"
-                aria-label="Clear mapping"
+                aria-label="{{ __('Clear mapping') }}"
                 class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0 transition-colors"
             >
-                <x-filament::icon icon="heroicon-o-x-mark" class="w-3.5 h-3.5" />
+                <x-filament::icon icon="lucide-x" class="w-3.5 h-3.5" />
             </span>
         @else
             <x-filament::icon
-                icon="heroicon-o-chevron-down"
+                icon="lucide-chevron-down"
                 class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-150"
                 x-bind:class="open && 'rotate-180'"
             />
@@ -184,16 +185,16 @@
         x-transition:enter-start="opacity-0 scale-95"
         x-transition:enter-end="opacity-100 scale-100"
         role="listbox"
-        aria-label="Available fields"
+        aria-label="{{ __('Available attributes') }}"
         class="absolute z-50 w-52 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
     >
         {{-- Search Header --}}
         <div class="relative border-b border-gray-200 dark:border-gray-700">
-            <x-filament::icon icon="heroicon-o-magnifying-glass" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <x-filament::icon icon="lucide-search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
             <input
                 type="text"
-                placeholder="Search..."
-                aria-label="Search fields"
+                placeholder="{{ __('Search...') }}"
+                aria-label="{{ __('Search attributes') }}"
                 class="w-full h-8 pl-8 pr-2 text-xs bg-transparent text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
                 x-ref="searchInput"
                 x-model="search"
@@ -213,19 +214,19 @@
                         type="button"
                         role="option"
                         :aria-selected="{{ $isSelected ? 'true' : 'false' }}"
-                        x-show="!search || {{ Js::from(strtolower($field->label)) }}.includes(search.toLowerCase())"
+                        x-show="!search || {{ Js::from(mb_strtolower($field->label)) }}.includes(search.toLowerCase())"
                         @click="selectField('{{ $field->key }}')"
                         {{ $isMapped ? 'disabled' : '' }}
                         class="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:bg-gray-50 dark:focus-visible:bg-gray-800
                             {{ $isSelected ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300' : '' }}
                             {{ $isMapped ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200' }}"
                     >
-                        <x-filament::icon icon="{{ $field->icon ?? 'heroicon-o-squares-2x2' }}" class="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <x-filament::icon icon="{{ $field->icon ?? 'lucide-layout-grid' }}" class="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <span class="truncate flex-1 text-left">{{ $field->label }}{{ $field->required ? ' *' : '' }}</span>
                         @if ($isMapped)
-                            <span class="text-[9px] text-gray-400 dark:text-gray-500 italic">in use</span>
+                            <span class="text-[9px] text-gray-400 dark:text-gray-500 italic">{{ __('in use') }}</span>
                         @elseif ($isSelected)
-                            <x-filament::icon icon="heroicon-s-check" class="w-3 h-3 text-primary-500 shrink-0" />
+                            <x-filament::icon icon="lucide-check" class="w-3 h-3 text-primary-500 shrink-0" />
                         @endif
                     </button>
                 @else
@@ -237,7 +238,7 @@
                         $isLinkFullyMapped = count($linkMappedMatchers) >= count($link->matchableFields) && !$isLinkSelected;
                     @endphp
                     <div
-                        x-show="!search || {{ Js::from(strtolower($link->label)) }}.includes(search.toLowerCase())"
+                        x-show="!search || {{ Js::from(mb_strtolower($link->label)) }}.includes(search.toLowerCase())"
                         @if (!$isLinkFullyMapped)
                             @mouseenter="showSubmenu('{{ $linkKey }}', $event)"
                             @mouseleave="hideSubmenu()"
@@ -262,12 +263,12 @@
                             <x-filament::icon icon="{{ $link->icon() }}" class="w-3.5 h-3.5 text-gray-400 shrink-0" />
                             <span class="flex-1 text-left">{{ $link->label }}</span>
                             @if ($isLinkFullyMapped)
-                                <span class="text-[9px] text-gray-400 dark:text-gray-500 italic">in use</span>
+                                <span class="text-[9px] text-gray-400 dark:text-gray-500 italic">{{ __('in use') }}</span>
                             @else
                                 @if ($isLinkSelected)
-                                    <x-filament::icon icon="heroicon-s-check" class="w-3 h-3 text-primary-500 shrink-0" />
+                                    <x-filament::icon icon="lucide-check" class="w-3 h-3 text-primary-500 shrink-0" />
                                 @endif
-                                <x-filament::icon icon="heroicon-s-chevron-right" class="w-3.5 h-3.5 shrink-0 {{ $isLinkSelected ? 'text-primary-400' : 'text-gray-400' }}" />
+                                <x-filament::icon icon="lucide-chevron-right" class="w-3.5 h-3.5 shrink-0 {{ $isLinkSelected ? 'text-primary-400' : 'text-gray-400' }}" />
                             @endif
                         </button>
                     </div>
@@ -296,11 +297,11 @@
                 @keydown.arrow-left.prevent="activeSubmenu = null"
                 x-effect="if (activeSubmenu === '{{ $linkKey }}') $nextTick(() => $el.querySelector('button')?.focus())"
                 role="menu"
-                aria-label="Match options for {{ $link->label }}"
+                aria-label="{{ __('Match options for :label', ['label' => $link->label]) }}"
                 class="w-56 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden z-[60]"
             >
                 <div class="px-2.5 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                    <span class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Match by</span>
+                    <span class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{ __('Match by') }}</span>
                 </div>
                 <div class="p-1">
                     @foreach ($link->matchableFields as $matcher)
@@ -322,16 +323,16 @@
                         >
                             <div class="flex items-center gap-1.5">
                                 @if ($isMatcherSelected)
-                                    <x-filament::icon icon="heroicon-s-check" class="w-3 h-3 text-primary-500 shrink-0" />
+                                    <x-filament::icon icon="lucide-check" class="w-3 h-3 text-primary-500 shrink-0" />
                                 @endif
                                 <span class="text-sm font-medium {{ $isMatcherSelected ? 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white' }}">
                                     {{ $matcher->label }}
                                 </span>
                                 @if($isMatcherUsed)
-                                    <span class="text-[9px] text-gray-400 dark:text-gray-500 italic ml-auto">in use</span>
+                                    <span class="text-[9px] text-gray-400 dark:text-gray-500 italic ml-auto">{{ __('in use') }}</span>
                                 @endif
                                 @if ($matcher->isCreate())
-                                    <span class="px-1.5 py-0.5 text-[9px] font-medium rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 ml-auto">creates</span>
+                                    <span class="px-1.5 py-0.5 text-[9px] font-medium rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 ml-auto">{{ __('creates') }}</span>
                                 @endif
                             </div>
                             <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{{ $matcher->description() }}</p>

@@ -5,15 +5,14 @@ declare(strict_types=1);
 use App\Models\User;
 use Relaticle\Chat\Agents\CrmAssistant;
 use Relaticle\Chat\Enums\EmailReach;
+use Relaticle\Chat\Enums\WebAccess;
 use Tests\Helpers\ChatBrowser;
 
 it('renders a single shimmer indicator with default label when streaming starts and no tool is running', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
 
-    $page = loginViaBrowser($user)
-        ->assertPathIs("/app/{$workspace->slug}")
-        ->navigate("/app/{$workspace->slug}/chats")
+    $page = visitAs($user, "/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->script(<<<'JS'
@@ -48,9 +47,7 @@ it('updates the shimmer label when a tool call is in progress', function (): voi
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
 
-    $page = loginViaBrowser($user)
-        ->assertPathIs("/app/{$workspace->slug}")
-        ->navigate("/app/{$workspace->slug}/chats")
+    $page = visitAs($user, "/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->script(<<<'JS'
@@ -87,9 +84,7 @@ it('renders the shimmer for a resumed turn whose last row is the proposal reply'
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
 
-    $page = loginViaBrowser($user)
-        ->assertPathIs("/app/{$workspace->slug}")
-        ->navigate("/app/{$workspace->slug}/chats")
+    $page = visitAs($user, "/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $resolveInterface = ChatBrowser::resolveInterface();
@@ -125,9 +120,7 @@ it('removes the shimmer once content arrives in the latest assistant message', f
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
 
-    $page = loginViaBrowser($user)
-        ->assertPathIs("/app/{$workspace->slug}")
-        ->navigate("/app/{$workspace->slug}/chats")
+    $page = visitAs($user, "/app/{$workspace->slug}/chats")
         ->assertSourceHas('placeholder="Ask anything..."');
 
     $page->script(<<<'JS'
@@ -159,10 +152,13 @@ it('removes the shimmer once content arrives in the latest assistant message', f
  * tool list, so registering a tool without a label fails here.
  */
 it('renders a human label for every tool the assistant can call', function (): void {
-    $toolNames = array_map(
+    $toolNames = array_values(array_unique(array_map(
         class_basename(...),
-        resolve(CrmAssistant::class)->withEmailReach(EmailReach::Ready)->tools(),
-    );
+        [
+            ...resolve(CrmAssistant::class)->withEmailReach(EmailReach::Ready)->withWebAccess(WebAccess::Ask)->tools(),
+            ...resolve(CrmAssistant::class)->withWebAccess(WebAccess::Allowed)->tools(),
+        ],
+    )));
 
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
@@ -199,8 +195,11 @@ it('renders a human label for every tool the assistant can call', function (): v
     // have no mapping at all.
     $byName = array_combine($toolNames, $labels);
     expect($byName['ListCompaniesTool'])->toBe('Searching companies…')
-        ->and($byName['SetCustomFieldOptionsTool'])->toBe('Preparing field option changes…')
-        ->and($byName['SearchDocsTool'])->toBe('Searching the documentation…');
+        ->and($byName['SetCustomFieldOptionsTool'])->toBe('Preparing attribute option changes…')
+        ->and($byName['SearchDocsTool'])->toBe('Searching the documentation…')
+        ->and($byName['RequestWebAccessTool'])->toBe('Asking to search the web…')
+        ->and($byName['WebSearch'])->toBe('Searching the web…')
+        ->and($byName['WebFetch'])->toBe('Reading a web page…');
 });
 
 /**

@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
+use App\Support\PlainText;
 use Carbon\CarbonInterface;
 use DateTimeInterface;
 use Illuminate\Support\Facades\Config;
@@ -26,6 +27,7 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAttachment;
 use Relaticle\EmailIntegration\Models\EmailBody;
 use Relaticle\EmailIntegration\Models\EmailParticipant;
+use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
 use Relaticle\EmailIntegration\Services\EmailInlineImageEmbedder;
 use Relaticle\EmailIntegration\Services\ForwardAttachmentCopyService;
 
@@ -34,6 +36,7 @@ final readonly class SendEmailAction
     public function __construct(
         private EmailInlineImageEmbedder $inlineImageEmbedder,
         private ForwardAttachmentCopyService $attachments,
+        private VisibleEmailsQuery $emails,
     ) {}
 
     /**
@@ -108,18 +111,8 @@ final readonly class SendEmailAction
             strlen((string) $data['body_html']),
         );
 
-        return DB::transaction(function () use ($account, $data, $priority, $scheduledFor, $linkToType, $linkToId, $attachmentPaths, $attachmentAttributes, $attachmentFileNames, $hasDownloadableAttachments): Email {
-            // Scope the reply lookup to the sender's workspace. in_reply_to_email_id arrives
-            // from a client-controlled hidden field and Email has no workspace global scope,
-            // so an unscoped lookup would let a user thread their outbound mail onto
-            // another tenant's email and leak its thread_id / rfc_message_id.
-            /** @var Email|null $inReplyTo */
-            $inReplyTo = isset($data['in_reply_to_email_id'])
-                ? Email::query()
-                    ->where('workspace_id', $account->workspace_id)
-                    ->whereKey($data['in_reply_to_email_id'])
-                    ->first()
-                : null;
+        return DB::transaction(function () use ($user, $account, $data, $priority, $scheduledFor, $linkToType, $linkToId, $attachmentPaths, $attachmentAttributes, $attachmentFileNames, $hasDownloadableAttachments): Email {
+            $inReplyTo = $this->emails->replyableEmail($user, (string) $account->workspace_id, $data['in_reply_to_email_id'] ?? null);
 
             /** @var Email $email */
             $email = $account->emails()->chaperone()->create([
@@ -135,12 +128,12 @@ final readonly class SendEmailAction
                 // mailbox that received the original. A reply from a shared
                 // inbox or a different connected account must not pass that
                 // foreign id to the sending mailbox.
-                'thread_id' => $inReplyTo !== null && $inReplyTo->connected_account_id === $account->getKey()
+                'thread_id' => $inReplyTo instanceof Email && $inReplyTo->connected_account_id === $account->getKey()
                     ? $inReplyTo->thread_id
                     : null,
                 'in_reply_to' => $inReplyTo?->rfc_message_id,
                 'subject' => $data['subject'],
-                'snippet' => mb_substr(strip_tags((string) $data['body_html']), 0, 255),
+                'snippet' => mb_substr(PlainText::fromHtml((string) $data['body_html']), 0, 255),
                 'sent_at' => null,
                 'scheduled_for' => $scheduledFor,
                 'direction' => EmailDirection::OUTBOUND,
@@ -157,7 +150,7 @@ final readonly class SendEmailAction
             EmailBody::query()->create([
                 'email_id' => $email->getKey(),
                 'body_html' => $data['body_html'],
-                'body_text' => strip_tags((string) $data['body_html']),
+                'body_text' => PlainText::paragraphsFromHtml((string) $data['body_html']),
             ]);
 
             EmailParticipant::query()->create([

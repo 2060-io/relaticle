@@ -11,11 +11,13 @@ use Laravel\Ai\Tools\Request;
 use Relaticle\Documentation\Support\BuildSearchIndex;
 use Relaticle\Documentation\Support\DocPage;
 use Relaticle\Documentation\Support\DocsRepository;
+use Relaticle\Documentation\Support\DocUrl;
+use Relaticle\Documentation\Support\PageSections;
 
 /**
  * Phase 2 of the No Dead Ends contract. GuideToPageTool escorts the user to a
  * page they can act on; this answers the question outright from Relaticle's own
- * help centre and developer guides, so "how do I connect my own agent" stops
+ * help center and developer guides, so "how do I connect my own agent" stops
  * being a dead end for a capability the product ships.
  *
  * Ranking runs over the same section-level index the public docs search uses,
@@ -26,6 +28,8 @@ use Relaticle\Documentation\Support\DocsRepository;
  */
 final readonly class SearchDocsTool implements Tool
 {
+    private const string FALLBACK_LOCALE = 'en';
+
     private const int MAX_RESULTS = 5;
 
     private const int DEFAULT_RESULTS = 3;
@@ -35,10 +39,13 @@ final readonly class SearchDocsTool implements Tool
     /**
      * One well-matched article otherwise wins every slot with its own
      * sub-headings, burying the second article that answers the other half of
-     * the question. The help centre covers connecting Claude, the developer
+     * the question. The help center covers connecting Claude, the developer
      * guide covers connecting anything else.
      */
     private const int MAX_SECTIONS_PER_PAGE = 2;
+
+    /** A heading that names every term in the query is the page that answers it. */
+    private const float SECTION_COVERAGE_BONUS = 1.5;
 
     /** Below this, a term is punctuation noise rather than a word. */
     private const int MIN_TERM_LENGTH = 2;
@@ -62,6 +69,17 @@ final readonly class SearchDocsTool implements Tool
         'why', 'will', 'with', 'would', 'you', 'your',
     ];
 
+    /** @var array<string, string> */
+    private const array SPELLINGS = [
+        'vscode' => 'vs code',
+    ];
+
+    /** @var array<string, string> */
+    private const array RETIRED_WORDS = [
+        'field' => 'attribute',
+        'fields' => 'attributes',
+    ];
+
     public function __construct(
         private BuildSearchIndex $index,
         private DocsRepository $docs,
@@ -69,10 +87,10 @@ final readonly class SearchDocsTool implements Tool
 
     public function description(): string
     {
-        return 'Search Relaticle\'s own product documentation, both the help centre and the developer guides, '
+        return 'Search Relaticle\'s own product documentation, both the help center and the developer guides, '
             .'and get back the matching sections plus a link to each. Covers connecting external AI assistants '
             .'and MCP clients (Claude, ChatGPT, Cursor, Codex), access tokens, the REST API, self-hosting, '
-            .'billing and plans, AI credits, imports, exports, custom fields, and every in-app feature. '
+            .'billing and plans, AI credits, imports, exports, custom attributes (custom fields), and every in-app feature. '
             .'Call this for any "how do I", "can Relaticle", or setup question instead of replying that you '
             .'only handle CRM data or have no information.';
     }
@@ -85,7 +103,7 @@ final readonly class SearchDocsTool implements Tool
         return [
             'query' => $schema->string()
                 ->required()
-                ->description('What the user wants to know, in their own words.'),
+                ->description('What the user wants to know, as English keywords. Translate a question asked in another language.'),
             'limit' => $schema->integer()
                 ->description('Max documentation sections to return (default '.self::DEFAULT_RESULTS.', max '.self::MAX_RESULTS.').')
                 ->default(self::DEFAULT_RESULTS),
@@ -97,13 +115,13 @@ final readonly class SearchDocsTool implements Tool
         $terms = $this->terms((string) $request->string('query'));
         $limit = max(1, min((int) ($request['limit'] ?? self::DEFAULT_RESULTS), self::MAX_RESULTS));
 
-        $results = $terms === [] ? [] : $this->search($terms, $limit);
+        $results = $terms === [] ? [] : $this->searchLocalizedFirst($terms, $limit);
 
         if ($results === []) {
             return (string) json_encode([
                 'results' => [],
                 'note' => 'The documentation has no section on this. Tell the user it is not covered and '
-                    .'link the help centre: '.route('help.index'),
+                    .'link the help center: '.DocUrl::area(DocUrl::HELP),
             ], JSON_UNESCAPED_SLASHES);
         }
 
@@ -117,9 +135,31 @@ final readonly class SearchDocsTool implements Tool
      * @param  list<string>  $terms
      * @return list<array{title: string, section: string, area: string, url: string, content: string}>
      */
-    private function search(array $terms, int $limit): array
+    private function searchLocalizedFirst(array $terms, int $limit): array
     {
-        $records = ($this->index)()['records'];
+        $locale = app()->getLocale();
+        $hits = $this->search($terms, $limit, $locale);
+
+        if ($locale !== self::FALLBACK_LOCALE && count($hits) < $limit) {
+            $answered = array_column($hits, 'path');
+
+            foreach ($this->search($terms, $limit, self::FALLBACK_LOCALE) as $hit) {
+                if (count($hits) < $limit && ! in_array($hit['path'], $answered, true)) {
+                    $hits[] = $hit;
+                }
+            }
+        }
+
+        return array_column($hits, 'result');
+    }
+
+    /**
+     * @param  list<string>  $terms
+     * @return list<array{path: string, result: array{title: string, section: string, area: string, url: string, content: string}}>
+     */
+    private function search(array $terms, int $limit, string $locale): array
+    {
+        $records = ($this->index)($locale)['records'];
         $weights = $this->weights($records, $terms);
 
         $scored = [];
@@ -144,14 +184,14 @@ final readonly class SearchDocsTool implements Tool
                 continue;
             }
 
-            $result = $this->present($hit['record']);
+            $result = $this->present($hit['record'], $locale);
 
             if ($result === null) {
                 continue;
             }
 
             $perPage[$path] = ($perPage[$path] ?? 0) + 1;
-            $results[] = $result;
+            $results[] = ['path' => $path, 'result' => $result];
 
             if (count($results) === $limit) {
                 break;
@@ -204,9 +244,14 @@ final readonly class SearchDocsTool implements Tool
     {
         $score = 0.0;
         $matched = 0;
+        $inSection = 0;
 
         foreach ($weights as $term => $weight) {
             $pattern = $this->pattern((string) $term);
+
+            if ($this->matches($pattern, $record['section'])) {
+                $inSection++;
+            }
 
             $hits = ($this->matches($pattern, $record['title']) ? 8 : 0)
                 + ($this->matches($pattern, $record['section']) ? 5 : 0)
@@ -224,7 +269,9 @@ final readonly class SearchDocsTool implements Tool
             return 0.0;
         }
 
-        return $score * (1.0 + ($matched / count($weights)));
+        $coverage = $inSection === count($weights) ? self::SECTION_COVERAGE_BONUS : 1.0;
+
+        return $score * (1.0 + ($matched / count($weights))) * $coverage;
     }
 
     private function matches(string $pattern, string $haystack): bool
@@ -268,9 +315,9 @@ final readonly class SearchDocsTool implements Tool
      * @param  array{path: string, title: string, section: string, anchor: string, content: string, url: string, crumb: string}  $record
      * @return array{title: string, section: string, area: string, url: string, content: string}|null
      */
-    private function present(array $record): ?array
+    private function present(array $record, string $locale): ?array
     {
-        $content = $this->sectionMarkdown($record) ?? $record['content'];
+        $content = $this->sectionMarkdown($record, $locale) ?? $record['content'];
 
         if (trim($content) === '') {
             return null;
@@ -286,34 +333,22 @@ final readonly class SearchDocsTool implements Tool
     }
 
     /**
-     * The slice of raw markdown the index record was flattened from. Splits on
-     * the same heading regex BuildSearchIndex uses, so the two stay aligned.
+     * The slice of raw markdown the index record was flattened from, found by
+     * the record's anchor so it cannot drift from how the index sliced it.
      *
      * @param  array{path: string, title: string, section: string, anchor: string, content: string, url: string, crumb: string}  $record
      */
-    private function sectionMarkdown(array $record): ?string
+    private function sectionMarkdown(array $record, string $locale): ?string
     {
-        $page = $this->docs->find($record['path']);
+        $page = $this->docs->find($record['path'], $locale);
 
         if (! $page instanceof DocPage) {
             return null;
         }
 
-        $chunks = preg_split('/^##[ \t]+(.+)$/m', $page->body, -1, PREG_SPLIT_DELIM_CAPTURE);
-
-        if ($chunks === false) {
-            return null;
-        }
-
-        if ($record['anchor'] === '') {
-            return $chunks[0] ?? null;
-        }
-
-        $counter = count($chunks);
-
-        for ($i = 1; $i < $counter; $i += 2) {
-            if (trim($chunks[$i]) === $record['section']) {
-                return $chunks[$i + 1] ?? null;
+        foreach ((new PageSections)($page->body) as $section) {
+            if ($section['anchor'] === $record['anchor']) {
+                return $section['markdown'];
             }
         }
 
@@ -328,7 +363,7 @@ final readonly class SearchDocsTool implements Tool
     private function readable(string $markdown): string
     {
         $text = preg_replace('/!\[[^\]]*]\([^)]*\)/', '', $markdown) ?? $markdown;
-        $text = preg_replace('/]\(\/(?!\/)/', ']('.rtrim(url('/'), '/').'/', $text) ?? $text;
+        $text = preg_replace('/]\(\/(?!\/)/', ']('.DocUrl::root().'/', $text) ?? $text;
         $text = preg_replace('/\n{3,}/', "\n\n", $text) ?? $text;
 
         return Str::limit(trim($text), self::CONTENT_LIMIT);
@@ -339,10 +374,17 @@ final readonly class SearchDocsTool implements Tool
      */
     private function terms(string $query): array
     {
-        $words = preg_split('/[^\p{L}\p{N}.]+/u', mb_strtolower(trim($query)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $words = preg_split('/[^\p{L}\p{N}.]+/u', strtr(mb_strtolower(trim($query)), self::SPELLINGS), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        $words = array_map(fn (string $word): string => trim($word, '.'), $words);
+        $words = array_map(
+            fn (string $word, int $index): string => ($words[$index - 1] ?? null) === 'custom' ? (self::RETIRED_WORDS[$word] ?? $word) : $word,
+            $words,
+            array_keys($words),
+        );
 
         $terms = array_filter(
-            array_map(fn (string $word): string => trim($word, '.'), $words),
+            $words,
             fn (string $word): bool => mb_strlen($word) >= self::MIN_TERM_LENGTH
                 && ! in_array($word, self::STOP_WORDS, true),
         );

@@ -15,10 +15,10 @@
         default => 'text',
     };
     $placeholder = match($inputType) {
-        'email' => 'Add email...',
-        'tel' => 'Add phone...',
-        'url' => 'Add URL...',
-        default => 'Add value...',
+        'email' => __('Add email...'),
+        'tel' => __('Add phone...'),
+        'url' => __('Add URL...'),
+        default => __('Add value...'),
     };
     $rowKey = 'multi-value-' . crc32($rawValue);
 @endphp
@@ -48,7 +48,7 @@
             x-tooltip="{ content: @js($simpleMessage), theme: $store.theme }"
             class="ml-2 cursor-help shrink-0"
         >
-            <x-filament::icon icon="heroicon-o-exclamation-triangle" class="w-4 h-4 text-warning-500"/>
+            <x-filament::icon icon="lucide-triangle-exclamation-point" class="w-4 h-4 text-warning-500"/>
         </span>
     @endif
     <div class="flex-1 min-w-0" wire:ignore>

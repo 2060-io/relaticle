@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\SystemAdmin\Filament\Resources;
 
+use App\Enums\CreationSource;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Models\User;
@@ -32,7 +33,7 @@ final class ActivityResource extends Resource
 {
     protected static ?string $model = Activity::class;
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-clock';
+    protected static string|\BackedEnum|null $navigationIcon = 'lucide-clock';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Dashboards';
 
@@ -124,13 +125,21 @@ final class ActivityResource extends Resource
                     'opportunity' => 'Opportunity',
                     'task' => 'Task',
                     'note' => 'Note',
+                    'workspace' => 'Workspace',
                 ]),
             SelectFilter::make('event')
                 ->options([
                     'created' => 'Created',
                     'updated' => 'Updated',
                     'deleted' => 'Deleted',
+                    'registered' => 'Registered',
                 ]),
+            SelectFilter::make('source')
+                ->options(CreationSource::class)
+                ->query(fn (Builder $query, array $data): Builder => $query->when(
+                    CreationSource::tryFrom((string) ($data['value'] ?? '')),
+                    fn (Builder $query, CreationSource $source): Builder => $query->fromSource($source),
+                )),
             Filter::make('created_at')
                 ->schema([
                     DatePicker::make('from')->label('From'),
@@ -185,6 +194,9 @@ final class ActivityResource extends Resource
                     ->placeholder('System')
                     ->color('primary')
                     ->url(RecordLink::toMorph(self::causerResources(), 'causer_type', 'causer_id')),
+                TextColumn::make('source')
+                    ->badge()
+                    ->placeholder('—'),
                 TextColumn::make('subject_type')
                     ->label('Subject')
                     ->badge()
@@ -258,6 +270,9 @@ final class ActivityResource extends Resource
                         ->placeholder('System')
                         ->color('primary')
                         ->url(RecordLink::toMorph(self::causerResources(), 'causer_type', 'causer_id')),
+                    TextEntry::make('source')
+                        ->badge()
+                        ->placeholder('—'),
                     TextEntry::make('subject_type')
                         ->label('Subject')
                         ->formatStateUsing(function (?string $state, Activity $record): string {

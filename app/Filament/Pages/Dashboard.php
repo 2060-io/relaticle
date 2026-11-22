@@ -9,6 +9,7 @@ use App\Enums\WorkspaceCapability;
 use App\Features\Chat;
 use App\Filament\Actions\CreateTaskAction;
 use App\Filament\Actions\EditTaskAction;
+use App\Filament\Concerns\KeepsOpenTaskInUrl;
 use App\Filament\Resources\TaskResource;
 use App\Filament\Resources\TaskResource\Forms\TaskForm;
 use App\Models\Task;
@@ -20,6 +21,7 @@ use Filament\Panel;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Relaticle\Chat\Data\MyTaskItem;
@@ -28,9 +30,11 @@ use Relaticle\Chat\Services\MyTasksService;
 
 final class Dashboard extends Page
 {
+    use KeepsOpenTaskInUrl;
+
     public const string AFTER_COMPOSER_RENDER_HOOK = 'dashboard.after-composer';
 
-    protected static string|null|BackedEnum $navigationIcon = 'heroicon-o-home';
+    protected static string|null|BackedEnum $navigationIcon = 'lucide-house';
 
     protected static ?string $navigationLabel = null;
 
@@ -168,9 +172,7 @@ final class Dashboard extends Page
 
     public function getTasksIndexUrl(): string
     {
-        return TaskResource::getUrl('index', [
-            'tableFilters' => ['assigned_to_me' => ['isActive' => true]],
-        ]);
+        return TaskResource::assignedToMeUrl();
     }
 
     public function editTaskAction(): EditTaskAction
@@ -184,6 +186,24 @@ final class Dashboard extends Page
             ->after(function (): void {
                 unset($this->myTasks);
             });
+    }
+
+    /**
+     * @return array{0: string, 1: array<string, mixed>, 2: array<string, mixed>}|null
+     */
+    protected function taskModal(Task $task): ?array
+    {
+        return Gate::allows('update', $task) ? ['editTask', ['task' => $task->getKey()], []] : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $action
+     */
+    protected function openTaskKey(array $action): ?string
+    {
+        $taskId = $action['arguments']['task'] ?? null;
+
+        return ($action['name'] ?? null) === 'editTask' && is_string($taskId) ? $taskId : null;
     }
 
     private function tenantTask(mixed $taskId): ?Task
@@ -213,7 +233,7 @@ final class Dashboard extends Page
     {
         return $action
             ->model(Task::class)
-            ->icon('heroicon-o-plus')
+            ->icon('lucide-plus')
             ->slideOver()
             ->schema(fn (Schema $schema): Schema => TaskForm::get($schema));
     }

@@ -37,7 +37,7 @@ final class TaskImporter extends BaseImporter
             ImportField::id(),
 
             ImportField::make('title')
-                ->label('Title')
+                ->label(__('import-wizard-new::fields.title'))
                 ->required()
                 ->rules(['required', 'string', 'max:255'])
                 ->guess([
@@ -46,7 +46,7 @@ final class TaskImporter extends BaseImporter
                     'to do', 'todo item', 'activity',
                 ])
                 ->example('Follow up with client')
-                ->icon('heroicon-o-clipboard-document-check'),
+                ->icon('lucide-clipboard-check'),
         ]);
     }
 
@@ -64,7 +64,7 @@ final class TaskImporter extends BaseImporter
                     MatchableField::id(),
                     MatchableField::email('email', MatchBehavior::MatchOnly),
                 ])
-                ->label('Assignee')
+                ->label(__('import-wizard-new::fields.assignee'))
                 ->guess([
                     'assignee', 'assigned_to', 'owner', 'assignee_email',
                     'assigned_email', 'owner_email', 'responsible',

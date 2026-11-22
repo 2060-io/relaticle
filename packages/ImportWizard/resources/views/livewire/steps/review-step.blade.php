@@ -1,4 +1,5 @@
 @php
+    use Illuminate\Support\Number;
     use Relaticle\ImportWizard\Enums\DateFormat;
     use Relaticle\ImportWizard\Enums\NumberFormat;
     use Relaticle\ImportWizard\Enums\ReviewFilter;
@@ -6,7 +7,7 @@
     use Relaticle\ImportWizard\Enums\SortDirection;
 @endphp
 <div
-    class="flex flex-col h-full overflow-hidden"
+    class="flex flex-col h-full md:overflow-hidden"
     x-data="{
         timer: null,
         startPolling() {
@@ -37,13 +38,13 @@
     @endif
 
     {{-- Main Content --}}
-    <div class="flex-1 flex gap-4 overflow-hidden min-h-[12rem]">
+    <div class="flex-1 flex flex-col md:flex-row gap-4 md:overflow-hidden min-h-[12rem]">
         {{-- Column List (Left Panel) --}}
         <div
-            class="w-56 shrink-0 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 flex flex-col overflow-hidden">
+            class="md:w-56 md:shrink-0 max-md:max-h-48 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 flex flex-col overflow-hidden">
             <div
                 class="px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 rounded-t-xl shrink-0">
-                Mapped Columns
+                {{ __('Mapped Columns') }}
             </div>
 
             <div class="flex-1 overflow-y-auto">
@@ -106,9 +107,9 @@
                     <div>
                         <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ $selectedColumn->source }}</h3>
                         <p class="text-[10px] text-gray-500 dark:text-gray-400">
-                            Mapped to <span class="font-medium">{{ $selectedColumn->getLabel() }}</span>
+                            {{ __('Mapped to') }} <span class="font-medium">{{ $selectedColumn->getLabel() }}</span>
                             @if (!$this->isSelectedColumnValidating)
-                                · {{ number_format($this->selectedColumnRows->total()) }} unique values
+                                · {{ trans_choice(':count unique value|:count unique values', $this->selectedColumnRows->total(), ['count' => Number::format($this->selectedColumnRows->total())]) }}
                             @endif
                         </p>
                     </div>
@@ -119,8 +120,8 @@
                                 wire:key="date-format-{{ $this->selectedColumn->getType()->value }}"
                                 :options="DateFormat::toOptions($this->selectedColumn->getType()->isTimestamp())"
                                 :searchable="false"
-                                :inline-label="$this->selectedColumn->getType()->isTimestamp() ? 'Timestamp format:' : 'Date format:'"
-                                icon="heroicon-o-cog-6-tooth"
+                                :inline-label="$this->selectedColumn->getType()->isTimestamp() ? __('Timestamp format:') : __('Date format:')"
+                                icon="lucide-settings"
                                 :value="$this->selectedColumn->dateFormat ?? DateFormat::ISO"
                                 @input="$wire.setColumnFormat('date', $event.detail)"
                             />
@@ -130,8 +131,8 @@
                             <x-import-wizard-new::select-menu
                                 :options="NumberFormat::toOptions()"
                                 :searchable="false"
-                                inline-label="Decimal separator:"
-                                icon="heroicon-o-cog-6-tooth"
+                                :inline-label="__('Decimal separator:')"
+                                icon="lucide-settings"
                                 :value="$this->selectedColumn->numberFormat ?? NumberFormat::POINT"
                                 @input="$wire.setColumnFormat('number', $event.detail)"
                             />
@@ -165,15 +166,15 @@
                     class="flex-1 flex items-center justify-center"
                 >
                     <div class="flex flex-col items-center text-center max-w-sm">
-                        <x-filament::icon icon="heroicon-o-arrow-path" class="h-12 w-12 text-primary-500 animate-spin" />
-                        <p class="mt-6 text-sm font-medium text-gray-700 dark:text-gray-300">Processing column values...</p>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Validating and preparing data for review</p>
+                        <x-filament::icon icon="lucide-refresh-cw" class="h-12 w-12 text-primary-500 animate-spin" />
+                        <p class="mt-6 text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('Processing column values...') }}</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('Validating and preparing data for review') }}</p>
 
                         {{-- Fake Progress Bar --}}
                         <div class="w-full mt-6">
                             <div class="flex items-center justify-between text-xs mb-2">
                                 <span class="font-medium text-gray-900 dark:text-white" x-text="Math.round(progress) + '%'"></span>
-                                <span class="text-gray-500 dark:text-gray-400">complete</span>
+                                <span class="text-gray-500 dark:text-gray-400">{{ __('complete') }}</span>
                             </div>
                             <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                                 <div
@@ -187,7 +188,7 @@
             @else
                 {{-- Filters --}}
                 <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                    <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center justify-between gap-3 max-md:flex-wrap">
                         <div class="flex gap-1 text-xs">
                             @foreach (ReviewFilter::cases() as $filterCase)
                                 <button
@@ -209,13 +210,13 @@
                             {{-- Search --}}
                             <div class="relative">
                                 <x-filament::icon
-                                    icon="heroicon-o-magnifying-glass"
+                                    icon="lucide-search"
                                     class="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
                                 />
                                 <input
                                     type="text"
                                     wire:model.live.debounce.300ms="search"
-                                    placeholder="Search..."
+                                    placeholder="{{ __('Search...') }}"
                                     class="{{ $search !== '' ? 'w-48' : 'w-32' }} pl-7 pr-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 focus:w-48 transition-all"
                                 />
                             </div>
@@ -229,7 +230,7 @@
                                 >
                                     <x-filament::icon :icon="$sortDirection->getIcon()" class="w-4 h-4"/>
                                     <span>{{ $sortField->getLabel() }}</span>
-                                    <x-filament::icon icon="heroicon-m-chevron-down" class="w-3 h-3"/>
+                                    <x-filament::icon icon="lucide-chevron-down" class="w-3 h-3"/>
                                 </button>
 
                                 <div
@@ -257,7 +258,7 @@
                                                     {{ $field->getLabel() }}
                                                 </span>
                                                 @if($sortField === $field)
-                                                    <x-filament::icon icon="heroicon-m-check" class="w-4 h-4"/>
+                                                    <x-filament::icon icon="lucide-check" class="w-4 h-4"/>
                                                 @endif
                                             </button>
                                         @endforeach
@@ -278,7 +279,7 @@
                                                     {{ $direction->getLabel() }}
                                                 </span>
                                                 @if($sortDirection === $direction)
-                                                    <x-filament::icon icon="heroicon-m-check" class="w-4 h-4"/>
+                                                    <x-filament::icon icon="lucide-check" class="w-4 h-4"/>
                                                 @endif
                                             </button>
                                         @endforeach
@@ -292,11 +293,11 @@
                 {{-- Table Header --}}
                 <div
                     class="flex items-center px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 shrink-0">
-                    <div class="w-1/2">Raw Data</div>
+                    <div class="w-1/2">{{ __('Raw Data') }}</div>
                     <div class="w-6 text-center">
-                        <x-filament::icon icon="heroicon-o-arrow-right" class="w-3 h-3 mx-auto"/>
+                        <x-filament::icon icon="lucide-arrow-right" class="w-3 h-3 mx-auto"/>
                     </div>
-                    <div class="flex-1">Mapped Value</div>
+                    <div class="flex-1">{{ __('Mapped Value') }}</div>
                 </div>
 
                 {{-- Values List --}}
@@ -324,16 +325,16 @@
                                         'text-gray-900 dark:text-white' => !$isRawBlank,
                                     ])
                                     title="{{ $rawValue }}">
-                                    {{ $isRawBlank ? '(blank)' : Str::limit($rawValue, 35) }}
+                                    {{ $isRawBlank ? __('(blank)') : Str::limit($rawValue, 35) }}
                                 </span>
                                 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-                                    {{ $count }} {{ Str::plural('row', $count) }}
+                                    {{ trans_choice(':count row|:count rows', $count) }}
                                 </span>
                             </div>
 
                             {{-- Arrow --}}
                             <div class="w-6 text-center">
-                                <x-filament::icon icon="heroicon-o-arrow-right" class="w-3 h-3 text-gray-400 mx-auto"/>
+                                <x-filament::icon icon="lucide-arrow-right" class="w-3 h-3 text-gray-400 mx-auto"/>
                             </div>
 
                             {{-- Mapped Value + Actions --}}
@@ -341,7 +342,7 @@
                                 @if ($isSkipped)
                                     @include('import-wizard-new::livewire.steps.partials.value-row-skipped', compact('rawValue', 'selectedColumn'))
                                 @elseif ($isRawBlank)
-                                    <span class="text-sm text-gray-400 dark:text-gray-500 italic">(blank)</span>
+                                    <span class="text-sm text-gray-400 dark:text-gray-500 italic">{{ __('(blank)') }}</span>
                                 @elseif ($this->selectedColumn->getType()->isDateOrDateTime())
                                     @include('import-wizard-new::livewire.steps.partials.value-row-date', compact('rawValue', 'mappedValue', 'hasCorrection', 'selectedColumn', 'valueData'))
                                 @elseif ($this->selectedColumn->getType()->isFloat())
@@ -358,16 +359,16 @@
                     @empty
                         <div class="flex flex-col items-center justify-center py-8 text-sm text-gray-500 dark:text-gray-400">
                             @if ($search !== '' && $filter !== ReviewFilter::All)
-                                <x-filament::icon icon="heroicon-o-magnifying-glass" class="w-8 h-8 mb-2 text-gray-300 dark:text-gray-600"/>
-                                <span>No values match your search and filter</span>
+                                <x-filament::icon icon="lucide-search" class="w-8 h-8 mb-2 text-gray-300 dark:text-gray-600"/>
+                                <span>{{ __('No values match your search and filter') }}</span>
                             @elseif ($search !== '')
-                                <x-filament::icon icon="heroicon-o-magnifying-glass" class="w-8 h-8 mb-2 text-gray-300 dark:text-gray-600"/>
-                                <span>No values match "{{ $search }}"</span>
+                                <x-filament::icon icon="lucide-search" class="w-8 h-8 mb-2 text-gray-300 dark:text-gray-600"/>
+                                <span>{{ __('No values match ":search"', ['search' => $search]) }}</span>
                             @elseif ($filter !== ReviewFilter::All)
-                                <x-filament::icon icon="heroicon-o-funnel" class="w-8 h-8 mb-2 text-gray-300 dark:text-gray-600"/>
-                                <span>No {{ $filter->getLabel() }} values</span>
+                                <x-filament::icon icon="lucide-funnel" class="w-8 h-8 mb-2 text-gray-300 dark:text-gray-600"/>
+                                <span>{{ __('No :filter values', ['filter' => $filter->getLabel()]) }}</span>
                             @else
-                                No values to display
+                                {{ __('No values to display') }}
                             @endif
 
                             @if ($search !== '' || $filter !== ReviewFilter::All)
@@ -375,7 +376,7 @@
                                     wire:click="clearFilters"
                                     class="mt-2 text-xs text-primary-600 dark:text-primary-400 hover:underline"
                                 >
-                                    Clear filters
+                                    {{ __('Clear filters') }}
                                 </button>
                             @endif
                         </div>
@@ -391,17 +392,17 @@
                             @disabled($this->selectedColumnRows->onFirstPage())
                             class="px-3 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            Previous
+                            {{ __('Previous') }}
                         </button>
                         <span class="text-xs text-gray-500 dark:text-gray-400">
-                            {{ number_format($this->selectedColumnRows->firstItem()) }}–{{ number_format($this->selectedColumnRows->lastItem()) }} of {{ number_format($this->selectedColumnRows->total()) }}
+                            {{ __(':from–:to of :total', ['from' => Number::format($this->selectedColumnRows->firstItem()), 'to' => Number::format($this->selectedColumnRows->lastItem()), 'total' => Number::format($this->selectedColumnRows->total())]) }}
                         </span>
                         <button
                             wire:click="nextPage"
                             @disabled(!$this->selectedColumnRows->hasMorePages())
                             class="px-3 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            Next
+                            {{ __('Next') }}
                         </button>
                     </div>
                 @endif
@@ -412,13 +413,13 @@
     {{-- Navigation --}}
     <div class="shrink-0 flex justify-end gap-3 pt-4 mt-6 border-t border-gray-200 dark:border-gray-700 pb-1">
         <x-filament::button color="gray" wire:click="$parent.goBack()">
-            Back
+            {{ __('Back') }}
         </x-filament::button>
         <x-filament::button
             wire:click="continueToPreview"
             :disabled="$this->isValidating || $failedColumns !== []"
         >
-            Continue
+            {{ __('Continue') }}
         </x-filament::button>
     </div>
 </div>

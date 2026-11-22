@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Rules\OwnedLookupRecords;
 use App\Rules\ValidCustomFields;
+use App\Support\ChecklistHtml;
 use App\Support\CustomFields\CustomFieldInput;
 use App\Support\CustomFields\CustomFieldOptionMap;
 use App\Support\CustomFields\RecordNameResolver;
@@ -31,13 +32,14 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
 use Relaticle\CustomFields\Data\CustomFieldSettingsData;
 use Relaticle\CustomFields\Services\TenantContextService;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Tests\Helpers\LegacyCompanyDomains;
 use Tests\Helpers\WorkspaceCustomField;
 
-mutates(BaseCreateTool::class, BaseUpdateTool::class, CustomFieldInput::class, CustomFieldOptionMap::class, OwnedLookupRecords::class, ValidCustomFields::class, RecordNameResolver::class, FormatsCustomFields::class);
+mutates(BaseCreateTool::class, BaseUpdateTool::class, ChecklistHtml::class, CustomFieldInput::class, CustomFieldOptionMap::class, OwnedLookupRecords::class, ValidCustomFields::class, RecordNameResolver::class, FormatsCustomFields::class);
 
 beforeEach(function (): void {
     $this->user = User::factory()->withPersonalWorkspace()->create();
@@ -240,6 +242,23 @@ it('stores markdown for a rich editor field as html', function (): void {
     $stored = Task::query()->where('title', 'Md')->with('customFieldValues.customField.options')->firstOrFail()->getCustomFieldValue($description);
 
     expect($stored)->toContain('<h2>Plan</h2>')->toContain('<strong>Ada</strong>');
+});
+
+it('stores markdown checklist items through the create task tool', function (): void {
+    RelaticleServer::actingAs($this->user)
+        ->tool(CreateTaskTool::class, ['title' => 'Checklist', 'custom_fields' => ['description' => '- [ ] Call Bob']])
+        ->assertOk();
+
+    $description = CustomField::query()
+        ->where('tenant_id', $this->workspace->getKey())
+        ->where('entity_type', 'task')
+        ->where('code', 'description')
+        ->firstOrFail();
+    $stored = Task::query()->where('title', 'Checklist')->with('customFieldValues.customField.options')->firstOrFail()->getCustomFieldValue($description);
+
+    expect(substr_count($stored, 'data-type="taskItem"'))->toBe(1)
+        ->and($stored)->toContain('data-checked="false"')
+        ->toContain('<div><p>Call Bob</p></div>');
 });
 
 it('passes html through untouched for a rich editor field', function (): void {
@@ -570,7 +589,7 @@ it('sets then clears a value for every writable custom field type', function (st
     'date' => ['date', '2026-09-10', '2026-09-10T00:00:00+00:00'],
     'date-time' => ['date-time', '2026-09-10T10:30:00Z', '2026-09-10T10:30:00+00:00'],
     'date-time with an offset' => ['date-time', '2026-09-10T10:30:00+05:00', '2026-09-10T05:30:00+00:00'],
-    'rich-editor' => ['rich-editor', '**bold**', "<p><strong>bold</strong></p>\n"],
+    'rich-editor' => ['rich-editor', '**bold**', '<p><strong>bold</strong></p>'],
     'select' => ['select', null, 'OPTION_ID'],
     'radio' => ['radio', null, 'OPTION_ID'],
     'toggle-buttons' => ['toggle-buttons', null, 'OPTION_ID'],
@@ -725,3 +744,52 @@ it('drops a domain value that holds no host', function (string $empty): void {
 
     expect(collect($company->refresh()->getCustomFieldValue($field))->all())->toBe(['acme.com']);
 })->with(['scheme only' => 'https://', 'slash' => '/', 'www only' => 'www.']);
+
+function storedDueDateOf(Task $task): ?string
+{
+    $field = WorkspaceCustomField::byCode((string) $task->workspace_id, 'task', 'due_date');
+
+    return DB::table('custom_field_values')
+        ->where('entity_id', $task->getKey())
+        ->where('custom_field_id', $field->getKey())
+        ->value('datetime_value');
+}
+
+it('stores a date with no time as the start of that day in the token user timezone through mcp', function (): void {
+    $this->user->forceFill(['timezone' => 'America/New_York'])->save();
+    $task = Task::factory()->create(['workspace_id' => $this->workspace->getKey()]);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(CreateTaskTool::class, ['title' => 'Renewal', 'custom_fields' => ['due_date' => '2026-09-15']])
+        ->assertOk();
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateTaskTool::class, ['id' => $task->getKey(), 'custom_fields' => ['due_date' => '2026-09-15']])
+        ->assertOk();
+
+    $created = Task::query()->where('title', 'Renewal')->firstOrFail();
+
+    expect(storedDueDateOf($created))->toStartWith('2026-09-15 04:00:00')
+        ->and(storedDueDateOf($task))->toStartWith('2026-09-15 04:00:00');
+});
+
+it('keeps reading a time with no offset as utc through mcp and does not refuse it', function (): void {
+    $this->user->forceFill(['timezone' => 'America/New_York'])->save();
+    $task = Task::factory()->create(['workspace_id' => $this->workspace->getKey()]);
+
+    RelaticleServer::actingAs($this->user)
+        ->tool(UpdateTaskTool::class, ['id' => $task->getKey(), 'custom_fields' => ['due_date' => '2026-09-15T10:00:00']])
+        ->assertOk();
+
+    expect(storedDueDateOf($task))->toStartWith('2026-09-15 10:00:00');
+});
+
+it('keeps storing a date with no time as a utc midnight through the api for a user with a timezone', function (): void {
+    $this->user->forceFill(['timezone' => 'America/New_York'])->save();
+    Sanctum::actingAs($this->user);
+
+    $id = $this->postJson('/api/v1/tasks', ['title' => 'Renewal', 'custom_fields' => ['due_date' => '2026-09-15']])
+        ->assertCreated()
+        ->json('data.id');
+
+    expect(storedDueDateOf(Task::query()->withoutGlobalScopes()->findOrFail($id)))->toStartWith('2026-09-15 00:00:00');
+});

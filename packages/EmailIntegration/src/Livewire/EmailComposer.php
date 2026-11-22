@@ -12,6 +12,7 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
 use App\Services\AvatarService;
+use App\Support\Media\UploadAllowlist;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
@@ -30,6 +31,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Number;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -55,10 +57,12 @@ use Relaticle\EmailIntegration\Models\Email;
 use Relaticle\EmailIntegration\Models\EmailAttachment;
 use Relaticle\EmailIntegration\Models\EmailSignature;
 use Relaticle\EmailIntegration\Models\EmailTemplate;
-use Relaticle\EmailIntegration\Models\Scopes\VisibleEmailScope;
+use Relaticle\EmailIntegration\Queries\PersonByEmailQuery;
+use Relaticle\EmailIntegration\Queries\VisibleEmailsQuery;
 use Relaticle\EmailIntegration\Services\EmailTemplateRenderService;
 use Relaticle\EmailIntegration\Services\ForwardAttachmentCopyService;
 use Relaticle\EmailIntegration\Services\MassSendRecipientResolver;
+use Relaticle\EmailIntegration\Services\PreferredEmailCopyService;
 use Relaticle\EmailIntegration\Services\RecipientSuggestionService;
 use Relaticle\EmailIntegration\Support\ComposerInlineImage;
 use Relaticle\EmailIntegration\Support\ComposerPageTo;
@@ -105,6 +109,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      * it. A forward has a source but must not thread, which is why this is separate
      * from {@see $sourceEmailId}.
      */
+    #[Locked]
     public ?string $inReplyToEmailId = null;
 
     public ?string $replyMode = null;
@@ -419,14 +424,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     {
         $user = $this->authUser();
 
-        $email = Email::query()
-            ->with(['participants', 'body', 'shares', 'attachments'])
-            ->forWorkspace($user->current_workspace_id)
-            ->withGlobalScope('visible', new VisibleEmailScope($user))
-            ->whereKey($emailId)
-            ->first();
-
-        return $email instanceof Email && $user->can('view', $email) ? $email : null;
+        return resolve(VisibleEmailsQuery::class)->replyableEmail($user, (string) $user->current_workspace_id, $emailId, ['participants', 'shares', 'body', 'attachments']);
     }
 
     public function send(): void
@@ -701,32 +699,19 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      */
     private function withQuotedBody(string $bodyHtml): string
     {
-        $quotedBodyHtml = $this->quotedBodyHtml();
-
-        if (blank($quotedBodyHtml)) {
+        if ($this->sourceEmailId === null || $this->replyMode === null) {
             return $bodyHtml;
         }
 
-        return $bodyHtml.($this->replyMode === 'forward'
-            ? '<br><p><strong>---------- Forwarded message ----------</strong></p>'.$quotedBodyHtml
-            : '<br><blockquote style="border-left:3px solid #ccc;margin-left:0;padding-left:1rem">'.$quotedBodyHtml.'</blockquote>');
-    }
-
-    // Read at send time: the original can be hundreds of KB, and a public property
-    // would ship it to the browser and back on every composer request.
-    private function quotedBodyHtml(): ?string
-    {
-        if ($this->sourceEmailId === null || $this->replyMode === null) {
-            return null;
-        }
-
+        // Read at send time: the original can be hundreds of KB, and a public property
+        // would ship it to the browser and back on every composer request.
         $source = $this->replyableEmail($this->sourceEmailId);
 
         if (! $source instanceof Email || ! $this->authUser()->can('viewBody', $source)) {
-            return null;
+            return $bodyHtml;
         }
 
-        return $source->quotedBodyHtml();
+        return $source->quotedBelow($bodyHtml, asForward: $this->replyMode === 'forward');
     }
 
     public function minimize(): void
@@ -894,7 +879,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
                 continue;
             }
 
-            $person = $this->personForEmail($email, $workspaceId);
+            $person = resolve(PersonByEmailQuery::class)->first($email, $workspaceId);
 
             if (! $person instanceof People) {
                 continue;
@@ -915,27 +900,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         }
 
         $this->massRecipients = $nextRecipients;
-    }
-
-    private function personForEmail(string $emailAddress, string $workspaceId): ?People
-    {
-        $emailField = CustomField::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $workspaceId)
-            ->where('entity_type', 'people')
-            ->where('code', 'emails')
-            ->first();
-
-        if (! $emailField instanceof CustomField) {
-            return null;
-        }
-
-        return People::query()
-            ->where('workspace_id', $workspaceId)
-            ->whereHas('customFieldValues', fn (Builder $valueQuery): Builder => $valueQuery
-                ->where('custom_field_id', $emailField->getKey())
-                ->whereJsonContains('json_value', $emailAddress))
-            ->first(['id', 'name', 'company_id']);
     }
 
     private function mergeTagRecord(): Company|Opportunity|People|null
@@ -970,7 +934,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return null;
         }
 
-        $person = $this->personForEmail($email, (string) $this->authUser()->current_workspace_id);
+        $person = resolve(PersonByEmailQuery::class)->first($email, (string) $this->authUser()->current_workspace_id);
 
         if (! $person instanceof People) {
             return null;
@@ -1003,16 +967,12 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
         $this->showBcc = ! $this->showBcc;
     }
 
-    /**
-     * Enforce the size caps as files arrive, dropping (and deleting) anything
-     * over them rather than reporting an error and leaving the file in state.
-     * An invalid attachment left in `$attachments` would still be stored and
-     * sent by {@see self::send()}, which does not re-check.
-     */
     public function updatedAttachments(): void
     {
         $kept = [];
-        $rejected = [];
+        $tooLarge = [];
+        $wrongType = [];
+        $empty = [];
         $total = array_sum(array_column($this->savedAttachments, 'size'));
 
         foreach ($this->attachments as $file) {
@@ -1023,7 +983,21 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             $size = $file->getSize();
 
             if ($size > ForwardAttachmentCopyService::MAX_ATTACHMENT_BYTES || $total + $size > ForwardAttachmentCopyService::MAX_ATTACHMENTS_TOTAL_BYTES) {
-                $rejected[] = $file->getClientOriginalName();
+                $tooLarge[] = $file->getClientOriginalName();
+                $file->delete();
+
+                continue;
+            }
+
+            if ($size === 0) {
+                $empty[] = $file->getClientOriginalName();
+                $file->delete();
+
+                continue;
+            }
+
+            if (! UploadAllowlist::isAllowedEmailAttachment($file)) {
+                $wrongType[] = $file->getClientOriginalName();
                 $file->delete();
 
                 continue;
@@ -1035,18 +1009,28 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         $this->attachments = $kept;
 
-        if ($rejected === []) {
+        $this->notifyRejected('attachment_too_large', $tooLarge, [
+            'max' => Number::fileSize(ForwardAttachmentCopyService::MAX_ATTACHMENT_BYTES),
+            'total' => Number::fileSize(ForwardAttachmentCopyService::MAX_ATTACHMENTS_TOTAL_BYTES),
+        ]);
+        $this->notifyRejected('attachment_empty', $empty);
+        $this->notifyRejected('attachment_type_not_allowed', $wrongType);
+    }
+
+    /**
+     * @param  list<string>  $files
+     * @param  array<string, string>  $replace
+     */
+    private function notifyRejected(string $key, array $files, array $replace = []): void
+    {
+        if ($files === []) {
             return;
         }
 
         Notification::make()
             ->warning()
-            ->title(__('filament/emails/composer.notifications.attachment_too_large.title'))
-            ->body(__('filament/emails/composer.notifications.attachment_too_large.body', [
-                'files' => implode(', ', $rejected),
-                'max' => Number::fileSize(ForwardAttachmentCopyService::MAX_ATTACHMENT_BYTES),
-                'total' => Number::fileSize(ForwardAttachmentCopyService::MAX_ATTACHMENTS_TOTAL_BYTES),
-            ]))
+            ->title(__("filament/emails/composer.notifications.{$key}.title"))
+            ->body(__("filament/emails/composer.notifications.{$key}.body", ['files' => implode(', ', $files), ...$replace]))
             ->send();
     }
 
@@ -1138,7 +1122,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     avatarUrl: string|null,
      *     iconPath: string|null,
      *     circular: bool,
-     *     avatarColor: string,
      * }>
      */
     #[Computed(persist: true, seconds: 300)]
@@ -1247,7 +1230,6 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      *     avatarUrl: string|null,
      *     iconPath: string|null,
      *     circular: bool,
-     *     avatarColor: string,
      * }>
      */
     private function companyTeamRecipientOptions(string $workspaceId): array
@@ -1288,7 +1270,7 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
             return [];
         }
 
-        /** @var list<array{type: 'company_team', id: string, label: string, description: string, count: int, countLabel: string, emails: list<string>, avatarUrl: string|null, iconPath: string|null, circular: bool, avatarColor: string}> */
+        /** @var list<array{type: 'company_team', id: string, label: string, description: string, count: int, countLabel: string, emails: list<string>, avatarUrl: string|null, iconPath: string|null, circular: bool}> */
         return Company::query()
             ->where('workspace_id', $workspaceId)
             ->whereKey(array_keys($companyCounts))
@@ -1314,30 +1296,17 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
     }
 
     /**
-     * @return array{avatarUrl: string|null, iconPath: string|null, circular: bool, avatarColor: string}
+     * @return array{avatarUrl: string|null, iconPath: string|null, circular: bool}
      */
     private function recipientChipAppearance(Model $record): array
     {
         $chip = RecordChip::forRecord($record);
-        $avatarUrl = $chip->imageUrl;
-
-        if (is_string($avatarUrl) && str_starts_with($avatarUrl, 'data:')) {
-            $avatarUrl = null;
-        }
 
         return [
-            'avatarUrl' => $avatarUrl,
+            'avatarUrl' => $chip->imageUrl,
             'iconPath' => $chip->iconPath,
             'circular' => $chip->circular,
-            'avatarColor' => $this->recipientAvatarColor($chip->name),
         ];
-    }
-
-    private function recipientAvatarColor(string $name): string
-    {
-        $colors = ['primary', 'success', 'warning', 'danger', 'info'];
-
-        return $colors[abs(crc32(mb_strtolower($name))) % count($colors)];
     }
 
     /**
@@ -1701,14 +1670,20 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
      */
     private function storeAttachments(): array
     {
+        $files = array_values(array_filter($this->attachments, static fn (mixed $file): bool => $file instanceof TemporaryUploadedFile));
+
+        foreach ($files as $file) {
+            if (! UploadAllowlist::isAllowedEmailAttachment($file)) {
+                throw ValidationException::withMessages([
+                    'attachments' => __('filament/emails/composer.notifications.attachment_type_not_allowed.body', ['files' => $file->getClientOriginalName()]),
+                ]);
+            }
+        }
+
         $paths = [];
         $names = [];
 
-        foreach ($this->attachments as $file) {
-            if (! $file instanceof TemporaryUploadedFile) {
-                continue;
-            }
-
+        foreach ($files as $file) {
             $path = (string) $file->store('email-attachments', EmailAttachment::DISK);
             $paths[] = $path;
             $names[$path] = $file->getClientOriginalName();
@@ -2126,11 +2101,14 @@ final class EmailComposer extends Component implements HasActions, HasSchemas
 
         $user = $this->authUser();
 
-        $original = Email::query()
-            ->with(['body', 'participants', 'from', 'shares'])
-            ->where('workspace_id', $user->current_workspace_id)
-            ->where('rfc_message_id', $draft->in_reply_to)
-            ->withGlobalScope('visible', new VisibleEmailScope($user))
+        $original = resolve(PreferredEmailCopyService::class)
+            ->restrictToVisiblePreferredCopies(
+                Email::query()
+                    ->with(['body', 'participants', 'from', 'shares'])
+                    ->where('workspace_id', $user->current_workspace_id)
+                    ->where('rfc_message_id', $draft->in_reply_to),
+                $user,
+            )
             ->first();
 
         if (! $original instanceof Email || $user->cannot('view', $original)) {

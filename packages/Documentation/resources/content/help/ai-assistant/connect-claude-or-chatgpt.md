@@ -35,7 +35,7 @@ workspace, revoke the connector and connect again.
 
 Search and read companies, people, opportunities, tasks, and notes; create,
 update, and delete them; attach tasks and notes to records; and read your
-workspace's custom fields so its answers use your real schema.
+workspace's custom attributes so its answers use your real schema.
 
 One thing to know: changes made through a connector are applied directly.
 The review card you get in Relaticle's own built-in chat doesn't exist here,
@@ -49,8 +49,8 @@ Rela, the built-in assistant.
 Open **Settings → Access Tokens** from your avatar menu. The
 **AI Connectors** section lists every assistant connected to your
 workspaces, which workspace each is bound to, and how many active tokens it
-holds. **Revoke** cuts an assistant's access immediately, and you can always
-connect it again later.
+holds. **Revoke** cuts an assistant's access immediately and stops any email
+it queued that has not gone out. You can always connect it again later.
 
 ![The AI Connectors list showing Claude and ChatGPT bound to a workspace, with active token counts and a revoke button per row](/help-assets/ai-assistant/connect-claude-or-chatgpt-1.png)
 

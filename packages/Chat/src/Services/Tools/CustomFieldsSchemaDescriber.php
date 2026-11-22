@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Relaticle\Chat\Services\Tools;
 
+use App\Enums\CustomFields\TaskField;
 use App\Enums\CustomFieldType;
 use App\Models\CustomField;
 use App\Models\Workspace;
@@ -28,13 +29,13 @@ final readonly class CustomFieldsSchemaDescriber
             ->sortBy([['active', 'desc'], ['code', 'asc']]);
 
         if ($fields->isEmpty()) {
-            return 'No custom fields are defined for this entity type.';
+            return 'No custom attributes (custom fields) are defined for this entity type.';
         }
 
         [$activeFields, $inactiveFields] = $fields->partition(fn (CustomField $field): bool => $field->active);
 
         $lines = [
-            'Available custom fields for this entity. Keys MUST be one of these codes. Values MUST match the documented format.',
+            'Available custom attributes (custom fields) for this entity. Keys MUST be one of these codes. Values MUST match the documented format.',
             '',
         ];
 
@@ -87,6 +88,10 @@ final readonly class CustomFieldsSchemaDescriber
         }
 
         $parts[] = $type->inputFormat();
+
+        if ($field->holdsChecklists()) {
+            $parts[] = TaskField::CHECKLIST_INPUT_FORMAT;
+        }
 
         $example = $type->example();
 

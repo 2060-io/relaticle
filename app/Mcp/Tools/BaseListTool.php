@@ -10,14 +10,17 @@ use App\Mcp\Schema\CustomFieldSchema;
 use App\Mcp\Tools\Concerns\BoundsToManyIncludes;
 use App\Mcp\Tools\Concerns\ChecksTokenAbility;
 use App\Mcp\Tools\Concerns\HasReadOnlyToolAnnotations;
+use App\Mcp\Tools\Concerns\LinksRecords;
 use App\Mcp\Tools\Concerns\SerializesRelatedModels;
 use App\Models\User;
 use App\Queries\CustomFieldFilterSchema;
 use App\Queries\EntityFilters;
 use App\Queries\FilterErrors;
 use App\Queries\FilterTree;
+use App\Queries\ViewerZone;
 use Closure;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -34,6 +37,7 @@ abstract class BaseListTool extends Tool
     use BoundsToManyIncludes;
     use ChecksTokenAbility;
     use HasReadOnlyToolAnnotations;
+    use LinksRecords;
     use SerializesRelatedModels;
 
     private const int MAX_PER_PAGE = 25;
@@ -51,7 +55,7 @@ abstract class BaseListTool extends Tool
         return [
             'filter' => $schema->object()->description(EntityFilters::grammar($this->entity()).' '.CustomFieldSchema::filterGuide(resolve(GetCrmSchemaTool::class)->name()).' Example: '.CustomFieldFilterSchema::json(EntityFilters::example($this->entity())).'.'),
             'sort' => $schema->object()->description('Sort by field. Properties: field (string), direction (asc|desc).'),
-            'include' => $schema->array()->description('Singular relationships or relationship counts to expand. Use a show tool for to-many records.'),
+            'include' => $schema->array()->items($schema->string())->description('Singular relationships or relationship counts to expand. Use a show tool for to-many records.'),
             'per_page' => $schema->integer()->description('Results per page (default 15, max 25).')->default(15),
             'page' => $schema->integer()->description('Page number (max '.number_format(ListQuery::MAX_PAGE).').')->default(1),
         ];
@@ -102,7 +106,7 @@ abstract class BaseListTool extends Tool
         FilterTree::rejectUnknownArguments($request->all(), self::ARGUMENTS);
 
         try {
-            $results = resolve($this->entity()->query())->paginate($user, $this->listQuery($request, $validated));
+            $results = resolve($this->entity()->query())->paginate($user, $this->listQuery($request, $validated, $user));
         } catch (ValidationException $exception) {
             return Response::error(FilterErrors::located($exception));
         } catch (InvalidQuery $e) {
@@ -133,6 +137,8 @@ abstract class BaseListTool extends Tool
                 continue;
             }
 
+            $this->linkRecord($items[$index], $model, $user);
+
             foreach ($model->getRelations() as $relation => $relatedData) {
                 if ($relation === 'customFieldValues') {
                     continue;
@@ -144,19 +150,26 @@ abstract class BaseListTool extends Tool
             }
         }
 
-        $response = ['items' => $items];
+        return Response::structured(['items' => $items, ...$this->pageOf($results)]);
+    }
 
-        if ($results instanceof LengthAwarePaginator) {
-            $response = array_merge($response, [
-                'page' => $results->currentPage(),
-                'per_page' => $results->perPage(),
-                'total' => $results->total(),
-                'has_more' => $results->hasMorePages(),
-                'next_page' => $results->hasMorePages() ? $results->currentPage() + 1 : null,
-            ]);
+    /**
+     * @param  CursorPaginator<int, Model>|LengthAwarePaginator<int, Model>  $results
+     * @return array{page?: int, per_page?: int, total?: int, has_more?: bool, next_page?: int|null}
+     */
+    private function pageOf(CursorPaginator|LengthAwarePaginator $results): array
+    {
+        if (! $results instanceof LengthAwarePaginator) {
+            return [];
         }
 
-        return Response::structured($response);
+        return [
+            'page' => $results->currentPage(),
+            'per_page' => $results->perPage(),
+            'total' => $results->total(),
+            'has_more' => $results->hasMorePages(),
+            'next_page' => $results->hasMorePages() ? $results->currentPage() + 1 : null,
+        ];
     }
 
     private function objectRule(): Closure
@@ -171,7 +184,7 @@ abstract class BaseListTool extends Tool
     }
 
     /** @param  array<string, mixed>  $validated */
-    private function listQuery(Request $request, array $validated): ListQuery
+    private function listQuery(Request $request, array $validated, User $user): ListQuery
     {
         return new ListQuery(
             filter: FilterTree::trimmed($request->get('filter')),
@@ -179,6 +192,7 @@ abstract class BaseListTool extends Tool
             include: $validated['include'] ?? null,
             perPage: (int) ($validated['per_page'] ?? 15),
             page: (int) ($validated['page'] ?? 1),
+            viewerZone: ViewerZone::lenient($user->effectiveTimezone()),
         );
     }
 

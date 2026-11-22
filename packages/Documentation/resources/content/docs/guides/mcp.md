@@ -1,8 +1,8 @@
 ---
 title: MCP Server
-description: Read the reference for Relaticle's MCP server, with OAuth and personal access token setup, custom field access and direct writes.
+description: Read the reference for Relaticle's MCP server, with OAuth and personal access token setup, custom attribute access and direct writes.
 order: 2
-updated: "2026-10-07"
+updated: "2026-11-09"
 ---
 
 MCP (Model Context Protocol) lets AI assistants like Claude work directly with your Relaticle CRM data. Instead of copy-pasting between tools, your AI assistant can list companies, create tasks, update people, and more -- all from a natural conversation.
@@ -19,16 +19,16 @@ With the Relaticle MCP server, your AI assistant can:
 - **Update existing records** -- rename a company, reassign a task
 - **Delete records** you no longer need
 - **Attach or detach** tasks and notes to companies, people, and opportunities
-- **Read entity schemas** to understand your custom fields
+- **Read entity schemas** to understand your custom attributes
 - **Get a CRM overview** with record counts and recent activity
 
-Writes made over MCP apply immediately. The approval card belongs to the assistant built into Relaticle, and an MCP client relies on its own confirmation prompts. Email tools exist for a connection that was given email access. Meetings are not exposed. A sent email is the one write that does not apply immediately: it is held first and its user can cancel it.
+Writes made over MCP apply immediately. The approval card belongs to the assistant built into Relaticle, and an MCP client relies on its own confirmation prompts. Email tools exist for a connection that was given email access. Meetings are not exposed. A sent email is the one write that does not apply immediately: it is held first and its user can cancel it, in Relaticle or through the agent that sent it.
 
 ---
 
 ## Connect to Relaticle
 
-Clients with OAuth support need only the MCP endpoint. ChatGPT and Claude open Relaticle's consent screen and let you choose one workspace.
+Clients with OAuth support need only the MCP endpoint. ChatGPT, Claude and Claude Code open Relaticle's consent screen and let you choose one workspace.
 
 Clients without OAuth support need a personal access token:
 
@@ -53,19 +53,19 @@ The MCP endpoint advertises OAuth metadata at:
 - `https://mcp.relaticle.com/.well-known/oauth-authorization-server`
 - `https://mcp.relaticle.com/.well-known/oauth-protected-resource`
 
-Clients that support Dynamic Client Registration (RFC 7591), including Claude.ai, Claude Desktop, Claude Code, and ChatGPT custom connectors, register themselves automatically and walk you through a one-click consent flow. PKCE is required (`S256`).
+Clients that support Dynamic Client Registration (RFC 7591), including Claude.ai, Claude Desktop, Claude Code, and ChatGPT custom connectors, register themselves automatically and walk you through a one-click consent flow. PKCE is required (`S256`). A client may send a `resource` parameter (RFC 8707). It must name this MCP server, or the request is refused with `invalid_target`.
 
 At consent you pick **one workspace** for the connector. That choice is permanent for that connector: to point it at a different workspace, revoke it and connect again. Paused workspaces cannot be selected. Subscribe first, or the connector would have no data to read.
 
 A client that must reach one particular workspace can name it in the authorization request: `workspace=<id>`, the workspace `id` that `who-ami-tool` returns. The consent then offers that workspace and no other. If you are not a member of it, or it is paused, the screen says so and you can only cancel, and an approval posted for any other workspace is refused. The parameter is kept when you have to sign in first. Without it you choose among all your workspaces, as above. The token response names the workspace the token is bound to (`workspace.id`), so the client can check it got the one it asked for.
 
-The consent screen lists what the connector will be able to do, and the list follows your role in the workspace you pick. Where email is on, every role gets reading and drafting, and the Owner, Admin and Member roles get sending. The client cannot ask for more or less. Relaticle shows this screen every time a connector authorizes, so the connector always holds what its user saw.
+The consent screen lists what the connector will be able to do, and the list follows your role in the workspace you pick. Where email is on, every role gets reading and drafting, and the Owner, Admin and Member roles get sending. The client cannot ask for more or less. Relaticle shows this screen every time a connector authorizes, so the connector always holds what its user saw. Every tool call also checks your role at that moment, so a role change applies to connectors you added earlier.
 
 Access tokens last 30 days and refresh tokens 90 days; supported clients refresh silently in the background.
 
 ### Revoking a connector
 
-**Settings → Access Tokens → AI Connectors** lists every assistant you have connected, the workspace each is bound to, and a **Revoke** button. Revoking invalidates the connector's access and refresh tokens immediately.
+**Settings → Access Tokens → AI Connectors** lists every assistant you have connected, the workspace each is bound to, and a **Revoke** button. Revoking invalidates the connector's access and refresh tokens immediately. Emails it queued that have not gone out are not sent. They move to the outbox under **Failed**, where you can send them yourself with **Retry**.
 
 ### Personal access tokens (recommended for developer tools)
 
@@ -77,7 +77,7 @@ A token gets email access through its permissions: **Read email**, **Draft email
 
 ## Setup by Client
 
-The MCP server endpoint is `https://mcp.relaticle.com`. ChatGPT and Claude use OAuth. The remaining examples use a personal access token.
+The MCP server endpoint is `https://mcp.relaticle.com`. ChatGPT, Claude and Claude Code use OAuth. The remaining examples use a personal access token.
 
 ### ChatGPT
 
@@ -85,41 +85,38 @@ The MCP server endpoint is `https://mcp.relaticle.com`. ChatGPT and Claude use O
 2. Sign in to Relaticle and choose one workspace.
 3. Start a message with **@Relaticle**.
 
-### Claude
+### Claude and Claude Desktop
+
+Claude on the web and the Claude Desktop app share the same connectors.
 
 1. Open **Customize → Connectors**.
 2. Select the plus button, then **Add custom connector**.
 3. Enter `Relaticle` and `https://mcp.relaticle.com`.
 4. Connect, sign in to Relaticle, and choose one workspace.
 
-### Claude Desktop with a personal access token
+Claude Desktop's `claude_desktop_config.json` is for local servers. Add Relaticle as a connector instead, as Anthropic's guide to [adding a connector by URL](https://claude.com/docs/connectors/custom/add-unlisted) describes.
 
-Add this to your Claude Desktop configuration file (`claude_desktop_config.json`):
+### Claude Code
 
-```json
-{
-  "mcpServers": {
-    "relaticle": {
-      "type": "streamable-http",
-      "url": "https://mcp.relaticle.com",
-      "headers": {
-        "Authorization": "Bearer YOUR_TOKEN"
-      }
-    }
-  }
-}
+Add the server, then sign in:
+
+```bash
+claude mcp add relaticle --transport http https://mcp.relaticle.com
+claude mcp login relaticle
 ```
 
-### Claude Code with a personal access token
+`claude mcp login` opens the consent screen in your browser, where you choose one workspace. You can also run `/mcp` inside a session. Claude Code stores the OAuth tokens itself, so its configuration holds only the server URL.
 
-Add the server from your terminal:
+To use a personal access token instead, reference it through an environment variable:
 
 ```bash
 claude mcp add relaticle \
-  --transport streamable-http \
+  --transport http \
   https://mcp.relaticle.com \
-  --header "Authorization: Bearer YOUR_TOKEN"
+  --header 'Authorization: Bearer ${RELATICLE_TOKEN}'
 ```
+
+A token typed into the header is saved in plain text in `~/.claude.json`. With `--scope project` it goes into `.mcp.json` at the root of your repository, which Claude Code shares through version control.
 
 ### Cursor with a personal access token
 
@@ -161,7 +158,7 @@ Add this to your VS Code settings (`.vscode/mcp.json`):
 
 ## Available Tools
 
-The server provides 44 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, file uploads, reading synced email, saving email drafts, and sending email. A connection without email access sees 39 tools.
+The server provides 50 tools. They cover account context, cross-entity discovery, workspace analysis, full CRUD across five CRM entities, relationship management, file uploads, reading synced email, managing email drafts, and sending and scheduling email. A connection without email access sees 39 tools.
 
 ### Cross-entity discovery
 
@@ -174,17 +171,17 @@ The server provides 44 tools. They cover account context, cross-entity discovery
 
 | Tool | Description |
 |------|-------------|
-| `who-ami-tool` | Get the authenticated user, current workspace, workspace members, and token abilities |
+| `who-ami-tool` | Get the authenticated user with their timezone, current workspace, workspace members, and token abilities |
 
 ### Workspace intelligence
 
 | Tool | Description |
 |------|-------------|
-| `get-crm-schema-tool` | Get the active schema, custom fields, filters, and relationships for one entity type |
+| `get-crm-schema-tool` | Get the active schema, custom attributes, filters, and relationships for one entity type |
 | `get-crm-summary-tool` | Get record counts, pipeline totals by stage, and task due status in your timezone |
 | `aggregate-opportunities-tool` | Group opportunity counts and amounts by stage or company, with optional date bounds |
 | `list-activity-tool` | List recent CRM changes with actors, record links, and field-level differences. A deleted account shows as `Former member` |
-| `list-custom-fields-tool` | List active and inactive custom-field definitions, including choice options |
+| `list-custom-fields-tool` | List active and inactive custom attribute (custom field) definitions, including choice options |
 
 ### Companies
 
@@ -242,32 +239,40 @@ The server provides 44 tools. They cover account context, cross-entity discovery
 
 ### Email
 
-These tools appear only for a connection that was given email access. The reading tools show the synced email its user may see, at the sharing level the mailbox owner chose. The mailbox, draft and send tools work on the user's own mailboxes.
+These tools appear only for a connection that was given email access. The reading tools show the synced email its user may see, at the sharing level the mailbox owner chose, plus the user's own drafts and outbox. The mailbox, draft, send and outbox tools work on the user's own mailboxes and emails.
 
-The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the draft tool for one allowed to draft. The send tool needs the send permission and a role that may send through an assistant. An email goes to at most 20 recipients in total across To, CC and BCC. A user can have up to 10 assistant emails waiting at once.
+The two reading tools need read access. The mailbox tool appears for a connection allowed to draft or send, and the three draft tools for one allowed to draft. The send, cancel, reschedule and retry tools need the send permission and a role that may send through an assistant. A scheduled send never goes out sooner than the hold. An email goes to at most 20 recipients in total across To, CC and BCC. A user can have up to 10 assistant emails waiting at once.
+
+A queued email stays tied to the connection that queued it. It is not sent if that connection is revoked, deleted or expired by its send time. The same happens if its user's role no longer allows sending through an assistant. It then waits in the outbox under **Failed** with the reason.
 
 | Tool | Description |
 |------|-------------|
-| `list-emails-tool` | List synced emails newest first, with optional search, linked record, direction, thread and date filters. Subject and snippet appear only where the sharing level allows. |
-| `get-email-tool` | Get one synced email by ID. The body and attachment names appear only at full access, and a long body is cut. |
+| `list-emails-tool` | List emails newest first, with optional search, linked record, direction, thread, status and date filters. A teammate's email appears once synced or sent, and the user's own drafts and outbox appear too. Subject and snippet appear only where the sharing level allows. |
+| `get-email-tool` | Get one email by ID, with its status and send time. The body and attachment names appear only at full access, and a long body is cut. |
 | `list-email-accounts-tool` | List the mailboxes the user has connected in this workspace, with the ID to use when drafting and whether each can send. |
 | `create-email-draft-tool` | Save a draft in one of the user's mailboxes, as plain text or markdown, with the default signature unless you turn it off. Nothing is sent: the user reviews the draft in Relaticle. |
-| `send-email-tool` | Send an email from one of the user's mailboxes. Each email waits a few minutes before it leaves, and its user can cancel it from notifications or the Outbox. |
+| `update-email-draft-tool` | Rewrite a saved draft with the same arguments as creating one. Attached files stay. |
+| `delete-email-draft-tool` | Delete a saved draft and its attached files. |
+| `send-email-tool` | Send an email from one of the user's mailboxes, now or at a chosen time. Each email waits a few minutes before it leaves, and its user can cancel it from notifications or the Outbox. |
+| `send-email-draft-tool` | Send a saved draft as it stands, including the user's own edits, and remove it from Drafts. It is held like any other send. |
+| `cancel-email-tool` | Cancel a queued email before it leaves. |
+| `reschedule-email-tool` | Change when a queued email leaves. The user gets a new notice they can cancel from. |
+| `retry-email-tool` | Queue a failed email again, held like a new send. It is then tied to the connection that retried it. |
 
 ### Files
 
 | Tool | Description |
 |------|-------------|
-| `upload-file` | Store a file in the workspace from a public https URL, a base64 body with `filename`, or an `upload_id`. Returns `suggested_markdown` to embed the file in a rich-editor field such as a note body, plus `file_id` for the stored file. Allowed types: pdf, doc, docx, xlsx, pptx, jpg, jpeg, png, gif, webp, up to 10 MB. 60 calls per hour per workspace. |
-| `create-upload-url` | Get a five-minute signed URL to `PUT` a file body to, then pass the returned `upload_id` to `upload-file`. |
+| `upload-file` | Store a file in the workspace from a base64 body with `filename`, or an `upload_id`. Returns `suggested_markdown` to embed the file in a rich-editor field such as a note body, plus `file_id` for the stored file. Allowed types: pdf, doc, docx, xlsx, pptx, jpg, jpeg, png, gif, webp, up to 10 MB. 60 calls per hour per workspace. |
+| `create-upload-url` | Get a five-minute signed URL to `PUT` a file body to, then pass the returned `upload_id` to `upload-file` within an hour. A body not stored by then is deleted. 60 calls per hour per workspace. |
 
 Uploads stay pending for 24 hours. Saving a record whose rich-editor body embeds the file claims it; unclaimed files are purged.
 
 Entity list tools take `filter`, `sort`, `include`, `per_page` (default 15, maximum 25) and `page`. `sort` is an object with `field` and `direction` (`asc` or `desc`). `include` is a list of singular relationships or relationship counts. A list tool refuses any other argument. To find records by words across every entity, use the `search` tool.
 
-`sort` takes a native field or a custom field that holds one value. A field that holds a list, such as email, phone, link or tags, cannot be sorted.
+`sort` takes a native field or a custom attribute that holds one value. A field that holds a list, such as email, phone, link or tags, cannot be sorted.
 
-List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs. A write stores a phone in E.164 form, a domain as a bare host, and a date-time as its UTC instant.
+List responses include `page`, `per_page`, `total`, `has_more`, and `next_page`. Create and update tools accept `custom_fields` as key-value pairs. A write stores a phone in E.164 form, a domain as a bare host, and a date-time as its UTC instant. A date with no time written to a date and time attribute is stored as the start of that day in the timezone of the token user. A time with no offset is still read as UTC.
 
 ### Filter records
 
@@ -281,12 +286,12 @@ Every key in a filter is one of these:
 | `$eq`, `$in`, `$contains` and the other operators | A test on the field or relation around it |
 | A native field such as `name` or `created_at` | A condition on one of the record's own columns |
 | A relation such as `company` or `assignees` | A condition on linked records |
-| `custom_fields` | Conditions on your custom fields, keyed by field code |
+| `custom_fields` | Conditions on your custom attributes, keyed by field code |
 | A sub-field such as `domain` | One part of an email or link value |
 
 A key that starts with `$` is a keyword. Every other key is a name. There is no shorthand: `{"stage": "Won"}` is an error, and so is an operator without its `$`.
 
-Native fields and relations sit at the top level. Custom fields sit under `custom_fields`, so a custom field coded `name` never collides with the native `name`.
+Native fields and relations sit at the top level. Custom attributes sit under `custom_fields`, so a custom attribute coded `name` never collides with the native `name`.
 
 #### Native fields and relations
 
@@ -298,7 +303,7 @@ Native fields and relations sit at the top level. Custom fields sit under `custo
 | Tasks | Native fields `title`, `created_at`, `updated_at`, `creation_source`, `assigned_to_me`. Record relations `companies`, `people`, `opportunities`. Member relations `creator`, `assignees`. |
 | Notes | Native fields `title`, `created_at`, `updated_at`, `creation_source`. Record relations `companies`, `people`, `opportunities`. Member relation `creator`. |
 
-`name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators. A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`, and any other format is an error. A date-time with an offset, such as `2026-10-01T13:00:00+05:00`, is read as the same instant in UTC. A date without a time covers that whole UTC day, on these fields and on a custom date and time field. `creation_source` is a single choice with the values `web`, `sample`, `import`, `api`, `mcp`, `chat` and `mailbox`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
+`name` and `title` take the text operators. `created_at` and `updated_at` take the date and time operators. A date operand is `YYYY-MM-DD` or an ISO 8601 date-time such as `2026-10-01T09:30:00Z`, and any other format is an error. A date-time with an offset, such as `2026-10-01T13:00:00+05:00`, is read as the same instant in UTC. A date without a time covers that whole day in the timezone of the token user, which the identity tool returns, on these fields and on a custom date and time field. `creation_source` is a single choice with the values `web`, `sample`, `import`, `api`, `mcp`, `chat`, `mailbox` and `system`. `stale_days` matches opportunities by whole days without activity, as in `{"$gte": 30}`. `assigned_to_me` takes `{"$eq": true}`.
 
 #### Combine conditions
 
@@ -324,14 +329,15 @@ Native fields take the operators of the field type they match. `$is_empty` takes
 | Field type | Operators |
 |---|---|
 | Single choice (select, radio, toggle buttons), `creation_source` | `$eq`, `$in`, `$not_in`, `$is_empty` |
-| Multi choice (multi select, checkbox list), tags, email, phone, link, domain | `$has_any`, `$has_none`, `$is_empty` |
-| Text | `$eq`, `$contains`, `$is_empty` |
+| Multi choice (multi select, checkbox list), tags, record | `$has_any`, `$has_none`, `$is_empty` |
+| Email, phone, link, domain | `$has_any`, `$has_none`, `$contains`, `$starts_with`, `$ends_with`, `$is_empty` |
+| Text | `$eq`, `$contains`, `$starts_with`, `$ends_with`, `$is_empty` |
 | Number, currency, date, date and time | `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$is_empty` |
 | Checkbox, toggle | `$eq`, `$is_empty` |
 
 Email and link fields also take a `domain` sub-field with `$in` and `$not_in`. It matches the domain of each value, so `{"domain": {"$in": ["canva.com"]}}` finds every address at `canva.com`. A domain is a bare host. A path, user or port is an error.
 
-Record, text area, rich text and color fields take no filter. Neither does an encrypted or inactive field.
+Text area, rich text and color fields take no filter. Neither does an encrypted or inactive field.
 
 #### How values match
 
@@ -340,7 +346,10 @@ Record, text area, rich text and color fields take no filter. Neither does an en
 - Domain values match as a bare host or a full URL, with or without `www.`, so `https://www.acme.com/about` finds `acme.com`.
 - Phone values match in any format. A phone operand needs a country code, such as `+1 415 555 0100`. An operand without one returns the error `phone_number needs a country code, for example +1 415 555 0100.`
 - Tags match the exact stored value.
+- A record field takes the IDs of the records it links to.
+- `$contains`, `$starts_with` and `$ends_with` ignore letter case. On a field that holds several values, they match when any value matches. They compare the operand as typed against the value as stored. A phone is stored as `+14155550100`, with an extension as `;ext=12` and no spaces, so `+1415` matches and `+1 415` does not. A link keeps a scheme only when one was typed, so `https://acme` matches `https://acme.com/team` and `acme` does not. A domain is stored as a bare host, without a scheme or `www.`.
 - `$not_in` and `$has_none` also match records where the field is empty.
+- A record field link to a deleted record counts as no link.
 
 #### Limits
 
@@ -360,7 +369,7 @@ Opportunities worth at least 10,000 that sit in Proposal/Price Quote or Negotiat
 }
 ```
 
-Opportunities at companies with the `icp` toggle on. `company` is a relation, so its node holds conditions on the company, including its custom fields.
+Opportunities at companies with the `icp` toggle on. `company` is a relation, so its node holds conditions on the company, including its custom attributes.
 
 ```json
 {"company": {"custom_fields": {"icp": {"$eq": true}}}}
@@ -379,12 +388,12 @@ Stage labels and field codes belong to your workspace. Call `get-crm-schema-tool
 `get-crm-schema-tool` returns `filterable_fields` for one entity type. It holds three parts:
 
 - Each native field and relation by name, with its `type`, `operators` and an `example`. Relations add the related `entity`. `creation_source` adds its `values`. Relations, member relations, `stale_days` and `assigned_to_me` add an `operand` that states what they accept.
-- `types` maps each custom field type present in your workspace to its `operators`, its `matching` rule and any `sub_fields`. A type whose values you type freely also carries an `example`, and a choice type carries it on the field instead.
-- `custom_fields` lists each filterable custom field by code, with its `name` and `type`. A choice field also carries its `options` and an `example` built from them.
+- `types` maps each custom attribute type present in your workspace to its `operators`, its `matching` rule, its `partial_matching` rule where it has one, and any `sub_fields`. A type whose values you type freely also carries an `example`, and a choice type carries it on the field instead.
+- `custom_fields` lists each filterable custom attribute by code, with its `name` and `type`. A choice field also carries its `options` and an `example` built from them.
 
 #### Filter errors
 
-An invalid filter returns an error that names the part to fix. For example, an unknown custom field code returns `"stagee" is not a filterable custom field on opportunity. Available: amount, close_date, stage.` A bare operator returns `Operators start with $. Use $eq.`
+An invalid filter returns an error that names the part to fix. For example, an unknown custom attribute code returns `"stagee" is not a filterable custom attribute (custom field) on opportunity. Available: amount, close_date, stage.` A bare operator returns `Operators start with $. Use $eq.`
 
 The flat names of the earlier filter no longer exist. Inside `filter`, keys such as `search`, `created_after`, `company_id` and `assignee_ids` return an error that names the replacement, for example `company_id was replaced. Use company (or companies) with $in.` The same names sent beside `filter` return that error too.
 
@@ -392,17 +401,17 @@ The flat names of the earlier filter no longer exist. Inside `filter`, keys such
 
 ## Schema Resources
 
-The server exposes five schema resources that describe each entity's fields, including any custom fields your workspace has configured, plus a summary resource with record counts:
+The server exposes five schema resources that describe each entity's fields, including any custom attributes your workspace has configured, plus a summary resource with record counts:
 
 | Resource URI | Description |
 |---|---|
-| `relaticle://schema/company` | Company fields and custom fields |
-| `relaticle://schema/people` | People fields and custom fields |
-| `relaticle://schema/opportunity` | Opportunity fields and custom fields |
-| `relaticle://schema/task` | Task fields and custom fields |
-| `relaticle://schema/note` | Note fields and custom fields |
+| `relaticle://schema/company` | Company fields and custom attributes |
+| `relaticle://schema/people` | People fields and custom attributes |
+| `relaticle://schema/opportunity` | Opportunity fields and custom attributes |
+| `relaticle://schema/task` | Task fields and custom attributes |
+| `relaticle://schema/note` | Note fields and custom attributes |
 
-Resource support varies by MCP client. Use `get-crm-schema-tool` before a custom-field write when your client does not expose resources automatically.
+Resource support varies by MCP client. Use `get-crm-schema-tool` before a custom attribute (custom field) write when your client does not expose resources automatically.
 
 ---
 
@@ -440,9 +449,9 @@ The MCP server scopes all data to the workspace associated with your token. Make
 
 Verify the MCP URL is correct: `https://mcp.relaticle.com`.
 
-### Custom Fields Not Showing
+### Custom Attributes Not Showing
 
-Custom fields are workspace-specific. If you don't see them, confirm they're configured for your workspace in **Settings > Custom Fields**. Then call `get-crm-schema-tool` for the entity type.
+Custom attributes are workspace-specific. If you don't see them, confirm they're configured for your workspace in **Settings > Custom attributes**. Then call `get-crm-schema-tool` for the entity type.
 
 ### Rate Limiting
 

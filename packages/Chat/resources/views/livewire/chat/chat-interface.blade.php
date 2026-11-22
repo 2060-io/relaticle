@@ -27,6 +27,16 @@
     @endif
 </div>
 
+@php
+    $includeColumnLabels = [
+        '_include_companies' => __('Companies'),
+        '_include_people' => __('People'),
+        '_include_opportunities' => __('Opportunities'),
+        '_include_tasks' => __('Tasks'),
+        '_include_notes' => __('Notes'),
+    ];
+@endphp
+
 @script
 <script>
 Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, initialMessages, userId, initialHasMoreMessages, initialModel, initialPrompt, turnInFlight) => ({
@@ -54,11 +64,11 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             'activity' => __('Activity'),
         ]),
         blockColumnLabels: @js([
-            'company' => ['name' => __('Name')],
-            'people' => ['name' => __('Name')],
-            'opportunity' => ['name' => __('Name')],
-            'task' => ['title' => __('Title')],
-            'note' => ['title' => __('Title')],
+            'company' => ['name' => __('Name'), ...$includeColumnLabels],
+            'people' => ['name' => __('Name'), ...$includeColumnLabels],
+            'opportunity' => ['name' => __('Name'), ...$includeColumnLabels],
+            'task' => ['title' => __('Title'), ...$includeColumnLabels],
+            'note' => ['title' => __('Title'), ...$includeColumnLabels],
             'activity' => [
                 'when' => __('When'),
                 'record' => __('Record'),
@@ -81,15 +91,11 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             ['value' => 'other', 'label' => __('Other')],
         ]),
         proposalTexts: @js([
-            'createdVerb' => \Relaticle\Chat\Enums\PendingActionOperation::Create->done(),
-            'updatedVerb' => \Relaticle\Chat\Enums\PendingActionOperation::Update->done(),
-            'deletedVerb' => \Relaticle\Chat\Enums\PendingActionOperation::Delete->done(),
-            'countCreated' => \Relaticle\Chat\Enums\PendingActionOperation::Create->count(),
-            'countUpdated' => \Relaticle\Chat\Enums\PendingActionOperation::Update->count(),
-            'countDeleted' => \Relaticle\Chat\Enums\PendingActionOperation::Delete->count(),
-            'entityVerbs' => \Relaticle\Chat\Enums\ProposalEntity::receipts(),
-            'countSkipped' => __(':count skipped'),
-            'countKept' => __(':count kept'),
+            ...\Relaticle\Chat\Enums\ProposalOutcome::forClient(),
+            'receipts' => \Relaticle\Chat\Enums\ProposalEntity::receipts(),
+            'proposeAgain' => __('Propose again'),
+            'proposeAgainPrompt' => __('Propose again: :summary'),
+            'leftOut' => __('(:fields left out)'),
         ]),
     }),
     ...window.ChatModules.sendModule({
@@ -112,6 +118,9 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             'streamError' => __('The assistant encountered an error. Please try again.'),
             'timeout' => __('The assistant took too long to respond.'),
             'retrying' => __('Provider is busy, retrying (attempt :attempt of :max)…'),
+            'searchingWebFor' => __('Searching the web for ":query"…'),
+            'readingDomain' => __('Reading :domain…'),
+            'newChat' => __('New chat'),
         ]),
         {{-- The shimmer label for each tool the agent can call, keyed by the
              snake_case class basename laravel/ai broadcasts as `tool_name`.
@@ -138,10 +147,19 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             'list_email_accounts' => __('Checking your mailboxes…'),
             'create_email_draft' => __('Preparing an email draft…'),
             'send_email' => __('Preparing an email…'),
-            'list_custom_fields' => __('Reading custom fields…'),
+            'update_email_draft' => __('Preparing a draft update…'),
+            'delete_email_draft' => __('Preparing to delete a draft…'),
+            'send_email_draft' => __('Preparing to send a draft…'),
+            'cancel_email' => __('Preparing to cancel an email…'),
+            'reschedule_email' => __('Preparing to reschedule an email…'),
+            'retry_email' => __('Preparing to send an email again…'),
+            'list_custom_fields' => __('Reading custom attributes…'),
             'search_docs' => __('Searching the documentation…'),
             'guide_to_page' => __('Finding the right page…'),
             'get_credit_balance' => __('Checking your AI credits…'),
+            'request_web_access' => __('Asking to search the web…'),
+            'web_search' => __('Searching the web…'),
+            'web_fetch' => __('Reading a web page…'),
             'create_company' => __('Drafting a company…'),
             'update_company' => __('Preparing company changes…'),
             'delete_company' => __('Preparing company deletion…'),
@@ -159,10 +177,10 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             'delete_note' => __('Preparing note deletion…'),
             'invite_workspace_member' => __('Preparing a workspace invitation…'),
             'remove_sample_data' => __('Preparing sample data removal…'),
-            'create_custom_field' => __('Drafting a custom field…'),
-            'update_custom_field' => __('Preparing custom field changes…'),
-            'set_custom_field_options' => __('Preparing field option changes…'),
-            'delete_custom_field' => __('Preparing custom field deletion…'),
+            'create_custom_field' => __('Drafting a custom attribute…'),
+            'update_custom_field' => __('Preparing custom attribute changes…'),
+            'set_custom_field_options' => __('Preparing attribute option changes…'),
+            'delete_custom_field' => __('Preparing custom attribute deletion…'),
         ]),
     }),
 
@@ -186,6 +204,16 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
     // and only one of them can be on screen. Seeded from the last assistant row
     // on mount, replaced by the `.next_steps` broadcast, emptied on every send.
     nextSteps: [],
+    pendingNextStepId: null,
+    isSetupConversation: @js($isSetupConversation),
+    {{-- Each icon carries its own size: an SVG that arrives as a string collapses to 0x0 in WebKit without one. --}}
+    setupButtonIcons: @js(collect(\Relaticle\Chat\Data\SetupOption::ICONS)->mapWithKeys(fn (string $name): array => [$name => svg($name, 'size-4 shrink-0')->toHtml()])->all()),
+    codeCopy: @js([
+        'copy' => __('Copy code'),
+        'copied' => __('Copied'),
+        'copyIcon' => svg('lucide-copy', 'size-3.5')->toHtml(),
+        'copiedIcon' => svg('lucide-check', 'size-3.5 text-green-400')->toHtml(),
+    ]),
     @include('chat::livewire.chat.partials._model-state', ['persistSelection' => true])
     pageContext: @js($pageContextType && $pageContextId ? ['type' => $pageContextType, 'id' => $pageContextId] : null),
     pageContextLabel: @js($pageContextLabel),
@@ -381,8 +409,7 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
         this.approvalKeyHandler = (e) => {
             if (!((e.metaKey || e.ctrlKey) && e.key === 'Enter')) return;
 
-            const pending = this.visiblePendingActions();
-            if (pending.length !== 1 || this.isStreaming) return;
+            if (this.isStreaming || !this.hasPendingProposal || !this.$root.querySelector('[data-proposal-shortcut]:not([disabled])')) return;
             if (this.input.trim().length > 0) return; // composer draft wins
 
             e.preventDefault();
@@ -451,7 +478,7 @@ Alpine.data('chatInterface', (initialConversationId, sendUrl, initialMessage, in
             window.Livewire.on('proposal:lapsed', (payload) => {
                 if ((payload?.context ?? 'conversation') !== this.context) return;
                 const action = this.findPendingAction(payload?.pendingActionId);
-                if (action?.status === 'pending') action.status = 'expired';
+                if (action?.status === 'pending') this.settleLocally(action, 'expired');
             }),
             // The dock queued a resumed turn (TurnContinuationService). Nothing
             // streams for a second or two while the job picks it up, and without

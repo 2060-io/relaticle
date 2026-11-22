@@ -4,25 +4,63 @@ declare(strict_types=1);
 
 use App\Filament\Pages\Dashboard;
 use App\Models\User;
-use App\Support\OutlinedIcons;
+use App\Support\PanelIcons;
 use Filament\Facades\Filament;
+use Filament\Support\Facades\FilamentIcon;
+use Relaticle\Flowforge\View\FlowforgeIconAlias;
+use Relaticle\SystemAdmin\Filament\Pages\Dashboard as SystemAdminDashboard;
+use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use Symfony\Component\DomCrawler\Crawler;
 
-mutates(OutlinedIcons::class);
+mutates(PanelIcons::class);
 
-it('draws the theme switcher buttons as outline icons', function (): void {
+function shapesOf(Crawler $svg): string
+{
+    return implode(' ', $svg->children()->each(
+        fn (Crawler $shape): string => $shape->nodeName().':'.collect(['d', 'cx', 'cy', 'r', 'x', 'y', 'width', 'height', 'rx', 'x1', 'y1', 'x2', 'y2', 'points'])
+            ->map(fn (string $attribute): string => (string) $shape->attr($attribute))
+            ->implode(','),
+    ));
+}
+
+/** @return list<string> */
+function themeSwitcherShapes(string $html): array
+{
+    return (new Crawler($html))->filter('.fi-theme-switcher-btn svg')->each(shapesOf(...));
+}
+
+/** @return list<string> */
+function lucideShapes(string ...$icons): array
+{
+    return array_map(fn (string $icon): string => shapesOf((new Crawler(svg($icon)->toHtml()))->filter('svg')), $icons);
+}
+
+it('draws the app panel theme switcher with Lucide icons', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $this->actingAs($user);
     Filament::setTenant($user->personalWorkspace());
 
     $response = $this->get(Dashboard::getUrl(tenant: $user->personalWorkspace()))->assertOk();
 
-    $icons = (new Crawler((string) $response->getContent()))->filter('.fi-theme-switcher-btn svg');
+    expect(themeSwitcherShapes((string) $response->getContent()))
+        ->toBe(lucideShapes('lucide-sun', 'lucide-moon', 'lucide-monitor'));
+});
 
-    expect($icons->count())->toBe(3);
+it('draws the system admin panel theme switcher with Lucide icons', function (): void {
+    $this->actingAs(SystemAdministrator::factory()->create(), 'sysadmin');
 
-    $icons->each(function (Crawler $icon): void {
-        expect($icon->attr('stroke'))->toBe('currentColor')
-            ->and($icon->attr('viewBox'))->toBe('0 0 24 24');
-    });
+    $response = $this->get(SystemAdminDashboard::getUrl(panel: 'sysadmin'))->assertOk();
+
+    expect(themeSwitcherShapes((string) $response->getContent()))
+        ->toBe(lucideShapes('lucide-sun', 'lucide-moon', 'lucide-monitor'));
+});
+
+it('maps every Flowforge icon alias to Lucide', function (): void {
+    $aliases = (new ReflectionClass(FlowforgeIconAlias::class))->getConstants();
+
+    expect($aliases)->not->toBeEmpty();
+
+    foreach ($aliases as $alias) {
+        expect(FilamentIcon::resolve($alias))->toStartWith('lucide-');
+    }
 });

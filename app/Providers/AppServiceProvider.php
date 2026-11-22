@@ -5,31 +5,24 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Console\Commands\MakeFilamentUserCommand;
+use App\Contracts\Billing;
+use App\Contracts\Entitlements;
 use App\Enums\CrmEntity;
 use App\Enums\EmailGrant;
 use App\Enums\Plan;
-use App\Events\InactiveRecipientsRejected;
-use App\Events\WorkspaceCreated;
 use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
 use App\Filament\CustomFields\DomainFieldType;
 use App\Filament\CustomFields\RichEditorFieldType;
-use App\Http\Controllers\Mcp\RegisterClientController;
+use App\Filament\Tables\ResizableColumns;
+use App\Http\Controllers\Mcp\OAuthRegisterController;
+use App\Http\Middleware\EnforceAbsoluteSessionLifetime;
+use App\Http\Middleware\PreventRequestForgery;
 use App\Http\Middleware\ReadAcrossWorkspaces;
+use App\Http\Middleware\SetUserLocale;
 use App\Http\Responses\LoginResponse;
 use App\Jobs\CompleteExport;
-use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
-use App\Listeners\CreateSetupConversationListener;
-use App\Listeners\Email\DropBouncedRecipientsListener;
-use App\Listeners\Email\NewSubscriberListener;
-use App\Listeners\Email\ParkInactiveRecipientsListener;
-use App\Listeners\Email\RecordLoginTimestampListener;
-use App\Listeners\Email\WorkspaceCreatedTagListener;
-use App\Listeners\Email\WorkspaceMemberAddedListener;
-use App\Listeners\Mcp\CopyWorkspaceIdToAccessToken;
-use App\Listeners\SeedWorkspaceCreditBalanceListener;
 use App\Livewire\FilamentNotifications;
-use App\Models\ActivityLog\Activity as ActivityModel;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
 use App\Models\CustomFieldSection;
@@ -42,22 +35,22 @@ use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Notifications\Channels\InboxChannel;
 use App\Onboarding\ActivationSteps;
-use App\Services\Billing\HostedWorkspaceAccess;
-use App\Services\DiscordService;
-use App\Services\DockerHubService;
-use App\Services\GitHubService;
+use App\Onboarding\ContinueWithSetupChat;
+use App\Services\NoBilling;
+use App\Services\SelfHostedEntitlements;
 use App\Services\WorkspaceActivationFacts;
 use App\Support\ActivityLog\CurrentImport;
 use App\Support\ActivityLog\MergedActivityRenderer;
 use App\Support\ActivityLog\RequestActivityBatch;
+use App\Support\ActivityLog\StampsActivity;
 use App\Support\BrandColors;
-use App\Support\CurrentSource;
 use App\Support\CurrentWorkspace;
 use App\Support\CustomFields\CustomFieldInput;
 use App\Support\CustomFields\CustomFieldSchemaCache;
 use App\Support\CustomFields\RecordNameResolver;
 use App\Support\CustomFields\RestoreConflictMessage;
 use App\Support\CustomFields\WorkspaceCustomFields;
+use App\Support\CustomFieldSettingsSchema;
 use App\Support\Http\RequestAbility;
 use App\Support\Impersonation\ImpersonationSessionHandler;
 use App\Support\Impersonation\Impersonator;
@@ -66,29 +59,31 @@ use App\Support\Markdown\TableAwareLeagueDriver;
 use App\Support\Mcp\RequestedWorkspace;
 use App\Support\Media\MediaLookup;
 use App\Support\Migrations\TenantMigration;
+use App\Support\PanelIcons;
 use App\Support\Passport\ClientRepository;
 use App\Support\Passport\WorkspaceBearerTokenResponse;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Actions\Exports\ExportColumn;
 use Filament\Actions\Exports\Jobs\ExportCompletion;
-use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Auth\Notifications\NoticeOfEmailChangeRequest;
 use Filament\Auth\Notifications\ResetPassword;
 use Filament\Auth\Notifications\VerifyEmail;
 use Filament\Auth\Notifications\VerifyEmailChange;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Toggle;
 use Filament\Livewire\Notifications;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentColor;
+use Filament\Support\Facades\FilamentIcon;
 use Filament\Support\Facades\FilamentTimezone;
-use Illuminate\Auth\Events\Login;
-use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Cache\RateLimiting\Unlimited;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
@@ -96,9 +91,9 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery as BasePreventRequestForgery;
 use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
-use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Notifications\Channels\DatabaseChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades;
@@ -110,16 +105,13 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\View\View;
 use Knuckles\Scribe\Scribe;
 use Laravel\Cashier\Cashier;
-use Laravel\Cashier\Events\WebhookHandled;
-use Laravel\Jetstream\Events\TeamMemberAdded;
-use Laravel\Mcp\Server\Http\Controllers\OAuthRegisterController;
+use Laravel\Mcp\Server\Http\Controllers\OAuthRegisterController as BaseOAuthRegisterController;
 use Laravel\Passport\AccessToken as PassportAccessToken;
 use Laravel\Passport\ClientRepository as BaseClientRepository;
-use Laravel\Passport\Events\AccessTokenCreated;
 use Laravel\Passport\Passport;
 use Laravel\Sanctum\Sanctum;
 use League\CommonMark\Extension\Table\TableExtension;
@@ -128,6 +120,7 @@ use Relaticle\ActivityLog\Facades\Timeline;
 use Relaticle\Chat\Support\ChatTelemetry;
 use Relaticle\CustomFields\CustomFields;
 use Relaticle\CustomFields\Facades\CustomFieldsType;
+use Relaticle\ImportWizard\Livewire\ImportWizard;
 use Relaticle\ImportWizard\Models\Import;
 use Relaticle\Ink\Filament\Resources\PostResource;
 use Relaticle\Ink\Ink;
@@ -136,7 +129,6 @@ use Relaticle\Ink\Models\Post;
 use Relaticle\SystemAdmin\Models\SystemAdministrator;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\Microsoft\MicrosoftExtendSocialite;
-use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\PendingActivityLog;
 use Spatie\LaravelMarkdown\MarkdownRenderer;
 use Spatie\MailcoachMailer\Exceptions\InvalidMailerConfig;
@@ -153,24 +145,14 @@ final class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         Date::use(CarbonImmutable::class);
-
-        $this->app->bind(\Filament\Auth\Http\Responses\Contracts\LoginResponse::class, LoginResponse::class);
-        $this->app->bind(\Filament\Actions\Exports\Models\Export::class, Export::class);
+        $this->registerVendorOverrides();
         $this->registerNotificationBindings();
-
-        // Ink registers its public routes from packageBooted(), which runs after every
-        // provider's register(). Read the config key App\Features\Blog resolves from
-        // rather than the Pennant facade: Pennant needs the `hash` service, which is not
-        // bound this early. Same source of truth, so the flag stays the single switch.
-        config(['ink.features.public_routes' => (bool) config('relaticle.features.blog', false)]);
+        $this->registerSelfHostedDefaults();
 
         Cashier::useCustomerModel(Workspace::class);
         Cashier::keepPastDueSubscriptionsActive();
 
-        // Cashier attaches signature verification only when the webhook secret
-        // happens to be set, and also exposes an unauthenticated payment route
-        // this app never links to. Register the webhook ourselves instead so
-        // verification is unconditional. See routes/web.php.
+        // Cashier's own routes verify signatures only when a secret is set; the billing package registers a verified webhook.
         Cashier::ignoreRoutes();
 
         // One batch_uuid per request/job, lazily generated and forgotten between
@@ -228,6 +210,14 @@ final class AppServiceProvider extends ServiceProvider
             ));
     }
 
+    private function registerVendorOverrides(): void
+    {
+        $this->app->bind(\Filament\Auth\Http\Responses\Contracts\LoginResponse::class, LoginResponse::class);
+        $this->app->bind(\Filament\Actions\Exports\Models\Export::class, Export::class);
+        $this->app->bind(BasePreventRequestForgery::class, PreventRequestForgery::class);
+        $this->app->bind(BaseOAuthRegisterController::class, OAuthRegisterController::class);
+    }
+
     private function registerNotificationBindings(): void
     {
         $this->app->bind(VerifyEmail::class, \App\Notifications\Auth\VerifyEmail::class);
@@ -236,6 +226,12 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->bind(NoticeOfEmailChangeRequest::class, \App\Notifications\Auth\NoticeOfEmailChangeRequest::class);
         $this->app->bind(DatabaseChannel::class, InboxChannel::class);
         $this->app->bind(ExportCompletion::class, CompleteExport::class);
+    }
+
+    private function registerSelfHostedDefaults(): void
+    {
+        $this->app->bind(Entitlements::class, SelfHostedEntitlements::class);
+        $this->app->bind(Billing::class, NoBilling::class);
     }
 
     private function registerPassport(): void
@@ -247,10 +243,6 @@ final class AppServiceProvider extends ServiceProvider
         // A device-approved token would skip ApproveAuthorizationController, which derives
         // the email scopes from the user's role. Passport reads this when it boots.
         Passport::$deviceCodeGrantEnabled = false;
-
-        // Registers clients as laravel/mcp does, and logs the MCP_REDIRECT_DOMAINS entries
-        // it ignored when a client registers.
-        $this->app->bind(OAuthRegisterController::class, RegisterClientController::class);
     }
 
     private function registerParkingMailTransport(): void
@@ -288,23 +280,13 @@ final class AppServiceProvider extends ServiceProvider
         // scheduled-deletion interstitials, which would otherwise render
         // Filament's default amber instead of the brand color.
         FilamentColor::register(['primary' => BrandColors::primary()]);
+        FilamentIcon::register(PanelIcons::aliases());
 
-        Event::listen(Login::class, RecordLoginTimestampListener::class);
-        Event::listen(Verified::class, NewSubscriberListener::class);
-        Event::listen(MessageSending::class, DropBouncedRecipientsListener::class);
-        Event::listen(InactiveRecipientsRejected::class, ParkInactiveRecipientsListener::class);
-        Event::listen(TeamMemberAdded::class, WorkspaceMemberAddedListener::class);
-        Event::listen(WorkspaceCreated::class, WorkspaceCreatedTagListener::class);
-        Event::listen(WorkspaceCreated::class, SeedWorkspaceCreditBalanceListener::class);
-        Event::listen(WorkspaceCreated::class, CreateSetupConversationListener::class);
         Event::listen(SocialiteWasCalled::class, MicrosoftExtendSocialite::class);
-
-        Event::listen(WebhookHandled::class, SyncPlanOnStripeSubscriptionChange::class);
 
         Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
 
         Passport::useAuthCodeModel(McpAuthCode::class);
-        Event::listen(AccessTokenCreated::class, CopyWorkspaceIdToAccessToken::class);
         Passport::useAuthorizationServerResponseType(new WorkspaceBearerTokenResponse);
 
         $this->configureTokenScopes();
@@ -320,7 +302,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->configureSessions();
         $this->configureModels();
         $this->configureFilament();
-        $this->configureCommunityCounts();
+        $this->configureFileUploads();
         $this->configureLivewire();
         $this->configureMacros();
         $this->configureRateLimiting();
@@ -353,9 +335,9 @@ final class AppServiceProvider extends ServiceProvider
                     ->values();
             }
 
-            $access = resolve(HostedWorkspaceAccess::class);
+            $access = resolve(Entitlements::class);
 
-            // Re-read the workspaces with their subscriptions eager-loaded: isPaused() reaches
+            // Re-read the workspaces with their subscriptions eager-loaded: allowsAccess() reaches
             // for $workspace->subscription(), and allWorkspaces() hydrates more than one row, which
             // is exactly when strict lazy loading throws.
             /** @var list<string> $pausedWorkspaceIds */
@@ -363,7 +345,7 @@ final class AppServiceProvider extends ServiceProvider
                 ->whereIn('id', $workspaces->pluck('id')->all())
                 ->with('subscriptions')
                 ->get()
-                ->filter(fn (Workspace $workspace): bool => $access->isPaused($workspace))
+                ->filter(fn (Workspace $workspace): bool => ! $access->allowsAccess($workspace))
                 ->map(fn (Workspace $workspace): string => (string) $workspace->getKey())
                 ->values()
                 ->all();
@@ -448,35 +430,7 @@ final class AppServiceProvider extends ServiceProvider
     private function configureActivityLog(): void
     {
         // The facade resolves authentication before hostname-specific sessions are configured.
-        PendingActivityLog::beforeLogging(function (ActivityContract $activity): void {
-            if (! $activity instanceof ActivityModel) {
-                return;
-            }
-
-            if (blank($activity->getAttribute('batch_uuid'))) {
-                $activity->setAttribute('batch_uuid', $this->app->make(RequestActivityBatch::class)->id());
-            }
-
-            $import = $this->app->make(CurrentImport::class);
-
-            if ($import->id() !== null && $activity->getAttribute('subject_type') !== Relation::getMorphAlias(Import::class)) {
-                $activity->properties = ($activity->properties ?? new Collection)
-                    ->put('import_id', $import->id())
-                    ->put('import_file', $import->fileName());
-            }
-
-            $activity->properties = ($activity->properties ?? new Collection)
-                ->put(ActivityModel::SOURCE_PROPERTY, CurrentSource::get()->value);
-
-            // The causer stays the impersonated user because the record is theirs.
-            $administratorId = $this->app->make(Impersonator::class)->administratorId(request())
-                ?? Context::getHidden('impersonated_by');
-
-            if (is_string($administratorId)) {
-                $activity->properties = ($activity->properties ?? new Collection)
-                    ->put('impersonated_by', $administratorId);
-            }
-        });
+        PendingActivityLog::beforeLogging(StampsActivity::apply(...));
 
         Context::dehydrating(function (ContextRepository $context): void {
             $administratorId = $this->app->make(Impersonator::class)->administratorId(request());
@@ -590,7 +544,9 @@ final class AppServiceProvider extends ServiceProvider
         Livewire::component(Notifications::class, FilamentNotifications::class);
 
         // Livewire matches persistent middleware by class, so the panel's alias alone skips update requests.
-        Livewire::addPersistentMiddleware(ReadAcrossWorkspaces::class);
+        Livewire::addPersistentMiddleware([ReadAcrossWorkspaces::class, EnforceAbsoluteSessionLifetime::class, SetUserLocale::class]);
+
+        ImportWizard::continueUrlUsing((new ContinueWithSetupChat)(...));
     }
 
     private function rateLimitTokenId(?object $token): ?string
@@ -603,29 +559,45 @@ final class AppServiceProvider extends ServiceProvider
         };
     }
 
+    private function planThroughput(?Authenticatable $user): int
+    {
+        $plan = $user instanceof User ? $user->currentWorkspace?->plan : null;
+
+        return ($plan ?? Plan::default())->throughputMultiplier();
+    }
+
+    /** @return list<Limit> */
+    private function apiLimits(Request $request): array
+    {
+        /** @var User|null $user */
+        $user = $request->user();
+        $tokenId = $this->rateLimitTokenId($user?->currentAccessToken());
+        $workspaceId = $user?->currentWorkspace?->getKey();
+        $key = $tokenId ?: $request->ip();
+        $throughput = $this->planThroughput($user);
+
+        $limits = [
+            Limit::perMinute(600 * $throughput)->by('workspace:'.($workspaceId ?? $request->ip())),
+        ];
+
+        if (RequestAbility::isRead($request)) {
+            $limits[] = Limit::perMinute(300 * $throughput)->by("token:{$key}:read");
+        } else {
+            $limits[] = Limit::perMinute(60 * $throughput)->by("token:{$key}:write");
+        }
+
+        return $limits;
+    }
+
     private function configureRateLimiting(): void
     {
-        RateLimiter::for('api', function (Request $request): array {
-            /** @var User|null $user */
+        RateLimiter::for('api', fn (Request $request): array => $this->apiLimits($request));
+
+        RateLimiter::for('mcp', function (Request $request): Limit {
             $user = $request->user();
-            $tokenId = $this->rateLimitTokenId($user?->currentAccessToken());
-            $workspaceId = $user?->currentWorkspace?->getKey();
-            $key = $tokenId ?: $request->ip();
 
-            $limits = [
-                Limit::perMinute(600)->by('workspace:'.($workspaceId ?? $request->ip())),
-            ];
-
-            if (RequestAbility::isRead($request)) {
-                $limits[] = Limit::perMinute(300)->by("token:{$key}:read");
-            } else {
-                $limits[] = Limit::perMinute(60)->by("token:{$key}:write");
-            }
-
-            return $limits;
+            return Limit::perMinute(120 * $this->planThroughput($user))->by($user?->getAuthIdentifier() ?: $request->ip());
         });
-
-        RateLimiter::for('mcp', fn (Request $request) => Limit::perMinute(120)->by($request->user()?->id ?: $request->ip()));
 
         RateLimiter::for(
             'mcp-oauth',
@@ -645,33 +617,42 @@ final class AppServiceProvider extends ServiceProvider
             return Limit::perMinutes(1440, 240)->by('transcribe-workspace:'.($workspace?->getKey() ?? $request->ip()));
         });
 
-        RateLimiter::for('chat-send', function (Request $request) {
-            /** @var User|null $user */
-            $user = $request->user();
-            $workspace = $user?->currentWorkspace;
+        RateLimiter::for('chat-send', fn (Request $request): Limit|Unlimited => $this->chatSendLimit($request));
+    }
 
-            if ($workspace === null) {
-                return Limit::perMinute(Plan::default()->rateLimit())->by('chat-anon');
-            }
+    private function chatSendLimit(Request $request): Limit|Unlimited
+    {
+        /** @var User|null $user */
+        $user = $request->user();
+        $workspace = $user?->currentWorkspace;
 
-            return Limit::perMinute($workspace->plan->rateLimit())
-                ->by($workspace->getKey())
-                ->response(function (Request $request, array $headers) use ($workspace) {
-                    ChatTelemetry::rateLimited(
-                        workspaceId: (string) $workspace->getKey(),
-                        plan: $workspace->plan->value,
-                    );
+        if ($workspace === null) {
+            return Limit::perMinute(Plan::default()->rateLimit())->by('chat-anon');
+        }
 
-                    $seconds = (int) ($headers['Retry-After'] ?? 0);
+        $limit = resolve(Entitlements::class)->chatRateLimit($workspace);
 
-                    return response()->json([
-                        'error' => 'rate_limited',
-                        'message' => "You're sending messages quickly. You can send again in {$seconds} seconds.",
-                        'retry_after_seconds' => $seconds,
-                        'plan' => $workspace->plan->value,
-                    ], 429, $headers);
-                });
-        });
+        if ($limit <= 0) {
+            return Limit::none();
+        }
+
+        return Limit::perMinute($limit)
+            ->by($workspace->getKey())
+            ->response(function (Request $request, array $headers) use ($workspace) {
+                ChatTelemetry::rateLimited(
+                    workspaceId: (string) $workspace->getKey(),
+                    plan: $workspace->plan->value,
+                );
+
+                $seconds = (int) ($headers['Retry-After'] ?? 0);
+
+                return response()->json([
+                    'error' => 'rate_limited',
+                    'message' => "You're sending messages quickly. You can send again in {$seconds} seconds.",
+                    'retry_after_seconds' => $seconds,
+                    'plan' => $workspace->plan->value,
+                ], 429, $headers);
+            });
     }
 
     private function configureScribe(): void
@@ -752,6 +733,14 @@ final class AppServiceProvider extends ServiceProvider
         ]);
 
         $this->configureCustomFieldSchemaInvalidation();
+        $this->hideRetiredCustomFieldSettings();
+    }
+
+    private function hideRetiredCustomFieldSettings(): void
+    {
+        $retired = array_map(fn (string $key): string => 'settings.'.$key, CustomFieldSettingsSchema::RETIRED);
+
+        Toggle::configureUsing(fn (Toggle $toggle): Toggle => in_array($toggle->getName(), $retired, true) ? $toggle->hidden() : $toggle);
     }
 
     /**
@@ -794,27 +783,16 @@ final class AppServiceProvider extends ServiceProvider
     /**
      * Configure Filament.
      */
+    private function configureFileUploads(): void
+    {
+        FileUpload::configureUsing(fn (FileUpload $upload): FileUpload => $upload->placeholder(__('Drag & Drop your files or <span class="filepond--label-action">Browse</span>')));
+    }
+
     private function configureFilament(): void
     {
         ExportColumn::configureUsing(fn (ExportColumn $column): ExportColumn => $column->preventFormulaInjection());
 
         Section::configureUsing(fn (Section $section): Section => $section->compact());
-
-        RestoreAction::configureUsing(fn (RestoreAction $action): RestoreAction => $action->before(function (RestoreAction $action, Model $record): void {
-            $conflict = resolve(RestoreConflictMessage::class)->for($record, $action->getRecordTitle(...));
-
-            if ($conflict === null) {
-                return;
-            }
-
-            Notification::make()
-                ->danger()
-                ->title(__('filament/panel.restore_blocked.title', ['record' => $action->getRecordTitle($record)]))
-                ->body(__('filament/panel.restore_blocked.fix', ['conflict' => $conflict]))
-                ->send();
-
-            $action->cancel();
-        }));
 
         RestoreBulkAction::configureUsing(fn (RestoreBulkAction $action): RestoreBulkAction => $action->before(function (RestoreBulkAction $action, Collection $records): void {
             $conflicts = $records
@@ -891,31 +869,30 @@ final class AppServiceProvider extends ServiceProvider
                 ->loadedOnRequest(),
             Js::make('payload-guard', resource_path('js/filament/payload-guard.js')),
             Js::make('linked-records-picker', resource_path('js/filament/linked-records-picker.js')),
+            Js::make('resizable-columns', resource_path('js/filament/resizable-columns.js')),
+            Js::make('board-stage-order', resource_path('js/filament/board-stage-order.js')),
+            Js::make('board-confetti', resource_path('js/filament/board-confetti.js')),
+            Js::make('filter-bar', resource_path('js/filament/filter-bar.js')),
+            Js::make('sheet-backdrop', resource_path('js/filament/sheet-backdrop.js')),
         ]);
 
-        FilamentAsset::registerScriptData(['payloadTooLarge' => __('filament/panel.payload_too_large')]);
+        View::composer(
+            ['filament-panels::components.layout.base', '*::filament-standalone'],
+            fn () => $this->registerTranslatedScriptData(),
+        );
     }
 
-    private function configureCommunityCounts(): void
+    private function registerTranslatedScriptData(): void
     {
-        Facades\View::composer(['components.layout.community-links', 'home.partials.hero', 'press'], function (View $view): void {
-            $gitHubService = resolve(GitHubService::class);
-            $starsCount = $gitHubService->getStarsCount();
-            $formattedStarsCount = $gitHubService->getFormattedStarsCount();
-
-            $view->with([
-                'githubStars' => $starsCount,
-                'formattedGithubStars' => $formattedStarsCount,
-            ]);
-        });
-
-        Facades\View::composer('components.layout.community-links', function (View $view): void {
-            $view->with('formattedDiscordMembers', resolve(DiscordService::class)->getFormattedMemberCount());
-        });
-
-        Facades\View::composer('home.partials.works-with', function (View $view): void {
-            $view->with('formattedDockerPulls', resolve(DockerHubService::class)->getFormattedPullCount());
-        });
+        FilamentAsset::registerScriptData([
+            'payloadTooLarge' => __('filament/panel.payload_too_large'),
+            'boardStageOrderFailed' => __('filament/pages/boards.stage_order_failed'),
+            'resizeColumnLabel' => __('filament/panel.tables.resize_column'),
+            'resizeColumnHint' => __('filament/panel.tables.resize_column_hint'),
+            'defaultColumnWidth' => ResizableColumns::DEFAULT_COLUMN_WIDTH,
+            'checklistItemLabel' => __('filament/rich-editor.checklist.item'),
+            'checklistEmptyItemLabel' => __('filament/rich-editor.checklist.empty_item'),
+        ]);
     }
 
     private function configureMacros(): void

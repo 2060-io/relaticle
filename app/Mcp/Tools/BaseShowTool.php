@@ -7,6 +7,7 @@ namespace App\Mcp\Tools;
 use App\Mcp\Tools\Concerns\BoundsToManyIncludes;
 use App\Mcp\Tools\Concerns\ChecksTokenAbility;
 use App\Mcp\Tools\Concerns\HasReadOnlyToolAnnotations;
+use App\Mcp\Tools\Concerns\LinksRecords;
 use App\Mcp\Tools\Concerns\SerializesRelatedModels;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -24,6 +25,7 @@ abstract class BaseShowTool extends Tool
     use BoundsToManyIncludes;
     use ChecksTokenAbility;
     use HasReadOnlyToolAnnotations;
+    use LinksRecords;
     use SerializesRelatedModels;
 
     private const int RELATED_RECORD_LIMIT = 25;
@@ -47,7 +49,7 @@ abstract class BaseShowTool extends Tool
 
         return [
             'id' => $schema->string()->description("The {$label} ID to retrieve.")->required(),
-            'include' => $schema->array()->description('Related records to expand in response. To-many relationships return at most 25 records with truncation metadata.'),
+            'include' => $schema->array()->items($schema->string())->description('Related records to expand in response. To-many relationships return at most 25 records with truncation metadata.'),
         ];
     }
 
@@ -151,7 +153,7 @@ abstract class BaseShowTool extends Tool
         $resourceClass = $this->resourceClass();
 
         $resource = new $resourceClass($model);
-        $json = $resource->toJson();
+        $json = $this->linkedRecordJson($resource, $model, $user);
 
         if ($relationIncludes === []) {
             /** @var array<string, mixed> $payload */

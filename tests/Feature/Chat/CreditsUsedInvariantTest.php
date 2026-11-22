@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Relaticle\Chat\Enums\AiCreditType;
+use Relaticle\Chat\Enums\RefundCause;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Services\CreditService;
@@ -55,6 +57,8 @@ it('revocation adjustments do not touch credits_used', function (): void {
 });
 
 it('reserve + settle + refund cycles move credits_used in lockstep with the chat ledger', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     AiCreditTransaction::query()->where('workspace_id', $workspace->getKey())->delete();
@@ -72,14 +76,13 @@ it('reserve + settle + refund cycles move credits_used in lockstep with the chat
         user: $user,
         type: AiCreditType::Chat,
         model: 'claude-opus-5',
-        inputTokens: 100,
-        outputTokens: 200,
+        usage: new TextUsage(100, 200),
         resolutionKey: 'turn-success',
     );
 
     // Failed turn: reserve(1) + refund(-1) = net 0 to used.
     $service->reserveCredit($workspace);
-    $service->refundReservation($workspace, resolutionKey: 'turn-failed');
+    $service->refundReservation($workspace, RefundCause::Failed, resolutionKey: 'turn-failed');
 
     $balance = AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->sole();
     expect($balance->credits_used)->toBe(3)

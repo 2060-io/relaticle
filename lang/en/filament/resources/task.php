@@ -9,8 +9,12 @@ return [
     'navigation_label' => 'Tasks',
 
     'fields' => [
+        'title' => [
+            'label' => 'Title',
+        ],
         'assignees' => [
             'label' => 'Assignees',
+            'placeholder' => 'Assign a member',
         ],
         'companies' => [
             'label' => 'Companies',
@@ -25,23 +29,23 @@ return [
             'label' => 'Created By',
         ],
         'created_at' => [
-            'label' => 'Created At',
+            'label' => 'Created at',
         ],
         'updated_at' => [
-            'label' => 'Updated At',
+            'label' => 'Updated at',
         ],
         'deleted_at' => [
-            'label' => 'Deleted At',
+            'label' => 'Deleted at',
         ],
     ],
 
-    'filters' => [
-        'assigned_to_me' => [
-            'label' => 'Assigned to me',
-        ],
-        'creation_source' => [
-            'label' => 'Creation Source',
-        ],
+    'actions' => [
+        'copy_url' => 'Copy task URL',
+        'copy_id' => 'Copy task ID',
+    ],
+
+    'empty_state' => [
+        'description' => 'Tasks you add appear here.',
     ],
 
     'pages' => [
@@ -52,6 +56,10 @@ return [
                 ],
                 'import_export' => [
                     'label' => 'Import / Export',
+                ],
+                'export' => [
+                    'label' => 'Export tasks',
+                    'heading' => 'Export Tasks',
                 ],
             ],
         ],

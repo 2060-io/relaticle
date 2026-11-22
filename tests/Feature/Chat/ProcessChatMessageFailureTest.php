@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 use App\Actions\Onboarding\StartSetupGreeting;
 use App\Actions\Task\CreateTask;
+use App\Contracts\Entitlements;
 use App\Enums\Plan;
+use App\Features\Billing;
 use App\Features\SetupConversation;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\SelfHostedEntitlements;
 use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
+use GuzzleHttp\Psr7\NoSeekStream;
+use GuzzleHttp\Psr7\Response as Psr7Response;
+use GuzzleHttp\Psr7\Utils;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\DB;
@@ -23,27 +31,36 @@ use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use Laravel\Ai\Exceptions\RateLimitedException;
 use Laravel\Ai\Streaming\Events\Error;
+use Laravel\Ai\Tools\Request;
 use Laravel\Pennant\Feature;
+use Livewire\Livewire;
 use Relaticle\Chat\Agents\CrmAssistant;
+use Relaticle\Chat\Enums\AiCreditType;
 use Relaticle\Chat\Enums\MessageOrigin;
 use Relaticle\Chat\Enums\PendingActionStatus;
 use Relaticle\Chat\Events\ChatStreamFailed;
 use Relaticle\Chat\Events\ChatStreamRetrying;
 use Relaticle\Chat\Exceptions\ProviderStreamRejectedException;
 use Relaticle\Chat\Jobs\ProcessChatMessage;
+use Relaticle\Chat\Livewire\Chat\ChatInterface;
+use Relaticle\Chat\Livewire\Chat\ProposalCard;
 use Relaticle\Chat\Models\AiCreditBalance;
 use Relaticle\Chat\Models\AiCreditTransaction;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Queries\ConversationMessagesQuery;
 use Relaticle\Chat\Services\CreditService;
+use Relaticle\Chat\Services\ModelRegistry;
 use Relaticle\Chat\Services\PendingActionService;
 use Relaticle\Chat\Support\StoredSteps;
 use Relaticle\Chat\Support\TurnPresence;
+use Relaticle\Chat\Tools\Task\CreateTaskTool;
+use Relaticle\Cloud\Entitlements\PlanEntitlements;
 use Relaticle\EmailIntegration\Models\ConnectedAccount;
 use Relaticle\EmailIntegration\Models\Email;
 use Tests\Helpers\AnthropicSse;
+use Tests\Helpers\ChatCatalog;
 
-mutates(ProcessChatMessage::class);
+mutates(ProcessChatMessage::class, CreditService::class, SelfHostedEntitlements::class, PlanEntitlements::class);
 
 /** @param array{provider: string|null, model: string|null, id: string|null, source: string} $resolved */
 function makeFailedTurnJob(User $user, string $conversationId, array $resolved = ['provider' => 'ollama', 'model' => 'qwen3:8b', 'id' => 'ollama', 'source' => 'auto']): ProcessChatMessage
@@ -81,6 +98,8 @@ function seedFailedTurnMessage(string $conversationId, User $user, string $role,
 }
 
 it('makes a failed turn coherent: user message, failure note, superseded proposal, one credit', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
 
@@ -271,6 +290,8 @@ it('backfills a newly failed turn even when a prior completed turn exists', func
 });
 
 it('shows timeout-specific copy when the turn times out', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
 
@@ -316,6 +337,142 @@ it('shows timeout-specific copy when the turn times out', function (): void {
         ->and($balance->credits_remaining)->toBe(100)
         ->and($balance->credits_used)->toBe(0);
 });
+
+/** @return array{user: User, conversationId: string} */
+function signedInFailedTurnConversation(): array
+{
+    $user = User::factory()->withPersonalWorkspace()->create();
+    test()->actingAs($user);
+    Filament::setTenant($user->currentWorkspace);
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    return ['user' => $user, 'conversationId' => $conversationId];
+}
+
+function proposeTaskInTurn(string $conversationId, ?string $turnId, string $title): PendingAction
+{
+    resolve(CreateTaskTool::class)
+        ->setConversationId($conversationId)
+        ->setTurnId($turnId)
+        ->handle(new Request(['records' => [['title' => $title]]]));
+
+    return PendingAction::query()
+        ->where('conversation_id', $conversationId)
+        ->where('turn_id', $turnId === '' ? null : $turnId)
+        ->sole();
+}
+
+const TIMEOUT_NOTE_WITH_PROPOSALS = 'This reply hit the 120-second limit before it finished. The steps it had already proposed were kept. Approve or discard them, then ask for the rest.';
+
+it('keeps the proposals a timed-out turn already made and cancels every other one', function (): void {
+    Event::fake([ChatStreamFailed::class]);
+
+    ['user' => $user, 'conversationId' => $conversationId] = signedInFailedTurnConversation();
+    $job = makeFailedTurnJob($user, $conversationId);
+
+    $earlier = proposeTaskInTurn($conversationId, (string) Str::ulid(), 'From an earlier turn');
+    $unlabelled = proposeTaskInTurn($conversationId, null, 'From no turn');
+    $own = proposeTaskInTurn($conversationId, $job->turnId, 'From this turn');
+
+    $job->failed(new TimeoutExceededException('timed out'));
+
+    $note = DB::table('agent_conversation_messages')
+        ->where('conversation_id', $conversationId)
+        ->where('role', 'assistant')
+        ->value('content');
+
+    expect($own->refresh()->status)->toBe(PendingActionStatus::Pending)
+        ->and($earlier->refresh()->status)->toBe(PendingActionStatus::Superseded)
+        ->and($unlabelled->refresh()->status)->toBe(PendingActionStatus::Superseded)
+        ->and($note)->toBe(TIMEOUT_NOTE_WITH_PROPOSALS);
+
+    Event::assertDispatched(ChatStreamFailed::class, fn (ChatStreamFailed $event): bool => $event->broadcastWith()['message'] === TIMEOUT_NOTE_WITH_PROPOSALS);
+});
+
+it('cancels the proposals of a turn that ended any other way', function (Throwable $exception, MessageOrigin $origin, string $turnId): void {
+    ['user' => $user, 'conversationId' => $conversationId] = signedInFailedTurnConversation();
+
+    $own = proposeTaskInTurn($conversationId, $turnId, 'From this turn');
+
+    new ProcessChatMessage(
+        user: $user,
+        workspace: $user->currentWorkspace,
+        message: 'Create a task',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'ollama', 'model' => 'qwen3:8b', 'id' => 'ollama', 'source' => 'auto'],
+        turnId: $turnId,
+        origin: $origin,
+    )->failed($exception);
+
+    expect($own->refresh()->status)->toBe(PendingActionStatus::Superseded);
+})->with([
+    'a provider error' => [new RuntimeException('boom'), MessageOrigin::Typed, '01TURNAAAAAAAAAAAAAAAAAAAA'],
+    'a greeting that timed out' => [new TimeoutExceededException('timed out'), MessageOrigin::Greeting, '01TURNAAAAAAAAAAAAAAAAAAAA'],
+    'a timeout on a turn that carries no turn id' => [new TimeoutExceededException('timed out'), MessageOrigin::Typed, ''],
+]);
+
+it('docks the proposals a timed-out turn kept below its note when the page is opened again', function (): void {
+    ['user' => $user, 'conversationId' => $conversationId] = signedInFailedTurnConversation();
+    $job = makeFailedTurnJob($user, $conversationId);
+    $own = proposeTaskInTurn($conversationId, $job->turnId, 'From this turn');
+
+    $job->failed(new TimeoutExceededException('timed out'));
+
+    $messages = Livewire::test(ChatInterface::class, ['conversationId' => $conversationId])->get('messages');
+
+    expect(array_column($messages, 'role'))->toBe(['user', 'assistant', 'assistant'])
+        ->and($messages[1]['content'])->toContain(TIMEOUT_NOTE_WITH_PROPOSALS)
+        ->and(array_column($messages[2]['pending_actions'], 'pending_action_id'))->toBe([(string) $own->getKey()])
+        ->and($messages[2]['pending_actions'][0]['status'])->toBe('pending');
+});
+
+it('applies a kept proposal when it is approved and hands the turn back to the assistant', function (): void {
+    Queue::fake();
+
+    ['user' => $user, 'conversationId' => $conversationId] = signedInFailedTurnConversation();
+    $job = makeFailedTurnJob($user, $conversationId);
+    $own = proposeTaskInTurn($conversationId, $job->turnId, 'From this turn');
+
+    $job->failed(new TimeoutExceededException('timed out'));
+
+    Livewire::test(ProposalCard::class, ['context' => 'conversation'])
+        ->dispatch('proposal:set-active', id: $own->getKey(), context: 'conversation')
+        ->call('approveAll')
+        ->assertHasNoErrors();
+
+    $resumed = Queue::pushed(
+        ProcessChatMessage::class,
+        fn (ProcessChatMessage $turn): bool => $turn->resumesTurnId === $job->turnId && $turn->origin === MessageOrigin::Resume,
+    );
+
+    expect($own->refresh()->status)->toBe(PendingActionStatus::Approved)
+        ->and(Task::query()->where('title', 'From this turn')->exists())->toBeTrue()
+        ->and($resumed)->toHaveCount(1);
+});
+
+it('records why a failed turn was refunded', function (Throwable $exception, string $cause): void {
+    withHostedBilling();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->update(['credits_remaining' => 100, 'credits_used' => 0]);
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    $job = makeFailedTurnJob($user, $conversationId);
+    resolve(CreditService::class)->reserveCredit($workspace, reservationKey: "reserve-{$job->turnId}", conversationId: $conversationId, userId: (string) $user->getKey());
+
+    $job->failed($exception);
+
+    $refund = AiCreditTransaction::query()->where('workspace_id', $workspace->getKey())->where('type', AiCreditType::Refund)->sole();
+
+    expect($refund->metadata['cause'])->toBe($cause);
+})->with([
+    'a timeout' => [new TimeoutExceededException('timed out'), 'timeout'],
+    'any other failure' => [new RuntimeException('boom'), 'failed'],
+]);
 
 it('orders the backfilled failed turn before a later retried turn when sorted by id', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
@@ -377,6 +534,8 @@ function seedFailoverConversation(User $user, string $conversationId): void
 }
 
 it('redispatches once on a terminal pre-stream failure when resolution was auto', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $workspace->forceFill(['plan' => Plan::Pro])->save();
@@ -431,6 +590,8 @@ it('redispatches once on a terminal pre-stream failure when resolution was auto'
 });
 
 it('does not fail over for an explicit model pick', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $workspace->forceFill(['plan' => Plan::Pro])->save();
@@ -510,6 +671,10 @@ it('offers Retry on Auto when the provider rejects an explicit pick mid-stream',
 });
 
 it('offers no Retry on Auto when Auto has no other model to answer with', function (): void {
+    withHostedBilling();
+    config()->set('chat.models', [ChatCatalog::entry()]);
+    app()->forgetInstance(ModelRegistry::class);
+
     Event::fake([ChatStreamFailed::class]);
 
     $user = User::factory()->withPersonalWorkspace()->create();
@@ -781,6 +946,8 @@ it('lets the model recover from calling a tool that does not exist instead of fa
 });
 
 it('refunds the reservation when the job dies before it ever runs', function (): void {
+    withHostedBilling();
+
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
     $workspace->forceFill(['plan' => Plan::Pro])->save();
@@ -821,6 +988,46 @@ it('refunds the reservation when the job dies before it ever runs', function ():
         ->and($balance->credits_used)->toBe(0);
 });
 
+it('writes no ledger rows when a self-hosted job dies before it ever runs', function (): void {
+    Feature::define(Billing::class, false);
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+
+    AiCreditBalance::query()->where('workspace_id', $workspace->getKey())
+        ->update(['credits_remaining' => 100, 'credits_used' => 0]);
+
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    $turnId = (string) Str::ulid();
+    resolve(CreditService::class)->reserveCredit(
+        $workspace,
+        reservationKey: "reserve-{$turnId}",
+        conversationId: $conversationId,
+        userId: (string) $user->getKey(),
+    );
+
+    $ledgerRowsBefore = AiCreditTransaction::query()->where('workspace_id', $workspace->getKey())->count();
+
+    $job = new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'auto'],
+        turnId: $turnId,
+    );
+
+    $job->failed(new MaxAttemptsExceededException('job expired'));
+
+    $balance = AiCreditBalance::query()->where('workspace_id', $workspace->getKey())->first();
+
+    expect(AiCreditTransaction::query()->where('workspace_id', $workspace->getKey())->count())->toBe($ledgerRowsBefore)
+        ->and($balance->credits_remaining)->toBe(100)
+        ->and($balance->credits_used)->toBe(0);
+});
+
 it('reports a pre-model failure to the exception handler instead of only a breadcrumb', function (): void {
     $user = User::factory()->withPersonalWorkspace()->create();
     $workspace = $user->currentWorkspace;
@@ -851,6 +1058,96 @@ it('reports a pre-model failure to the exception handler instead of only a bread
     $job->handle(resolve(CreditService::class));
 
     Exceptions::assertReported(RuntimeException::class);
+});
+
+it('reports a turn that timed out, because the worker kills its process right after failed() runs', function (): void {
+    Exceptions::fake();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    makeFailedTurnJob($user, $conversationId)->failed(new TimeoutExceededException('timed out'));
+
+    Exceptions::assertReported(TimeoutExceededException::class);
+    Exceptions::assertReportedCount(1);
+});
+
+it('reports a timeout even when the refund throws first', function (): void {
+    Exceptions::fake();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+    $job = makeFailedTurnJob($user, $conversationId);
+
+    app()->forgetInstance(CreditService::class);
+    $this->mock(Entitlements::class)->shouldReceive('metersCredits')->andThrow(new RuntimeException('ledger down'));
+
+    expect(fn () => $job->failed(new TimeoutExceededException('timed out')))->toThrow(RuntimeException::class, 'ledger down');
+
+    Exceptions::assertReported(TimeoutExceededException::class);
+});
+
+it('still writes the failure note when reporting the timeout itself throws', function (): void {
+    Exceptions::fake()->throwOnReport();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    makeFailedTurnJob($user, $conversationId)->failed(new TimeoutExceededException('timed out'));
+
+    $note = DB::table('agent_conversation_messages')
+        ->where('conversation_id', $conversationId)
+        ->where('role', 'assistant')
+        ->latest('id')
+        ->first();
+
+    expect(json_decode((string) $note->meta, true)['failure']['class'])->toBe(TimeoutExceededException::class);
+});
+
+it('leaves reporting to the worker for a failure it rethrows itself', function (Throwable $exception): void {
+    Exceptions::fake();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    makeFailedTurnJob($user, $conversationId)->failed($exception);
+
+    Exceptions::assertNothingReported();
+})->with([
+    'a provider rejection' => [fn (): Throwable => rejectedByProvider(400, 'nope')],
+    'an expired job' => [fn (): Throwable => new MaxAttemptsExceededException('job expired')],
+    'our own error' => [fn (): Throwable => new RuntimeException('boom')],
+]);
+
+it('reports nothing when handle() releases a retryable attempt', function (): void {
+    Exceptions::fake();
+    Queue::fake();
+
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $workspace = $user->currentWorkspace;
+    $workspace->forceFill(['plan' => Plan::Pro])->save();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    AnthropicSse::fake("data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n");
+
+    $job = (new ProcessChatMessage(
+        user: $user,
+        workspace: $workspace,
+        message: 'hello',
+        conversationId: $conversationId,
+        resolved: ['provider' => 'anthropic', 'model' => 'claude-sonnet-5', 'id' => 'claude-sonnet-5', 'source' => 'explicit'],
+        turnId: (string) Str::ulid(),
+    ))->withFakeQueueInteractions();
+
+    $job->handle(resolve(CreditService::class));
+
+    $job->assertReleased();
+    Exceptions::assertNothingReported();
 });
 
 it('logs the provider error type and message when the provider rejects an explicit pick', function (string $errorMessage): void {
@@ -1023,6 +1320,115 @@ it('logs the provider error type and message when the provider reports a rejecti
             && $context['model'] === 'claude-sonnet-5'
             && $context['error_type'] === 'invalid_request_error'
             && $context['error_message'] === 'bad request');
+});
+
+function rejectedByProvider(int $status, string $body): RequestException
+{
+    return new RequestException(new HttpResponse(new Psr7Response($status, [], $body)));
+}
+
+/** @return array{user: User, conversationId: string, meta: array<string, mixed>} */
+function failedTurnMeta(?Throwable $exception): array
+{
+    $user = User::factory()->withPersonalWorkspace()->create();
+    $conversationId = (string) Str::uuid7();
+    seedFailoverConversation($user, $conversationId);
+
+    makeFailedTurnJob($user, $conversationId)->failed($exception);
+
+    $meta = DB::table('agent_conversation_messages')
+        ->where('conversation_id', $conversationId)
+        ->where('role', 'assistant')
+        ->value('meta');
+
+    return ['user' => $user, 'conversationId' => $conversationId, 'meta' => json_decode((string) $meta, true, flags: JSON_THROW_ON_ERROR)];
+}
+
+it('keeps the provider rejection body on the failed turn', function (): void {
+    $body = '{"type":"error","error":{"type":"invalid_request_error","message":"credit balance is too low"}}';
+
+    ['meta' => $meta] = failedTurnMeta(rejectedByProvider(400, $body));
+
+    expect($meta['error'])->toBeTrue()
+        ->and($meta['failure'])->toEqual([
+            'class' => RequestException::class,
+            'status' => 400,
+            'body' => $body,
+            'provider' => 'ollama',
+            'model' => 'qwen3:8b',
+        ]);
+});
+
+it('keeps the rejection body when the gateway already drained the streamed response', function (): void {
+    $body = '{"type":"error","error":{"type":"invalid_request_error","message":"credit balance is too low"}}';
+    $response = new HttpResponse(new Psr7Response(400, [], new NoSeekStream(Utils::streamFor($body))));
+
+    expect($response->json('error.message'))->toBe('credit balance is too low');
+
+    ['meta' => $meta] = failedTurnMeta(new RequestException($response));
+
+    expect($meta['failure']['body'])->toContain('invalid_request_error')->toContain('credit balance is too low');
+});
+
+it('stores a null body when a drained streamed response leaves nothing to read', function (): void {
+    $response = new HttpResponse(new Psr7Response(502, [], new NoSeekStream(Utils::streamFor('<html>bad gateway</html>'))));
+    $response->json();
+
+    ['meta' => $meta] = failedTurnMeta(new RequestException($response));
+
+    expect($meta['failure']['status'])->toBe(502)
+        ->and($meta['failure']['body'])->toBeNull();
+});
+
+it('still writes the failure note when the rejection body is not valid UTF-8', function (): void {
+    ['meta' => $meta] = failedTurnMeta(rejectedByProvider(400, "upstream said \xC3\x28 and \xFF"));
+
+    expect($meta['error'])->toBeTrue()
+        ->and(mb_check_encoding($meta['failure']['body'], 'UTF-8'))->toBeTrue();
+});
+
+it('caps the stored rejection body at 2000 characters without splitting a multibyte character', function (): void {
+    ['meta' => $meta] = failedTurnMeta(rejectedByProvider(400, str_repeat('日本語', 1667)));
+
+    expect(mb_strlen($meta['failure']['body']))->toBe(2000)
+        ->and(mb_check_encoding($meta['failure']['body'], 'UTF-8'))->toBeTrue();
+});
+
+it('stores the stream error type and message when the provider rejects inside the stream', function (): void {
+    ['meta' => $meta] = failedTurnMeta(new ProviderStreamRejectedException(new Error('evt-1', 'invalid_request_error', 'bad request', false, 0)));
+
+    expect($meta['failure'])->toMatchArray([
+        'class' => ProviderStreamRejectedException::class,
+        'status' => null,
+        'body' => 'invalid_request_error: bad request',
+    ]);
+});
+
+it('stores no status and no body when the failure carries no response', function (Throwable $exception): void {
+    ['meta' => $meta] = failedTurnMeta($exception);
+
+    expect($meta['failure'])->toMatchArray(['class' => $exception::class, 'status' => null, 'body' => null]);
+})->with([
+    'a timeout' => [new TimeoutExceededException('timed out')],
+    'an expired job' => [new MaxAttemptsExceededException('job expired')],
+    'our own error' => [new RuntimeException('boom')],
+]);
+
+it('stores a null failure class when the queue hands over no exception', function (): void {
+    ['meta' => $meta] = failedTurnMeta(null);
+
+    expect($meta['error'])->toBeTrue()
+        ->and($meta['failure'])->toMatchArray(['class' => null, 'status' => null, 'body' => null]);
+});
+
+it('never sends the stored failure body to the transcript', function (): void {
+    ['user' => $user, 'conversationId' => $conversationId] = failedTurnMeta(rejectedByProvider(400, 'sk-ant-leaked-key-fragment'));
+
+    $messages = resolve(ConversationMessagesQuery::class)->get($user, $conversationId);
+
+    expect(array_column($messages, 'role'))->toBe(['user', 'assistant'])
+        ->and(json_encode($messages))->not->toContain('sk-ant-leaked-key-fragment')
+        ->and(json_encode($messages))->not->toContain('failure');
 });
 
 /**

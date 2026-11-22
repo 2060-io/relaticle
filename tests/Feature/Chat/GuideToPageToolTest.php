@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use App\Enums\WorkspaceRole;
+use App\Features\Billing;
 use App\Models\User;
+use App\Support\Locales;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\JsonSchema\Serializer;
 use Laravel\Ai\Tools\Request;
+use Laravel\Pennant\Feature;
 use Relaticle\Chat\Models\PendingAction;
 use Relaticle\Chat\Support\DestinationResolver;
 use Relaticle\Chat\Tools\GuideToPageTool;
@@ -50,6 +53,8 @@ it('does not create a pending action because it is not a write', function (): vo
  * written by hand in separate files; this is the only thing stopping drift.
  */
 it('advertises every resolvable destination in its schema description', function (): void {
+    withHostedBilling();
+
     $schema = app(GuideToPageTool::class)->schema(new JsonSchemaTypeFactory);
     $destination = (new Serializer)->serialize($schema['destination']);
 
@@ -59,12 +64,26 @@ it('advertises every resolvable destination in its schema description', function
 });
 
 it('declares every destination its schema description advertises', function (): void {
+    withHostedBilling();
+
     $schema = app(GuideToPageTool::class)->schema(new JsonSchemaTypeFactory);
     $destination = (new Serializer)->serialize($schema['destination']);
 
     preg_match_all('/"([a-z_]+)"/', $destination['description'], $advertised);
 
     expect($advertised[1])->toEqualCanonicalizing(DestinationResolver::DESTINATIONS);
+});
+
+it('leaves the billing destination out of its schema description when billing is off', function (): void {
+    Feature::define(Billing::class, false);
+
+    $schema = app(GuideToPageTool::class)->schema(new JsonSchemaTypeFactory);
+    $destination = (new Serializer)->serialize($schema['destination']);
+
+    preg_match_all('/"([a-z_]+)"/', $destination['description'], $advertised);
+
+    expect($advertised[1])->toEqualCanonicalizing(array_values(array_diff(DestinationResolver::DESTINATIONS, ['billing'])))
+        ->and($destination['description'])->toEndWith('undone).');
 });
 
 it('names the access tokens and connect assistant destinations in its schema description', function (): void {
@@ -74,6 +93,18 @@ it('names the access tokens and connect assistant destinations in its schema des
     expect($destination['description'])
         ->toContain('"access_tokens"')
         ->toContain('"connect_assistant"');
+});
+
+it('keeps the page refusal in English for a German member', function (): void {
+    $workspace = $this->user->ownedWorkspaces()->first();
+    $teammate = User::factory()->create();
+    $workspace->users()->attach($teammate, ['role' => WorkspaceRole::Member->value]);
+    $teammate->switchWorkspace($workspace);
+    $this->actingAs($teammate->fresh());
+
+    $payload = json_decode(Locales::within('de', fn (): string => app(GuideToPageTool::class)->handle(new Request(['destination' => 'custom_fields']))), true);
+
+    expect($payload['error'])->toBe('This user cannot open that page with their workspace role. Tell them a workspace owner or admin can do it for them. Do not link to any page.');
 });
 
 it('refuses a page the user cannot open instead of handing over a link that would 403', function (string $destination, WorkspaceRole $role): void {
